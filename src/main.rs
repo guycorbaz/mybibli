@@ -297,6 +297,16 @@ async fn main() {
         );
     }
 
+    // Story 13-4 (#578): descriptions stored before v1.23.0 may carry the
+    // providers' HTML. One-shot, idempotent data repair to plain text
+    // (hand-edited descriptions excepted). Non-fatal, like the step above.
+    if let Err(e) = mybibli::services::title::convert_html_descriptions(&pool).await {
+        tracing::error!(
+            error = %e,
+            "HTML description: startup conversion failed (non-fatal, continuing)"
+        );
+    }
+
     // Load application settings from database
     let app_settings = AppSettings::load_from_db(&pool)
         .await

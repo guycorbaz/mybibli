@@ -62,7 +62,14 @@ impl MetadataResult {
     pub fn normalize_empty_strings(mut self) -> Self {
         self.title = normalize_empty(self.title);
         self.subtitle = normalize_empty(self.subtitle);
-        self.description = normalize_empty(self.description);
+        // Story 13-4 (#578): Google Books and Comic Vine answer with HTML;
+        // every provider and every chain merge passes here, so the catalogue
+        // only ever stores plain text. Before the empty check: markup-only
+        // descriptions (`<p><br></p>`) become absent.
+        self.description = normalize_empty(
+            self.description
+                .map(|d| crate::utils::html_to_plain_text(&d)),
+        );
         self.publisher = normalize_empty(self.publisher);
         self.publication_date = normalize_empty(self.publication_date);
         self.cover_url = normalize_empty(self.cover_url);
@@ -447,6 +454,27 @@ mod tests {
             normalize_empty(Some("Gallimard".to_string())),
             Some("Gallimard".to_string()),
         );
+    }
+
+    /// Story 13-4 (#578) — an HTML description becomes plain text at the
+    /// single normalisation point; markup alone becomes absent.
+    #[test]
+    fn metadata_result_normalize_turns_an_html_description_into_plain_text() {
+        let html = MetadataResult {
+            description: Some("<p><b>Grandis un peu !</b></p><p>Suite&nbsp;&amp; fin</p>".into()),
+            ..MetadataResult::default()
+        }
+        .normalize_empty_strings();
+        assert_eq!(
+            html.description.as_deref(),
+            Some("Grandis un peu !\n\nSuite\u{a0}& fin")
+        );
+        let markup_only = MetadataResult {
+            description: Some("<p><br></p>".into()),
+            ..MetadataResult::default()
+        }
+        .normalize_empty_strings();
+        assert!(markup_only.description.is_none());
     }
 
     #[test]

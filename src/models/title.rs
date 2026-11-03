@@ -86,6 +86,16 @@ pub struct Isbn10UpcCandidate {
     pub version: i32,
 }
 
+/// Story 13-4 (#578): a live title whose description may carry HTML — see
+/// [`TitleModel::list_descriptions_with_markup`].
+#[derive(Debug, Clone)]
+pub struct DescriptionMarkupCandidate {
+    pub id: u64,
+    pub description: String,
+    pub version: i32,
+    pub manually_edited_fields: Option<String>,
+}
+
 /// Data required to create a new title.
 #[derive(Debug, Deserialize)]
 pub struct NewTitle {
@@ -517,6 +527,59 @@ impl TitleModel {
         .bind(version)
         .bind(upc)
         .execute(executor)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Story 13-4 (#578) — live titles whose description contains a `<` or
+    /// an `&…;`: the candidates of the startup plain-text cleanup
+    /// (`services::title::convert_html_descriptions`), which decides per
+    /// row. Oldest first.
+    pub async fn list_descriptions_with_markup(
+        pool: &DbPool,
+    ) -> Result<Vec<DescriptionMarkupCandidate>, AppError> {
+        let rows: Vec<(u64, String, i32, Option<String>)> = sqlx::query_as(
+            "SELECT id, description, version, \
+                    CAST(manually_edited_fields AS CHAR) AS manually_edited_fields \
+             FROM titles \
+             WHERE description IS NOT NULL \
+               AND (description LIKE '%<%' OR description LIKE '%&%;%') \
+               AND deleted_at IS NULL \
+             ORDER BY id ASC",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(id, description, version, manually_edited_fields)| DescriptionMarkupCandidate {
+                    id,
+                    description,
+                    version,
+                    manually_edited_fields,
+                },
+            )
+            .collect())
+    }
+
+    /// Story 13-4 (#578) — store the plain-text form of a description
+    /// (`None` clears it) under optimistic locking. `false` when the row
+    /// changed meanwhile (version, deleted). `manually_edited_fields` is
+    /// left alone: this is a data repair, not a hand edit.
+    pub async fn set_plain_description(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+        description: Option<&str>,
+    ) -> Result<bool, AppError> {
+        let result = sqlx::query(
+            "UPDATE titles SET description = ?, version = version + 1, updated_at = NOW() \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(description)
+        .bind(id)
+        .bind(version)
+        .execute(pool)
         .await?;
         Ok(result.rows_affected() == 1)
     }
@@ -1031,6 +1094,16 @@ impl TitleModel {
     /// malformed (not an array of strings), logs a warning and returns empty —
     /// a fail-open that weakens the metadata-fetch guard for a single corrupt
     /// row, but surfaces the corruption in logs instead of silently masking it.
+    /// Story 13-4 (#578) — the description's paragraphs for display, one
+    /// escaped `<p>` each (`utils::description_paragraphs`); empty without
+    /// a description.
+    pub fn description_paragraphs(&self) -> Vec<String> {
+        self.description
+            .as_deref()
+            .map(crate::utils::description_paragraphs)
+            .unwrap_or_default()
+    }
+
     pub fn parsed_manually_edited_fields(&self) -> Vec<String> {
         let Some(raw) = self.manually_edited_fields.as_deref() else {
             return Vec::new();

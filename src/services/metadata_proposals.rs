@@ -608,6 +608,33 @@ fn contributors(
     (errors.len() == before).then_some(out)
 }
 
+/// Story 13-4 (#578) — an agent often copies a provider's description, HTML
+/// included: at filing the proposed description becomes plain text
+/// ([`crate::utils::html_to_plain_text`]), so the reviewer reads and
+/// accepts what the title page will show. Filing only: a librarian's edit
+/// of the line and the re-validation at acceptance keep the text as typed,
+/// like every hand-typed description. Markup alone is a blank value.
+fn plain_text_description(
+    proposed: &mut ProposedFields,
+    roles: &[(u64, String)],
+) -> Result<(), MetadataProposalError> {
+    let Some(raw) = proposed.description.take() else {
+        return Ok(());
+    };
+    let plain = crate::utils::html_to_plain_text(&raw);
+    if plain.is_empty() {
+        return Err(MetadataProposalError::Fields {
+            errors: vec![FieldError {
+                field: "description".to_string(),
+                problem: FieldProblem::Blank,
+            }],
+            roles: roles.iter().map(|(_, n)| n.clone()).collect(),
+        });
+    }
+    proposed.description = Some(plain);
+    Ok(())
+}
+
 /// Validate the proposed fields (pure — unit tested): every problem of
 /// every field is collected, so the agent corrects them in one go.
 /// `roles` are the library's live contributor roles `(id, name)`.
@@ -808,7 +835,8 @@ impl MetadataProposalService {
             Vec::new()
         };
         let current_year = chrono::Utc::now().year();
-        let proposed = validate_fields(&req.fields, &roles, current_year)?;
+        let mut proposed = validate_fields(&req.fields, &roles, current_year)?;
+        plain_text_description(&mut proposed, &roles)?;
         let sources = validate_sources(&req.sources)?;
 
         let Some(title) = TitleModel::find_by_id(pool, req.title_id).await? else {
@@ -1035,6 +1063,35 @@ mod tests {
             problem_of(&errors, "subtitle"),
             FieldProblem::TooLongChars { max: 500 }
         );
+    }
+
+    /// Story 13-4 (#578) — an agent's HTML description is filed as plain
+    /// text; markup alone is refused as blank.
+    #[test]
+    fn an_html_description_is_filed_as_plain_text() {
+        let mut p = validate_fields(
+            &fields(json!({"description": "<p><b>Titre</b></p><p>Caf&eacute;</p>"})),
+            &roles(),
+            YEAR,
+        )
+        .expect("valid");
+        plain_text_description(&mut p, &roles()).expect("not blank");
+        assert_eq!(p.description.as_deref(), Some("Titre\n\nCafé"));
+
+        let mut blank =
+            validate_fields(&fields(json!({"description": "<p><br></p>"})), &roles(), YEAR)
+                .expect("valid before conversion");
+        match plain_text_description(&mut blank, &roles()) {
+            Err(MetadataProposalError::Fields { errors, .. }) => {
+                assert_eq!(problem_of(&errors, "description"), FieldProblem::Blank)
+            }
+            other => panic!("expected a blank description error, got {other:?}"),
+        }
+
+        let mut none = validate_fields(&fields(json!({"publisher": "P"})), &roles(), YEAR)
+            .expect("valid");
+        plain_text_description(&mut none, &roles()).expect("no description");
+        assert!(none.description.is_none());
     }
 
     #[test]

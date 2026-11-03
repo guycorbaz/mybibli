@@ -68,6 +68,17 @@ GOOGLE_BOOKS_KNOWN_ISBNS = {
         "language": "en",
         "thumbnail": "http://mock-metadata:9090/test-cover.jpg",
     },
+    # Story 13-4 (#578) — specIsbn("HD", 1): Google Books answers with an
+    # HTML description (as the real API does); the title page must show it
+    # as plain paragraphs. On the BnF blocklist so the chain reaches here.
+    "9787268000010": {
+        "title": "HTML Description Book",
+        "description": "<p><b>Grandis un peu, Titeuf !</b></p><p>La vie de Titeuf &eacute;volue &amp; change.</p>",
+        "authors": ["Zep"],
+        "publisher": "Glénat",
+        "publishedDate": "2024-01-10",
+        "language": "fr",
+    },
 }
 
 # --- Open Library known ISBNs (for ISBNs NOT in BnF or Google Books) ---
@@ -275,7 +286,8 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
         # - Google Books known ISBNs: must NOT resolve via BnF so the chain falls through to Google Books
         # - 9780449000038 / 9780449000045: catalog-loc-sru.spec.ts (#495) — the
         #   chain must reach the Library of Congress as a primary source.
-        NO_METADATA_ISBNS = {"9780000000002", "9780000000019", "9780000000026", "9780000000033", "9780134685991", "9780201633610", "9780449000038", "9780449000045"}
+        # - 9787268000010: html-description.spec.ts (#578) — Google Books serves it.
+        NO_METADATA_ISBNS = {"9780000000002", "9780000000019", "9780000000026", "9780000000033", "9780134685991", "9780201633610", "9780449000038", "9780449000045", "9787268000010"}
 
         if isbn and isbn in BNF_KNOWN_ISBNS:
             body = make_sru_response(BNF_KNOWN_ISBNS[isbn])

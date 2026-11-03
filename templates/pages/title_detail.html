@@ -101,9 +101,12 @@
                 {% if let Some(note) = title.general_note %}
                     <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ label_general_note }}: {{ note }}</p>
                 {% endif %}
-                {% if let Some(desc) = title.description %}
-                <div class="mt-4">
-                    <p class="text-stone-700 dark:text-stone-300 text-sm">{{ desc }}</p>
+                {% let desc_paragraphs = title.description_paragraphs() %}
+                {% if !desc_paragraphs.is_empty() %}
+                <div id="title-description" class="mt-4 space-y-2">
+                    {% for para in desc_paragraphs %}
+                    <p class="text-stone-700 dark:text-stone-300 text-sm">{{ para }}</p>
+                    {% endfor %}
                 </div>
                 {% endif %}
                 {% if base.role == "librarian" || base.role == "admin" %}

@@ -1,3 +1,7 @@
+// Story 13-4 (#578) — HTML descriptions to plain text.
+mod plain_text;
+pub use plain_text::{decode_char_references, description_paragraphs, html_to_plain_text};
+
 /// Generate a STANDARD-base64-encoded 32-byte session token (44 chars
 /// w/ padding). Canonical implementation for `sessions.token`. Earlier
 /// versions of the codebase duplicated this function across

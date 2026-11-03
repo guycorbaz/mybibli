@@ -466,9 +466,17 @@ fn metadata_display_html(
             )
         })
         .unwrap_or_default();
-    let desc_html = title.description.as_ref()
-        .map(|d| format!(r#"<div class="mt-4"><p class="text-stone-700 dark:text-stone-300 text-sm">{}</p></div>"#, html_escape(d)))
-        .unwrap_or_default();
+    // Story 13-4 (#578): one escaped paragraph per line, as the full page.
+    let desc_paragraphs = title.description_paragraphs();
+    let desc_html = if desc_paragraphs.is_empty() {
+        String::new()
+    } else {
+        let paras: String = desc_paragraphs
+            .iter()
+            .map(|p| format!(r#"<p class="text-stone-700 dark:text-stone-300 text-sm">{}</p>"#, html_escape(p)))
+            .collect();
+        format!(r#"<div id="title-description" class="mt-4 space-y-2">{paras}</div>"#)
+    };
     // Fix #236: the Dewey chip now lives inside the media-type / genre
     // row at the top of the metadata block (right after the genre),
     // matching the full-page template's layout. The separate
@@ -2177,6 +2185,18 @@ mod tests {
             !rendered.contains("Source"),
             "a title with no recorded source must render NO source badge"
         );
+    }
+
+    /// Story 13-4 (#578) — the description renders one escaped paragraph
+    /// per line; a `<` in the stored text stays text.
+    #[test]
+    fn title_detail_renders_description_paragraphs_escaped() {
+        let mut template = title_detail_test_template();
+        template.title.description = Some("First a < b\n\nSecond".to_string());
+        let rendered = template.render().unwrap();
+        assert!(rendered.contains(">First a &#60; b</p>") || rendered.contains(">First a &lt; b</p>"));
+        assert!(rendered.contains(">Second</p>"));
+        assert!(rendered.contains(r#"id="title-description""#));
     }
 
     /// #202 — the positive half: a recorded provenance renders as a badge.
