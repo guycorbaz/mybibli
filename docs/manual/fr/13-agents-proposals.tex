@@ -569,7 +569,7 @@ crédités, ou la couverture installée. Une fois confirmé :
 \end{itemize}
 
 Quand une proposition de série place un titre possédé à la position
-d'un tome attendu, l'accepter règle aussi ce tome : la page de la série
+d'un tome attendu, l'accepter résout aussi ce tome : la page de la série
 le montre comme possédé, et le message de succès compte les tomes
 attendus désormais possédés.
 
@@ -674,16 +674,16 @@ acceptées, ou vous les saisissez vous-même.
         propose de l'en retirer (section~\ref{sec:wishlist}). Si la
         position est entre-temps occupée par un autre titre, rien
         n'est rattaché et un avertissement indique quoi vérifier.
-  \item \textbf{Quand un agent propose un titre que vous possédez à
-        cette position} (\texttt{propose\_series\_attach}), la
-        proposition est acceptée au dépôt si le tome n'a pas d'ISBN, si
-        son ISBN est celui du titre, ou si le titre n'en a pas ; elle
-        est refusée quand les deux ISBN sont connus et diffèrent. Une
+  \item \textbf{Quand un agent propose un titre possédé à cette
+        position} --- outil \texttt{propose\_series\_\allowbreak
+        attach} ---, le dépôt est admis si le tome n'a pas d'ISBN, si son ISBN est
+        celui du titre, ou si le titre n'en a pas ; il est refusé quand
+        les deux ISBN sont connus et diffèrent. Une
         intégrale couvrant plusieurs positions remplit tous les tomes de
         sa plage sans comparer les ISBN, puisqu'une édition intégrale a
         son propre ISBN --- l'écran d'examen nomme chaque tome qu'une
         ligne remplira, pour que vous puissiez juger. L'acceptation
-        place le titre et règle les tomes.
+        place le titre et résout les tomes.
   \item \textbf{Tomes attendus à revoir} --- un tome qui ne tient plus
         dans une lacune (le nombre de volumes de la série a été
         abaissé sous sa position, ou un titre occupe désormais sa

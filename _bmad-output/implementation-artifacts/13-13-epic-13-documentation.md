@@ -1,6 +1,6 @@
 # Story 13.13: Documentation
 
-Status: review
+Status: done
 
 Covers: FR153–FR160 (documentation). Epic 13 — last story; ships in v1.23.0.
 
@@ -51,7 +51,7 @@ None of the epic 13 stories updated the user manual (`docs/manual/{en,fr}/*.tex`
 
 **PDFs (T3)** — `mem-guard docs/manual/build.sh en` then `fr`: no undefined reference or citation; the only "Missing character" warnings (box-drawing U+2500/U+2514 in the mono font) predate this story. Both PDFs committed; no build artefact tracked.
 
-**Finding (not fixed, UI copy):** `locales/fr.yml` `proposals.accept_modal_note_label` says "marquée comme dépassée" while the status everywhere else is "Périmée".
+**Finding (UI copy):** `locales/fr.yml` `proposals.accept_modal_note_label` said "marquée comme dépassée" while the status everywhere else is "Périmée" — fixed by the coordinator in 648cdb7.
 
 ### Release-note items for v1.23.0 (AC7 — for the release-time doc sync)
 
@@ -67,4 +67,16 @@ None of the epic 13 stories updated the user manual (`docs/manual/{en,fr}/*.tex`
 - **Tome number:** "Tome N" (FR) / "Volume N" (EN) display, inline position edit, detected hint; tome markers stripped from provider titles on (re-)download unless the title was hand-edited — titles already catalogued are not cleaned in bulk; known false positives ("L'Ennemi public n°1") need one hand edit.
 - **Agents:** 14 tools — `list_labels`, `propose_label` (label proposals: review, acceptance, staleness, resubmission); `get_title` dates, `location_path`, labels, `detected_tome`; `search_titles` `added_since`, `created_at`, `last_added_at`; an owned title may fill an expected tome by proposal (omnibus fills its range without ISBN comparison); agent descriptions converted to plain text at filing.
 - **Ops:** API key revocation retried on deadlock (no more "Server error").
+
+### Review Findings
+
+Documentation review, single round (on a726d4c): 0 Medium+, 6 Low — all applied.
+
+- [x] [Review][Patch] L1 — ch. 12 (EN/FR) intro: "two start-up repairs and a background retry task", not "three start-up steps".
+- [x] [Review][Patch] L2 — ch. 13 (EN/FR): "accepted at filing" → "the agent may file it" / « le dépôt est admis ».
+- [x] [Review][Patch] L3 — FR: « régler / règle » an expected tome → « résoudre / résout » (03-usage, 13-agents), as the glossary.
+- [x] [Review][Patch] L4 — FR 03-usage: « scanner un autre label » (UI wording) for the other-title case.
+- [x] [Review][Patch] L5 — ch. 12 (EN/FR): a failed repair rolls back its title/proposal changes and writes no marker (cache purge runs before, separately); collision log line quoted with its real suffix "(see #591)".
+- [x] [Review][Patch] L6 — overfull boxes removed (en/12 data-repairs paragraph, fr/13 expected-tome item: reworded + `\allowbreak`); `~` before the closing guillemet of « Tome 3 (détecté) ». Rebuilt PDFs: no undefined reference, no overfull box added compared with the previous build.
+- [x] Optional — CLAUDE.md retry-queue note: 13-3 sentence trimmed.
 

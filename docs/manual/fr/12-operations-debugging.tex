@@ -211,8 +211,8 @@ docker compose cp mybibli:/var/log/mybibli/. ./logs-archive/
 \section{Nouvelles tentatives en arrière-plan et réparations au démarrage}
 \label{sec:startup-repairs}
 
-La version 1.23.0 ajoute une file de nouvelles tentatives pour les
-recherches de métadonnées et trois étapes au démarrage. Aucune ne
+La version 1.23.0 ajoute deux réparations au démarrage et une tâche
+d'arrière-plan qui relance les recherches de métadonnées. Aucune ne
 demande de configuration ; cette section dit ce qu'elles laissent dans
 la base de données et dans le journal.
 
@@ -279,14 +279,17 @@ ligne avec son nom et sa date dans la table
 \texttt{data\_repairs}\index{data\_repairs}, dans la même transaction
 que la réparation ; à chaque démarrage suivant, la ligne est trouvée et
 la réparation sautée. La 1.23.0 en apporte une :
-\texttt{13-4-html-descriptions-to-plain-text}, la conversion des
+\texttt{13-4-html-\allowbreak descriptions-\allowbreak to-\allowbreak plain-\allowbreak text}, la conversion des
 descriptions HTML enregistrées (chapitre~\ref{ch:providers}). Elle
 journalise \texttt{HTML description: startup plain-text conversion done
 (\#578)} avec ses compteurs (descriptions converties, titres modifiés à
 la main sautés, lignes de propositions réécrites, entrées de cache
 purgées), puis \texttt{Data repair applied}. Si elle échoue, le
-démarrage continue, une ligne \texttt{error} le signale, rien n'est
-écrit, et la réparation est relancée au démarrage suivant.
+démarrage continue, une ligne \texttt{error} le signale, ses
+modifications des titres et des propositions sont annulées, aucun
+marqueur n'est écrit, et la réparation est relancée au démarrage
+suivant. (L'écartement des réponses mises en cache s'exécute avant,
+à part ; le refaire est sans effet.)
 
 \begin{warning}
 Ne supprimez pas de lignes de \texttt{data\_repairs} : la réparation
@@ -304,7 +307,7 @@ done (\#584)}, avec le nombre de titres convertis et sautés. Après le
 premier démarrage de la 1.23.0, ce nombre de conversions est nul. Un
 titre dont l'ISBN-13 appartient déjà à un autre titre n'est pas modifié
 et apparaît en \texttt{warn} à chaque démarrage (\texttt{ISBN-10 stored
-as UPC: another title already holds this ISBN; left unchanged}, avec
+as UPC: another title already holds this ISBN; left unchanged (see \#591)}, avec
 les deux identifiants) jusqu'à ce que vous régliez le doublon.
 
 \subsection*{Révocation d'une clé d'API}
