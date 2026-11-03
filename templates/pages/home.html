@@ -274,8 +274,8 @@
     </div>
 
     <!-- Browse toggle + sort -->
-    <div class="w-full max-w-4xl mt-6 flex items-center justify-between">
-        <div class="flex items-center gap-3">
+    <div class="w-full max-w-4xl mt-6 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-3 min-w-0">
         {# CR #367 — saved-searches control (Librarian+); the whole control
            is server-rendered in routes::home so it carries the current
            browse state + localized strings. #}
@@ -304,7 +304,7 @@
            inputs share names with the #filter-tags ones, which is why the
            search field's hx-include is scoped to #filter-tags (a duplicate
            `sort=` makes the Query extractor reject the request, see #367). #}
-        <form id="browse-added-since-form" method="get" action="/" class="flex items-center gap-2"
+        <form id="browse-added-since-form" method="get" action="/" class="flex flex-wrap items-center gap-2 min-w-0"
               data-indicator-filters="{{ added_since.indicator_filters }}">
             <input type="hidden" name="q" value="{{ query }}">
             {# An indicator filter is left out: the date replaces it (single-active-filter contract). #}
@@ -313,7 +313,7 @@
             <input type="hidden" name="dir" value="{{ current_dir }}">
             <label class="text-xs text-stone-500 dark:text-stone-400" for="browse-added-since">{{ added_since.label }}:</label>
             <input type="date" id="browse-added-since" name="added_since" value="{{ added_since.value }}"
-                   class="text-xs border border-stone-300 dark:border-stone-600 rounded px-2 py-1 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300">
+                   class="min-w-0 text-xs border border-stone-300 dark:border-stone-600 rounded px-2 py-1 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300">
             <button type="submit" class="text-xs px-2 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800">{{ added_since.apply_label }}</button>
             {% if added_since.is_active() %}
             <a id="browse-added-since-clear" href="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
