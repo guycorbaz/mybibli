@@ -991,6 +991,19 @@ impl TitleModel {
         serde_json::to_string(&set.into_iter().collect::<Vec<_>>()).unwrap_or_else(|_| "[]".into())
     }
 
+    /// The code a metadata lookup runs on, with its type: ISBN first (the
+    /// broadest provider coverage), then UPC, then ISSN. `None` for a title
+    /// without any code. Shared by the manual re-download and the
+    /// throttled-fetch retry (story 13-2).
+    pub fn lookup_code(&self) -> Option<(String, crate::models::media_type::CodeType)> {
+        use crate::models::media_type::CodeType;
+        self.isbn
+            .clone()
+            .map(|c| (c, CodeType::Isbn))
+            .or_else(|| self.upc.clone().map(|c| (c, CodeType::Upc)))
+            .or_else(|| self.issn.clone().map(|c| (c, CodeType::Issn)))
+    }
+
     /// Find up to 8 related titles for a title detail page.
     /// Priority: same series (1) > same contributor (2) > same genre+decade (3).
     /// Deduplicated across criteria (keeps lowest priority number per title).
@@ -1409,6 +1422,21 @@ mod tests {
             original_title: None,
             version: 1,
         }
+    }
+
+    #[test]
+    fn lookup_code_prefers_isbn_then_upc_then_issn() {
+        use crate::models::media_type::CodeType;
+        let mut t = make_test_title();
+        t.upc = Some("012345678905".to_string());
+        t.issn = Some("03785955".to_string());
+        assert_eq!(t.lookup_code(), Some(("9782070360246".to_string(), CodeType::Isbn)));
+        t.isbn = None;
+        assert_eq!(t.lookup_code(), Some(("012345678905".to_string(), CodeType::Upc)));
+        t.upc = None;
+        assert_eq!(t.lookup_code(), Some(("03785955".to_string(), CodeType::Issn)));
+        t.issn = None;
+        assert_eq!(t.lookup_code(), None);
     }
 
     #[test]

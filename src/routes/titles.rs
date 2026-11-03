@@ -968,17 +968,9 @@ pub async fn redownload_metadata(
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     // Determine code and code_type
-    let (code, code_type) = if let Some(isbn) = &title.isbn {
-        (isbn.clone(), crate::models::media_type::CodeType::Isbn)
-    } else if let Some(upc) = &title.upc {
-        (upc.clone(), crate::models::media_type::CodeType::Upc)
-    } else if let Some(issn) = &title.issn {
-        (issn.clone(), crate::models::media_type::CodeType::Issn)
-    } else {
-        return Err(AppError::BadRequest(
-            "No code available for re-download".to_string(),
-        ));
-    };
+    let (code, code_type) = title.lookup_code().ok_or_else(|| {
+        AppError::BadRequest("No code available for re-download".to_string())
+    })?;
 
     let media_type = title.media_type.parse::<crate::models::media_type::MediaType>()
         .unwrap_or_else(|_| {
@@ -1019,6 +1011,8 @@ pub async fn redownload_metadata(
     let metadata = match outcome.result {
         Some(m) => m,
         None => {
+            // Story 13-2 — a throttled miss is retried later; a genuine one dequeues.
+            crate::tasks::metadata_retry::record_lookup(pool, id, outcome.throttled, "redownload").await;
             let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
             let has_code = true;
             let mut html = metadata_display_html(&title, &genre_name, &session, has_code, loc);
@@ -1060,6 +1054,7 @@ pub async fn redownload_metadata(
             resolved_cover_url.as_deref(),
         )
         .await?;
+        crate::tasks::metadata_retry::record_lookup(pool, id, false, "redownload").await;
         let genre_name = GenreModel::find_name_by_id(pool, updated.genre_id).await?;
         let has_code = true;
         let mut html = metadata_display_html(&updated, &genre_name, &session, has_code, loc);
@@ -1083,7 +1078,8 @@ pub async fn redownload_metadata(
     let auto_updates = TitleService::build_auto_updates(&title, &metadata, &manually_edited);
 
     if conflicts.is_empty() && auto_updates.is_empty() {
-        // No actual changes
+        // No actual changes: the title already holds the result (13-2: dequeue).
+        crate::tasks::metadata_retry::record_lookup(pool, id, false, "redownload").await;
         let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
         let mut html = metadata_display_html(&title, &genre_name, &session, true, loc);
         let feedback = feedback_html(
@@ -1650,6 +1646,8 @@ pub async fn confirm_metadata(
         edited_json.as_deref(),
     )
     .await?;
+    // Story 13-2 — the re-downloaded result is applied: nothing left to retry.
+    crate::tasks::metadata_retry::record_lookup(pool, id, false, "redownload").await;
 
     // Download new cover if URL provided and accepted
     if !form.new_cover_url.is_empty() && form.accept_cover.is_some() {

@@ -463,6 +463,15 @@ fn spawn_bulk_bnf_worker(
                 }
             };
 
+            // Story 13-2 — record the title's final outcome (after the in-run
+            // retries): still throttled → background retry queue; else dequeued.
+            crate::tasks::metadata_retry::note_fetch_outcome(
+                &pool_clone,
+                title.id,
+                outcome,
+                log_label,
+            )
+            .await;
             crate::services::bulk_cover_fetch::record_outcome(&status_clone, outcome);
             crate::services::bulk_cover_fetch::increment_processed(&status_clone);
             // Politeness toward external metadata providers. The

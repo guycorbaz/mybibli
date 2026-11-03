@@ -514,6 +514,10 @@ async fn main() {
         state.covers_dir.clone(),
     );
 
+    // Story 13-2 (#583): retry the metadata fetches that ended throttled
+    // (429/503), every 5 minutes, on the back-off schedule of the module.
+    mybibli::tasks::metadata_retry::spawn(state.clone());
+
     // CR #301 (v1.7.0): daily purge of rotated log files older than
     // `DEFAULT_RETENTION_DAYS` (30). Only runs when file logging was
     // successfully initialized — there's nothing to purge in stdout-only
