@@ -277,8 +277,10 @@ fn tag_break(name: &str) -> TagBreak {
 enum TagScan {
     /// A tag ending at this exclusive byte index.
     Tag(usize),
-    /// Prose: `<` followed by anything but a letter, `/` + letter, `!` or
-    /// `?` (`a < b`, `<3`), or a would-be tag interrupted by another `<`.
+    /// Text: a `<` not followed by a known HTML element name (`/` allowed
+    /// before it) then `>`, `/` or whitespace — `a < b`, `<3`, `<<Le>>`,
+    /// `<?xml …?>`, `<![CDATA[…]]>` — or a would-be tag interrupted by
+    /// another `<`. Comments and `<!DOCTYPE …>` are the only `<!` tags.
     NotATag,
     /// A tag (or comment) the input ends inside: it and everything after it
     /// are text. Stopping there keeps the scan linear — no later `<` is

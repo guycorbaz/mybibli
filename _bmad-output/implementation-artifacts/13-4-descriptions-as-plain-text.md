@@ -1,6 +1,6 @@
 # Story 13.4: Descriptions as plain text
 
-Status: review
+Status: done
 
 GitHub issue: #578 (type:bug, severity:medium). Covers: bug fix. Epic 13; ships in v1.23.0.
 
@@ -42,6 +42,14 @@ Titeuf, *Bienvenue en adolescence*: the title page shows `&lt;p&gt;&lt;b&gt;Gran
 - [x] T5 — E2E (new ISBN case in the mock server returning HTML description; specId `HD`)
 - [x] T6 — gates; full suites once before the single push
 
+## Dev Notes
+
+Known limits (accepted, review round 3):
+
+- A description in `manually_edited_fields` (typed by hand, or accepted through a proposal) keeps any markup it holds: the repair never converts a hand-typed text, by design. A librarian can edit it.
+- A pending proposal item whose `current` was truncated at filing (`current_truncated`, 64 KiB cap) keeps its old text: it no longer equals the title's description, so the repair leaves it. That value is display-only in the review screen (staleness for such items relies on `version`, which the repair does not bump).
+- Two processes booting at the same time: the marker's `FOR UPDATE` on an absent row takes a gap lock, so one of them may deadlock on the marker insert — its repair rolls back, the error is logged as non-fatal, and the other commits the repair once. Single-tenant: accepted.
+
 ## Completion Notes
 
 - **Helper (AC1)** — `src/utils/plain_text.rs` (new submodule of `utils`, re-exported): `html_to_plain_text`, `description_paragraphs`, and `decode_char_references` — the entity decoder moved out of `metadata::marc::decode_xml_text`, which now calls it (XML mode) and applies NFC (Rule #1). HTML mode adds the Latin-1 named set (96), typographic quotes/dashes/spaces, `&euro;`, `&oelig;`… Tags are recognised only when `<` is followed by a letter, `/`+letter, `!` or `?` and closed by a `>` outside quotes; anything else is prose. When the text carries tags its own whitespace is layout (collapsed, as a browser renders it); without tags, its line breaks are kept. `<script>`/`<style>` content and comments are dropped. Entities are decoded once, after the tags are removed.
@@ -74,3 +82,11 @@ Round 2: 1 Medium, 6 Low.
 - [x] [Review][Patch] L4 — covered by M1 (agent `proposed` descriptions filed before the deploy are converted by the repair).
 - [x] [Review][Patch] L5 — module doc of `src/utils/plain_text.rs` corrected.
 - [x] [Review][Patch] L6 — `a_failing_repair_writes_no_marker`: no marker, the repair's writes rolled back, it runs on the next call.
+
+Round 3: 0 Medium+, 5 Low.
+
+- [x] [Review][Patch] L1 — `DataRepairModel::is_applied_in` doc now states the gap-lock behaviour of two simultaneous boots (one deadlocks, logged non-fatal, the other commits); accepted, single-tenant.
+- [x] [Review][Patch] L2 — Dev Notes: a hand-edited / proposal-accepted description keeps its markup, by design.
+- [x] [Review][Patch] L3 — Dev Notes: a truncated `current` keeps its old text (display-only).
+- [x] [Review][Patch] L4 — DB tests added in `tests/html_description_proposals.rs`: description + publisher in one proposal accepted after the repair; a librarian-edited line keeps its proposed value (and is accepted); a pending cover proposal on a converted title is accepted.
+- [x] [Review][Patch] L5 — `TagScan::NotATag` doc aligned with `tag_end` (`<?…?>` and CDATA are text; comments and doctype are the only `<!` tags).

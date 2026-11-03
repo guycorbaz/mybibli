@@ -9,9 +9,12 @@ use crate::error::AppError;
 pub struct DataRepairModel;
 
 impl DataRepairModel {
-    /// Has the repair `name` already run on this database? A locking read:
-    /// a second process booting at the same time waits for the first one's
-    /// transaction instead of running the repair twice.
+    /// Has the repair `name` already run on this database? A locking read
+    /// (`FOR UPDATE`). On an absent marker it takes a gap lock: if two
+    /// processes boot at the same time, both may pass the check and one of
+    /// them then deadlocks on the marker insert — its repair rolls back,
+    /// the error is logged as non-fatal by `main.rs`, and the other commits
+    /// the repair once. Accepted for a single-tenant deployment.
     pub async fn is_applied_in(conn: &mut MySqlConnection, name: &str) -> Result<bool, AppError> {
         let found: Option<(String,)> =
             sqlx::query_as("SELECT name FROM data_repairs WHERE name = ? FOR UPDATE")
