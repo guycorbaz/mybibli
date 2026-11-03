@@ -741,8 +741,12 @@ impl TitleModel {
         Ok(row.0)
     }
 
-    /// Story 9-7 — count active titles created in the last `days` days.
+    /// Story 9-7 — count active titles added in the last `days` days.
     /// Drives the "Recent cataloged" dashboard indicator.
+    ///
+    /// Story 13-7 (#586): "added" is the shared AC2 rule
+    /// ([`crate::models::date_added::added_since_predicate`]) — the title
+    /// was created in the window **or** one of its live volumes was.
     ///
     /// Boundary semantics: **inclusive** `>= NOW() - INTERVAL ? DAY` per
     /// FR wording "last 7 days" (the 7-day boundary IS counted). This
@@ -755,82 +759,55 @@ impl TitleModel {
         pool: &DbPool,
         days: i32,
     ) -> Result<i64, AppError> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM titles \
-             WHERE deleted_at IS NULL AND created_at >= NOW() - INTERVAL ? DAY",
-        )
-        .bind(days)
-        .fetch_one(pool)
-        .await?;
+        let sql = format!(
+            "SELECT COUNT(*) FROM titles t WHERE t.deleted_at IS NULL AND {}",
+            crate::models::date_added::added_since_predicate("NOW() - INTERVAL ? DAY")
+        );
+        let row: (i64,) = sqlx::query_as(&sql)
+            .bind(days)
+            .bind(days)
+            .fetch_one(pool)
+            .await?;
         Ok(row.0)
     }
 
-    /// Story 9-7 — list active titles created in the last `days` days,
-    /// ordered by `created_at DESC` (newest first), bounded by `limit`.
-    ///
-    /// Mirrors `list_recent_active`'s projection (genre + primary
-    /// contributor subquery + volume_count subquery) verbatim — the
-    /// ONLY difference is the additional WHERE clause `AND
-    /// t.created_at >= NOW() - INTERVAL ? DAY`. Returns
-    /// `Vec<SearchResult>` (existing struct from story 9-2 — no new
-    /// projection).
+    /// Story 9-7 — list active titles added in the last `days` days
+    /// (story 13-7: the AC2 rule, as [`Self::count_recent_cataloged`]),
+    /// newest addition first (`last_added_at DESC`), bounded by `limit`.
+    /// Same projection as the other title lists
+    /// ([`super::title_search::search_projection`]).
     pub async fn list_recent_cataloged(
         pool: &DbPool,
         days: i32,
         limit: u32,
     ) -> Result<Vec<SearchResult>, AppError> {
-        let rows = sqlx::query(
-            // Fix #107: LEFT JOIN + COALESCE so a title whose genre was
-            // soft-deleted (orphan FK — story 8-4's deletion guard prevents
-            // this via the supported path, but defense-in-depth against a
-            // future migration / manual UPDATE) still appears in the result
-            // set instead of silently disappearing. The empty `genre_name`
-            // marker is replaced with a locale-aware placeholder at the
-            // route layer via `routes::home::resolve_genre_placeholder`.
-            "SELECT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, t.dewey_code, \
-                    CAST(t.publication_date AS DATE) AS publication_date, \
-                    COALESCE(g.name, '') AS genre_name, \
-                    (SELECT c.name FROM title_contributors tc \
-                     JOIN contributors c ON tc.contributor_id = c.id \
-                     JOIN contributor_roles cr ON tc.role_id = cr.id \
-                     WHERE tc.title_id = t.id AND tc.deleted_at IS NULL \
-                       AND c.deleted_at IS NULL AND cr.deleted_at IS NULL \
-                     ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC \
-                     LIMIT 1) AS primary_contributor, \
-                    (SELECT COUNT(*) FROM volumes v WHERE v.title_id = t.id \
-                       AND v.deleted_at IS NULL) AS volume_count \
+        // Fix #107: LEFT JOIN + COALESCE so a title whose genre was
+        // soft-deleted (orphan FK — story 8-4's deletion guard prevents
+        // this via the supported path, but defense-in-depth against a
+        // future migration / manual UPDATE) still appears in the result
+        // set instead of silently disappearing. The empty `genre_name`
+        // marker is replaced with a locale-aware placeholder at the
+        // route layer via `routes::home::resolve_genre_placeholder`.
+        let sql = format!(
+            "SELECT {} \
              FROM titles t \
              LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
-             WHERE t.deleted_at IS NULL \
-               AND t.created_at >= NOW() - INTERVAL ? DAY \
-             ORDER BY t.created_at DESC, t.id DESC \
+             WHERE t.deleted_at IS NULL AND {} \
+             ORDER BY last_added_at DESC, t.id DESC \
              LIMIT ?",
-        )
-        .bind(days)
-        .bind(limit)
-        .fetch_all(pool)
-        .await?;
-
-        let items: Vec<SearchResult> = rows
+            super::title_search::search_projection(),
+            crate::models::date_added::added_since_predicate("NOW() - INTERVAL ? DAY")
+        );
+        let rows = sqlx::query(&sql)
+            .bind(days)
+            .bind(days)
+            .bind(limit)
+            .fetch_all(pool)
+            .await?;
+        Ok(rows
             .iter()
-            .map(|r| SearchResult {
-                id: r.try_get("id").unwrap_or(0),
-                title: r.try_get("title").unwrap_or_default(),
-                subtitle: r.try_get("subtitle").unwrap_or(None),
-                media_type: r.try_get("media_type").unwrap_or_default(),
-                genre_name: r.try_get("genre_name").unwrap_or_default(),
-                primary_contributor: r.try_get("primary_contributor").unwrap_or(None),
-                volume_count: r
-                    .try_get::<i64, _>("volume_count")
-                    .map(|v| v as u64)
-                    .unwrap_or(0),
-                cover_image_url: r.try_get("cover_image_url").unwrap_or(None),
-                publication_date: r.try_get("publication_date").unwrap_or(None),
-                dewey_code: r.try_get("dewey_code").unwrap_or(None),
-            })
-            .collect();
-
-        Ok(items)
+            .map(super::title_search::search_result_from_row)
+            .collect())
     }
 
     pub async fn create(pool: &DbPool, new_title: &NewTitle) -> Result<TitleModel, AppError> {

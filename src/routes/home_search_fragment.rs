@@ -16,12 +16,16 @@ use crate::models::PaginatedList;
 use crate::models::title::SearchResult;
 use crate::utils::{html_escape, url_encode};
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_search_fragment(
     results: &Option<PaginatedList<SearchResult>>,
     query: &str,
     filter: &Option<String>,
     sort: &Option<String>,
     dir: &Option<String>,
+    // Story 13-7 (#586) — the active "added since" date, carried by the
+    // pagination links and counted as a filter by the empty state.
+    added_since: Option<chrono::NaiveDate>,
     session: &Session,
     loc: &str,
 ) -> String {
@@ -67,13 +71,13 @@ pub(super) fn render_search_fragment(
 
             // OOB pagination update
             html.push_str(&render_pagination_oob(
-                paginated, query, filter, sort, dir, loc,
+                paginated, query, filter, sort, dir, added_since, loc,
             ));
         }
         _ => {
             // Empty state + clear stale pagination
             let is_librarian = session.role >= crate::middleware::auth::Role::Librarian;
-            let has_filter = filter.is_some();
+            let has_filter = filter.is_some() || added_since.is_some();
             html.push_str(&render_empty_state(query, has_filter, is_librarian, loc));
             html.push_str(
                 "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>",
@@ -140,6 +144,7 @@ fn render_pagination_oob(
     filter: &Option<String>,
     sort: &Option<String>,
     dir: &Option<String>,
+    added_since: Option<chrono::NaiveDate>,
     loc: &str,
 ) -> String {
     if paginated.total_pages <= 1 {
@@ -162,7 +167,11 @@ fn render_pagination_oob(
         if let Some(d) = dir {
             params.push(format!("dir={}", url_encode(d)));
         }
-        format!("/?{}", params.join("&"))
+        format!(
+            "/?{}{}",
+            params.join("&"),
+            super::home_added_since::query_suffix(added_since)
+        )
     };
 
     let link_class = "px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm";
@@ -272,6 +281,8 @@ mod tests {
             cover_image_url: None,
             publication_date: None,
             dewey_code: None,
+            created_at: None,
+            last_added_at: None,
         };
         let paginated =
             crate::models::PaginatedList::new(vec![item], 1, 1, None, None, None);
@@ -279,7 +290,7 @@ mod tests {
             "test-csrf".to_string(),
         );
         let html =
-            render_search_fragment(&Some(paginated), "", &None, &None, &None, &session, "en");
+            render_search_fragment(&Some(paginated), "", &None, &None, &None, None, &session, "en");
 
         assert!(
             html.contains(r#"<div class="browse-table-wrap"#),
@@ -306,8 +317,9 @@ mod tests {
     }
 
     /// #577 — the list-mode row comes from the shared
-    /// `components/browse_table_row.html` partial: six cells, escaped
-    /// fields, em dash for a missing contributor / Dewey code.
+    /// `components/browse_table_row.html` partial: seven cells (story
+    /// 13-7 adds the latest addition date), escaped fields, em dash for a
+    /// missing contributor / Dewey code / date.
     #[test]
     fn test_render_search_table_row_uses_shared_partial() {
         let item = SearchResult {
@@ -321,10 +333,17 @@ mod tests {
             cover_image_url: None,
             publication_date: None,
             dewey_code: Some("843.914".to_string()),
+            created_at: None,
+            last_added_at: chrono::NaiveDate::from_ymd_opt(2026, 10, 31)
+                .and_then(|d| d.and_hms_opt(23, 59, 0)),
         };
         let html = render_search_table_row(&item);
         assert!(html.trim_start().starts_with("<tr"), "row starts with <tr>: {html}");
-        assert_eq!(html.matches("<td").count(), 6, "six cells: {html}");
+        assert_eq!(html.matches("<td").count(), 7, "seven cells: {html}");
+        assert!(
+            html.contains(r#"data-col="added">2026-10-31</td>"#),
+            "latest addition date: {html}"
+        );
         assert!(html.contains(r#"href="/title/7""#));
         assert!(html.contains("&#60;Tom &#38; Jerry&#62;"), "title escaped: {html}");
         assert!(!html.contains("<Tom"), "raw title must not leak: {html}");
@@ -347,6 +366,8 @@ mod tests {
             cover_image_url: None,
             publication_date: None,
             dewey_code: None,
+            created_at: None,
+            last_added_at: None,
         };
         let html = render_search_row(&item, "No cover available", "vol");
         assert!(html.contains("/title/42"));
@@ -381,6 +402,8 @@ mod tests {
             cover_image_url: Some("/covers/test.jpg".to_string()),
             publication_date: Some(chrono::NaiveDate::from_ymd_opt(1942, 1, 1).unwrap()),
             dewey_code: None,
+            created_at: None,
+            last_added_at: None,
         };
         let html = render_search_row(&item, "No cover available", "vol");
         assert!(html.contains("1942"), "Should display publication year");

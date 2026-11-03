@@ -18,4 +18,6 @@
         {% match item.dewey_code %}{% when Some with (d) %}<code class="font-mono text-xs">{{ d }}</code>{% when None %}—{% endmatch %}
     </td>
     <td class="px-3 py-2 text-right tabular-nums text-stone-600 dark:text-stone-400">{{ item.volume_count }}</td>
+    {# Story 13-7 (#586) — latest addition date (title or one of its volumes), ISO 8601. #}
+    <td class="px-3 py-2 tabular-nums whitespace-nowrap text-stone-600 dark:text-stone-400" data-col="added">{{ item.added_date() }}</td>
 </tr>

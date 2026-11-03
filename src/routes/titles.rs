@@ -59,6 +59,8 @@ pub struct TitleDetailTemplate {
     /// not; the punctuation belongs in the locale string, as it already does
     /// for `title.created` and its siblings.
     pub label_metadata_source: Option<String>,
+    /// Story 13-7 (#586) — "Added on … · Modified on …" (full page only).
+    pub record_dates: crate::utils::RecordDates,
     pub contributors: Vec<TitleContributorModel>,
     pub label_contributors: String,
     // Fix #318 — labels for the Add/Remove contributor affordance
@@ -180,6 +182,15 @@ pub async fn title_detail(
             String::new()
         };
 
+        let record_dates = crate::utils::RecordDates::new(
+            crate::models::date_added::find_timestamps(
+                pool,
+                crate::models::date_added::DatedTable::Titles,
+                title.id,
+            )
+            .await?,
+            loc,
+        );
         let base = crate::utils::base_context(&session, loc, "title", &uri, state.session_timeout_secs());
         let template = TitleDetailTemplate {
             base,
@@ -188,6 +199,7 @@ pub async fn title_detail(
             volume_count,
             volumes,
             label_metadata_source,
+            record_dates,
             can_edit: session.role >= crate::middleware::auth::Role::Librarian,
             labels_html,
             label_volumes_heading: rust_i18n::t!("title_detail.volumes_section_heading", locale = loc).to_string(),
@@ -2106,6 +2118,7 @@ mod tests {
             title,
             genre_name: "Roman".to_string(),
             label_metadata_source: None,
+            record_dates: Default::default(),
             volume_count: 2,
             volumes: vec![],
             can_edit: false,
@@ -2264,6 +2277,7 @@ mod tests {
             title,
             genre_name: "Roman".to_string(),
             label_metadata_source: None,
+            record_dates: Default::default(),
             volume_count: 0,
             volumes: vec![],
             can_edit: true,
@@ -2399,6 +2413,7 @@ mod tests {
             title,
             genre_name: "Roman".to_string(),
             label_metadata_source: None,
+            record_dates: Default::default(),
             volume_count: 1,
             volumes: vec![],
             can_edit: false,

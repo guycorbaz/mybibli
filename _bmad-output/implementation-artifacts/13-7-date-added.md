@@ -1,6 +1,6 @@
 # Story 13.7: Date added — pages, search and the agent
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #586 (type:change-request). Covers: FR153. Epic 13; ships in v1.23.0.
 
@@ -41,8 +41,32 @@ Date added + the technical `updated_at` (display only). No "modified by hand" da
 
 ## Tasks / Subtasks
 
-- [ ] T1 — shared SQL predicate / model functions (AC2)
-- [ ] T2 — pages (AC1)
-- [ ] T3 — browse sort + filter (AC3), dashboard (AC4)
-- [ ] T4 — MCP (AC5)
-- [ ] T5 — tests; `cargo sqlx prepare`; locale parity; gates; full suites once before the single push
+- [x] T1 — shared SQL predicate / model functions (AC2)
+- [x] T2 — pages (AC1)
+- [x] T3 — browse sort + filter (AC3), dashboard (AC4)
+- [x] T4 — MCP (AC5)
+- [x] T5 — tests; `cargo sqlx prepare`; locale parity; gates; full suites once before the single push
+
+## Completion Notes
+
+**What was done**
+- **AC2, the shared rule:** `src/models/date_added.rs` (new). It holds `added_since_predicate(bound)`, the single `(t.created_at >= b OR EXISTS live volume with created_at >= b)` fragment, and `LAST_ADDED_AT_SQL` (the later of the title's date and its newest live volume's). It also has `find_timestamps(DatedTable, id)`, `find_title_added` and `title_added_since`. The `EXISTS` uses the existing `idx_volumes_title (title_id)` index, so no migration was needed.
+- **Search projection:** `SearchResult` gains `created_at` and `last_added_at`. The three copies of the projection SQL and the row mapping (`active_search`, `list_recent_active`, `list_recent_cataloged`) now share `search_projection()` and `search_result_from_row()` in `title_search.rs`. `active_search` takes `added_since`. A new sort key `date_added` sorts on `last_added_at` and defaults to `desc`.
+- **AC1, pages:** new `templates/components/record_dates.html` and `utils::RecordDates`. They are included in the title page (full page only) and the volume page. Dates use `utils::format_date_localized`: en ISO, fr/it `dd/mm/yyyy`, de `dd.mm.yyyy`. New keys `record_dates.*`, `browse.added_since*` and `search.col.added` are in all four locales.
+- **AC3, browse:** `src/routes/home_added_since.rs` (new) handles parsing, the indicator override and the query suffix. In the home page, a GET form with a date input sits next to the sort control; the URL carries `added_since=YYYY-MM-DD`. A new "Added" column (sortable, newest first on the first click) appears in the browse table, with the date cell in the shared row partial, so Recent additions gets it too. There are also `date_added` options in the sort select. Every browse link (chips, headers, pagination, HTMX fragment pagination, sort select JS) keeps the date. The indicator filter overrides the date, as it does `q` and `sort`.
+- **AC4:** `count_recent_cataloged` / `list_recent_cataloged` use the shared predicate. The list is ordered by `last_added_at DESC`. The window and the 7-day lock test are unchanged.
+- **AC5, MCP:** `search_titles` accepts `added_since` (`args::added_since`: `YYYY-MM-DD` = 00:00 UTC, or RFC 3339 / naive ISO = UTC; anything else is `InvalidArguments` in English). The filter also applies to exact ISBN / V-code hits. Items carry `created_at` and `last_added_at` (RFC 3339 UTC, reusing `proposal_history::rfc3339_utc`). `get_title` returns the title's `created_at` / `updated_at` and each volume's `created_at`. Descriptions and schema were updated; the schema stays closed. No tool names changed.
+
+**Deviations / decisions**
+- The dates were added to the shared `TitleDetail` DTO, so `/api/v1/titles/{id}` gains them too (additive). `list_titles_without_cover` items also gain the two dates, since they share `TitleItem`.
+- `search_titles` items also carry `last_added_at`. Without it, an agent cannot see why an old title matches `added_since` (a new volume).
+- Saved searches deliberately do not store `added_since`: an absolute date goes stale, and the table has no column for it (documented in `home_added_since.rs`).
+- The browse table shows the date as ISO `YYYY-MM-DD`; the row partial has no locale.
+- Days are UTC days. A volume entered between 00:00 and 01:00/02:00 Swiss time counts for the previous UTC day.
+- In the web search, an exact V-code / ISBN hit ignores the date filter, consistent with the genre filter there. In MCP the filter applies, consistent with its other filters.
+- The search field's `hx-include` is now scoped to `#filter-tags [name=…]` plus `#browse-added-since`. The new form's hidden inputs share the names `sort`/`dir`/`filter`, which would otherwise send duplicate params (#367 failure mode). A small `browse-mode.js` hook refreshes the form's hidden params from the URL on submit.
+- No `sqlx::query!` macro changed, so `.sqlx/` is unchanged.
+
+**Files over 2000 lines (all were already over before this story):** `src/routes/home.rs` 2582 (+18), `src/routes/titles.rs` 2768 (+15), `src/routes/catalog.rs` 3212 (+12). The new logic went into new modules.
+
+**Tests:** unit tests (utils date helpers, `date_added`, `home_added_since` including a render test, sort key / dir in `title_search`, `args::added_since`, `search_titles` args, volume page dates). DB tests in `tests/date_added.rs` (7). The E2E spec is `tests/e2e/specs/journeys/date-added.spec.ts` (specId DA). `series-selector-recent-table.spec.ts` was updated: the table now has 6 header columns.

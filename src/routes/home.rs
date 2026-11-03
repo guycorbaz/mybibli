@@ -28,6 +28,8 @@ pub struct SearchParams {
     pub sort: Option<String>,
     pub dir: Option<String>,
     pub page: Option<u32>,
+    /// Story 13-7 (#586) — `YYYY-MM-DD`; see `home_added_since`.
+    pub added_since: Option<String>,
 }
 
 #[derive(Template)]
@@ -42,6 +44,8 @@ pub struct HomeTemplate {
     pub query: String,
     pub query_encoded: String,
     pub active_filter: String,
+    /// Story 13-7 (#586) — the "added since" filter + "Added" column.
+    pub added_since: super::home_added_since::AddedSinceControl,
     pub current_sort: String,
     pub current_dir: String,
     /// CR #367 — pre-rendered `#saved-searches-list` fragment for the
@@ -383,7 +387,13 @@ pub async fn home(
     if parsed_indicator.is_some() {
         query = String::new();
     }
-    let has_filter = params.filter.is_some() && parsed_indicator.is_none();
+    // Story 13-7 (#586) — ignored under an indicator filter (AC7 contract).
+    let added_since_date = super::home_added_since::parse_param(
+        params.added_since.as_deref(),
+        parsed_indicator.is_some(),
+    );
+    let has_filter = (params.filter.is_some() && parsed_indicator.is_none())
+        || added_since_date.is_some();
     let (mut results, redirect) = if !query.trim().is_empty() || has_filter {
         let outcome = SearchService::search(
             pool,
@@ -395,6 +405,7 @@ pub async fn home(
             page,
             no_volumes_filter_active,
             no_cover_filter_active,
+            super::home_added_since::lower_bound(added_since_date),
         )
         .await?;
 
@@ -458,6 +469,7 @@ pub async fn home(
             &params.filter,
             &params.sort,
             &params.dir,
+            added_since_date,
             &session,
             loc,
         );
@@ -802,6 +814,7 @@ pub async fn home(
         scan_failed_fallback: rust_i18n::t!("home.scan_failed_fallback", locale = loc).to_string(),
         query_encoded: url_encode(&query),
         active_filter: params.filter.clone().unwrap_or_default(),
+        added_since: super::home_added_since::AddedSinceControl::new(added_since_date, loc),
         current_sort: results
             .as_ref()
             .and_then(|r| r.sort.clone())
@@ -1292,6 +1305,7 @@ pub(crate) mod tests {
             query: String::new(),
             query_encoded: String::new(),
             active_filter: String::new(),
+            added_since: Default::default(),
             current_sort: "title".to_string(),
             current_dir: "asc".to_string(),
             genres: vec![],
@@ -1418,6 +1432,8 @@ pub(crate) mod tests {
             cover_image_url: None,
             publication_date: None,
             dewey_code: None,
+            created_at: None,
+            last_added_at: None,
         }
     }
 
@@ -1439,6 +1455,8 @@ pub(crate) mod tests {
             cover_image_url: Some(cover_url.to_string()),
             publication_date: chrono::NaiveDate::from_ymd_opt(year, 6, 15),
             dewey_code: None,
+            created_at: None,
+            last_added_at: None,
         }
     }
 

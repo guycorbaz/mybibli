@@ -36,6 +36,60 @@ pub struct SearchResult {
     // sortable column has a value to render. Already present on the
     // `titles` row; this just adds it to the search projection.
     pub dewey_code: Option<String>,
+    /// Story 13-7 (#586) — when the title row was created (UTC).
+    pub created_at: Option<chrono::NaiveDateTime>,
+    /// Story 13-7 (#586) — its latest addition date: the later of its own
+    /// `created_at` and its newest live volume's (UTC). The browse
+    /// "date added" sort orders by it.
+    pub last_added_at: Option<chrono::NaiveDateTime>,
+}
+
+impl SearchResult {
+    /// The latest addition date as `YYYY-MM-DD` (browse table cell), or
+    /// an em dash when unknown.
+    pub fn added_date(&self) -> String {
+        self.last_added_at
+            .map(|d| d.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "\u{2014}".to_string())
+    }
+}
+
+/// The columns every `SearchResult` query selects from the title aliased
+/// `t` and its genre aliased `g`. Shared by `active_search`,
+/// `list_recent_active` and `list_recent_cataloged`.
+pub(crate) fn search_projection() -> String {
+    format!(
+        "t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, t.dewey_code, \
+         CAST(t.publication_date AS DATE) AS publication_date, \
+         COALESCE(g.name, '') AS genre_name, \
+         {PRIMARY_CONTRIBUTOR_SUBQUERY} AS primary_contributor, \
+         (SELECT COUNT(*) FROM volumes v WHERE v.title_id = t.id \
+           AND v.deleted_at IS NULL) AS volume_count, \
+         CAST(t.created_at AS DATETIME) AS created_at, \
+         {} AS last_added_at",
+        crate::models::date_added::LAST_ADDED_AT_SQL
+    )
+}
+
+/// Map one row of [`search_projection`] to a [`SearchResult`].
+pub(crate) fn search_result_from_row(r: &sqlx::mysql::MySqlRow) -> SearchResult {
+    SearchResult {
+        id: r.try_get("id").unwrap_or(0),
+        title: r.try_get("title").unwrap_or_default(),
+        subtitle: r.try_get("subtitle").unwrap_or(None),
+        media_type: r.try_get("media_type").unwrap_or_default(),
+        genre_name: r.try_get("genre_name").unwrap_or_default(),
+        primary_contributor: r.try_get("primary_contributor").unwrap_or(None),
+        volume_count: r
+            .try_get::<i64, _>("volume_count")
+            .map(|v| v as u64)
+            .unwrap_or(0),
+        cover_image_url: r.try_get("cover_image_url").unwrap_or(None),
+        publication_date: r.try_get("publication_date").unwrap_or(None),
+        dewey_code: r.try_get("dewey_code").unwrap_or(None),
+        created_at: r.try_get("created_at").unwrap_or(None),
+        last_added_at: r.try_get("last_added_at").unwrap_or(None),
+    }
 }
 
 /// Allowed sort columns for search results (validated whitelist to prevent SQL injection).
@@ -48,6 +102,8 @@ const VALID_SORT_COLUMNS: &[&str] = &[
     "volume_count",
     "primary_contributor",
     "dewey_code",
+    // Story 13-7 (#586) — latest addition date (title or a live volume).
+    "date_added",
 ];
 const VALID_SORT_DIRS: &[&str] = &["asc", "desc"];
 
@@ -58,9 +114,12 @@ fn validated_sort(sort: &Option<String>) -> &str {
     }
 }
 
-fn validated_dir(dir: &Option<String>) -> &str {
+/// The sort direction; absent or invalid means ascending, except for
+/// "date added" whose natural order is newest first (story 13-7).
+fn validated_dir<'a>(sort_col: &str, dir: &'a Option<String>) -> &'a str {
     match dir {
         Some(d) if VALID_SORT_DIRS.contains(&d.as_str()) => d.as_str(),
+        _ if sort_col == "date_added" => "desc",
         _ => "asc",
     }
 }
@@ -76,6 +135,7 @@ fn map_sort_to_column(sort: &str) -> &str {
         // correlated subquery; MariaDB resolves the alias in ORDER BY).
         "primary_contributor" => "primary_contributor",
         "dewey_code" => "t.dewey_code",
+        "date_added" => "last_added_at",
         _ => "t.title",
     }
 }
@@ -105,9 +165,12 @@ impl TitleModel {
         // Story 11-7 — exact media type (`book`, `bd`, …); bound, never
         // interpolated. Callers validate the value against `MediaType`.
         media_type: Option<&str>,
+        // Story 13-7 (#586) — only titles added at or after this UTC
+        // instant (the AC2 rule: the title or one of its live volumes).
+        added_since: Option<chrono::NaiveDateTime>,
     ) -> Result<PaginatedList<SearchResult>, AppError> {
         let sort_col = validated_sort(sort);
-        let sort_dir = validated_dir(dir);
+        let sort_dir = validated_dir(sort_col, dir);
         let sql_order_col = map_sort_to_column(sort_col);
         let offset = (page.saturating_sub(1)) * DEFAULT_PAGE_SIZE;
         let trimmed = query.trim();
@@ -187,6 +250,10 @@ impl TitleModel {
             conditions.push("(t.cover_image_url IS NULL OR t.cover_image_url = '')".to_string());
         }
 
+        if added_since.is_some() {
+            conditions.push(crate::models::date_added::added_since_predicate("?"));
+        }
+
         if let Some(ref state_name) = volume_state {
             // Filter titles that have at least one volume in the given state
             extra_join = " JOIN volumes vol_f ON vol_f.title_id = t.id AND vol_f.deleted_at IS NULL \
@@ -219,6 +286,9 @@ impl TitleModel {
         if let Some(mt) = media_type {
             count_query = count_query.bind(mt);
         }
+        if let Some(since) = added_since {
+            count_query = count_query.bind(since).bind(since);
+        }
         if let Some(ref sv) = state_bind {
             count_query = count_query.bind(sv);
         }
@@ -236,21 +306,17 @@ impl TitleModel {
         // via the supported delete path; this is defense-in-depth against
         // a future migration or manual UPDATE that bypasses the guard.
         let data_sql = format!(
-            "SELECT DISTINCT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, t.dewey_code, CAST(t.publication_date AS DATE) AS publication_date, \
-                    COALESCE(g.name, '') AS genre_name, \
-                    (SELECT c.name FROM title_contributors tc \
-                     JOIN contributors c ON tc.contributor_id = c.id \
-                     JOIN contributor_roles cr ON tc.role_id = cr.id \
-                     WHERE tc.title_id = t.id AND tc.deleted_at IS NULL AND c.deleted_at IS NULL AND cr.deleted_at IS NULL \
-                     ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC \
-                     LIMIT 1) AS primary_contributor, \
-                    (SELECT COUNT(*) FROM volumes v WHERE v.title_id = t.id AND v.deleted_at IS NULL) AS volume_count \
+            "SELECT DISTINCT {} \
              FROM titles t \
              LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL{} \
              WHERE {} \
              ORDER BY {} {}, t.id ASC \
              LIMIT ? OFFSET ?",
-            extra_join, where_clause, sql_order_col, sort_dir
+            search_projection(),
+            extra_join,
+            where_clause,
+            sql_order_col,
+            sort_dir
         );
 
         let mut data_query = sqlx::query(&data_sql);
@@ -263,6 +329,9 @@ impl TitleModel {
         if let Some(mt) = media_type {
             data_query = data_query.bind(mt);
         }
+        if let Some(since) = added_since {
+            data_query = data_query.bind(since).bind(since);
+        }
         if let Some(ref sv) = state_bind {
             data_query = data_query.bind(sv);
         }
@@ -270,24 +339,7 @@ impl TitleModel {
 
         let rows = data_query.fetch_all(pool).await?;
 
-        let items: Vec<SearchResult> = rows
-            .iter()
-            .map(|r| SearchResult {
-                id: r.try_get("id").unwrap_or(0),
-                title: r.try_get("title").unwrap_or_default(),
-                subtitle: r.try_get("subtitle").unwrap_or(None),
-                media_type: r.try_get("media_type").unwrap_or_default(),
-                genre_name: r.try_get("genre_name").unwrap_or_default(),
-                primary_contributor: r.try_get("primary_contributor").unwrap_or(None),
-                volume_count: r
-                    .try_get::<i64, _>("volume_count")
-                    .map(|v| v as u64)
-                    .unwrap_or(0),
-                cover_image_url: r.try_get("cover_image_url").unwrap_or(None),
-                publication_date: r.try_get("publication_date").unwrap_or(None),
-                dewey_code: r.try_get("dewey_code").unwrap_or(None),
-            })
-            .collect();
+        let items: Vec<SearchResult> = rows.iter().map(search_result_from_row).collect();
 
         Ok(PaginatedList::new(
             items,
@@ -313,52 +365,20 @@ impl TitleModel {
         pool: &DbPool,
         limit: u32,
     ) -> Result<Vec<SearchResult>, AppError> {
-        let rows = sqlx::query(
-            // Fix #107: same LEFT JOIN + COALESCE pattern as
-            // `list_recent_cataloged` and `active_search`. See those for
-            // rationale.
-            "SELECT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, t.dewey_code, \
-                    CAST(t.publication_date AS DATE) AS publication_date, \
-                    COALESCE(g.name, '') AS genre_name, \
-                    (SELECT c.name FROM title_contributors tc \
-                     JOIN contributors c ON tc.contributor_id = c.id \
-                     JOIN contributor_roles cr ON tc.role_id = cr.id \
-                     WHERE tc.title_id = t.id AND tc.deleted_at IS NULL \
-                       AND c.deleted_at IS NULL AND cr.deleted_at IS NULL \
-                     ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC \
-                     LIMIT 1) AS primary_contributor, \
-                    (SELECT COUNT(*) FROM volumes v WHERE v.title_id = t.id \
-                       AND v.deleted_at IS NULL) AS volume_count \
+        // Fix #107: same LEFT JOIN + COALESCE pattern as
+        // `list_recent_cataloged` and `active_search`. See those for
+        // rationale.
+        let sql = format!(
+            "SELECT {} \
              FROM titles t \
              LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
              WHERE t.deleted_at IS NULL \
              ORDER BY t.created_at DESC, t.id DESC \
              LIMIT ?",
-        )
-        .bind(limit)
-        .fetch_all(pool)
-        .await?;
-
-        let items: Vec<SearchResult> = rows
-            .iter()
-            .map(|r| SearchResult {
-                id: r.try_get("id").unwrap_or(0),
-                title: r.try_get("title").unwrap_or_default(),
-                subtitle: r.try_get("subtitle").unwrap_or(None),
-                media_type: r.try_get("media_type").unwrap_or_default(),
-                genre_name: r.try_get("genre_name").unwrap_or_default(),
-                primary_contributor: r.try_get("primary_contributor").unwrap_or(None),
-                volume_count: r
-                    .try_get::<i64, _>("volume_count")
-                    .map(|v| v as u64)
-                    .unwrap_or(0),
-                cover_image_url: r.try_get("cover_image_url").unwrap_or(None),
-                publication_date: r.try_get("publication_date").unwrap_or(None),
-                dewey_code: r.try_get("dewey_code").unwrap_or(None),
-            })
-            .collect();
-
-        Ok(items)
+            search_projection()
+        );
+        let rows = sqlx::query(&sql).bind(limit).fetch_all(pool).await?;
+        Ok(rows.iter().map(search_result_from_row).collect())
     }
 }
 
@@ -563,7 +583,10 @@ mod tests {
             cover_image_url: None,
             publication_date: None,
             dewey_code: None,
+            created_at: None,
+            last_added_at: None,
         };
+        assert_eq!(result.added_date(), "\u{2014}");
         assert_eq!(result.id, 1);
         assert_eq!(result.title, "L'Étranger");
         assert_eq!(result.primary_contributor, Some("Albert Camus".to_string()));
@@ -603,14 +626,21 @@ mod tests {
 
     #[test]
     fn test_validated_dir_valid() {
-        assert_eq!(validated_dir(&Some("asc".to_string())), "asc");
-        assert_eq!(validated_dir(&Some("desc".to_string())), "desc");
+        assert_eq!(validated_dir("title", &Some("asc".to_string())), "asc");
+        assert_eq!(validated_dir("title", &Some("desc".to_string())), "desc");
+        assert_eq!(validated_dir("date_added", &Some("asc".to_string())), "asc");
     }
 
     #[test]
     fn test_validated_dir_injection() {
-        assert_eq!(validated_dir(&Some("DROP".to_string())), "asc");
-        assert_eq!(validated_dir(&None), "asc");
+        assert_eq!(validated_dir("title", &Some("DROP".to_string())), "asc");
+        assert_eq!(validated_dir("title", &None), "asc");
+        // Story 13-7 — "date added" defaults to newest first.
+        assert_eq!(validated_dir("date_added", &None), "desc");
+        assert_eq!(
+            validated_dir("date_added", &Some("DROP".to_string())),
+            "desc"
+        );
     }
 
     #[test]
@@ -626,6 +656,8 @@ mod tests {
         );
         assert_eq!(map_sort_to_column("dewey_code"), "t.dewey_code");
         assert_eq!(map_sort_to_column("unknown"), "t.title");
+        // Story 13-7 — the alias of the latest-addition-date column.
+        assert_eq!(map_sort_to_column("date_added"), "last_added_at");
     }
 
     /// CR #250 — lock the SQL-injection guard for the two new sortable
@@ -648,5 +680,9 @@ mod tests {
             "title"
         );
         assert_eq!(validated_sort(&Some("dewey".to_string())), "title");
+        assert_eq!(
+            validated_sort(&Some("date_added".to_string())),
+            "date_added"
+        );
     }
 }

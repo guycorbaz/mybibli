@@ -2417,6 +2417,8 @@ pub struct VolumeDetailTemplate {
     pub under_audit_chip_label: String,
     pub audit_button_label_mark: String,
     pub audit_button_label_clear: String,
+    /// Story 13-7 (#586) — "Added on … · Modified on …".
+    pub record_dates: crate::utils::RecordDates,
 }
 
 pub async fn volume_detail(
@@ -2531,8 +2533,18 @@ pub async fn volume_detail(
         String::new()
     };
 
+    let record_dates = crate::utils::RecordDates::new(
+        crate::models::date_added::find_timestamps(
+            pool,
+            crate::models::date_added::DatedTable::Volumes,
+            id,
+        )
+        .await?,
+        loc,
+    );
     let base = base_context(&session, loc, "catalog", &uri, state.session_timeout_secs());
     let template = VolumeDetailTemplate {
+        record_dates,
         base,
         detail_title: rust_i18n::t!("volume.detail_title", locale = loc).to_string(),
         not_shelved_label: rust_i18n::t!("volume.not_shelved", locale = loc).to_string(),

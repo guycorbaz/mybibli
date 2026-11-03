@@ -51,6 +51,10 @@ impl SearchService {
         let volume_count = VolumeModel::count_by_title(pool, title.id)
             .await
             .unwrap_or_else(|e| { tracing::warn!(error = %e, title_id = title.id, "Failed to count volumes for search result"); 0 });
+        // Story 13-7 (#586) — the dates the search projection carries.
+        let added = crate::models::date_added::find_title_added(pool, title.id)
+            .await
+            .unwrap_or_else(|e| { tracing::warn!(error = %e, title_id = title.id, "Failed to load dates for search result"); None });
         SearchResult {
             id: title.id,
             title: title.title.clone(),
@@ -62,6 +66,8 @@ impl SearchService {
             cover_image_url: title.cover_image_url.clone(),
             publication_date: title.publication_date,
             dewey_code: title.dewey_code.clone(),
+            created_at: added.map(|(created, _)| created),
+            last_added_at: added.map(|(_, last)| last),
         }
     }
 }
@@ -84,6 +90,9 @@ pub struct CatalogSearch {
     /// Story 11-8 — only titles without a cover (NULL or empty
     /// `cover_image_url`, the web "no cover" filter).
     pub no_cover_only: bool,
+    /// Story 13-7 (#586) — only titles added at or after this UTC instant
+    /// (the title or one of its live volumes).
+    pub added_since: Option<chrono::NaiveDateTime>,
 }
 
 /// Story 11-7 — outcome of resolving a genre name typed by an agent.
@@ -116,6 +125,10 @@ impl SearchService {
         no_volumes_only: bool,
         // CR #355 — title without a cover image.
         no_cover_only: bool,
+        // Story 13-7 (#586) — only titles added at or after this UTC
+        // instant. Like the genre filter, it narrows the text search, not
+        // an exact V-code / ISBN hit.
+        added_since: Option<chrono::NaiveDateTime>,
     ) -> Result<SearchOutcome, AppError> {
         let trimmed = query.trim();
         // Browse-without-query path: empty query + no filter → no results.
@@ -126,6 +139,7 @@ impl SearchService {
             && volume_state.is_none()
             && !no_volumes_only
             && !no_cover_only
+            && added_since.is_none()
         {
             return Ok(SearchOutcome::Results(PaginatedList::new(
                 vec![],
@@ -149,6 +163,7 @@ impl SearchService {
                 page,
                 no_volumes_only,
                 no_cover_only,
+                added_since,
             )
             .await;
         }
@@ -183,6 +198,7 @@ impl SearchService {
                             page,
                             no_volumes_only,
                             no_cover_only,
+                            added_since,
                         )
                         .await
                     }
@@ -205,6 +221,7 @@ impl SearchService {
                             page,
                             no_volumes_only,
                             no_cover_only,
+                            added_since,
                         )
                         .await
                     }
@@ -236,6 +253,7 @@ impl SearchService {
                             page,
                             no_volumes_only,
                             no_cover_only,
+                            added_since,
                         )
                         .await
                     }
@@ -252,6 +270,7 @@ impl SearchService {
                     page,
                     no_volumes_only,
                     no_cover_only,
+                    added_since,
                 )
                 .await
             }
@@ -290,10 +309,18 @@ impl SearchService {
         // An identifier that exists answers exactly — never a fuzzy text
         // match on the digits, even when the filters exclude it.
         if let Some(titles) = exact {
-            let hits: Vec<TitleModel> = titles
-                .into_iter()
-                .filter(|t| catalog_filters_match(search, t))
-                .collect();
+            let mut hits: Vec<TitleModel> = Vec::new();
+            for t in titles {
+                if !catalog_filters_match(search, &t) {
+                    continue;
+                }
+                if let Some(since) = search.added_since
+                    && !crate::models::date_added::title_added_since(pool, t.id, since).await?
+                {
+                    continue;
+                }
+                hits.push(t);
+            }
             let total = hits.len() as u64;
             let mut items = Vec::new();
             for title in hits
@@ -316,6 +343,7 @@ impl SearchService {
             false,
             search.no_cover_only,
             search.media_type.as_deref(),
+            search.added_since,
         )
         .await
     }
@@ -344,6 +372,7 @@ impl SearchService {
         page: u32,
         no_volumes_only: bool,
         no_cover_only: bool,
+        added_since: Option<chrono::NaiveDateTime>,
     ) -> Result<SearchOutcome, AppError> {
         let results = TitleModel::active_search(
             pool,
@@ -356,6 +385,7 @@ impl SearchService {
             no_volumes_only,
             no_cover_only,
             None,
+            added_since,
         )
         .await?;
         Ok(SearchOutcome::Results(results))

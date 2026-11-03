@@ -39,11 +39,13 @@ impl McpTool for GetTitle {
         "Return one title of the library catalog by its numeric id: bibliographic fields \
          (title, subtitle, description, language, media type, ISBN/ISSN/UPC, publisher, \
          publication date, genre, Dewey code, page count…), its contributors with their \
-         roles, its physical volumes with their shelf location and condition, and its \
-         series assignments with positions (`end_position` set for an omnibus covering \
-         several positions). Also `has_cover` (whether a cover image exists) and \
-         `manually_edited_fields` (fields the librarian edited by hand; a metadata refresh \
-         never overwrites them). Find ids with search_titles. Deleted titles are reported \
+         roles, its physical volumes with their shelf location, condition and `created_at` \
+         (when the volume was entered), and its series assignments with positions \
+         (`end_position` set for an omnibus covering several positions). Also `created_at` \
+         (when the title was entered) and `updated_at` (its last change, including automatic \
+         metadata refreshes), both ISO 8601 UTC like the volumes' dates; `has_cover` (whether \
+         a cover image exists) and `manually_edited_fields` (fields the librarian edited by \
+         hand; a metadata refresh never overwrites them). Find ids with search_titles. Deleted titles are reported \
          as not found. Read-only."
     }
 

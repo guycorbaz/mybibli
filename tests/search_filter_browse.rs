@@ -63,7 +63,7 @@ async fn empty_query_with_genre_filter_returns_filtered_titles(pool: MySqlPool) 
     let _ = seed_title(&pool, "Matching Two", genre_a).await;
     let _ = seed_title(&pool, "Other genre", genre_b).await;
 
-    let outcome = SearchService::search(&pool, "", Some(genre_a), None, &None, &None, 1, false, false)
+    let outcome = SearchService::search(&pool, "", Some(genre_a), None, &None, &None, 1, false, false, None)
         .await
         .expect("search must succeed");
 
@@ -92,7 +92,7 @@ async fn empty_query_without_filter_returns_empty(pool: MySqlPool) {
     let genre_a = first_genre_id(&pool).await;
     let _ = seed_title(&pool, "Something", genre_a).await;
 
-    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, false, false)
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, false, false, None)
         .await
         .expect("search must succeed");
 
@@ -114,7 +114,7 @@ async fn whitespace_query_with_filter_is_treated_as_filter_only_browse(pool: MyS
     let genre_a = first_genre_id(&pool).await;
     let _ = seed_title(&pool, "Matching", genre_a).await;
 
-    let outcome = SearchService::search(&pool, "   ", Some(genre_a), None, &None, &None, 1, false, false)
+    let outcome = SearchService::search(&pool, "   ", Some(genre_a), None, &None, &None, 1, false, false, None)
         .await
         .expect("search must succeed");
 
@@ -159,7 +159,7 @@ async fn no_volumes_only_filters_titles_with_active_volumes(pool: MySqlPool) {
         .await
         .expect("insert soft-deleted volume");
 
-    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, true, false)
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, true, false, None)
         .await
         .expect("search must succeed");
 
@@ -194,7 +194,7 @@ async fn no_volumes_only_disables_empty_query_short_circuit(pool: MySqlPool) {
     let genre = first_genre_id(&pool).await;
     let _ = seed_title(&pool, "Bare", genre).await;
 
-    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, true, false)
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, true, false, None)
         .await
         .expect("search must succeed");
 
@@ -232,7 +232,7 @@ async fn no_cover_only_filters_titles_with_cover(pool: MySqlPool) {
         .await
         .expect("set empty cover");
 
-    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, false, true)
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, false, true, None)
         .await
         .expect("search must succeed");
 
@@ -267,7 +267,7 @@ async fn no_cover_only_disables_empty_query_short_circuit(pool: MySqlPool) {
     let genre = first_genre_id(&pool).await;
     let _ = seed_title(&pool, "Coverless", genre).await; // cover defaults to NULL
 
-    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, false, true)
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, false, true, None)
         .await
         .expect("search must succeed");
 

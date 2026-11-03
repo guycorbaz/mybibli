@@ -18,7 +18,7 @@ use mybibli::services::title::TitleService;
 use sqlx::MySqlPool;
 
 async fn search_ids(pool: &MySqlPool, query: &str) -> Vec<u64> {
-    match SearchService::search(pool, query, None, None, &None, &None, 1, false, false)
+    match SearchService::search(pool, query, None, None, &None, &None, 1, false, false, None)
         .await
         .expect("search")
     {

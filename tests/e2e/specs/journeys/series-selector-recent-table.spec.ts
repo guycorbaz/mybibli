@@ -93,7 +93,8 @@ test.describe("Story 13-5 — Recent additions follows the browse mode (#577)", 
     // Default (list) mode: the browse table, with its column headers.
     await expect(results).toHaveClass(/browse-list/);
     await expect(table).toBeVisible();
-    await expect(table.locator("thead th[scope='col']")).toHaveCount(5);
+    // Story 13-7 adds the "Added" column.
+    await expect(table.locator("thead th[scope='col']")).toHaveCount(6);
     await expect(rowLinks.first()).toBeVisible();
     await expect(cards).toBeHidden();
     await checkAccessibility(page);

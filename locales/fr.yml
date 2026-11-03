@@ -127,6 +127,10 @@ browse:
   grid_view: Vue grille
   display_mode: Mode d'affichage
   sort_by: "Trier par"
+  # Story 13-7 (#586) — "added since <date>" browse filter.
+  added_since: "Ajoutés depuis le"
+  added_since_apply: "Appliquer"
+  added_since_clear: "Effacer"
 home:
   title: mybibli
   subtitle: Votre bibliothèque personnelle
@@ -294,6 +298,8 @@ search:
     genre: Genre
     volumes: Volumes
     dewey: Dewey
+    # Story 13-7 (#586) — latest addition date (title or one of its volumes).
+    added: "Ajouté"
   sort_aria_asc: "Trier par %{column} croissant"
   sort_aria_desc: "Trier par %{column} décroissant"
   connection_lost: "Connexion perdue — vérifiez votre réseau."
@@ -1443,3 +1449,7 @@ proposals:
   stale_why_cover_changed: "la couverture du titre a été changée après le dépôt de la proposition."
   error_cover_missing: "L'image proposée n'est plus disponible : rien n'a été modifié et la proposition est toujours en attente. Refusez-la et demandez à l'assistant de proposer à nouveau la couverture."
   cover_accepted: "Proposition acceptée — couverture actuelle du titre"
+# Story 13-7 (#586) — creation / last-change dates on the title and volume pages.
+record_dates:
+  added_on: "Ajouté le %{date}"
+  modified_on: "Modifié le %{date}"

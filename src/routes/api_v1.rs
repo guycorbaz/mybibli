@@ -90,6 +90,7 @@ pub async fn list_titles(
         page,
         false, // no_volumes_only — not exposed via API in v1
         false, // no_cover_only — not exposed via API in v1
+        None,  // added_since — not exposed via API in v1
     )
     .await?;
 

@@ -123,6 +123,10 @@ browse:
   grid_view: Vista griglia
   display_mode: Modalità di visualizzazione
   sort_by: "Ordina per"
+  # Story 13-7 (#586) — "added since <date>" browse filter.
+  added_since: "Aggiunti dal"
+  added_since_apply: "Applica"
+  added_since_clear: "Cancella"
 home:
   title: mybibli
   subtitle: La tua biblioteca multimediale personale
@@ -288,6 +292,8 @@ search:
     genre: Genere
     volumes: Esemplari
     dewey: Dewey
+    # Story 13-7 (#586) — latest addition date (title or one of its volumes).
+    added: "Aggiunto"
   sort_aria_asc: "Ordina per %{column} crescente"
   sort_aria_desc: "Ordina per %{column} decrescente"
   connection_lost: "Connessione persa — verifica la rete."
@@ -1417,3 +1423,7 @@ proposals:
   stale_why_cover_changed: "la copertina del titolo è stata cambiata dopo il deposito della proposta."
   error_cover_missing: "L'immagine proposta non è più disponibile, quindi non è stato modificato nulla e la proposta è ancora in attesa. Rifiutala e chiedi all'assistente di proporre di nuovo la copertina."
   cover_accepted: "Proposta accettata — copertina attuale del titolo"
+# Story 13-7 (#586) — creation / last-change dates on the title and volume pages.
+record_dates:
+  added_on: "Aggiunto il %{date}"
+  modified_on: "Modificato il %{date}"

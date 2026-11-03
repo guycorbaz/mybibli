@@ -106,7 +106,35 @@
       var filter = sel.dataset.activeFilter || "";
       var url = "/?q=" + q + "&sort=" + sort + "&dir=" + dir + "&page=1";
       if (filter) url += "&filter=" + filter;
+      // Story 13-7 (#586) — keep the "added since" date filter.
+      var since = document.getElementById("browse-added-since");
+      if (since && since.value) url += "&added_since=" + encodeURIComponent(since.value);
       window.location = url;
+    });
+  }
+
+  // Story 13-7 (#586) — the "added since" GET form carries the browse
+  // params of the page load as hidden inputs; a live search or an HTMX
+  // sort since then changed them (and pushed them into the URL), so the
+  // form re-reads them from the current URL just before it submits.
+  function initAddedSinceForm() {
+    var form = document.getElementById("browse-added-since-form");
+    if (!form || form.dataset.wired === "true") return;
+    form.dataset.wired = "true";
+    form.addEventListener("submit", function () {
+      var params = new URLSearchParams(window.location.search);
+      ["q", "filter", "sort", "dir"].forEach(function (name) {
+        var old = form.querySelector('input[type="hidden"][name="' + name + '"]');
+        if (old) old.remove();
+        // The URL wins when it names the param; else the page-load value.
+        var value = params.has(name) ? params.get(name) : old ? old.value : "";
+        if (value === "" && name === "filter") return;
+        var input = document.createElement("input");
+        input.type = "hidden";
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+      });
     });
   }
 
@@ -114,6 +142,7 @@
   function init() {
     applyMode(getMode());
     initSortDropdown();
+    initAddedSinceForm();
   }
   document.addEventListener("DOMContentLoaded", init);
   document.addEventListener("htmx:afterSettle", init);

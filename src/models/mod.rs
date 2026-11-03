@@ -4,6 +4,7 @@ pub mod borrower;
 pub mod contributor;
 pub mod contributor_role;
 pub mod data_repair;
+pub mod date_added;
 pub mod expected_tome;
 pub mod genre;
 pub mod label;

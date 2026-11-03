@@ -10,8 +10,7 @@ use crate::services::search::{CatalogSearch, SearchService};
 
 pub struct SearchTitles;
 
-const EXPECTED: &str =
-    "{\"query\"?: string, \"media_type\"?: string, \"genre\"?: string, \"page\"?: integer}";
+const EXPECTED: &str = "{\"query\"?: string, \"media_type\"?: string, \"genre\"?: string, \"added_since\"?: string, \"page\"?: integer}";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -19,6 +18,7 @@ struct Args {
     query: Option<String>,
     media_type: Option<String>,
     genre: Option<String>,
+    added_since: Option<String>,
     page: Option<u32>,
 }
 
@@ -29,6 +29,7 @@ struct Parsed {
     query: String,
     media_type: Option<String>,
     genre: Option<String>,
+    added_since: Option<chrono::NaiveDateTime>,
     page: u32,
 }
 
@@ -38,6 +39,7 @@ fn parse_args(args: Value) -> Result<Parsed, ToolError> {
         query: args::query(a.query)?,
         media_type: args::media_type(a.media_type)?,
         genre: args::genre(a.genre)?,
+        added_since: args::added_since(a.added_since)?,
         page: args::page(a.page)?,
     })
 }
@@ -56,13 +58,18 @@ impl McpTool for SearchTitles {
          title, subtitle, description and contributor names), an ISBN-10 or ISBN-13, hyphens \
          allowed (exact match: only the titles carrying it), or a volume label such as V0042 \
          (exact match: the title that volume belongs to). Omit `query` to browse the whole \
-         catalog. Optional filters: `media_type` and `genre` (a genre name as shown by \
-         get_title; case and accents are ignored). Results are sorted by title (titles sharing \
+         catalog. Optional filters: `media_type`, `genre` (a genre name as shown by \
+         get_title; case and accents are ignored) and `added_since` (a date YYYY-MM-DD, from \
+         midnight UTC, or an ISO 8601 date-time): only titles entered since then, or that \
+         received a new volume since then (to review everything entered since a given day, \
+         omit `query` and pass `added_since`). Results are sorted by title (titles sharing \
          one ISBN: oldest first), 25 per page; pass `page` (1-based) to read further pages \
          until `page` equals `total_pages`. Each item gives the title id (use get_title for \
-         the full record), title, subtitle, media type, genre, main contributor, number of \
-         volumes, whether a cover exists, publication date and Dewey code. Deleted titles \
-         never appear. Read-only."
+         the full record and its volumes' dates), title, subtitle, media type, genre, main \
+         contributor, number of volumes, whether a cover exists, publication date, Dewey \
+         code, `created_at` (when the title was entered) and `last_added_at` (the later of \
+         `created_at` and its newest volume's), both ISO 8601 UTC. Deleted titles and \
+         volumes never appear. Read-only."
     }
 
     fn input_schema(&self) -> Value {
@@ -71,6 +78,11 @@ impl McpTool for SearchTitles {
                 "type": "string",
                 "maxLength": args::MAX_QUERY_CHARS,
                 "description": "Free text, an ISBN-10/ISBN-13, or a volume label (V0042). Empty or omitted: all titles."
+            },
+            "added_since": {
+                "type": "string",
+                "maxLength": args::MAX_QUERY_CHARS,
+                "description": "Only titles entered, or given a new volume, on or after this moment: a date YYYY-MM-DD (from 00:00 UTC) or an ISO 8601 date-time (2026-10-31T08:00:00Z). Empty or omitted: no date filter."
             }
         }))
     }
@@ -88,6 +100,7 @@ impl McpTool for SearchTitles {
                     genre_id,
                     page: parsed.page,
                     no_cover_only: false,
+                    added_since: parsed.added_since,
                 },
             )
             .await?;
@@ -108,17 +121,20 @@ mod tests {
                 query: String::new(),
                 media_type: None,
                 genre: None,
+                added_since: None,
                 page: 1
             })
         );
         assert_eq!(
             parse_args(
-                json!({"query": " Tintin ", "media_type": "BD", "genre": " Roman ", "page": 3})
+                json!({"query": " Tintin ", "media_type": "BD", "genre": " Roman ", "added_since": "2026-10-31", "page": 3})
             ),
             Ok(Parsed {
                 query: "Tintin".into(),
                 media_type: Some("bd".into()),
                 genre: Some("Roman".into()),
+                added_since: chrono::NaiveDate::from_ymd_opt(2026, 10, 31)
+                    .and_then(|d| d.and_hms_opt(0, 0, 0)),
                 page: 3
             })
         );
@@ -146,6 +162,8 @@ mod tests {
             json!({"genre": "g".repeat(201)}),
             json!({"genre": 3}),
             json!({"media_type": "m".repeat(201)}),
+            json!({"added_since": "last Saturday"}),
+            json!({"added_since": 20261031}),
         ] {
             assert!(
                 matches!(parse_args(bad.clone()), Err(ToolError::InvalidArguments(_))),
