@@ -208,6 +208,114 @@ rotatifs hors du volume vers du stockage long terme :
 docker compose cp mybibli:/var/log/mybibli/. ./logs-archive/
 \end{lstlisting}
 
+\section{Nouvelles tentatives en arrière-plan et réparations au démarrage}
+\label{sec:startup-repairs}
+
+La version 1.23.0 ajoute une file de nouvelles tentatives pour les
+recherches de métadonnées et trois étapes au démarrage. Aucune ne
+demande de configuration ; cette section dit ce qu'elles laissent dans
+la base de données et dans le journal.
+
+\subsection*{La file des nouvelles tentatives de métadonnées}
+
+Une recherche terminée sans résultat parce qu'un fournisseur était
+saturé (chapitre~\ref{ch:providers}) laisse une ligne par titre dans la
+table \texttt{metadata\_fetch\_retries}\index{metadata\_fetch\_retries} :
+le titre, le nombre de tentatives faites et l'heure de la suivante. Une
+ligne active signifie « ce titre attend encore une recherche » ; elle
+est supprimée logiquement quand son titre est trouvé, déclaré absent
+partout ou abandonné, et disparaît pour de bon quand son titre est
+purgé de la corbeille.
+
+Une tâche d'arrière-plan démarre deux minutes après le serveur, se
+réveille ensuite toutes les cinq minutes et prend au plus vingt titres
+échus, les plus anciens d'abord. Elle passe son tour pendant un
+re-fetch de couvertures ou une complétion de métadonnées en lot. Les
+lignes de journal, toutes avec le \texttt{title\_id} :
+
+\begin{description}[style=nextline]
+  \item[\texttt{Throttled metadata fetch queued for a later retry}]
+        (\texttt{info}) un scan, un re-téléchargement ou un traitement
+        en lot a rencontré un fournisseur saturé ; le champ
+        \texttt{context} dit lequel.
+  \item[\texttt{Metadata retry throttled again; rescheduled}]
+        (\texttt{info}) la nouvelle tentative a de nouveau rencontré un
+        fournisseur saturé ; \texttt{attempts} et \texttt{delay\_secs}
+        donnent l'étape suivante.
+  \item[\texttt{Metadata retry finished; title dequeued}]
+        (\texttt{info}) la tentative est allée à son terme, titre trouvé
+        ou non (\texttt{outcome}).
+  \item[\texttt{Metadata retry skipped; title dequeued}]
+        (\texttt{info}) le titre a été supprimé ou n'a plus de code à
+        rechercher.
+  \item[\texttt{Lookup ended not throttled; queued retry dropped}]
+        (\texttt{info}) une autre recherche du même titre --- un scan,
+        un re-téléchargement --- l'a réglé avant.
+  \item[\texttt{Metadata retry still throttled after the last attempt; giving up}]
+        (\texttt{warn}) cinq tentatives réparties sur environ 41 heures
+        ont toutes rencontré un fournisseur saturé. Le titre garde ce
+        qu'il avait ; un \emph{Re-télécharger les métadonnées} manuel
+        reste possible.
+  \item[\texttt{Metadata retry tick completed}]
+        (\texttt{info}) une ligne de synthèse par tour qui a fait quelque
+        chose, avec ses compteurs.
+\end{description}
+
+Pour voir ce qui attend :
+
+\begin{lstlisting}
+docker compose exec db mariadb -u root -p mybibli \
+  -e "SELECT title_id, attempts, next_attempt_at \
+      FROM metadata_fetch_retries WHERE deleted_at IS NULL \
+      ORDER BY next_attempt_at;"
+\end{lstlisting}
+
+\subsection*{Réparations ponctuelles : la table \texttt{data\_repairs}}
+
+Certaines corrections des données enregistrées doivent s'exécuter une
+seule fois par base, parce qu'on ne peut plus ensuite distinguer leur
+résultat de données saines. Chacune, quand elle réussit, inscrit une
+ligne avec son nom et sa date dans la table
+\texttt{data\_repairs}\index{data\_repairs}, dans la même transaction
+que la réparation ; à chaque démarrage suivant, la ligne est trouvée et
+la réparation sautée. La 1.23.0 en apporte une :
+\texttt{13-4-html-descriptions-to-plain-text}, la conversion des
+descriptions HTML enregistrées (chapitre~\ref{ch:providers}). Elle
+journalise \texttt{HTML description: startup plain-text conversion done
+(\#578)} avec ses compteurs (descriptions converties, titres modifiés à
+la main sautés, lignes de propositions réécrites, entrées de cache
+purgées), puis \texttt{Data repair applied}. Si elle échoue, le
+démarrage continue, une ligne \texttt{error} le signale, rien n'est
+écrit, et la réparation est relancée au démarrage suivant.
+
+\begin{warning}
+Ne supprimez pas de lignes de \texttt{data\_repairs} : la réparation
+s'exécuterait une seconde fois, sur un texte qu'elle a déjà converti.
+\end{warning}
+
+\subsection*{Titres ISBN-10 enregistrés comme UPC}
+
+À chaque démarrage, après les migrations, mybibli cherche les titres
+imprimés dont l'UPC de dix caractères est un ISBN-10 valide et leur
+donne leur ISBN-13 (chapitre~\ref{ch:providers}) ; chaque titre converti
+est placé dans la file ci-dessus, échu tout de suite. Une ligne résume
+chaque démarrage : \texttt{ISBN-10 stored as UPC: startup conversion
+done (\#584)}, avec le nombre de titres convertis et sautés. Après le
+premier démarrage de la 1.23.0, ce nombre de conversions est nul. Un
+titre dont l'ISBN-13 appartient déjà à un autre titre n'est pas modifié
+et apparaît en \texttt{warn} à chaque démarrage (\texttt{ISBN-10 stored
+as UPC: another title already holds this ISBN; left unchanged}, avec
+les deux identifiants) jusqu'à ce que vous régliez le doublon.
+
+\subsection*{Révocation d'une clé d'API}
+
+Révoquer la clé d'un agent rend ses propositions en attente périmées en
+une seule transaction. Si cette transaction tombe sur un interblocage
+(\emph{deadlock}) de la base avec une autre --- une acceptation, une
+autre révocation ---, elle est désormais relancée, jusqu'à trois
+tentatives, au lieu de répondre par une erreur serveur. Les délais
+d'attente de verrou dépassés ne sont pas relancés.
+
 \section{Réinitialiser un mot de passe administrateur oublié}\label{sec:reset-admin-password}
 
 mybibli ne propose pas de procédure « mot de passe oublié » par

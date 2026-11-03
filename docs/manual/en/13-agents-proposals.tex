@@ -43,7 +43,10 @@ With a \emph{propose} key an agent can:
         volumes with their shelf location, series positions),
         contributors and series --- including the gaps of a closed
         series;
-  \item list the titles without a cover, or with incomplete metadata;
+  \item list the titles without a cover, or with incomplete metadata,
+        and find what was added since a given day;
+  \item read your management labels (section~\ref{sec:management-labels})
+        and which titles and volumes carry them;
   \item propose a new series, or additions to an existing one (titles
         you hold, and \emph{expected tomes} you do not own yet);
   \item propose a correction of a title's main title (spelling,
@@ -52,6 +55,8 @@ With a \emph{propose} key an agent can:
         publisher, publication year, Dewey code, and contributors to
         add;
   \item propose a cover image;
+  \item propose one of your management labels on a title or a volume
+        it finds doubtful --- for example \emph{Code douteux};
   \item read the history of its own proposals, with your decisions
         and your rejection reasons.
 \end{itemize}
@@ -60,7 +65,7 @@ It cannot:
 
 \begin{itemize}
   \item create, change or delete anything in the catalog --- titles,
-        volumes, series, contributors, locations, loans;
+        volumes, series, contributors, locations, loans, labels;
   \item see borrowers, loans, users, settings or other keys'
         proposals;
   \item erase a value: a proposal only fills or corrects a field, it
@@ -252,7 +257,7 @@ npx @modelcontextprotocol/inspector --cli \
   --header "Authorization: Bearer mybibli_pr_..." \
   --method tools/list
 \end{lstlisting}
-        Expected: the twelve tools of section~\ref{sec:agents-tools}.
+        Expected: the fourteen tools of section~\ref{sec:agents-tools}.
   \item \textbf{Call one}:
 \begin{lstlisting}
 npx @modelcontextprotocol/inspector --cli \
@@ -333,10 +338,22 @@ not named. For reference:
 
 \begin{description}[style=nextline]
   \item[\texttt{search\_titles}] Free-text search, or an exact ISBN or
-        volume label (V-code); filters by media type and genre.
+        volume label (V-code); filters by media type, genre and
+        \texttt{added\_since} (a day \texttt{YYYY-MM-DD}, from midnight
+        UTC, or a date and time): only the titles entered since then or
+        that received a volume since then --- the rule of
+        section~\ref{sec:added-since}, applied here to exact ISBN and
+        V-code hits as well. Each result carries \texttt{created\_at}
+        and \texttt{last\_added\_at} (its latest addition).
   \item[\texttt{get\_title}] One title in full: fields, contributors
-        and roles, volumes and their location, series positions,
-        whether it has a cover, fields edited by hand.
+        and roles, volumes with their full location path
+        (\texttt{location\_path}), condition and date added, series
+        positions, whether it has a cover, fields edited by hand; its
+        own \texttt{created\_at} and \texttt{updated\_at}; the
+        management labels of the title and of each volume; and
+        \texttt{detected\_tome}, the tome number found in a downloaded
+        title while the title is in no series
+        (section~\ref{sec:tome-number}). Dates are ISO~8601, UTC.
   \item[\texttt{search\_contributors}] Contributors by name, with how
         many titles each one has.
   \item[\texttt{list\_series}] Series by name, with owned positions
@@ -351,6 +368,9 @@ not named. For reference:
   \item[\texttt{list\_my\_proposals}] The proposals filed with
         \emph{this} key: status, decision date, your rejection reason,
         and when an equivalent proposal may be filed again.
+  \item[\texttt{list\_labels}] Your management labels (at most the
+        first 500 by name), with how many titles and volumes carry
+        each. There is no tool to create one.
 \end{description}
 
 \subsubsection*{Proposing}
@@ -360,19 +380,27 @@ not named. For reference:
         closed (with its number of volumes) or open --- with the
         titles you hold at their positions and expected tomes.
   \item[\texttt{propose\_series\_attach}] Titles to place in an
-        existing series, and/or expected tomes to add to it.
+        existing series, and/or expected tomes to add to it. A title
+        you own may take the position of an expected tome: it then
+        fills that tome (section~\ref{sec:expected-tomes}).
   \item[\texttt{propose\_title\_metadata}] A title correction, subtitle, description,
         publisher, publication year, Dewey code, and contributors to
-        add, for one title.
+        add, for one title. A proposed description in HTML is
+        converted to plain text when it is filed.
   \item[\texttt{propose\_cover}] A cover image for one title (JPEG,
         PNG, WebP or GIF, at most 2\,MiB).
+  \item[\texttt{propose\_label}] One of your management labels (by id,
+        or by its exact name) on one title or one volume, with an
+        optional note of at most 500 characters explaining the doubt.
 \end{description}
 
 A tool refuses, with an explanation the agent can act on, a proposal
 that could never be accepted: an unknown title, a position already
 taken, a value a librarian's form would refuse, a missing source, a
-second pending proposal for the same series, or a proposal you
-rejected recently (section~\ref{sec:agents-delay}). Each agent may
+second pending proposal for the same series, an owned title placed on
+an expected tome whose ISBN is another book's, an unknown label, a
+label the record already carries or that is already proposed for it,
+or a proposal you rejected recently (section~\ref{sec:agents-delay}). Each agent may
 have at most 100 pending cover proposals at a time.
 
 \section{Reviewing proposals}
@@ -395,7 +423,7 @@ first, 25 per page. Two filters narrow it:
   \item \textbf{Status} --- \emph{Pending}, \emph{Accepted},
         \emph{Rejected}, \emph{Outdated}, or all;
   \item \textbf{Kind} --- \emph{New series}, \emph{Series additions},
-        \emph{Metadata}, \emph{Cover}, or all.
+        \emph{Metadata}, \emph{Cover}, \emph{Label}, or all.
 \end{itemize}
 
 Each row names the subject --- the proposed series name, or the
@@ -404,7 +432,9 @@ proposal}. A small \textbf{View title} (or \textbf{View series}) link
 next to it leads to the catalog page instead. Under the subject, a
 metadata proposal lists the fields it proposes (\emph{Proposed:
 Publisher, Publication year}); next to it, a pending cover proposal
-shows a thumbnail of the proposed image. The row also gives when it was filed, by which key,
+shows a thumbnail of the proposed image, and a label proposal names
+its label (\emph{Label: ``Code douteux''}) with a \textbf{View
+volume} or \textbf{View title} link. The row also gives when it was filed, by which key,
 its status and its number of lines.
 
 \subsection{The detail page}
@@ -417,7 +447,9 @@ check them), and the \textbf{Proposed changes}, one card per line:
   \item \textbf{Series proposals} --- the series line (name, type,
         number of volumes), then each title with its position (and
         the positions an omnibus covers), then each expected tome
-        with its position, title and ISBN.
+        with its position, title and ISBN. While the proposal is
+        pending, a title line that will fill an expected tome says so:
+        \emph{``Fills the expected tome 5 `Title' (ISBN \dots).''}
   \item \textbf{Metadata proposals} --- one comparison table per
         field, \textbf{Current} next to \textbf{Proposed} (for
         contributors: \textbf{To add}), side by side even on a phone.
@@ -429,6 +461,9 @@ check them), and the \textbf{Proposed changes}, one card per line:
         placeholder) next to the proposed image, and a sentence that
         says whether accepting \emph{adds} a cover or \emph{replaces}
         the current one.
+  \item \textbf{Label proposals} --- the marked record (a title, or a
+        volume with its V-code and title), the label, and the
+        \emph{Note from the assistant} explaining the doubt.
 \end{itemize}
 
 \subsection{Editing before you accept}
@@ -453,7 +488,8 @@ when you accept, but it stays on record in a \emph{Lines removed
 before the decision} section. Some lines cannot be removed: the series
 line, the single line of a cover proposal, and the last line of a
 metadata proposal --- reject the proposal instead. A cover cannot be
-edited: a different image is a new proposal.
+edited: a different image is a new proposal. A label proposal cannot
+be edited either, and its single line cannot be removed.
 
 An edited line keeps the agent's value under it (\emph{The assistant
 proposed: \dots}) and says who edited it and when. The agent's own
@@ -476,8 +512,15 @@ credited, or the cover installed. On confirmation:
         The written fields count as \emph{edited by hand}: a later
         automatic metadata download never overwrites them;
   \item a cover proposal installs the image as the title's cover,
-        also protected from automatic cover downloads.
+        also protected from automatic cover downloads;
+  \item a label proposal puts the label on the title or the volume, as
+        if you had attached it from its page.
 \end{itemize}
+
+When a series proposal places an owned title on the position of an
+expected tome, accepting it also settles the tome: the series page
+shows it as owned, and the success message counts the expected tomes
+now owned.
 
 The success message links to the series or title.
 
@@ -504,6 +547,14 @@ type corrected; a title correction accepted from a proposal keeps the
 other proposals valid) or a proposed contributor role was deleted. Editing a field
 the proposal does not touch outdates nothing.
 
+A label proposal becomes outdated only when the title or volume it
+marks was deleted (a volume also when its title was), when the label
+was deleted, or when the label was put on the record in the meantime.
+Editing the record does not outdate it: judge from the note and the
+sources. A series proposal that fills an expected tome becomes
+outdated if, meanwhile, another title took that position or the tome
+was given the ISBN of another book.
+
 Revoking a key (section~\ref{sec:agents-revoke}) also marks all its
 pending proposals as outdated; the detail page then says they were
 decided by \emph{the system}.
@@ -526,7 +577,8 @@ Equivalent means the same kind and the same subject: the same series
 the same title and \emph{any one} of the rejected fields --- a rejected
 publisher blocks every proposal that includes the publisher, while the
 year stays open; for a cover, the same title \emph{and the same image}
---- another image can be proposed at once. The rule applies to every key: creating a new key does not
+--- another image can be proposed at once; for a label, the same label
+on the same title or volume. The rule applies to every key: creating a new key does not
 reset it.
 
 The delay is set in \textbf{Administration \(\rightarrow\) System
@@ -564,6 +616,15 @@ yourself.
         (section~\ref{sec:wishlist}). If the position is meanwhile
         held by another title, nothing is attached and a warning says
         what to check.
+  \item \textbf{When an agent proposes a title you own at that
+        position} (\texttt{propose\_series\_attach}), the proposal is
+        accepted at filing if the tome has no ISBN, if its ISBN is the
+        title's, or if the title has none; it is refused when both
+        ISBNs are known and differ. An omnibus covering several
+        positions fills every tome of its range without comparing
+        ISBNs, since an omnibus edition has an ISBN of its own --- the
+        review screen names each tome a line will fill, so you can
+        judge. Accepting places the title and settles the tomes.
   \item \textbf{Expected tomes to review} --- a tome that no longer
         fits a gap (the series' number of volumes was lowered below
         its position, or a title now holds its position) is listed
@@ -604,6 +665,8 @@ Consequences:
 
 In \textbf{Administration \(\rightarrow\) API keys}, revoke the key.
 The agent is refused from its next request, all its pending proposals
-become outdated, and their proposed covers are deleted. Its accepted
+become outdated, and their proposed covers are deleted. A revocation
+that collides with a decision being taken at the same moment is
+retried automatically (section~\ref{sec:startup-repairs}). Its accepted
 and rejected proposals stay in the history. To let the agent back in,
 create a new key and update the client configuration.

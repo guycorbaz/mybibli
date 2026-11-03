@@ -115,6 +115,31 @@ fournisseur résolvant n'a pas fourni de \texttt{cover\_url}, de
 sorte qu'un titre dont aucune source n'a la couverture finit sans
 image, sans rafale d'essais inutiles.
 
+\subsection*{Les descriptions sont enregistrées en texte brut}
+
+Google Books et Comic Vine livrent leurs descriptions en HTML. Depuis
+la 1.23.0, mybibli les convertit en texte brut au téléchargement : les
+balises sont retirées, les paragraphes et les retours à la ligne sont
+conservés, et les entités comme \texttt{\&eacute;} ou \texttt{\&lt;}
+redeviennent les caractères qu'elles représentent. La page du titre
+affiche la description en paragraphes, jamais \texttt{<p>} ni
+\texttt{\&lt;b\&gt;}. Les descriptions des autres fournisseurs sont
+prises telles quelles (la BnF encadre un article initial de
+\texttt{<<Le>>}, et c'est du texte). Une description proposée par un
+agent IA est convertie de la même façon au dépôt ; une description que
+vous saisissez vous-même n'est jamais convertie.
+
+Les descriptions téléchargées avant la 1.23.0 sont réparées une seule
+fois, au premier démarrage de la 1.23.0 : chaque description
+enregistrée qui contient du balisage est convertie, de même que les
+descriptions des propositions en attente, et les réponses de
+fournisseurs mises en cache qui contiennent du balisage sont écartées,
+pour être redemandées. Une description modifiée à la main --- ou
+acceptée depuis une proposition --- n'est pas touchée, balisage
+compris : corrigez-la vous-même au besoin. La réparation s'exécute une
+fois par base de données, puis plus jamais
+(section~\ref{sec:startup-repairs}).
+
 \subsection*{Quand aucun fournisseur n'a la couverture : téléversez la vôtre}
 
 Certains titres ne recevront jamais de couverture par la chaîne
@@ -261,6 +286,32 @@ requête est loguée et le fournisseur suivant de la chaîne est
 consulté — le flux de catalogage ne se bloque jamais sur un
 fournisseur en quota.
 
+\subsection*{Une recherche qui a rencontré un fournisseur saturé est relancée}
+
+Un fournisseur saturé répond \emph{429 Too Many Requests} ou \emph{503
+Service Unavailable} ; Google Books le fait par centaines certains
+jours. Si la chaîne se termine sans résultat \emph{et} qu'au moins un
+fournisseur a répondu ainsi, l'échec n'est pas tenu pour définitif :
+depuis la 1.23.0, le titre est placé dans une file d'attente et
+recherché à nouveau plus tard, automatiquement, après 15~minutes, puis
+1~heure, 4~heures, 12~heures et 24~heures. Une recherche qui trouve le
+titre, ou qui se termine par un franc « aucune source ne connaît ce
+code », le retire de la file ; après la cinquième tentative encore
+bloquée, mybibli abandonne et inscrit un avertissement au journal. Un
+échec sans fournisseur saturé n'est jamais relancé.
+
+Les nouvelles tentatives tournent en arrière-plan, un titre à la fois,
+avec entre deux titres la pause du réglage \emph{Délai du re-fetch de
+couvertures en lot}, et elles attendent pendant qu'un re-fetch de
+couvertures ou une complétion de métadonnées en lot est en cours : une
+vague de tentatives ne peut pas saturer elle-même un fournisseur. Elles
+suivent le même chemin qu'un scan : les champs modifiés à la main sont
+conservés, et une couverture est téléchargée s'il en existe une. Vous
+pouvez toujours presser \emph{Re-télécharger les métadonnées}
+vous-même ; un re-téléchargement réussi retire le titre de la file. La
+vue de l'exploitant sur cette file se trouve à la
+section~\ref{sec:startup-repairs}.
+
 \begin{warning}
 Ne committez jamais une vraie clé d'API dans git. Le fichier
 \texttt{.env} est dans \texttt{.gitignore} pour cette raison ;
@@ -325,6 +376,23 @@ Si vous préférez raisonner par vous-même, parcourez cette liste :
         classé} est la valeur par défaut pour un titre arrivé
         sans données de classification.
 \end{enumerate}
+
+\subsection*{Anciens titres dont l'ISBN-10 a été enregistré comme UPC}
+
+Avant la 1.21.0, un ISBN à dix chiffres scanné ou saisi était
+enregistré comme code UPC, et tous les fournisseurs passaient alors à
+côté du livre. À son premier démarrage, la 1.23.0 convertit ces
+titres : un titre imprimé (livre, bande dessinée, magazine, rapport)
+sans ISBN et dont l'UPC de dix caractères est un ISBN-10 valide reçoit
+l'ISBN-13 correspondant et perd son UPC, et ses métadonnées sont
+recherchées à nouveau en arrière-plan, par la file d'attente décrite
+plus haut, cette fois par ISBN. Les champs modifiés à la main sont
+conservés. Un UPC dont la clé de contrôle ISBN-10 est fausse reste tel
+quel, comme les titres des autres types de média. Quand un autre titre
+porte déjà cet ISBN-13, le titre n'est pas modifié et un avertissement
+nomme les deux titres à chaque démarrage, jusqu'à ce que vous régliez
+le doublon à la main. La conversion est idempotente : une fois faite,
+elle ne trouve plus rien à convertir.
 
 Si les champs restent vides après avoir configuré les bonnes
 clés et attendu quelques secondes, ouvrez une issue sur le dépôt

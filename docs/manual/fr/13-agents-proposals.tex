@@ -47,7 +47,11 @@ Avec une clé \emph{propositions}, un agent peut :
         les séries), les contributeurs et les séries --- y compris
         les lacunes d'une série fermée ;
   \item lister les titres sans couverture, ou aux métadonnées
-        incomplètes ;
+        incomplètes, et retrouver ce qui a été ajouté depuis un jour
+        donné ;
+  \item lire vos étiquettes de gestion
+        (section~\ref{sec:management-labels}) et savoir quels titres et
+        volumes les portent ;
   \item proposer une nouvelle série, ou des ajouts à une série
         existante (des titres que vous possédez, et des \emph{tomes
         attendus} que vous n'avez pas encore) ;
@@ -57,6 +61,8 @@ Avec une clé \emph{propositions}, un agent peut :
         l'éditeur, l'année de publication, le code Dewey d'un titre,
         et des contributeurs à ajouter ;
   \item proposer une image de couverture ;
+  \item proposer l'une de vos étiquettes de gestion sur un titre ou un
+        volume qu'il juge douteux --- par exemple \emph{Code douteux} ;
   \item consulter l'historique de ses propres propositions, avec vos
         décisions et les motifs de vos refus.
 \end{itemize}
@@ -66,7 +72,7 @@ Il ne peut pas :
 \begin{itemize}
   \item créer, modifier ou supprimer quoi que ce soit dans le
         catalogue --- titres, volumes, séries, contributeurs,
-        emplacements, prêts ;
+        emplacements, prêts, étiquettes ;
   \item voir les emprunteurs, les prêts, les utilisateurs, les
         réglages ni les propositions d'une autre clé ;
   \item effacer une valeur : une proposition complète ou corrige un
@@ -271,7 +277,7 @@ npx @modelcontextprotocol/inspector --cli \
   --header "Authorization: Bearer mybibli_pr_..." \
   --method tools/list
 \end{lstlisting}
-        Attendu : les douze outils de la
+        Attendu : les quatorze outils de la
         section~\ref{sec:agents-tools}.
   \item \textbf{En appeler un} :
 \begin{lstlisting}
@@ -359,10 +365,23 @@ n'est pas configurée n'est pas cité. Pour mémoire :
 \begin{description}[style=nextline]
   \item[\texttt{search\_titles}] Recherche en texte libre, ou par ISBN
         ou étiquette de volume (code V) exacts ; filtres par type de
-        média et par genre.
+        média, par genre et par \texttt{added\_since} (un jour
+        \texttt{AAAA-MM-JJ}, depuis minuit UTC, ou une date et une
+        heure) : seulement les titres saisis depuis, ou qui ont reçu un
+        volume depuis --- la règle de la section~\ref{sec:added-since},
+        appliquée ici aussi aux résultats exacts par ISBN ou code V.
+        Chaque résultat porte \texttt{created\_at} et
+        \texttt{last\_added\_at} (son dernier ajout).
   \item[\texttt{get\_title}] Un titre complet : champs, contributeurs
-        et rôles, volumes et leur emplacement, positions dans les
-        séries, présence d'une couverture, champs modifiés à la main.
+        et rôles, volumes avec le chemin complet de leur emplacement
+        (\texttt{location\_path}), leur état et leur date d'ajout,
+        positions dans les séries, présence d'une couverture, champs
+        modifiés à la main ; ses propres \texttt{created\_at} et
+        \texttt{updated\_at} ; les étiquettes de gestion du titre et de
+        chaque volume ; et \texttt{detected\_tome}, le numéro de tome
+        trouvé dans un titre téléchargé tant que le titre n'est dans
+        aucune série (section~\ref{sec:tome-number}). Les dates sont au
+        format ISO~8601, en UTC.
   \item[\texttt{search\_contributors}] Les contributeurs par nom, avec
         le nombre de titres de chacun.
   \item[\texttt{list\_series}] Les séries par nom, avec les positions
@@ -379,6 +398,9 @@ n'est pas configurée n'est pas cité. Pour mémoire :
         \emph{cette} clé : statut, date de décision, motif de votre
         refus, et date à partir de laquelle une proposition
         équivalente peut être déposée à nouveau.
+  \item[\texttt{list\_labels}] Vos étiquettes de gestion (au plus les
+        500 premières par nom), avec le nombre de titres et de volumes
+        qui portent chacune. Aucun outil ne permet d'en créer.
 \end{description}
 
 \subsubsection*{Propositions}
@@ -389,20 +411,30 @@ n'est pas configurée n'est pas cité. Pour mémoire :
         titres que vous possédez à leur position, et des tomes
         attendus.
   \item[\texttt{propose\_series\_attach}] Des titres à placer dans une
-        série existante, et/ou des tomes attendus à lui ajouter.
+        série existante, et/ou des tomes attendus à lui ajouter. Un
+        titre que vous possédez peut prendre la position d'un tome
+        attendu : il remplit alors ce tome
+        (section~\ref{sec:expected-tomes}).
   \item[\texttt{propose\_title\_metadata}] Une correction du titre, le sous-titre, la description,
         éditeur, année de publication, code Dewey et contributeurs à
-        ajouter, pour un titre.
+        ajouter, pour un titre. Une description proposée en HTML est
+        convertie en texte brut au dépôt.
   \item[\texttt{propose\_cover}] Une image de couverture pour un titre
         (JPEG, PNG, WebP ou GIF, 2\,Mio au plus).
+  \item[\texttt{propose\_label}] L'une de vos étiquettes de gestion
+        (par son identifiant ou son nom exact) sur un titre ou un
+        volume, avec une note facultative de 500 caractères au plus qui
+        explique le doute.
 \end{description}
 
 Un outil refuse, avec une explication sur laquelle l'agent peut agir,
 une proposition qui ne pourrait jamais être acceptée : un titre
 inconnu, une position déjà prise, une valeur qu'un formulaire de
 bibliothécaire refuserait, une source manquante, une seconde
-proposition en attente pour la même série, ou une proposition que
-vous avez refusée récemment (section~\ref{sec:agents-delay}). Chaque
+proposition en attente pour la même série, un titre possédé placé sur
+un tome attendu dont l'ISBN est celui d'un autre livre, une étiquette
+inconnue, une étiquette que la notice porte déjà ou qui lui est déjà
+proposée, ou une proposition que vous avez refusée récemment (section~\ref{sec:agents-delay}). Chaque
 agent peut avoir au plus 100 propositions de couverture en attente à
 la fois.
 
@@ -429,7 +461,8 @@ les plus récentes d'abord, 25 par page. Deux filtres la restreignent :
   \item \textbf{Statut} --- \emph{En attente}, \emph{Acceptée},
         \emph{Refusée}, \emph{Périmée}, ou tous ;
   \item \textbf{Type} --- \emph{Nouvelle série}, \emph{Ajouts à une
-        série}, \emph{Métadonnées}, \emph{Couverture}, ou tous.
+        série}, \emph{Métadonnées}, \emph{Couverture},
+        \emph{Étiquette}, ou tous.
 \end{itemize}
 
 Chaque ligne nomme l'objet --- le nom de série proposé, ou la série
@@ -438,7 +471,10 @@ Un petit lien \textbf{Voir le titre} (ou \textbf{Voir la série}) à
 côté mène à la fiche du catalogue. Sous l'objet, une proposition de
 métadonnées liste les champs qu'elle propose (\emph{Proposé : Éditeur,
 Année de publication}) ; à côté de l'objet, une proposition de
-couverture en attente montre une miniature de l'image proposée. La ligne indique aussi la date de dépôt,
+couverture en attente montre une miniature de l'image proposée, et une
+proposition d'étiquette nomme son étiquette (\emph{Étiquette : « Code
+douteux »}) avec un lien \textbf{Voir le volume} ou \textbf{Voir le
+titre}. La ligne indique aussi la date de dépôt,
 la clé, le statut et le nombre de lignes.
 
 \subsection{La page de détail}
@@ -452,7 +488,10 @@ s'ouvrent dans un nouvel onglet --- vérifiez-les), et les
   \item \textbf{Propositions de série} --- la ligne de série (nom,
         type, nombre de volumes), puis chaque titre avec sa position
         (et les positions que couvre une intégrale), puis chaque tome
-        attendu avec sa position, son titre et son ISBN.
+        attendu avec sa position, son titre et son ISBN. Tant que la
+        proposition est en attente, une ligne de titre qui remplira un
+        tome attendu l'indique : \emph{« Remplit le tome attendu 5
+        “Titre” (ISBN \dots). »}
   \item \textbf{Propositions de métadonnées} --- un tableau de
         comparaison par champ, \textbf{Actuel} à côté de
         \textbf{Proposé} (pour les contributeurs : \textbf{À
@@ -466,6 +505,9 @@ s'ouvrent dans un nouvel onglet --- vérifiez-les), et les
         (ou l'image par défaut) à côté de l'image proposée, et une
         phrase qui dit si accepter \emph{ajoute} une couverture ou
         \emph{remplace} l'actuelle.
+  \item \textbf{Propositions d'étiquette} --- la notice marquée (un
+        titre, ou un volume avec son code V et son titre), l'étiquette,
+        et la \emph{Note de l'assistant} qui explique le doute.
 \end{itemize}
 
 \subsection{Modifier avant d'accepter}
@@ -494,7 +536,9 @@ une section \emph{Lignes retirées avant la décision}. Certaines lignes
 ne peuvent pas être retirées : la ligne de série, l'unique ligne d'une
 proposition de couverture et la dernière ligne d'une proposition de
 métadonnées --- refusez alors la proposition. Une couverture ne se
-modifie pas : une autre image est une nouvelle proposition.
+modifie pas : une autre image est une nouvelle proposition. Une
+proposition d'étiquette ne se modifie pas non plus, et son unique ligne
+ne peut pas être retirée.
 
 Une ligne modifiée garde sous elle la valeur de l'agent
 (\emph{L'assistant proposait : \dots}) et indique qui l'a modifiée et
@@ -519,8 +563,15 @@ crédités, ou la couverture installée. Une fois confirmé :
         métadonnées ne les écrase jamais ;
   \item une proposition de couverture installe l'image comme
         couverture du titre, elle aussi protégée des téléchargements
-        automatiques de couverture.
+        automatiques de couverture ;
+  \item une proposition d'étiquette pose l'étiquette sur le titre ou le
+        volume, comme si vous l'aviez posée depuis sa page.
 \end{itemize}
+
+Quand une proposition de série place un titre possédé à la position
+d'un tome attendu, l'accepter règle aussi ce tome : la page de la série
+le montre comme possédé, et le message de succès compte les tomes
+attendus désormais possédés.
 
 Le message de succès renvoie à la série ou au titre.
 
@@ -550,6 +601,14 @@ depuis une proposition laisse les autres propositions valables) ou qu'un rôle d
 supprimé. Modifier un champ que la proposition ne touche pas ne rend
 rien périmé.
 
+Une proposition d'étiquette ne devient périmée que si le titre ou le
+volume qu'elle marque a été supprimé (un volume aussi quand son titre
+l'a été), si l'étiquette a été supprimée, ou si l'étiquette a été posée
+sur la notice entre-temps. Modifier la notice ne la rend pas périmée :
+jugez sur la note et les sources. Une proposition de série qui remplit
+un tome attendu devient périmée si, entre-temps, un autre titre a pris
+cette position ou si le tome a reçu l'ISBN d'un autre livre.
+
 Révoquer une clé (section~\ref{sec:agents-revoke}) rend aussi
 périmées toutes ses propositions en attente ; la page de détail
 indique alors qu'elles ont été décidées par \emph{le système}.
@@ -573,7 +632,8 @@ casse ni des accents) ; pour des métadonnées, le même titre et
 \emph{l'un quelconque} des champs refusés --- un éditeur refusé bloque
 toute proposition qui comprend l'éditeur, l'année restant libre ; pour
 une couverture, le même titre \emph{et la même image} --- une autre
-image peut être proposée tout de suite. La
+image peut être proposée tout de suite ; pour une étiquette, la même
+étiquette sur le même titre ou le même volume. La
 règle vaut pour toutes les clés : créer une nouvelle clé ne la remet
 pas à zéro.
 
@@ -614,6 +674,16 @@ acceptées, ou vous les saisissez vous-même.
         propose de l'en retirer (section~\ref{sec:wishlist}). Si la
         position est entre-temps occupée par un autre titre, rien
         n'est rattaché et un avertissement indique quoi vérifier.
+  \item \textbf{Quand un agent propose un titre que vous possédez à
+        cette position} (\texttt{propose\_series\_attach}), la
+        proposition est acceptée au dépôt si le tome n'a pas d'ISBN, si
+        son ISBN est celui du titre, ou si le titre n'en a pas ; elle
+        est refusée quand les deux ISBN sont connus et diffèrent. Une
+        intégrale couvrant plusieurs positions remplit tous les tomes de
+        sa plage sans comparer les ISBN, puisqu'une édition intégrale a
+        son propre ISBN --- l'écran d'examen nomme chaque tome qu'une
+        ligne remplira, pour que vous puissiez juger. L'acceptation
+        place le titre et règle les tomes.
   \item \textbf{Tomes attendus à revoir} --- un tome qui ne tient plus
         dans une lacune (le nombre de volumes de la série a été
         abaissé sous sa position, ou un titre occupe désormais sa
@@ -658,6 +728,8 @@ dossier des couvertures} (\texttt{COVERS\_DIR} ; sous Docker,
 Dans \textbf{Administration \(\rightarrow\) Clés d'API}, révoquez la
 clé. L'agent est refusé dès sa requête suivante, toutes ses
 propositions en attente deviennent périmées et leurs couvertures
-proposées sont supprimées. Ses propositions acceptées et refusées
+proposées sont supprimées. Une révocation qui entre en collision avec
+une décision prise au même instant est relancée automatiquement
+(section~\ref{sec:startup-repairs}). Ses propositions acceptées et refusées
 restent dans l'historique. Pour réadmettre l'agent, créez une nouvelle
 clé et mettez à jour la configuration du client.

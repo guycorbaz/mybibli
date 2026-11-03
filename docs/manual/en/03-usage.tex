@@ -43,7 +43,16 @@ The home page is the dashboard. From top to bottom:
         series with gaps, unshelved volumes — each click jumps to
         the filtered list.
   \item \textbf{Recent activity.} The last seven days of cataloging
-        and returns.
+        and returns. A title counts as \emph{recently cataloged} when
+        the title itself, or one of its volumes, was added in those
+        seven days (section~\ref{sec:added-since}).
+  \item \textbf{Recent additions.} The titles that received something
+        most recently --- the title itself or a new volume, whichever
+        is later. They follow the \emph{List view} / \emph{Grid view}
+        toggle of the catalogue below: in list view they appear as the
+        same table (with its \emph{Added} column), in grid view as
+        cards. Switching the toggle changes both at once, and the
+        choice is remembered on the next visit.
 \end{itemize}
 
 \section{Cataloging a new title via barcode}\label{sec:catalog-scan}
@@ -76,6 +85,36 @@ is spent scanning, not waiting for mybibli — the metadata fetch is
 asynchronous, so you do not have to wait for it to finish before
 moving on to the next volume.
 \end{tip}
+
+\subsection*{Scanning a V-code that is already in use}
+\label{sec:scan-existing-vcode}
+
+A pile of books scanned in a hurry produces repeats. Since 1.23.0
+mybibli tells them apart instead of answering every one with an error:
+
+\begin{itemize}
+  \item \textbf{A double read of the scanner.} The same code arriving
+        twice within one second from the same scan field is read
+        once: the second read is dropped silently and the field is
+        cleared. This applies to every kind of code. The same code
+        scanned again after that second is processed normally.
+  \item \textbf{A V-code of the current title.} Scanning again the
+        ISBN and the V-code of a book already catalogued (with no
+        active location) creates nothing; an information message says
+        \emph{``Label V0042 is already recorded for this title.''}
+  \item \textbf{A V-code of another title.} The V-code is not moved
+        and nothing is created. A warning names the title that holds
+        it, with its ISBN when it has one, links to the volume page,
+        and suggests scanning another sticker for the book in hand or
+        opening the volume: from its page you can move it to the right
+        title (section~\ref{sec:move-volume-title}).
+  \item \textbf{A shelving that did not happen.} With an active
+        location, scanning a V-code shelves the volume there. If the
+        change could not be saved, or if the active location was
+        deleted in the meantime, the message says the volume was
+        \emph{not shelved} and what to do (scan the V-code again, or
+        scan another L-code); a deleted active location is cleared.
+\end{itemize}
 
 \subsection*{Printing fresh label sheets}
 
@@ -131,6 +170,45 @@ with the same name restores the old one.
 Saved searches capture the existing browse criteria (query, one filter
 chip, sort column and direction) — they are not a free-form query
 builder. The control is visible to librarians and administrators only.
+The ``added since'' date below is not saved with a search; the save
+form says so while a date filter is active.
+\end{note}
+
+\subsection{What was added since a given day}\label{sec:added-since}
+
+Since 1.23.0 every title page and volume page shows, under its main
+fields, \emph{Added on} (the day the record was entered) and
+\emph{Modified on} (its last change, automatic metadata downloads
+included), in the date format of the interface language.
+
+A title counts as \emph{added} in a period when the title itself was
+entered in it \emph{or} one of its volumes was --- an old title that
+received a new copy last week is part of last week's additions. The
+same rule drives three places:
+
+\begin{itemize}
+  \item the \textbf{Added since} date field next to the sort control
+        of the home-page catalogue: pick a day and \emph{Apply}; only
+        the titles added since that day remain (\emph{Clear} removes
+        the filter). The date travels in the address
+        (\texttt{added\_since=YYYY-MM-DD}) and combines with the
+        search text and the sort order;
+  \item the \textbf{Added} column of the catalogue table and the
+        matching entries of the sort menu: a title's date there is its
+        latest addition (the later of its own date and its newest
+        volume's), newest first on the first click;
+  \item the \emph{Recent cataloged} indicator of the dashboard, over
+        its seven days.
+\end{itemize}
+
+\begin{note}
+Three details. Days are cut at midnight UTC, not at local midnight:
+in Switzerland a volume entered between midnight and 1~a.m.\ (2~a.m.\
+in summer) counts for the previous day, and the page dates are UTC
+days too. An indicator filter (\emph{Recent cataloged}, \emph{Overdue loans},
+\dots) replaces the date filter, as it replaces the search text ---
+one active filter at a time. And a search for an exact ISBN or V-code
+finds its title whatever the date, as it ignores the genre filter.
 \end{note}
 
 \section{Management labels}\label{sec:management-labels}
@@ -180,6 +258,22 @@ volumes --- each row linking through to its detail page. That is the
 whole point: a label you cannot find your way back from is a note in a
 drawer.
 
+\subsection*{Marking doubtful records}
+
+A management label is also the way to set aside a record you doubt:
+an ISBN that seems to belong to another book, a volume catalogued
+under the wrong title, a description in the wrong language. Create a
+label for it once --- for example \emph{Code douteux} (``doubtful
+code'') --- put it on the title or volume concerned, and its page
+\texttt{/labels/\{id\}} becomes the list of records to look at again.
+Once the record is put right, remove the label from it. There is no
+separate ``anomaly'' list and no reason field: the label name says
+what kind of doubt it is.
+
+An AI agent working on the catalogue can \emph{propose} such a label
+on a title or a volume; it appears on the Proposals page and the label
+is attached only if you accept (section~\ref{sec:agents-tools}).
+
 \begin{note}
 Labels are internal. The handlers do not even run the queries for an
 anonymous visitor, so nothing leaks through the public catalogue ---
@@ -199,6 +293,137 @@ including the fact that a label exists.
 
 mybibli records the move in the volume's location history so you can
 trace where a book has lived over time.
+
+Wherever a list of volumes shows their location --- the volume table
+and cards of a title page, a label's page, the audit list --- the
+location is given as its full path, e.g.\ \emph{Home
+\textrightarrow{} Living room \textrightarrow{} Bookcase
+\textrightarrow{} Shelf 3 (L0042)}, so that two shelves called
+``Shelf 3'' in different rooms are never confused. A long path wraps
+on a narrow screen. The page of a single location lists only the
+volumes stored directly in it, under its own full path.
+
+\section{Moving a volume to another title}\label{sec:move-volume-title}
+
+A V-code stuck on the wrong book, or scanned while the wrong title was
+in context --- typically a publisher's EAN shared by several albums
+--- leaves a volume under a title it does not belong to. Since 1.23.0
+it can be moved without deleting it:
+
+\begin{enumerate}
+  \item Open the volume page (Librarian or Admin) and click
+        \textbf{Move to another title}.
+  \item In the dialog, search the right title by its title or its ISBN
+        (hyphens and spaces allowed). Up to ten titles are listed; the
+        volume's current title is never offered.
+  \item Pick one. A sentence names the volume, its current title and
+        the target, and recalls that its label, location and loans go
+        with it.
+  \item Click \textbf{Move}.
+\end{enumerate}
+
+The volume page then shows the new title, and both title pages list
+the volume where it now belongs. Everything that belongs to the
+volume stays with it: its V-code, location, condition, values,
+management labels, audit flag and loans --- including an active loan,
+which simply follows it. Series positions and expected tomes belong to
+titles and are not affected. The move is recorded in the log
+(\emph{Volume moved to another title}, with the volume, both titles
+and the user).
+
+The move is refused, with an explanation in the dialog, when no title
+was picked, when the target is the volume's current title, when the
+target or the volume was deleted in the meantime, or when someone else
+changed the volume since the dialog opened (reload and try again).
+
+\section{Series and tome numbers}\label{sec:tome-number}
+
+A title is placed in a series from the \emph{Series} section of its
+page: pick the series, give the position, assign. The selector offers
+every series of the library, in alphabetical order.
+
+\subsection*{The tome number}
+
+The position of a title in its series \emph{is} its tome number.
+Since 1.23.0 it is shown as such: under the title heading
+(\emph{``Volume 3 · Thorgal''} in the English interface, \emph{``Tome
+3 · Thorgal''} in French), on the rows and cards of the catalogue, on
+the series page and on the volume page. An omnibus reads
+\emph{``Volumes 3--5''}; a title in several series shows one entry per
+series.
+
+To change it, click \textbf{Change} next to the series in the
+\emph{Series} section of the title page, enter the new position and
+\textbf{Save}. The rules are those of an assignment: a position of at
+least 1, within the number of volumes of a closed series, and not a
+position the title already holds in that series (two different titles
+may share a position: the series page shows it, it does not prevent
+it). An omnibus range cannot be changed there: remove it from the
+series and assign it again. After the change, expected tomes are
+re-evaluated --- the position left becomes a gap again, the new one may
+settle an expected tome (section~\ref{sec:expected-tomes}).
+
+\subsection*{Tome markers in downloaded titles}
+
+Providers often put the number in the title: \emph{``Thorgal - Tome 29
+- Le sacrifice''}, \emph{``Titeuf T12 : \dots''}. When a metadata
+download sets a title (at scan, on \emph{Re-download metadata}, on an
+automatic retry or a bulk run), mybibli removes such a
+marker\index{tome marker} --- \emph{``Thorgal - Le sacrifice''} --- as
+long as the title was never edited by hand. What counts as a marker
+depends on the media type:
+
+\begin{itemize}
+  \item \textbf{Comics}: \emph{Tome}, \emph{Tomo}, \emph{T}, \emph{T.},
+        \emph{Vol.}, \emph{Volume}, \emph{Band}, \emph{Bd.},
+        \emph{n°}, \emph{No}, \emph{\#}, followed by a number;
+  \item \textbf{Books}: \emph{Tome}, \emph{Tomo}, \emph{Volume}, \emph{Vol.} and
+        \emph{Band} only, and a number of 1000 or more is taken for a
+        year, not a tome;
+  \item other media types: never.
+\end{itemize}
+
+The marker must stand at the start of the title, at its end, or
+between two parts separated by a colon, a dash, a comma or a full
+stop. A title with several markers, a range or a list (\emph{``Intégrale
+T1 à T3''}, \emph{``T1 - 3''}) is left as it is. For a comic whose
+title carries no marker, the collection number of the national
+library record is used instead.
+
+The number removed from the title goes to the series position only if
+you set it:
+
+\begin{itemize}
+  \item a title in \textbf{no series} keeps it as a hint, shown under
+        the heading as \emph{``Volume 3 (detected)''}. When you then
+        assign a series from the title page, the position field is
+        already filled with it. The hint disappears once the title is
+        in a series; it is never authoritative;
+  \item a title \textbf{already in a series} keeps its positions
+        unchanged.
+\end{itemize}
+
+With \emph{Re-download metadata}, the preview shows the title already
+cleaned; the hint is recorded when you confirm that title.
+
+A title you type yourself --- at creation or in the edit form --- is
+never rewritten. If it contains a marker, a message suggests removing
+the number from the title and setting it as the position in the
+series.
+
+\begin{warning}
+The recognition is deliberately cautious, but a few comic titles have
+the shape of a marker in their very name: \emph{``L'Ennemi public
+n°1''}, \emph{``Le Prisonnier n°6''}, \emph{``Public Enemy \#1''},
+\emph{``Panzer T34 : \dots''}. They lose their number on download.
+Correct the title by hand once: an edited title is protected, and no
+later download changes it again.
+\end{warning}
+
+Titles catalogued before 1.23.0 keep their markers: there is no bulk
+cleanup. An AI agent can propose the corrections --- the title through
+a metadata proposal, the position through a series proposal
+(chapter~\ref{ch:agents}).
 
 \section{Loans}\label{sec:loans}
 
