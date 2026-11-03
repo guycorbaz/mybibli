@@ -139,6 +139,87 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.23.0}\label{sec:whats-new-1.23.0}
+
+Version 1.23.0 closes epic 13, ``cataloguing for real'', planned from a
+first mass entry session (about 260 volumes in three days), its
+production logs and an agent session on the comics. It brings
+\emph{five additive migrations}, run automatically at the first boot
+(the metadata retry queue, the one-time repair register, the detected
+tome number, and two new values for label proposals): take a database
+backup first, as for every upgrade (chapter~\ref{ch:backup}). No
+setting to change.
+
+\begin{itemize}
+  \item \textbf{\#574, \#585 \string— scanning a pile.} A double read
+        of the same barcode within a second is ignored. Re-scanning a
+        V-code already on the current title says so; a V-code held by
+        another title names it, with a link; a shelving that fails is
+        reported (section~\ref{sec:scan-existing-vcode}).
+  \item \textbf{\#583 \string— throttled lookups retried.} A lookup
+        that met a saturated provider is retried in the background
+        after 15~minutes, 1, 4, 12 and 24~hours
+        (section~\ref{sec:startup-repairs}).
+  \item \textbf{\#584 \string— ISBN-10 stored as UPC.} Printed titles
+        catalogued before 1.21.0 with an ISBN-10 get their ISBN-13 and
+        are looked up again.
+  \item \textbf{\#578 \string— plain-text descriptions.} Descriptions
+        with HTML markup (Google Books, Comic Vine, an agent) are
+        converted to plain text (chapter~\ref{ch:providers}).
+  \item \textbf{\#580 \string— move a volume to another title} from its
+        page; a loan follows the volume
+        (section~\ref{sec:move-volume-title}).
+  \item \textbf{\#586 \string— dates.} \emph{Added on} and
+        \emph{Modified on} on title and volume pages, an \emph{Added
+        since} filter and an \emph{Added} column on the home page
+        (section~\ref{sec:added-since}). Days are cut in UTC (\#602).
+  \item \textbf{\#577, \#576, \#582 \string—} \emph{Recent additions}
+        follow the List/Grid toggle; the title page's series selector
+        lists every series; volume lists show full location paths.
+  \item \textbf{\#579 \string— tome numbers.} ``Tome~N'' (French) /
+        ``Volume~N'' (English) display, position edited in place, a
+        detected number shown as a hint; tome markers are stripped
+        from provider titles at download
+        (section~\ref{sec:tome-number}).
+  \item \textbf{\#581, \#588 \string— agents.} The MCP server now has
+        14~tools: an agent lists the management labels and proposes one
+        on a doubtful title or volume (\texttt{list\_labels},
+        \texttt{propose\_label}); \texttt{get\_title} and
+        \texttt{search\_titles} return dates, location paths, labels
+        and the detected tome; an owned title can fill an expected tome
+        by proposal (chapter~\ref{ch:agents}).
+  \item \textbf{\#554 \string—} revoking an API key no longer ends in a
+        server error when it meets a database deadlock.
+\end{itemize}
+
+\paragraph{After the upgrade.} Expect a longer first start and a few
+new log lines (section~\ref{sec:startup-repairs}):
+\begin{itemize}
+  \item \textbf{One-time description repair.} Stored descriptions that
+        hold HTML are converted to plain text once (hand-edited ones are
+        left alone), with the descriptions of pending proposals; cached
+        provider answers with markup are discarded. The
+        \texttt{data\_repairs} table records it so it never runs twice.
+  \item \textbf{ISBN-10 conversion at boot.} The converted titles go on
+        the retry queue and are looked up again within minutes. A title
+        whose ISBN-13 already belongs to another title is left unchanged
+        and logged at \texttt{warn} at every start until you resolve the
+        duplicate by hand.
+  \item \textbf{Retry queue.} Titles that a saturated provider left
+        empty from now on are retried by themselves; titles left empty
+        before the upgrade can simply be re-downloaded.
+  \item \textbf{Tome markers.} They are stripped when a title is
+        downloaded or re-downloaded (unless edited by hand); titles
+        already catalogued are \emph{not} cleaned in bulk. A real title
+        shaped like a marker (``L'Ennemi public n°1'') needs one hand
+        edit to be protected.
+  \item \textbf{Agents.} Reconnect the agent to see the 14~tools.
+  \item \textbf{Monitoring tip.} A Prometheus/blackbox (or any uptime)
+        probe should target \texttt{/health}, not \texttt{/}: every
+        request to \texttt{/} without a cookie creates an anonymous
+        session row, while \texttt{/health} creates nothing.
+\end{itemize}
+
 \section{What's new in 1.22.0}\label{sec:whats-new-1.22.0}
 
 Version 1.22.0 closes epic 12, planned from the first production
