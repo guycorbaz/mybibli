@@ -302,7 +302,7 @@ async fn main() {
     // excepted), run once per database under a `data_repairs` marker: its
     // result cannot be told apart from healthy text, so it must not re-run.
     // Non-fatal, like the step above; a failed run is retried next boot.
-    if let Err(e) = mybibli::services::title::repair_html_descriptions_once(&pool).await {
+    if let Err(e) = mybibli::services::description_repair::repair_html_descriptions_once(&pool).await {
         tracing::error!(
             error = %e,
             "HTML description: startup conversion failed (non-fatal, continuing)"

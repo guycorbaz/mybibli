@@ -484,109 +484,6 @@ async fn convert_one(
     Ok(Step::Converted)
 }
 
-/// Story 13-4 (#578) — what one run of [`convert_html_descriptions`] did.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DescriptionCleanup {
-    /// Description rewritten as plain text (or cleared when it was markup
-    /// only).
-    pub converted: usize,
-    /// `description` is in `manually_edited_fields`: never rewritten.
-    pub hand_edited: usize,
-    /// Nothing to convert (`a < b`, `R&D;`).
-    pub unchanged: usize,
-    /// The row changed between the read and the update (version guard).
-    pub superseded: usize,
-    /// A per-title DB error, logged; the run goes on.
-    pub errors: usize,
-    /// `metadata_cache` rows purged (description with markup).
-    pub cache_purged: u64,
-}
-
-/// Story 13-4 (#578) — is `description` among a title's hand-edited
-/// fields? An unreadable `manually_edited_fields` counts as edited: the
-/// cleanup never risks rewriting a hand-typed text.
-pub fn description_is_hand_edited(manually_edited_fields: Option<&str>) -> bool {
-    match manually_edited_fields {
-        None => false,
-        Some(raw) => serde_json::from_str::<Vec<String>>(raw)
-            .map(|fields| fields.iter().any(|f| f == "description"))
-            .unwrap_or(true),
-    }
-}
-
-/// Name of the story 13-4 repair in `data_repairs`.
-pub const HTML_DESCRIPTIONS_REPAIR: &str = "13-4-html-descriptions-to-plain-text";
-
-/// Story 13-4 (#578) — run [`convert_html_descriptions`] once per database
-/// (`services::data_repairs::run_once`); `None` when it already ran.
-pub async fn repair_html_descriptions_once(
-    pool: &DbPool,
-) -> Result<Option<DescriptionCleanup>, AppError> {
-    crate::services::data_repairs::run_once(pool, HTML_DESCRIPTIONS_REPAIR, || {
-        convert_html_descriptions(pool)
-    })
-    .await
-}
-
-/// Story 13-4 (#578) — descriptions stored before v1.23.0 may carry the
-/// providers' HTML (Google Books, Comic Vine). Startup repair: every live
-/// title whose description contains `<` or `&…;` gets its
-/// [`crate::utils::html_to_plain_text`] form (cleared when nothing but
-/// markup), under optimistic locking — unless `description` is in its
-/// `manually_edited_fields` (a hand-typed text is never rewritten). The
-/// `metadata_cache` rows whose description holds markup are purged.
-///
-/// **Not idempotent by itself** — a converted description may hold `<b>` or
-/// `&lt;` as text, which a second run would convert again — so it runs
-/// once, through [`repair_html_descriptions_once`]. Logs one `info` line
-/// with the counts.
-pub async fn convert_html_descriptions(pool: &DbPool) -> Result<DescriptionCleanup, AppError> {
-    let mut report = DescriptionCleanup::default();
-    for candidate in TitleModel::list_descriptions_with_markup(pool).await? {
-        if description_is_hand_edited(candidate.manually_edited_fields.as_deref()) {
-            report.hand_edited += 1;
-            continue;
-        }
-        let plain = crate::utils::html_to_plain_text(&candidate.description);
-        if plain == candidate.description {
-            report.unchanged += 1;
-            continue;
-        }
-        let value = (!plain.is_empty()).then_some(plain.as_str());
-        match TitleModel::set_plain_description(pool, candidate.id, candidate.version, value).await
-        {
-            Ok(true) => report.converted += 1,
-            Ok(false) => {
-                report.superseded += 1;
-                tracing::info!(
-                    title_id = candidate.id,
-                    "HTML description: title changed meanwhile; left unchanged"
-                );
-            }
-            Err(e) => {
-                report.errors += 1;
-                tracing::warn!(
-                    title_id = candidate.id,
-                    error = %e,
-                    "HTML description: conversion failed for this title; left unchanged"
-                );
-            }
-        }
-    }
-    report.cache_purged =
-        crate::models::metadata_cache::MetadataCacheModel::purge_markup_descriptions(pool).await?;
-    tracing::info!(
-        converted = report.converted,
-        cache_purged = report.cache_purged,
-        skipped_hand_edited = report.hand_edited,
-        skipped_unchanged = report.unchanged,
-        skipped_superseded = report.superseded,
-        errors = report.errors,
-        "HTML description: startup plain-text conversion done (#578)"
-    );
-    Ok(report)
-}
-
 /// Form data for manual title creation.
 ///
 /// Fix #323 (v1.7.4) — the four `Option<i32>` numeric fields route
@@ -818,17 +715,6 @@ fn non_empty_option(s: &Option<String>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Story 13-4 (#578) — the hand-edit guard of the description cleanup.
-    #[test]
-    fn description_hand_edit_guard() {
-        assert!(!description_is_hand_edited(None));
-        assert!(!description_is_hand_edited(Some("[]")));
-        assert!(!description_is_hand_edited(Some(r#"["title","publisher"]"#)));
-        assert!(description_is_hand_edited(Some(r#"["title","description"]"#)));
-        // Unreadable: treated as edited, never rewritten.
-        assert!(description_is_hand_edited(Some("not json")));
-    }
 
     /// Story 13-3 (#584) — the selection predicate on the production codes
     /// and on what must be left alone.

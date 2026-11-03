@@ -7,31 +7,42 @@
 //! once per database, keyed by a name recorded in `data_repairs`.
 
 use std::future::Future;
+use std::pin::Pin;
+
+use sqlx::MySqlConnection;
 
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::data_repair::DataRepairModel;
 
+/// The future a repair returns, borrowing the transaction's connection.
+pub type RepairFuture<'c, T> = Pin<Box<dyn Future<Output = Result<T, AppError>> + Send + 'c>>;
+
 /// Run the repair `name` unless it already ran on this database; `None`
-/// when it is skipped. The marker is written after the repair returned
-/// `Ok`, so a repair that fails as a whole runs again on the next boot. A
-/// repair that logs and skips individual rows still counts as done: those
-/// rows are not retried (they would need a hand fix, see the repair's log).
-pub async fn run_once<T, F, Fut>(
-    pool: &DbPool,
-    name: &str,
-    repair: F,
-) -> Result<Option<T>, AppError>
+/// when it is skipped. The marker check, every write of the repair and the
+/// marker itself share **one transaction** (review round 2, L2): a repair
+/// that fails rolls back entirely and runs again on the next boot, and a
+/// committed repair always has its marker.
+pub async fn run_once<T, F>(pool: &DbPool, name: &str, repair: F) -> Result<Option<T>, AppError>
 where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = Result<T, AppError>>,
+    F: for<'c> FnOnce(&'c mut MySqlConnection) -> RepairFuture<'c, T>,
 {
-    if DataRepairModel::is_applied(pool, name).await? {
+    let mut tx = pool.begin().await?;
+    if DataRepairModel::is_applied_in(&mut tx, name).await? {
+        tx.rollback().await?;
         tracing::debug!(repair = name, "Data repair already applied; skipped");
         return Ok(None);
     }
-    let outcome = repair().await?;
-    DataRepairModel::mark_applied(pool, name).await?;
+    // On an error the transaction is dropped, i.e. rolled back: no marker.
+    let outcome = repair(&mut tx).await?;
+    DataRepairModel::mark_applied_in(&mut tx, name).await?;
+    tx.commit().await?;
     tracing::info!(repair = name, "Data repair applied");
     Ok(Some(outcome))
+}
+
+/// Whether the repair `name` already ran (for a step to run outside the
+/// transaction, before it). A plain read.
+pub async fn is_applied(pool: &DbPool, name: &str) -> Result<bool, AppError> {
+    DataRepairModel::is_applied(pool, name).await
 }

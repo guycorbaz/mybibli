@@ -533,10 +533,10 @@ impl TitleModel {
 
     /// Story 13-4 (#578) — live titles whose description contains a `<` or
     /// an `&…;`: the candidates of the startup plain-text cleanup
-    /// (`services::title::convert_html_descriptions`), which decides per
-    /// row. Oldest first.
+    /// (`services::description_repair`), which decides per row. Oldest
+    /// first. A plain (non-locking) read inside the repair transaction.
     pub async fn list_descriptions_with_markup(
-        pool: &DbPool,
+        conn: &mut sqlx::MySqlConnection,
     ) -> Result<Vec<DescriptionMarkupCandidate>, AppError> {
         let rows: Vec<(u64, String, i32, Option<String>)> = sqlx::query_as(
             "SELECT id, description, version, \
@@ -547,7 +547,7 @@ impl TitleModel {
                AND deleted_at IS NULL \
              ORDER BY id ASC",
         )
-        .fetch_all(pool)
+        .fetch_all(&mut *conn)
         .await?;
         Ok(rows
             .into_iter()
@@ -563,23 +563,28 @@ impl TitleModel {
     }
 
     /// Story 13-4 (#578) — store the plain-text form of a description
-    /// (`None` clears it) under optimistic locking. `false` when the row
-    /// changed meanwhile (version, deleted). `manually_edited_fields` is
-    /// left alone: this is a data repair, not a hand edit.
+    /// (`None` clears it), guarded by `version` and the old value. `false`
+    /// when the row changed meanwhile. A **non-edit write** (same principle
+    /// as #521): the text is the same content, re-encoded, so neither
+    /// `version` nor `updated_at` moves — a pending series proposal recorded
+    /// against this version stays acceptable (review round 2, M1) — and
+    /// `manually_edited_fields` is left alone.
     pub async fn set_plain_description(
-        pool: &DbPool,
+        conn: &mut sqlx::MySqlConnection,
         id: u64,
         version: i32,
+        old: &str,
         description: Option<&str>,
     ) -> Result<bool, AppError> {
         let result = sqlx::query(
-            "UPDATE titles SET description = ?, version = version + 1, updated_at = NOW() \
-             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+            "UPDATE titles SET description = ?, updated_at = updated_at \
+             WHERE id = ? AND version = ? AND description = ? AND deleted_at IS NULL",
         )
         .bind(description)
         .bind(id)
         .bind(version)
-        .execute(pool)
+        .bind(old)
+        .execute(&mut *conn)
         .await?;
         Ok(result.rows_affected() == 1)
     }

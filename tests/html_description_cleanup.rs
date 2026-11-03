@@ -1,18 +1,20 @@
 //! Story 13-4 (#578) — descriptions stored with the providers' HTML are
 //! converted to plain text at startup.
 //!
-//! DB integration tests of the data step
-//! (`services::title::convert_html_descriptions`) and of its run-once
-//! wrapper (`repair_html_descriptions_once`, `data_repairs` marker).
+//! DB integration tests of the run-once repair
+//! (`services::description_repair::repair_html_descriptions_once`) and of
+//! `services::data_repairs::run_once`. Its effect on pending proposals is
+//! tested in `html_description_proposals.rs`.
 //!
 //! Run locally:
 //!     docker compose -f tests/docker-compose.rust-test.yml up -d
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test html_description_cleanup
 
-use mybibli::services::title::{
-    DescriptionCleanup, HTML_DESCRIPTIONS_REPAIR, convert_html_descriptions,
-    repair_html_descriptions_once,
+use mybibli::error::AppError;
+use mybibli::services::data_repairs::run_once;
+use mybibli::services::description_repair::{
+    DescriptionCleanup, HTML_DESCRIPTIONS_REPAIR, repair_html_descriptions_once,
 };
 use sqlx::MySqlPool;
 
@@ -56,18 +58,23 @@ const TITEUF: &str = "<p><b>Grandis un peu, Titeuf !</b></p><p>La vie de Titeuf 
 async fn html_descriptions_become_plain_text(pool: MySqlPool) {
     let html = title_with(&pool, "Titeuf", Some(TITEUF), None).await;
     let markup_only = title_with(&pool, "Empty", Some("<p><br></p>"), None).await;
+    // BnF-style text: `<<…>>` names no HTML element (review round 2, L1).
+    let bnf = title_with(&pool, "BnF", Some("<<Le>> Petit Prince"), None).await;
     let entity_only = title_with(&pool, "Entity", Some("Tintin &amp; Milou"), None).await;
     let prose = title_with(&pool, "Prose", Some("a < b"), None).await;
     let plain = title_with(&pool, "Plain", Some("Nothing to do."), None).await;
     let none = title_with(&pool, "None", None, None).await;
 
     let (_, html_version) = description_of(&pool, html).await;
-    let report = convert_html_descriptions(&pool).await.expect("convert");
+    let report = repair_html_descriptions_once(&pool)
+        .await
+        .expect("repair")
+        .expect("first run");
     assert_eq!(
         report,
         DescriptionCleanup {
             converted: 3,
-            unchanged: 1,
+            unchanged: 2,
             ..DescriptionCleanup::default()
         }
     );
@@ -77,7 +84,13 @@ async fn html_descriptions_become_plain_text(pool: MySqlPool) {
         desc.as_deref(),
         Some("Grandis un peu, Titeuf !\n\nLa vie de Titeuf évolue.")
     );
-    assert_eq!(version, html_version + 1, "optimistic-lock version bumped");
+    // A non-edit write (review round 2, M1): pending series proposals
+    // recorded against this version stay acceptable.
+    assert_eq!(version, html_version, "version not bumped");
+    assert_eq!(
+        description_of(&pool, bnf).await.0.as_deref(),
+        Some("<<Le>> Petit Prince")
+    );
     assert_eq!(description_of(&pool, markup_only).await.0, None);
     assert_eq!(
         description_of(&pool, entity_only).await.0.as_deref(),
@@ -99,7 +112,10 @@ async fn a_hand_edited_description_is_never_rewritten(pool: MySqlPool) {
     let edited = title_with(&pool, "Edited", Some(TITEUF), Some(r#"["description"]"#)).await;
     let other_field = title_with(&pool, "Other", Some(TITEUF), Some(r#"["publisher"]"#)).await;
 
-    let report = convert_html_descriptions(&pool).await.expect("convert");
+    let report = repair_html_descriptions_once(&pool)
+        .await
+        .expect("repair")
+        .expect("first run");
     assert_eq!(report.hand_edited, 1);
     assert_eq!(report.converted, 1);
     assert_eq!(
@@ -120,7 +136,10 @@ async fn a_deleted_title_is_left_alone(pool: MySqlPool) {
         .execute(&pool)
         .await
         .unwrap();
-    let report = convert_html_descriptions(&pool).await.expect("convert");
+    let report = repair_html_descriptions_once(&pool)
+        .await
+        .expect("repair")
+        .expect("first run");
     assert_eq!(report, DescriptionCleanup::default());
     assert_eq!(
         description_of(&pool, deleted).await.0.as_deref(),
@@ -176,7 +195,10 @@ async fn cache_rows_with_markup_descriptions_are_purged(pool: MySqlPool) {
             .await
             .unwrap();
     }
-    let report = convert_html_descriptions(&pool).await.expect("convert");
+    let report = repair_html_descriptions_once(&pool)
+        .await
+        .expect("repair")
+        .expect("first run");
     assert_eq!(report.cache_purged, 2);
     let live: Vec<String> = sqlx::query_scalar(
         "SELECT code FROM metadata_cache WHERE deleted_at IS NULL ORDER BY code",
@@ -185,4 +207,40 @@ async fn cache_rows_with_markup_descriptions_are_purged(pool: MySqlPool) {
     .await
     .unwrap();
     assert_eq!(live, vec!["9780000000103".to_string()]);
+}
+
+/// Review round 2 (L6) — a failing repair rolls back and leaves no marker,
+/// so it runs again on the next boot.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_failing_repair_writes_no_marker(pool: MySqlPool) {
+    let id = title_with(&pool, "Kept", Some("before"), None).await;
+    let failed = run_once(&pool, "test-failing-repair", move |conn| {
+        Box::pin(async move {
+            sqlx::query("UPDATE titles SET description = 'written' WHERE id = ?")
+                .bind(id)
+                .execute(&mut *conn)
+                .await?;
+            Err::<(), _>(AppError::Internal("boom".into()))
+        })
+    })
+    .await;
+    assert!(failed.is_err());
+    let markers: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM data_repairs WHERE name = ?")
+        .bind("test-failing-repair")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(markers, 0, "no marker after a failure");
+    assert_eq!(
+        description_of(&pool, id).await.0.as_deref(),
+        Some("before"),
+        "the repair's writes are rolled back with it"
+    );
+
+    let ok = run_once(&pool, "test-failing-repair", |_conn| {
+        Box::pin(async { Ok::<_, AppError>(7) })
+    })
+    .await
+    .expect("second boot");
+    assert_eq!(ok, Some(7), "runs again on the next boot");
 }

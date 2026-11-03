@@ -2,9 +2,10 @@
 //!
 //! Google Books and Comic Vine return their `description` as HTML; stored
 //! verbatim, the title page showed `<p>`, `<b>` and `&lt;` to the reader.
-//! [`html_to_plain_text`] is the one conversion, applied at ingestion
-//! (`MetadataResult::normalize_empty_strings`), by the startup cleanup of
-//! the existing rows and to an agent's proposed description;
+//! [`html_to_plain_text`] is the one conversion, applied where HTML comes
+//! in — the Google Books and Comic Vine parsers, an agent's proposed
+//! description at filing — and by the run-once startup repair of the
+//! existing rows (`services::description_repair`);
 //! [`description_paragraphs`] splits the stored plain text for display.
 //!
 //! [`decode_char_references`] is the entity decoder shared with the MARCXML
@@ -201,6 +202,64 @@ enum TagBreak {
     Paragraph,
 }
 
+/// The HTML elements a provider description is made of; any other `<name`
+/// is text.
+const KNOWN_ELEMENTS: &[&str] = &[
+    "a",
+    "abbr",
+    "article",
+    "b",
+    "big",
+    "blockquote",
+    "br",
+    "caption",
+    "center",
+    "cite",
+    "code",
+    "dd",
+    "del",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "font",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "img",
+    "ins",
+    "li",
+    "ol",
+    "p",
+    "pre",
+    "q",
+    "s",
+    "script",
+    "section",
+    "small",
+    "span",
+    "strike",
+    "strong",
+    "style",
+    "sub",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "tr",
+    "tt",
+    "u",
+    "ul",
+];
+
 /// Elements whose content is never text (dropped with their content).
 const SKIPPED_ELEMENTS: [&str; 2] = ["script", "style"];
 
@@ -230,21 +289,32 @@ enum TagScan {
 /// Scan the tag starting at `s[0] == '<'`, honouring quoted attribute
 /// values (a `>` inside quotes does not close the tag).
 fn tag_end(s: &str) -> TagScan {
-    let mut chars = s[1..].chars();
-    let starts_tag = match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() => true,
-        Some('/') => chars.next().is_some_and(|c| c.is_ascii_alphabetic()),
-        Some('!' | '?') => true,
-        _ => false,
-    };
-    if !starts_tag {
-        return TagScan::NotATag;
-    }
     if let Some(comment) = s.strip_prefix("<!--") {
         return match comment.find("-->") {
             Some(i) => TagScan::Tag(4 + i + 3),
             None => TagScan::Unterminated,
         };
+    }
+    let doctype = s
+        .get(..9)
+        .is_some_and(|head| head.eq_ignore_ascii_case("<!doctype"));
+    if !doctype {
+        // Review round 2 (L1): only a known HTML element name opens a tag,
+        // so BnF's `<<Le>> Petit Prince` or `<Astérix>` stay text.
+        let after_lt = s[1..].strip_prefix('/').unwrap_or(&s[1..]);
+        let name_len = after_lt
+            .bytes()
+            .take_while(|b| b.is_ascii_alphanumeric())
+            .count();
+        let name = &after_lt[..name_len];
+        let known = KNOWN_ELEMENTS.iter().any(|k| k.eq_ignore_ascii_case(name));
+        let boundary = after_lt[name_len..]
+            .chars()
+            .next()
+            .is_none_or(|c| c == '>' || c == '/' || c.is_ascii_whitespace());
+        if !known || !boundary {
+            return TagScan::NotATag;
+        }
     }
     let mut quote: Option<char> = None;
     for (i, c) in s.char_indices().skip(1) {
@@ -348,7 +418,13 @@ pub fn html_to_plain_text(raw: &str) -> String {
     }
 
     let decoded = decode_char_references(&text, true);
-    tidy_lines(&decoded).nfc().collect()
+    // Review round 2 (L3): `&#127;` or a raw C0/C1 control must not reach
+    // the catalogue (an agent's text is refused on one; a converted one
+    // would bypass that check). Tab and line breaks are text.
+    tidy_lines(&decoded)
+        .nfc()
+        .filter(|c| !c.is_control() || matches!(c, '\t' | '\n'))
+        .collect()
 }
 
 /// Does `raw` carry at least one complete tag? Linear: stops at the first
@@ -607,6 +683,31 @@ mod tests {
         // Unassigned in Windows-1252: dropped.
         assert_eq!(html_to_plain_text("a&#129;b"), "ab");
         assert_eq!(decode_char_references("a&#146;b", false), "ab");
+    }
+
+    /// Review round 2 (L1) — only known HTML element names are tags.
+    #[test]
+    fn unknown_element_names_stay_text() {
+        assert_eq!(
+            html_to_plain_text("<<Le>> Petit Prince"),
+            "<<Le>> Petit Prince"
+        );
+        assert_eq!(
+            html_to_plain_text("<Astérix> &amp; <Obélix>"),
+            "<Astérix> & <Obélix>"
+        );
+        assert_eq!(html_to_plain_text("<bible> and <br>x"), "<bible> and\nx");
+        assert_eq!(html_to_plain_text("<b>c</b>"), "c");
+        // `<b>` is a known element: a tag, even unbalanced.
+        assert_eq!(html_to_plain_text("a <b> c"), "a c");
+        assert_eq!(html_to_plain_text("<!DOCTYPE html><P CLASS=x>Up</P>"), "Up");
+    }
+
+    /// Review round 2 (L3) — no control character comes out.
+    #[test]
+    fn control_characters_are_dropped() {
+        assert_eq!(html_to_plain_text("a&#127;b&#x81;c&#9;d"), "abc\td");
+        assert_eq!(html_to_plain_text("<p>a\u{7}b</p>"), "ab");
     }
 
     #[test]

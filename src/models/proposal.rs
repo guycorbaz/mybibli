@@ -613,6 +613,49 @@ impl ProposalModel {
         Ok(done.rows_affected())
     }
 
+    /// Story 13-4 (#578, review round 2) — the live `description` items of
+    /// pending metadata proposals: `(item id, target title id, values,
+    /// edited by a librarian)`. A plain, non-locking read (consistent
+    /// snapshot): the repair then writes each item by primary key, so no
+    /// lock is taken on a status range (lock-scope rule, epic 12 retro A1).
+    pub async fn pending_description_items_in(
+        conn: &mut MySqlConnection,
+    ) -> Result<Vec<(u64, Option<u64>, String, bool)>, AppError> {
+        let rows: Vec<(u64, Option<u64>, String, Option<NaiveDateTime>)> = sqlx::query_as(
+            "SELECT i.id, i.target_id, CAST(i.proposed_values AS CHAR), \
+                    CAST(i.edited_at AS DATETIME) \
+             FROM proposals p STRAIGHT_JOIN proposal_items i ON i.proposal_id = p.id \
+             WHERE p.status = 'pending' AND p.kind = 'metadata' AND p.deleted_at IS NULL \
+               AND i.deleted_at IS NULL \
+               AND JSON_UNQUOTE(JSON_EXTRACT(i.proposed_values, '$.field')) = 'description' \
+             ORDER BY i.id ASC",
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(id, target, values, edited_at)| (id, target, values, edited_at.is_some()))
+            .collect())
+    }
+
+    /// Story 13-4 (#578, review round 2) — overwrite one item's values (by
+    /// primary key). A data repair, not an edit: `original_values` /
+    /// `edited_*` and `version` stay as they are.
+    pub async fn set_item_values_in(
+        conn: &mut MySqlConnection,
+        item_id: u64,
+        values: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            "UPDATE proposal_items SET proposed_values = ? WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(values)
+        .bind(item_id)
+        .execute(&mut *conn)
+        .await?;
+        Ok(())
+    }
+
     /// Story 12-2 (review) — overwrite a proposal's equivalence key (a
     /// rejection records the key of its live lines).
     pub async fn set_equivalence_key(
