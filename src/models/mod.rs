@@ -20,6 +20,7 @@ pub mod proposal;
 pub mod session;
 pub mod title;
 pub mod title_search;
+pub mod title_tome;
 pub mod trash;
 pub mod user;
 pub mod volume;

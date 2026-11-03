@@ -367,7 +367,6 @@ series:
   assigned: "%{series} auf Position %{position} zugeordnet."
   unassigned: "Aus der Serie entfernt."
   missing_volume: "Fehlendes Exemplar Nr."
-  volume_short: "Bd."
   ongoing: "laufend, zuletzt bekannt: Nr. %{position}"
   no_assignments: "Keiner Serie zugeordnet."
   sort:
@@ -1462,3 +1461,15 @@ proposals:
 record_dates:
   added_on: "Hinzugefügt am %{date}"
   modified_on: "Geändert am %{date}"
+# Story 13-10 (#579) — die Bandnummer (title_series.position_number).
+tome:
+  single: "Band %{n}"
+  range: "Bände %{start}–%{end}"
+  several: "Bände %{list}"
+  detected: "Band %{n} (erkannt)"
+  word: "Band"
+  change_position: "Ändern"
+  new_position: "Neue Position"
+  save_position: "Speichern"
+  omnibus_not_editable: "Ein Sammelband umfasst mehrere Positionen und kann hier nicht verschoben werden. Entfernen Sie ihn aus der Reihe und weisen Sie ihn dann mit dem neuen Bereich erneut zu."
+  manual_hint: "Dieser Titel enthält eine Bandnummer (%{label}). Der Titel wurde wie eingegeben gespeichert; entfernen Sie die Nummer aus dem Titel und tragen Sie sie als Position des Titels in seiner Reihe ein."

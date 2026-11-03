@@ -188,6 +188,7 @@ mod tests {
             dewey_code: None,
             created_at: None,
             last_added_at: d(2026, 11, 1).and_hms_opt(10, 0, 0),
+            tome_positions: Vec::new(),
         };
         let page = |items| {
             Some(crate::models::PaginatedList::new(

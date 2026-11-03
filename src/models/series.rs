@@ -500,6 +500,16 @@ pub struct TitleSeriesAssignment {
     pub position_start: i32,
     pub position_end: Option<i32>,
     pub is_omnibus: bool,
+    /// Story 13-10 — the row's `version` (the position edit's optimistic
+    /// lock); for an omnibus range, the first row's.
+    pub version: i32,
+}
+
+impl TitleSeriesAssignment {
+    /// Story 13-10 (#579) — "Tome N" / "Tomes N–M", localized.
+    pub fn tome_label(&self, loc: &str) -> String {
+        crate::services::tome::tome_label(self.position_start, self.position_end, loc)
+    }
 }
 
 /// Story 11-17 — a position of a series held by a live title.
@@ -520,8 +530,28 @@ impl TitleSeriesModel {
         series_id: u64,
         position_number: i32,
     ) -> Result<u64, AppError> {
-        let mut conn = pool.acquire().await?;
-        Self::assign_in(&mut conn, title_id, series_id, position_number).await
+        // One transaction (review round 2 L3): the insert and the clear of
+        // the detected-tome hint commit together, so a committed assign
+        // never reports an error. Retried once on a deadlock (review round
+        // 4 L5: the guarded hint write of a concurrent metadata fetch).
+        let mut attempt = 1;
+        loop {
+            let mut tx = pool.begin().await?;
+            match Self::assign_in(&mut tx, title_id, series_id, position_number).await {
+                Ok(id) => {
+                    tx.commit().await?;
+                    return Ok(id);
+                }
+                Err(AppError::Database(e))
+                    if attempt == 1 && crate::services::acceptance::is_deadlock(&e) =>
+                {
+                    drop(tx);
+                    attempt += 1;
+                    tracing::info!(title_id, series_id, "Series assignment deadlocked; retrying once");
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     /// [`Self::assign`] on a caller-held connection, so it can run inside
@@ -552,6 +582,9 @@ impl TitleSeriesModel {
             .bind(id)
             .execute(&mut *conn)
             .await?;
+            // Story 13-10 — the detected tome hint has served its purpose.
+            crate::models::title_tome::TitleTomeModel::clear_detected_tome_in(conn, title_id)
+                .await?;
             return Ok(id);
         }
 
@@ -566,7 +599,11 @@ impl TitleSeriesModel {
         .await;
 
         match result {
-            Ok(r) => Ok(r.last_insert_id()),
+            Ok(r) => {
+                crate::models::title_tome::TitleTomeModel::clear_detected_tome_in(conn, title_id)
+                    .await?;
+                Ok(r.last_insert_id())
+            }
             Err(sqlx::Error::Database(e)) if e.message().contains("Duplicate entry") => {
                 Err(AppError::BadRequest(
                     rust_i18n::t!("series.position_taken", position = position_number).to_string(),
@@ -644,7 +681,8 @@ impl TitleSeriesModel {
         title_id: u64,
     ) -> Result<Vec<TitleSeriesAssignment>, AppError> {
         let rows = sqlx::query(
-            "SELECT ts.id, ts.series_id, s.name AS series_name, ts.position_number, ts.is_omnibus \
+            "SELECT ts.id, ts.series_id, s.name AS series_name, ts.position_number, ts.is_omnibus, \
+             ts.version \
              FROM title_series ts \
              JOIN series s ON ts.series_id = s.id \
              WHERE ts.title_id = ? AND ts.deleted_at IS NULL AND s.deleted_at IS NULL \
@@ -662,6 +700,7 @@ impl TitleSeriesModel {
             let series_name: String = row.try_get("series_name").map_err(AppError::Database)?;
             let pos: i32 = row.try_get("position_number").map_err(AppError::Database)?;
             let is_omnibus: bool = row.try_get("is_omnibus").map_err(AppError::Database)?;
+            let version: i32 = row.try_get("version").map_err(AppError::Database)?;
 
             if is_omnibus {
                 // Try to extend the last entry if it's the same omnibus group
@@ -681,6 +720,7 @@ impl TitleSeriesModel {
                     position_start: pos,
                     position_end: Some(pos),
                     is_omnibus: true,
+                    version,
                 });
             } else {
                 result.push(TitleSeriesAssignment {
@@ -690,6 +730,7 @@ impl TitleSeriesModel {
                     position_start: pos,
                     position_end: None,
                     is_omnibus: false,
+                    version,
                 });
             }
         }
@@ -763,6 +804,7 @@ impl TitleSeriesModel {
                 }
             }
         }
+        crate::models::title_tome::TitleTomeModel::clear_detected_tome_in(tx, title_id).await?;
         Ok(())
     }
 

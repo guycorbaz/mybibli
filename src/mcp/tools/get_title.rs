@@ -45,8 +45,10 @@ impl McpTool for GetTitle {
          (when the title was entered) and `updated_at` (its last change, including automatic \
          metadata refreshes), both ISO 8601 UTC like the volumes' dates; `has_cover` (whether \
          a cover image exists) and `manually_edited_fields` (fields the librarian edited by \
-         hand; a metadata refresh never overwrites them). Find ids with search_titles. Deleted titles are reported \
-         as not found. Read-only."
+         hand; a metadata refresh never overwrites them). `detected_tome`: a tome number found in a \
+         provider title (and removed from it) while the title was in no series — a hint, not \
+         authoritative; the series positions are the title's tome numbers. Find ids with \
+         search_titles. Deleted titles are reported as not found. Read-only."
     }
 
     fn input_schema(&self) -> Value {

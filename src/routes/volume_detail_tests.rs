@@ -55,6 +55,7 @@ fn make_test_volume_detail_template(
         record_dates: crate::utils::RecordDates::default(),
         move_label: "Move to another title".to_string(),
         title_label: "Title:".to_string(),
+        tome_label: None,
     }
 }
 

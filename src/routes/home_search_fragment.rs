@@ -65,6 +65,7 @@ pub(super) fn render_search_fragment(
                     item,
                     &label_no_cover,
                     &volume_short_label,
+                    loc,
                 ));
             }
             html.push_str("</div>");
@@ -99,17 +100,21 @@ struct TitleCardTemplate<'a> {
     item: &'a SearchResult,
     label_no_cover: &'a str,
     volume_short_label: &'a str,
+    /// Story 13-10 — the locale of the "Tome N" line.
+    card_lang: &'a str,
 }
 
 fn render_search_row(
     item: &SearchResult,
     label_no_cover: &str,
     volume_short_label: &str,
+    card_lang: &str,
 ) -> String {
     TitleCardTemplate {
         item,
         label_no_cover,
         volume_short_label,
+        card_lang,
     }
     .render()
     .unwrap_or_else(|e| {
@@ -284,6 +289,7 @@ mod tests {
             dewey_code: None,
             created_at: None,
             last_added_at: None,
+            tome_positions: Vec::new(),
         };
         let paginated =
             crate::models::PaginatedList::new(vec![item], 1, 1, None, None, None);
@@ -337,6 +343,7 @@ mod tests {
             created_at: None,
             last_added_at: chrono::NaiveDate::from_ymd_opt(2026, 10, 31)
                 .and_then(|d| d.and_hms_opt(23, 59, 0)),
+            tome_positions: Vec::new(),
         };
         let html = render_search_table_row(&item, "de");
         assert!(html.trim_start().starts_with("<tr"), "row starts with <tr>: {html}");
@@ -369,8 +376,9 @@ mod tests {
             dewey_code: None,
             created_at: None,
             last_added_at: None,
+            tome_positions: Vec::new(),
         };
-        let html = render_search_row(&item, "No cover available", "vol");
+        let html = render_search_row(&item, "No cover available", "vol", "en");
         assert!(html.contains("/title/42"));
         assert!(html.contains("Albert Camus"));
         assert!(html.contains("Roman"));
@@ -405,8 +413,9 @@ mod tests {
             dewey_code: None,
             created_at: None,
             last_added_at: None,
+            tome_positions: Vec::new(),
         };
-        let html = render_search_row(&item, "No cover available", "vol");
+        let html = render_search_row(&item, "No cover available", "vol", "en");
         assert!(html.contains("1942"), "Should display publication year");
         assert!(
             html.contains("/covers/test.jpg"),

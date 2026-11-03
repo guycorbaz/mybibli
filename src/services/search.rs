@@ -68,6 +68,9 @@ impl SearchService {
             dewey_code: title.dewey_code.clone(),
             created_at: added.map(|(created, _)| created),
             last_added_at: added.map(|(_, last)| last),
+            tome_positions: crate::models::title_tome::TitleTomeModel::memberships(pool, title.id)
+                .await
+                .unwrap_or_else(|e| { tracing::warn!(error = %e, title_id = title.id, "Failed to load tome positions for search result"); Vec::new() }),
         }
     }
 }

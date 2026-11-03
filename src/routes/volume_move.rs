@@ -73,6 +73,8 @@ pub struct VolumeTitleRowTemplate {
     pub title_row_id: u64,
     pub title_row_name: String,
     pub title_row_label: String,
+    /// Story 13-10 — "Tome N" of the title, when in a series.
+    pub title_row_tome: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -335,6 +337,12 @@ pub async fn move_volume(
             title_row_id: moved.to_title_id,
             title_row_name: to_name,
             title_row_label: rust_i18n::t!("volume.title_field", locale = loc).to_string(),
+            title_row_tome: crate::services::tome::title_positions_label(
+                &state.pool,
+                moved.to_title_id,
+                loc,
+            )
+            .await?,
         },
         "title row",
     )?;
@@ -512,10 +520,12 @@ mod tests {
             title_row_id: 3,
             title_row_name: "<A>".to_string(),
             title_row_label: "Titre :".to_string(),
+            title_row_tome: Some("Tome 3".to_string()),
         }
         .render()
         .unwrap();
         assert!(html.contains("Titre :"));
+        assert!(html.contains("Tome 3"));
         assert!(html.contains(r#"href="/title/3""#));
         assert!(!html.contains("<A>"));
     }

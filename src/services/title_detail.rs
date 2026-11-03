@@ -192,6 +192,11 @@ pub struct AgentTitleDetail {
     /// Fields the librarian edited by hand; a metadata refresh never
     /// overwrites them.
     pub manually_edited_fields: Vec<String>,
+    /// Story 13-10 (#579) — read-only, non-authoritative: the tome number
+    /// found in a provider title while the title sits in no series.
+    /// Always `null` once it is in one (the positions in `series` are the
+    /// authoritative numbers).
+    pub detected_tome: Option<i32>,
 }
 
 /// Whether a stored cover URL denotes an actual cover.
@@ -212,6 +217,11 @@ pub async fn find_agent_title_detail(
     Ok(Some(AgentTitleDetail {
         has_cover: has_cover(title.cover_image_url.as_deref()),
         manually_edited_fields: title.parsed_manually_edited_fields(),
+        detected_tome: if detail.series.is_empty() {
+            crate::models::title_tome::TitleTomeModel::detected_tome(pool, id).await?
+        } else {
+            None
+        },
         detail,
     }))
 }
