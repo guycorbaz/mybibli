@@ -8,6 +8,7 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 
 ## Changelog
 
+- **2026-11-03** — Added **Epic 13: Cataloguing for real** (#574, #576–#586, #588), with new requirements FR153–FR160 and UX-DR36–UX-DR37. Decided by the project lead on 2026-11-03, after the first mass entry session and the agent session that enriched the comics; ships as v1.23.0. The sidebar (#547) moves to Epic 14, agent purchase price / value (#564) to Epic 15.
 - **2026-10-30** — Added **Epic 12: Proposals, after a first real use** (#502, #542, #560, #561, #563), with new requirements FR148–FR152 (FR149 refines FR140, FR152 extends FR132) and UX-DR35. Decided by the project lead on 2026-10-30, after the first production agent session; ships as v1.22.0 together with the #558 fix already on `main`. The sidebar (#547) is planned as Epic 13; the base path (#492) comes later.
 - **2026-10-27** — Added **Epic 11: An AI assistant proposes, the librarian decides** (MCP server #493 + fixes #494–#497), with new requirements FR122–FR147, NFR42–NFR48, AR27–AR31, UX-DR31–UX-DR34. Decided in the party-mode session of 2026-10-27. Epic 10 retro action A5 ("no more Epic N+1") is deliberately reversed for this epic.
 - **2026-04-13** — Inserted new **Epic 6: Pipeline CI/CD et fiabilité** between Epic 5 closure and original Epic 6. Renumbered: original Epic 6 (Accès multi-rôle & Sécurité) → Epic 7; original Epic 7 (Administration & Configuration) → Epic 8; original Epic 8 (Polish UX & Accessibilité) → Epic 9. Historical documents (old story files, old retros, readiness report) updated in the same pass for consistency. FR assignments did not change — only the epic labels that hold them.
@@ -172,6 +173,14 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - FR150: The MCP agent is told which metadata providers mybibli queries for each media type, worded so that a provider that found nothing at the last lookup is a lower priority, not an exclusion — its records may have improved since
 - FR151: Each row of the proposals list leads unmistakably to the proposal, and shows what is proposed at a glance (fields for a metadata proposal, a thumbnail for a cover proposal)
 - FR152: The agent can propose a correction of a title's main title (extends FR132): spelling, punctuation, capitalisation, or the real title of a record that only carries its ISBN
+- FR153: Titles and volumes show when they were added (and last modified); search and browse sort and filter by date added — a title counts as added when one of its volumes was — and the MCP agent reads the same dates and filters by them
+- FR154: Librarian can move a volume to another title; its label, location, loans and history follow it
+- FR155: Librarian can mark a title or a volume as an anomaly with a reason, find marked records in one list, and clear a mark by hand
+- FR156: The MCP agent can propose an anomaly mark on a title or a volume (extends FR130–FR132); the librarian accepts or rejects it
+- FR157: The tome number is shown and edited as the title's own (the series position, several for an omnibus); a tome marker is never left in the title text
+- FR158: A title not yet in a series keeps a detected tome number as a hint that pre-fills the position when a series is attached
+- FR159: The MCP agent can propose attaching an owned title at a position the series already expects; accepting it settles the expected tome
+- FR160: Every list of volumes shows each location as its full path
 
 ### NonFunctional Requirements
 
@@ -297,6 +306,8 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR33: "Pending proposals" dashboard indicator on the home page, following the existing home-indicator pattern
 - UX-DR34: Series detail lists expected tomes among the positions, each with an "Add to wishlist" action
 - UX-DR35: Proposals list row: one obvious link into the proposal, the catalog link secondary and labelled; a proposed-cover thumbnail and the list of proposed fields; keyboard- and screen-reader-accessible, mobile card mode included
+- UX-DR36: Move a volume: a "Move to another title" action on the volume page opens a title search and a UX-DR8 confirmation modal naming both titles
+- UX-DR37: Anomaly mark: a visible badge with its reason on title and volume pages, a mark / clear action, and an anomalies list (titles and volumes, filterable by kind), mobile card mode included
 
 ### FR Coverage Map
 
@@ -361,6 +372,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 | FR141-FR143 | 11 | Expected tomes, wishlist from series detail, access to the proposals page |
 | FR144-FR147 | 11 | Accepted fields protected from re-fetch, expected-tome auto-settle at scan, decision trail, manual expected-tome CRUD |
 | FR148-FR152 | 12 | ISBN with separators, per-field staleness, providers already searched, readable proposals list, title correction |
+| FR153-FR160 | 13 | Date added, move a volume, anomaly marks (by hand and proposed), tome number and hint, owned title fills an expected tome, full location paths |
 
 **NFR Distribution:**
 - NFR1-NFR5, NFR7-NFR10, NFR12, NFR14, NFR22-NFR24, NFR26-NFR28, NFR30-NFR32, NFR34-NFR35, NFR38 (foundation) → Epic 1
@@ -389,8 +401,9 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR4, UX-DR6 (complete), UX-DR8, UX-DR13, UX-DR26, UX-DR28 → Epic 9
 - UX-DR31, UX-DR32, UX-DR33, UX-DR34 → Epic 11
 - UX-DR35 → Epic 12
+- UX-DR36, UX-DR37 → Epic 13
 
-**Coverage: 152/152 FRs, 48/48 NFRs, 31/31 ARs, 35/35 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30.)
+**Coverage: 160/160 FRs, 48/48 NFRs, 31/31 ARs, 37/37 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03.)
 
 ## Epic List
 
@@ -2553,3 +2566,333 @@ So that the proposal workflow is documented as it now works.
 **And** the PDFs are rebuilt
 **And** `CLAUDE.md` reflects the new staleness rule in the proposal-lifecycle pattern
 **And** release documentation (Foundation Rule #19, v1.22.0, replacing the v1.21.1 wording already on `main`) is done at release time, not in this story
+
+### Epic 13: Cataloguing for real
+
+The first mass entry session (2026-10-31 → 2026-11-02: about 260 volumes scanned in three afternoons) and the agent session that enriched the comics the next day (371 proposals filed) showed where cataloguing rubs. The scanner reads a label twice and the second read shows an error; a label scanned again shows "already assigned" even under its own title; a volume attached to the wrong title (publisher EANs shared by several albums) can never be moved; eight titles stayed without metadata only because Google Books was saturated at the time of the scan; titles entered before v1.21.0 with an ISBN-10 never resolve; descriptions show raw HTML; the tome number sits inside the title text; nothing tells what was entered last Saturday — not even the agent; and the agent cannot attach an owned title at a position the series already expects. The epic fixes those points, lets anyone mark a doubtful record, and gives the volume lists their full location.
+
+**FRs:** FR153–FR160
+**NFRs:** none new (NFR3 CSP, NFR12 a11y, NFR42–NFR48 unchanged)
+**UX-DRs:** UX-DR36, UX-DR37
+**Issues:** #574, #576, #577, #578, #579, #580, #581, #582, #583, #584, #585, #586, #588; #554 item 1
+
+**Release.** v1.23.0 at the close of the epic, after its retrospective.
+
+**Key decisions (project lead, 2026-11-03).**
+- #574: an identical code received again within a short window is ignored (decided 2026-11-01).
+- #579: the tome number stays on `title_series.position_number` (omnibus titles hold several positions; a title may belong to several series), but behaves as the title's number: shown as "Tome N" everywhere, editable from the title page. The "Tome N" text never stays in `titles.title`; a title not yet in any series keeps the stripped number as a non-authoritative hint that pre-fills the position when a series is attached. Titles already catalogued are cleaned through the MCP agent (title correction and series proposals) — no bulk tool.
+- #580: a volume on loan can be reassigned; the loan follows the volume.
+- #581: an **anomaly** is a notion distinct from the "À contrôler" shelf-audit flag (#237): a reason, on titles and volumes, its own list. The MCP agent can propose an anomaly mark; the librarian decides.
+- #586: the date added (and the technical modification date, displayed only) is enough — no "modified by hand" date.
+- #588: added to the epic on 2026-11-03 — it blocks about 51 attachments the agent prepared.
+- The sidebar (#547) moves to Epic 14; agent purchase price / value (#564) to Epic 15; the other agent requests (#587, #589, #590, #591) to a later epic.
+
+**Sequencing.** 13.14 (found while planning: it reddens CI) → 13.1 → 13.2 → 13.3 → 13.4 → 13.5 (fixes, independent) → 13.6 → 13.7 → 13.8 → 13.9 → 13.10 → 13.11 (13.11 after 13.10: both touch series positions) → 13.12 (epic smoke, Foundation Rule #7) → 13.13 → retrospective → release v1.23.0.
+
+**Stories:**
+
+#### Story 13.1: Scan duplicates and an existing label (closes #574, #585)
+
+As a librarian scanning a pile of books,
+I want a double read of the scanner to be ignored, and a label I scan again to tell me where it is,
+So that I am never shown an error for something I did right.
+
+**Covers:** bug fixes
+
+**Acceptance Criteria:**
+
+**Given** a code submitted on `/catalog`
+**When** the same code is submitted again in the same session within the duplicate window (≈ 1 s, a named constant locked by a unit test)
+**Then** the second submission is ignored — no second action, a discreet note at most — and a deliberate rescan after the window is processed normally
+
+**Given** a V-code that already labels a volume of the title in context, and no active location
+**When** it is scanned
+**Then** the scan answers "already recorded for this title" as an info feedback, not an error
+
+**Given** a V-code that labels a volume of **another** title
+**When** it is scanned with a title in context
+**Then** the feedback names the title it belongs to (its title text, or its ISBN when no metadata arrived yet), links to the volume, and says the volume can be moved to another title (Story 13.8)
+
+**And** a user-input refusal of a scan is logged at INFO or WARN, never ERROR
+**And** unit tests cover the window and the three V-code cases; E2E covers a double read (one action) and the re-scan of a pair already recorded (info, not error)
+
+#### Story 13.2: A throttled metadata fetch is retried (closes #583)
+
+As a librarian,
+I want a title whose lookup failed only because a provider was saturated to be looked up again later,
+So that it does not stay without metadata for a transient reason.
+
+**Covers:** bug fix
+
+**Acceptance Criteria:**
+
+**Given** a metadata fetch whose chain returned nothing **and** met at least one 429/503
+**When** it ends
+**Then** the title is left in a "to retry" state (not the final "no result" state), and a background task retries it later with bounded attempts and a growing delay
+
+**Given** a chain that returned nothing without any throttling
+**Then** the current final "no result" state is kept
+
+**Given** a retry that finds metadata
+**Then** the title is updated exactly as at scan (`manually_edited_fields` respected) and the pending-updates delivery is unaffected
+
+**And** the retry task follows the existing background-task patterns (`src/tasks/`, `MissedTickBehavior::Skip`), stops after its last attempt, and logs each outcome
+**And** unit tests cover the state decision and the back-off schedule; a DB integration test covers a throttled title picked up and resolved by the task; the eight production titles of #583 are re-fetched after deployment
+
+#### Story 13.3: ISBN-10 titles stored as UPC are converted (closes #584)
+
+As a librarian,
+I want titles catalogued before v1.21.0 with an ISBN-10 to carry their ISBN,
+So that metadata providers can find them.
+
+**Covers:** bug fix (data)
+
+**Acceptance Criteria:**
+
+**Given** a live title whose code is UPC-typed and passes the ISBN-10 checksum
+**When** the conversion runs (migration or one-shot startup step)
+**Then** it becomes an ISBN title carrying the ISBN-13, and its metadata is fetched again
+
+**Given** the ISBN-13 already belongs to another live title
+**Then** the title is left unchanged and the collision is logged (no merge)
+
+**Given** a UPC code failing the ISBN-10 checksum (e.g. `2205025062`), or any other UPC code
+**Then** it is left unchanged
+
+**And** the conversion uses `utils::isbn10_to_isbn13` (Foundation Rule #1) and is idempotent
+**And** DB integration tests cover conversion, collision and the negative cases
+
+#### Story 13.4: Descriptions as plain text (closes #578)
+
+As a reader of a title page,
+I want the description to read as text,
+So that I never see `<p>`, `<b>` or `&lt;` in it.
+
+**Covers:** bug fix
+
+**Acceptance Criteria:**
+
+**Given** a provider description carrying HTML tags or entities (Google Books, Comic Vine)
+**When** it is stored
+**Then** tags are removed (paragraph and line breaks kept as line breaks), entities decoded once, whitespace normalised — by one helper in `src/utils.rs` used by every provider
+
+**Given** descriptions already stored with tags or entities
+**When** the one-shot cleanup runs
+**Then** they are converted the same way, except fields in `manually_edited_fields`
+
+**Given** a description with line breaks
+**Then** the title page shows its paragraphs, still escaped (no `|safe`, CSP unchanged)
+
+**And** unit tests cover tags, nested tags, entities (named, numeric, double-encoded), and plain text left untouched; a DB integration test covers the cleanup
+
+#### Story 13.5: Every series in the selector, Recent additions in table mode (closes #576, #577)
+
+As a librarian,
+I want to choose any series from a title page, and see Recent additions in the mode I chose,
+So that the 26th series is reachable and the home page is consistent.
+
+**Covers:** bug fixes
+
+**Acceptance Criteria:**
+
+**Given** more than 25 live series
+**When** a librarian opens the series selector on a title page
+**Then** every live series is offered (a dedicated unpaginated `id, name` query; a searchable control if the plain list is unwieldy)
+
+**Given** the browse mode set to table
+**When** the Recent additions section is shown
+**Then** it renders as a table with the browse table's columns, and switches live with the toggle like `#browse-results`
+
+**And** unit tests and E2E cover both (26+ series created in the spec; mode toggle on the home page)
+
+#### Story 13.6: The full location of a volume in every list (closes #582)
+
+As a librarian looking for a volume,
+I want its location shown as a full path,
+So that "Shelf 3" is never ambiguous.
+
+**Covers:** FR160
+
+**Acceptance Criteria:**
+
+**Given** a list of volumes with their location (title page table and cards, and every other volume listing found at story creation)
+**When** it renders
+**Then** each location shows its full path (e.g. "House › Living room › Bookcase › Shelf 3") built by the existing path builder of the volume page (Foundation Rule #1), with the L-code kept
+
+**And** a long path stays readable on narrow screens (wraps, or abbreviated with the full path accessible); axe-core passes
+**And** the path is computed without one query per volume
+**And** unit tests and E2E cover a volume on a nested location
+
+#### Story 13.7: Date added — pages, search and the agent (closes #586)
+
+As a librarian (and as the agent working for her),
+I want to know when titles and volumes were added,
+So that I can review what was entered since a given day.
+
+**Covers:** FR153
+
+**Acceptance Criteria:**
+
+**Given** a title page or a volume page
+**Then** it shows "Added on" and "Modified on" (localized dates)
+
+**Given** the search and browse pages
+**When** the librarian sorts by date added, or filters "added since <date>"
+**Then** titles are sorted / filtered by their creation date, and a title also counts as added when one of its volumes was added in the period
+
+**Given** the "Recently catalogued" dashboard indicator
+**Then** it counts titles created in the window **or** that received a volume in the window
+
+**Given** the MCP tools
+**Then** `get_title` and `search_titles` return `created_at` / `updated_at` (and each volume of `get_title` its `created_at`), and `search_titles` accepts an `added_since` date filter with the same "title or one of its volumes" rule; the registry test, `tests/common/mcp.rs` and `MCP_TOOLS` stay in sync
+
+**And** dates are returned as ISO 8601 UTC to the agent and localized in the web UI
+**And** unit tests, DB integration tests and E2E (web filter; MCP `added_since`) cover it
+
+#### Story 13.8: Move a volume to another title (closes #580)
+
+As a librarian,
+I want to move a volume to the title it really belongs to,
+So that a label attached under the wrong title can be fixed without losing the volume.
+
+**Covers:** FR154, UX-DR36
+
+**Acceptance Criteria:**
+
+**Given** a volume page, as a librarian
+**When** the librarian chooses "Move to another title", searches and picks the target title, and confirms in the UX-DR8 modal
+**Then** the volume's title changes under optimistic locking; its label, location, condition, values, loans (an active loan included) and history stay with it
+
+**Given** the target is the current title, or a deleted title
+**Then** the move is refused with an explicit message
+
+**And** the move is recorded in the logs (volume, from, to, who)
+**And** CSRF, role check and the modal scanner-guard invariant apply; axe-core passes
+**And** unit tests, DB integration tests (move, concurrent edit, loan follows) and E2E (move a volume, both title pages updated) cover it
+
+#### Story 13.9: Mark a doubtful record — by hand or proposed by the agent (closes #581)
+
+As a librarian,
+I want to mark a title or a volume as an anomaly with a reason, and let the agent propose such marks,
+So that strange barcodes and doubtful records can be found and fixed later.
+
+**Covers:** FR155, FR156, UX-DR37
+
+**Acceptance Criteria:**
+
+**Given** a title or volume page, as a librarian
+**When** the librarian marks it as an anomaly with a reason (required, bounded)
+**Then** the page shows the mark and its reason; the mark is cleared by hand only
+
+**Given** the anomalies list (reachable from the navigation or the dashboard, librarian+)
+**Then** it lists marked titles and volumes with their reason and date, links to each, and can be filtered by kind
+
+**Given** the MCP agent
+**When** it calls the new `propose_anomaly_mark` tool with a title or volume and a reason (and sources)
+**Then** a proposal is filed (it does not change the catalog); accepting it marks the target, rejecting it does not; a target already marked or deleted makes it stale
+
+**Given** `get_title`
+**Then** it tells whether the title and each of its volumes is marked, so the agent does not propose twice
+
+**And** the anomaly is distinct from the "À contrôler" flag (#237), which is unchanged
+**And** the tool follows the epic 11 proposal rules (registry, `PROPOSE_TOOLS`, closed schema, "does not change the catalog" and "`sources`" in the description, `Refusal` mapping, lock scope from the target index)
+**And** unit tests, DB integration tests (file, accept, reject, stale) and E2E (mark by hand; agent proposal accepted) cover it
+
+#### Story 13.10: The tome number (closes #579)
+
+As a librarian,
+I want the tome number shown and edited as the title's own, and never left inside the title text,
+So that series read cleanly and titles sort correctly.
+
+**Covers:** FR157, FR158
+
+**Acceptance Criteria:**
+
+**Given** metadata whose title starts or ends with a tome marker (`Tome 12`, `T12`, `T. 12`, `Vol. 12`, `n° 12`, …)
+**When** it is stored
+**Then** the marker is removed from `titles.title`; the number goes to the series position when the title is in exactly one series without a position conflict, otherwise into the title's non-authoritative tome hint
+
+**Given** a title with a tome hint
+**When** a series is attached to it
+**Then** the position is pre-filled with the hint, and the hint is cleared once attached
+
+**Given** a title in a series
+**Then** its page, the lists and the search results show "Tome N" (the position; several for an omnibus), and the librarian can edit the position from the title page
+
+**And** `manually_edited_fields` is respected (a hand-typed title is never rewritten)
+**And** the marker parser is one pure function with unit tests over real provider titles (positive and negative: "Les 4 As", "1984", "Spirou et Fantasio 12" are left alone unless a marker is present)
+**And** DB integration tests and E2E (a scanned title with a marker; attach with pre-filled position; edit from the title page) cover it
+
+#### Story 13.11: An owned title fills an expected tome by proposal (closes #588)
+
+As a librarian working with an agent,
+I want the agent to propose attaching an owned title at a position the series already expects,
+So that declaring expected tomes does not lock the series against its owned titles.
+
+**Covers:** FR159
+
+**Acceptance Criteria:**
+
+**Given** a series expecting a tome at position N
+**When** the agent files a `propose_series_attach` line for an owned title at N
+**Then** the line is accepted at filing when the expected tome has no ISBN or the same ISBN as the title; refused with an explicit message when both ISBNs are known and differ
+
+**Given** such a proposal
+**When** it is accepted
+**Then** the title is attached at N and the expected tome is settled by it (epic 11 settlement semantics), in the acceptance transaction
+
+**And** staleness and lock order follow the series rules (series → tomes; target index for proposal rows)
+**And** unit tests, DB integration tests (accept settles; ISBN mismatch refused; position taken meanwhile → stale) and E2E (agent proposal accepted, the tome shows as owned) cover it
+
+#### Story 13.12: Epic 13 smoke test (Foundation Rule #7)
+
+As the project,
+I want one end-to-end journey from a blank browser through the epic's core flow,
+So that the epic is proven done.
+
+**Covers:** Foundation Rule #7
+
+**Acceptance Criteria:**
+
+**Given** a blank browser with no injected cookie
+**When** the test runs
+**Then** it chains: librarian login through `loginAs` → scan an ISBN whose provider title carries a tome marker, then its label twice in a row (one volume, no error) → the title shows without the marker → filter "added since today" finds it → move a volume to another title → mark the title as an anomaly and find it in the anomalies list → the title page shows the full location path of a shelved volume
+
+**And** data is isolated (`specIsbn`, unique names); no `waitForTimeout`
+**And** the test is green under `CI=true npx playwright test --workers=2` (Foundation Rule #13)
+**And** if this test fails, the epic is not done
+
+#### Story 13.13: Documentation
+
+As an operator,
+I want the manual to describe the new behaviour,
+So that cataloguing is documented as it now works.
+
+**Covers:** FR153–FR160 (documentation)
+
+**Acceptance Criteria:**
+
+**Given** the user manual (English and French)
+**Then** it describes double reads and label re-scans, moving a volume, anomalies (by hand and by the agent), the date added, the tome number, and full location paths; the agent chapter documents the new tool and fields
+**And** the PDFs are rebuilt
+**And** `CLAUDE.md` reflects new patterns (anomaly proposals, tome hint)
+**And** release documentation (Foundation Rule #19, v1.23.0) is done at release time, not in this story
+
+#### Story 13.14: Concurrent key revocations no longer deadlock (#554, item 1)
+
+As an administrator,
+I want revoking an API key always to succeed,
+So that a revocation never answers "Server error" — and the CI suite stops failing on it.
+
+**Covers:** bug fix (found while planning the epic: CI run 41604087139, `1213 (40001): Deadlock found` on `POST /admin/api-keys/{id}/revoke` while another key was revoked 1 ms apart)
+
+**Acceptance Criteria:**
+
+**Given** two keys revoked at the same time, each with pending proposals
+**When** both revocations run
+**Then** both succeed; each marks only its own key's pending proposals stale
+
+**And** `ProposalModel::lock_pending_of_key` starts from the key index (`FORCE INDEX (idx_proposals_api_key)`), never from the status range — the epic 12 retro A1 lock-scope rule — and the revocation transaction is retried on deadlock (40001) only, like acceptance
+**And** a lock-scope regression test (`a_revocation_does_not_lock_proposals_of_another_key`, two connections) proves one revocation does not wait on the other key's proposals
+**And** #554 item 1 is closed by this story (item 2 stays open)
+
