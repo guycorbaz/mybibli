@@ -397,6 +397,7 @@ pub struct LabelledVolume {
     pub code: String,
     pub title_id: u64,
     pub title: String,
+    /// Story 13-6 — the full location path root → leaf.
     pub location: Option<String>,
     pub state: Option<String>,
 }
@@ -505,8 +506,7 @@ impl LabelModel {
 
         let rows = sqlx::query(
             "SELECT v.id, v.label AS code, v.title_id, t.title, \
-                    (SELECT sl.name FROM storage_locations sl \
-                      WHERE sl.id = v.location_id AND sl.deleted_at IS NULL) AS location, \
+                    CAST(v.location_id AS SIGNED) AS location_id, \
                     (SELECT vs.name FROM volume_states vs \
                       WHERE vs.id = v.condition_state_id AND vs.deleted_at IS NULL) AS state \
              FROM volume_labels vl \
@@ -521,15 +521,29 @@ impl LabelModel {
         .fetch_all(pool)
         .await?;
 
+        // Story 13-6 — full location paths from one query; a soft-deleted
+        // location has no path, so the volume shows none (as before).
+        let any_shelved = rows.iter().any(|r| {
+            r.try_get::<Option<i64>, _>("location_id")
+                .is_ok_and(|id| id.is_some())
+        });
+        let paths = if any_shelved {
+            crate::models::location::LocationModel::all_paths(pool).await?
+        } else {
+            std::collections::HashMap::new()
+        };
         let items = rows
             .iter()
             .map(|r| -> Result<LabelledVolume, AppError> {
+                let location_id = r
+                    .try_get::<Option<i64>, _>("location_id")?
+                    .map(|v| v as u64);
                 Ok(LabelledVolume {
                     id: r.try_get("id")?,
                     code: r.try_get("code")?,
                     title_id: r.try_get("title_id")?,
                     title: r.try_get("title")?,
-                    location: r.try_get("location")?,
+                    location: location_id.and_then(|id| paths.get(&id).cloned()),
                     state: r.try_get("state")?,
                 })
             })
@@ -590,5 +604,54 @@ mod tests {
             version: 1,
         };
         assert_eq!(l.to_string(), "À vérifier");
+    }
+
+    /// Story 13-6 — a labelled volume shows its location as a full path.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn list_volumes_for_carries_the_full_location_path(pool: sqlx::MySqlPool) {
+        let exec = |sql: &'static str| sqlx::query(sql);
+        let house = exec("INSERT INTO storage_locations (name, node_type, label) VALUES ('Maison', 'room', 'L0951')")
+            .execute(&pool)
+            .await
+            .unwrap()
+            .last_insert_id();
+        let shelf = exec("INSERT INTO storage_locations (name, node_type, label, parent_id) VALUES ('Étagère 3', 'room', 'L0952', ?)")
+            .bind(house)
+            .execute(&pool)
+            .await
+            .unwrap()
+            .last_insert_id();
+        let genre: u64 = sqlx::query_scalar("SELECT id FROM genres WHERE deleted_at IS NULL ORDER BY id LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let title = exec("INSERT INTO titles (title, language, media_type, genre_id) VALUES ('Labelled', 'fr', 'book', ?)")
+            .bind(genre)
+            .execute(&pool)
+            .await
+            .unwrap()
+            .last_insert_id();
+        let vol = exec("INSERT INTO volumes (label, title_id, location_id) VALUES ('V0951', ?, ?)")
+            .bind(title)
+            .bind(shelf)
+            .execute(&pool)
+            .await
+            .unwrap()
+            .last_insert_id();
+        let label = exec("INSERT INTO labels (name) VALUES ('Story 13-6')")
+            .execute(&pool)
+            .await
+            .unwrap()
+            .last_insert_id();
+        exec("INSERT INTO volume_labels (volume_id, label_id) VALUES (?, ?)")
+            .bind(vol)
+            .bind(label)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let got = LabelModel::list_volumes_for(&pool, label, 1).await.unwrap();
+        assert_eq!(got.items.len(), 1);
+        assert_eq!(got.items[0].location.as_deref(), Some("Maison → Étagère 3"));
     }
 }

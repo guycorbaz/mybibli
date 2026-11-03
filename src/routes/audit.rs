@@ -111,7 +111,7 @@ pub async fn audit_list_page(
     // Fix #321 — location_id is `BIGINT UNSIGNED NULL` but we project
     // it as `CAST(... AS SIGNED)`. Per CLAUDE.md MariaDB type gotcha
     // #2 the decoder MUST be `Option<i64>`, then convert to `u64` for
-    // the downstream `LocationModel::get_path(pool, u64)` call. The
+    // the downstream `LocationModel::all_paths` lookup (story 13-6). The
     // original `Option<u64>` triggered a sqlx 0.8 type-mismatch and a
     // 500 the moment a flagged-volume row actually existed in prod.
     // Latent since v1.6.0 (#237) — covered by the empty-state branch
@@ -126,14 +126,17 @@ pub async fn audit_list_page(
     .fetch_all(pool)
     .await?;
 
+    // Story 13-6 — every path from one query instead of a parent walk per row.
+    let paths = if rows.iter().any(|r| r.4.is_some()) {
+        crate::models::location::LocationModel::all_paths(pool).await?
+    } else {
+        std::collections::HashMap::new()
+    };
     let mut items: Vec<AuditRowDisplay> = Vec::with_capacity(rows.len());
     for (vol_id, vol_label, title_id, title_name, location_id) in rows {
-        let location_path = match location_id {
-            Some(lid) => crate::models::location::LocationModel::get_path(pool, lid as u64)
-                .await
-                .unwrap_or_default(),
-            None => String::new(),
-        };
+        let location_path = location_id
+            .and_then(|lid| paths.get(&(lid as u64)).cloned())
+            .unwrap_or_default();
         items.push(AuditRowDisplay {
             volume_id: vol_id,
             volume_label: vol_label,

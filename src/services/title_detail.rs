@@ -61,6 +61,9 @@ pub struct TitleDetailVolume {
     pub label: String,
     pub location_name: Option<String>,
     pub location_label: Option<String>,
+    /// Story 13-6 — the full location path root → leaf
+    /// ("Maison → Salon → Étagère 3"); `location_name` stays the leaf.
+    pub location_path: Option<String>,
     pub condition_name: Option<String>,
 }
 
@@ -108,6 +111,7 @@ pub async fn build_title_detail(
             label: v.label,
             location_name: v.location_name,
             location_label: v.location_label,
+            location_path: v.location_path,
             condition_name: v.condition_name,
         })
         .collect();
