@@ -271,7 +271,7 @@ development_status:
   #   Rule #7) -> 13-13 -> retrospective -> release.
   # Next: Epic 14 = sidebar (#547); Epic 15 = agent price / value (#564).
   epic-13: backlog
-  13-1-scan-duplicates-and-existing-label: backlog
+  13-1-scan-duplicates-and-existing-label: ready-for-dev
   13-2-throttled-fetch-retried: backlog
   13-3-isbn10-upc-titles-converted: backlog
   13-4-descriptions-as-plain-text: backlog
