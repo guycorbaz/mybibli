@@ -13,6 +13,10 @@ pub struct ListLabels;
 
 const TOOL: &str = "list_labels";
 
+/// At most this many labels are returned (a household library defines a
+/// handful; no pagination is needed).
+const MAX_LABELS: usize = 500;
+
 /// No argument is accepted.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -56,7 +60,7 @@ impl McpTool for ListLabels {
     fn description(&self) -> &'static str {
         "List the labels the librarians defined to mark titles and volumes (for example \
          \"Code douteux\" or \"À vérifier\"), sorted by name, all at once. Each item gives the \
-         label `id`, its `name`, and how many live titles (`title_count`) and volumes \
+         label `id`, its `name` (at most the first 500 labels by name), and how many live titles (`title_count`) and volumes \
          (`volume_count`) carry it. Use an id or the exact name in propose_label to propose \
          marking a doubtful title or volume; get_title shows the labels a title and its \
          volumes already carry. Only librarians create labels: there is no tool to create one. \
@@ -77,6 +81,7 @@ impl McpTool for ListLabels {
             let items = library_labels(&ctx.state.pool)
                 .await?
                 .into_iter()
+                .take(MAX_LABELS)
                 .map(Item::from)
                 .collect();
             to_json(Answer { items }, TOOL)
@@ -97,6 +102,12 @@ mod tests {
             args::parse_object::<Args>(json!({"page": 1}), ""),
             Err(ToolError::InvalidArguments(_))
         ));
+    }
+
+    #[test]
+    fn the_cap_is_documented() {
+        assert_eq!(MAX_LABELS, 500);
+        assert!(ListLabels.description().contains("first 500 labels"));
     }
 
     #[test]

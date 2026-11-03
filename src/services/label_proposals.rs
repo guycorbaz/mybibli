@@ -217,6 +217,13 @@ impl From<ProposalError> for LabelProposalError {
     }
 }
 
+/// The NFC form of a label name (pure): an agent may send decomposed
+/// accents (NFD) for a name typed precomposed in the web form.
+pub fn nfc(name: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    name.nfc().collect()
+}
+
 /// Trim the note; empty means none (pure).
 pub fn normalize_note(note: Option<&str>) -> Result<Option<String>, LabelProposalError> {
     let Some(n) = note.map(str::trim).filter(|n| !n.is_empty()) else {
@@ -274,10 +281,12 @@ impl LabelProposalService {
         }
         let label = match &req.label {
             LabelChoice::Id(id) => LabelModel::find_by_id_in(&mut tx, *id, false).await?,
-            LabelChoice::Name(name) => LabelModel::find_by_exact_name_in(&mut tx, name).await?,
+            LabelChoice::Name(name) => {
+                LabelModel::find_by_exact_name_in(&mut tx, &nfc(name)).await?
+            }
         };
         let Some(label) = label else {
-            let known = LabelModel::list_all(pool)
+            let known = LabelModel::list_all_in(&mut tx)
                 .await?
                 .into_iter()
                 .take(MAX_LISTED_LABELS)
@@ -349,6 +358,12 @@ async fn target_is_live(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn label_names_are_compared_in_nfc() {
+        assert_eq!(nfc("A\u{300} ve\u{301}rifier"), "À vérifier");
+        assert_eq!(nfc("Code douteux"), "Code douteux");
+    }
 
     #[test]
     fn notes_are_trimmed_and_bounded() {

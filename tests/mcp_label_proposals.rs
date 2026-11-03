@@ -622,3 +622,81 @@ async fn an_acceptance_on_one_record_does_not_lock_proposals_of_another(pool: Db
     assert_eq!(volume_labels(&pool, va).await, vec![doubt]);
     assert_eq!(volume_labels(&pool, vb).await, vec![doubt]);
 }
+
+// ─── Review round 1 ─────────────────────────────────────────────────
+
+// L7: a name sent decomposed (NFD) matches the stored precomposed name.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_label_name_sent_in_nfd_matches(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Vol 714 pour Sydney").await;
+    let vol = seed_volume(&pool, title, "V0964").await;
+    let check = seed_label(&pool, "À vérifier").await;
+    let id = file(
+        &f,
+        on_volume(vol, json!({"label_name": "A\u{300} ve\u{301}rifier"})),
+    )
+    .await;
+    let label_id: u64 = sqlx::query_scalar(
+        "SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.label_id')) AS SIGNED) \
+         FROM proposal_items WHERE proposal_id = ?",
+    )
+    .bind(id)
+    .fetch_one(&pool)
+    .await
+    .map(|v: i64| v as u64)
+    .unwrap();
+    assert_eq!(label_id, check);
+}
+
+// L4: a live volume whose title was deleted is gone: stale.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_volume_of_a_deleted_title_makes_the_proposal_stale(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Tintin et les Picaros").await;
+    let vol = seed_volume(&pool, title, "V0965").await;
+    let doubt = seed_label(&pool, "Code douteux").await;
+    let id = file(&f, on_volume(vol, json!({"label_id": doubt}))).await;
+    sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("le titre ou le volume qu'elle marque a été supprimé"),
+        "{body}"
+    );
+    assert_eq!(status_of(&pool, id).await, "stale");
+    assert!(volume_labels(&pool, vol).await.is_empty());
+}
+
+// L2: a volume link detached by hand is brought back by the acceptance.
+#[sqlx::test(migrations = "./migrations")]
+async fn accepting_on_a_volume_brings_a_detached_link_back(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Coke en stock").await;
+    let vol = seed_volume(&pool, title, "V0966").await;
+    let doubt = seed_label(&pool, "Code douteux").await;
+    attach_by_hand(&pool, "volume_labels", "volume_id", vol, doubt).await;
+    sqlx::query("UPDATE volume_labels SET deleted_at = NOW() WHERE volume_id = ?")
+        .bind(vol)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let id = file(&f, on_volume(vol, json!({"label_id": doubt}))).await;
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(status_of(&pool, id).await, "accepted");
+    assert_eq!(volume_labels(&pool, vol).await, vec![doubt]);
+    let (rows, version): (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*), CAST(MAX(version) AS SIGNED) FROM volume_labels WHERE volume_id = ?",
+    )
+    .bind(vol)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(rows, 1, "brought back, not duplicated");
+    assert!(version >= 2, "the reactivation bumps the link version");
+}

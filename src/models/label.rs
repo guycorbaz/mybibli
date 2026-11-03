@@ -66,10 +66,18 @@ impl LabelModel {
     }
 
     pub async fn list_all(pool: &DbPool) -> Result<Vec<LabelModel>, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::list_all_in(&mut conn).await
+    }
+
+    /// Story 13-9 — [`Self::list_all`] on the caller's connection.
+    pub async fn list_all_in(
+        conn: &mut sqlx::MySqlConnection,
+    ) -> Result<Vec<LabelModel>, AppError> {
         let rows = sqlx::query(
             "SELECT id, name, color, version FROM labels WHERE deleted_at IS NULL ORDER BY name",
         )
-        .fetch_all(pool)
+        .fetch_all(&mut *conn)
         .await?;
         rows.iter().map(Self::from_row).collect()
     }
@@ -315,10 +323,14 @@ impl LabelModel {
     ///
     /// One upsert on the composite UNIQUE: a new link is inserted, a
     /// detached one brought back (`version` bumped), a live one left as
-    /// it is. No read-then-write, so no locking read on the join table:
-    /// two acceptances on different records only take insert-intention
-    /// locks there, which never conflict (lock-scope rule, epic 12 retro
-    /// A1) — and an attach that raced in is simply absorbed.
+    /// it is. No read-then-write, so no locking read on the join table
+    /// (lock-scope rule, epic 12 retro A1): a new link takes only an
+    /// insert-intention lock, which never conflicts with another insert;
+    /// bringing back (or finding) an existing link takes a next-key X lock
+    /// on that one index record, so an insert into the gap just before it
+    /// may wait briefly for the commit — a wait, never a deadlock (this
+    /// transaction takes no further lock on the join table). An attach
+    /// that raced in is simply absorbed.
     pub async fn attach_in(
         conn: &mut sqlx::MySqlConnection,
         target: LabelTarget,

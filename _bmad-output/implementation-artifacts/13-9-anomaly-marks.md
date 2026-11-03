@@ -1,6 +1,6 @@
 # Story 13.9: The agent proposes a label on a doubtful record
 
-Status: review
+Status: done
 
 GitHub issue: #581 (type:change-request). Covers: FR155, FR156 (as revised), UX-DR37 (as revised). Epic 13; ships in v1.23.0.
 
@@ -66,3 +66,20 @@ Reuse the existing **entity labels** (CR #443: librarian-defined labels attached
 - Full suites not run here (the orchestrator runs them once before the push).
 
 No file above 2000 lines (largest touched: `proposal_edit.rs` 1723).
+
+### Dev Notes (review round 1)
+
+- Label proposals have no `version` or identity staleness: a record corrected by hand after filing can still be labelled; the librarian judges from the note and sources (L1).
+- `LabelModel::attach_in` upsert: a new link takes an insert-intention lock; bringing back a detached (or finding a live) link takes a next-key X lock on that record, so an insert into the gap before it may wait briefly — never a deadlock (L2).
+- The "already attached" check at acceptance is a plain read: a hand detach committed between the snapshot and the target lock is not seen and the proposal goes stale although the label is gone — accepted (single librarian; the agent may propose again) (L5).
+
+### Review Findings
+
+Single round (code review of 681db44): 0 Medium+, 7 Low — all applied.
+- L1 — no version/identity staleness documented (module doc of `label_acceptance.rs`, Dev Notes).
+- L2 — `attach_in` comment corrected (next-key lock on reactivation: brief wait, no deadlock); test `accepting_on_a_volume_brings_a_detached_link_back`.
+- L3 — the label list of the `LabelNotFound` message is read on the filing transaction (`LabelModel::list_all_in`).
+- L4 — a live volume whose title was deleted makes the proposal stale (target gone); test `a_volume_of_a_deleted_title_makes_the_proposal_stale`.
+- L5 — plain-read race on a hand detach documented (accepted).
+- L6 — `list_labels` capped at 500 labels, stated in its description (unit test).
+- L7 — the requested label name is NFC-normalised before the exact comparison; unit test + `a_label_name_sent_in_nfd_matches`.

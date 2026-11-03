@@ -8,6 +8,7 @@
 //! 2. [`ProposalService::check_staleness_in`] — the target row is locked
 //!    (`FOR UPDATE`); a deleted title or volume marks the proposal
 //!    `stale` (a moved `version` does not count, `version_counts`);
+//!    A volume whose title was deleted counts as deleted too;
 //! 3. the label row is share-locked — a deleted label marks the proposal
 //!    `stale` ([`AcceptConflict::LabelGone`]);
 //! 4. a label already on the record marks the proposal `stale`
@@ -16,9 +17,15 @@
 //!    #521). A plain read: a hand attach committed in the instant between
 //!    the transaction's snapshot and the target lock is not seen, and the
 //!    upsert below absorbs it (the proposal is then accepted, nothing
-//!    added);
+//!    added). Conversely a hand *detach* committed in that window is not
+//!    seen either: the proposal goes stale although the label is gone —
+//!    accepted (single librarian; the agent may propose again);
 //! 5. the decision is recorded and the label attached
 //!    ([`LabelModel::attach_in`], an upsert).
+//!
+//! No `version` or identity staleness (`proposals::version_counts`): a
+//! record corrected by hand after filing can still be labelled — the
+//! librarian reads the agent's note and sources and judges.
 //!
 //! Lock scope (epic 12 retro A1): every lock above is taken by primary key
 //! — the proposal, its items, one title or volume, one label — plus the
@@ -37,7 +44,7 @@ use crate::services::acceptance::{
     lock_pending_in, mark_stale_in,
 };
 use crate::services::label_proposals::label_target;
-use crate::services::proposals::{Decision, ProposalService, Transition};
+use crate::services::proposals::{Decision, ProposalService, StaleReason, StaleTarget, Transition};
 
 /// A stored label proposal, parsed back.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,6 +134,28 @@ pub async fn accept_in(
         return Ok(AcceptOutcome::Stale(StaleCause::Targets(
             check.stale_targets,
         )));
+    }
+    // Review round 1 (L4): a live volume whose title was deleted is gone
+    // too (it shows nowhere in the catalog).
+    if let LabelTarget::Volume(vid) = stored.target
+        && !ProposalModel::live_volume_briefs_in(conn, &[vid])
+            .await?
+            .contains_key(&vid)
+    {
+        match ProposalService::transition_in(conn, id, &Decision::MarkStale).await? {
+            Transition::Decided(_) | Transition::WentStale(_) => {}
+        }
+        let targets = items
+            .iter()
+            .filter_map(|i| {
+                i.target.map(|target| StaleTarget {
+                    item_id: i.id,
+                    target,
+                    reason: StaleReason::Deleted,
+                })
+            })
+            .collect();
+        return Ok(AcceptOutcome::Stale(StaleCause::Targets(targets)));
     }
     let Some(label) = LabelModel::find_by_id_in(conn, stored.label_id, true).await? else {
         return mark_stale_in(
