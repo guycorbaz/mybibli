@@ -56,6 +56,29 @@ impl MetadataRetryModel {
         Ok(())
     }
 
+    /// Story 13-3 (#584) — queue `title_id` for a lookup due now, with a
+    /// fresh schedule (`attempts = 0`) whether the row is new, dequeued or
+    /// still live: an identifier change makes any earlier schedule moot.
+    /// Used only by the startup ISBN-10 conversion, inside its transaction.
+    pub async fn enqueue_fresh<'e, E>(executor: E, title_id: u64) -> Result<(), AppError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::MySql>,
+    {
+        sqlx::query(
+            "INSERT INTO metadata_fetch_retries (title_id, attempts, next_attempt_at) \
+             VALUES (?, 0, NOW()) \
+             ON DUPLICATE KEY UPDATE \
+               attempts = 0, \
+               next_attempt_at = VALUES(next_attempt_at), \
+               version = version + 1, \
+               deleted_at = NULL",
+        )
+        .bind(title_id)
+        .execute(executor)
+        .await?;
+        Ok(())
+    }
+
     /// At most `limit` live rows whose next attempt is due, oldest due
     /// first.
     pub async fn due_batch(pool: &DbPool, limit: u32) -> Result<Vec<DueRetry>, AppError> {

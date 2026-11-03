@@ -6,10 +6,13 @@
 //! up again.
 //!
 //! **Queue rule.** A live row in `metadata_fetch_retries`
-//! ([`crate::models::metadata_retry`]) means "this title's latest lookup was
-//! throttled". Every lookup records its end through [`record_lookup`] /
-//! [`note_fetch_outcome`]: a throttled miss enqueues the title, anything
-//! else dequeues it. The lookups are:
+//! ([`crate::models::metadata_retry`]) means "this title still needs a
+//! lookup": its latest lookup was throttled, or a re-fetch is pending after
+//! an identifier change (story 13-3: a title whose ISBN-10 stored as UPC was
+//! converted at startup is queued due now, `attempts = 0`). Every lookup
+//! records its end through [`record_lookup`] / [`note_fetch_outcome`]: a
+//! throttled miss enqueues the title, anything else dequeues it. The
+//! lookups are:
 //!
 //! * the scan-time fetch ([`super::metadata_fetch::fetch_metadata_chain`]);
 //! * the manual re-download (`routes::titles::redownload_metadata` — a found
@@ -390,12 +393,14 @@ async fn retry_row(
             if !MetadataRetryModel::reschedule(&state.pool, row, attempts, delay_secs).await? {
                 return Ok(log_superseded(row));
             }
-            tracing::info!(
-                title_id = row.title_id,
-                attempts,
-                delay_secs,
+            // A row queued without a throttled lookup behind it (story
+            // 13-3 re-fetch) is throttled for the first time here.
+            let message = if row.attempts == 0 {
+                "Metadata retry throttled; rescheduled"
+            } else {
                 "Metadata retry throttled again; rescheduled"
-            );
+            };
+            tracing::info!(title_id = row.title_id, attempts, delay_secs, "{message}");
             RowResult::Rescheduled
         }
         RetryVerdict::GiveUp { attempts } => {

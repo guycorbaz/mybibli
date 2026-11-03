@@ -396,3 +396,71 @@ async fn non_print_media_types_are_left_alone(pool: MySqlPool) {
     assert_eq!(identifiers(&pool, dvd).await, before_dvd);
     assert!(ids.contains(&magazine), "a magazine is a print type");
 }
+
+/// Review round 2 (L1) — a title already on the queue (an earlier
+/// throttled UPC lookup, with attempts and a later schedule) is reset to a
+/// fresh schedule, due now.
+#[sqlx::test(migrations = "./migrations")]
+async fn an_already_queued_title_gets_a_fresh_schedule(pool: MySqlPool) {
+    let id = title_with(&pool, "Queued", None, Some("2205001213")).await;
+    sqlx::query(
+        "INSERT INTO metadata_fetch_retries (title_id, attempts, next_attempt_at) \
+         VALUES (?, 3, NOW() + INTERVAL 12 HOUR)",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .expect("seed queue row");
+
+    convert_isbn10_upc_titles(&pool).await.expect("convert");
+
+    assert_eq!(queue_row(&pool, id).await, Some((true, true)));
+    let attempts: i32 =
+        sqlx::query_scalar("SELECT attempts FROM metadata_fetch_retries WHERE title_id = ?")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .expect("attempts");
+    assert_eq!(attempts, 0);
+}
+
+/// Review round 2 (L4) — the conversion and its enqueue are one
+/// transaction: when the enqueue fails, the title is left unchanged.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_failed_enqueue_rolls_the_conversion_back(pool: MySqlPool) {
+    let id = title_with(&pool, "Rolled back", None, Some("2205001213")).await;
+    let before = identifiers(&pool, id).await;
+    sqlx::query("DROP TABLE metadata_fetch_retries")
+        .execute(&pool)
+        .await
+        .expect("drop the queue table in this test's database");
+
+    let report = convert_isbn10_upc_titles(&pool).await.expect("convert");
+
+    assert!(!converted_ids(&report.converted).contains(&id));
+    assert!(report.errors >= 1);
+    assert_eq!(identifiers(&pool, id).await, before, "title unchanged");
+}
+
+/// Review round 2 (L4) — `bd`, `report` and `book` stay candidates.
+#[sqlx::test(migrations = "./migrations")]
+async fn bd_report_and_book_titles_are_candidates(pool: MySqlPool) {
+    let bd = title_with(&pool, "A BD", None, Some("2205001213")).await;
+    let report_title = title_with(&pool, "A report", None, Some("2604000288")).await;
+    let book = title_with(&pool, "A book", None, Some("2862270164")).await;
+    for (id, media) in [(report_title, "report"), (book, "book")] {
+        sqlx::query("UPDATE titles SET media_type = ? WHERE id = ?")
+            .bind(media)
+            .bind(id)
+            .execute(&pool)
+            .await
+            .expect("set media type");
+    }
+
+    let report = convert_isbn10_upc_titles(&pool).await.expect("convert");
+
+    let ids = converted_ids(&report.converted);
+    for id in [bd, report_title, book] {
+        assert!(ids.contains(&id), "title {id} converted");
+    }
+}

@@ -470,8 +470,9 @@ async fn convert_one(
         );
         return Ok(Step::Superseded);
     }
-    // Due now: the retry task's next tick looks it up again by ISBN.
-    crate::models::metadata_retry::MetadataRetryModel::enqueue(&mut *tx, candidate.id, 0).await?;
+    // Due now, fresh schedule: the retry task's next tick looks it up
+    // again by ISBN.
+    crate::models::metadata_retry::MetadataRetryModel::enqueue_fresh(&mut *tx, candidate.id).await?;
     tx.commit().await?;
     tracing::info!(
         title_id = candidate.id,
