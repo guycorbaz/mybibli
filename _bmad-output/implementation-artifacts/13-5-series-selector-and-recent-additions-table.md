@@ -53,3 +53,5 @@ Code review round 1 of 3d9f7fe — single round: no Medium+ (4 Low).
 - [x] [Review][Dismiss] L2 — on mobile, list mode shows the 6-column table, like `#browse-results` (consistent).
 - [x] [Review][Dismiss] L3 — brief table flash in grid mode when the fold is remembered open — pre-existing for `#browse-results`; the fold is closed by default.
 - [x] [Review][Patch] L4 — `render_search_table_row` and `render_search_row` (`src/routes/home_search_fragment.rs`) log the render error with `tracing::warn!` before falling back to an empty string.
+
+- Full-suite gate (orchestrator): `cover-image.spec.ts` picked the first `table tbody tr` of the home page, now the hidden Recent additions table → scoped to `#browse-results`. Re-run: cover-image, home, browse-toggle, home-search 39/39.
