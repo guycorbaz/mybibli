@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-11-03 (epic 13 planned — Cataloguing for real: scan duplicates and existing labels (#574, #585), throttled fetch retried (#583), ISBN-10 stored as UPC (#584), plain-text descriptions (#578), series selector and Recent additions table (#576, #577), full location paths (#582), date added (#586), move a volume (#580), anomaly marks (#581), tome number (#579), owned title fills an expected tome (#588); release v1.23.0 at close.)
+# last_updated: 2026-11-04 (v1.23.0 — closing release of epic 13, cataloguing for real: scan double reads and existing labels (#574, #585), throttled lookups retried (#583), ISBN-10 stored as UPC converted (#584), plain-text descriptions (#578), every series in the selector and Recent additions table (#576, #577), full location paths (#582), date added for pages, search and the agent (#586), move a volume (#580), tome number (#579), owned title fills an expected tome (#588), the agent proposes a label (#581), key revocation deadlock (#554 item 1). Five additive migrations. Epic-13 retrospective → done; epic-13 → done.)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -270,7 +270,7 @@ development_status:
   #   (after 13-10: both touch series positions) -> 13-12 (epic smoke,
   #   Rule #7) -> 13-13 -> retrospective -> release.
   # Next: Epic 14 = sidebar (#547); Epic 15 = agent price / value (#564).
-  epic-13: backlog
+  epic-13: done
   13-1-scan-duplicates-and-existing-label: done
   13-2-throttled-fetch-retried: done
   13-3-isbn10-upc-titles-converted: done
@@ -285,4 +285,4 @@ development_status:
   13-12-epic-13-smoke-test: done
   13-13-epic-13-documentation: done
   13-14-key-revocation-deadlock: done
-  epic-13-retrospective: optional
+  epic-13-retrospective: done

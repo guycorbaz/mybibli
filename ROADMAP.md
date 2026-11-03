@@ -32,24 +32,104 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.22.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.22.0)**
-(2026-11-01) — proposals, after a first real use: proposals can be
-reviewed in any order (staleness per field), the agent is told where
-mybibli already searched, it can correct a title, the proposals list
-leads straight to each proposal, and ISBNs typed with hyphens are
-recognised. **No migration.** The section below has the detail; every
-release before it has its own section further down, and this is the
-file that carries them — the README quotes only the current release,
-and the website tells the same story for a different audience.
+**Current stable: [`v1.23.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.23.0)**
+(2026-11-04) — cataloguing for real: a pile can be scanned without
+surprises, throttled lookups are retried, ISBN-10s stored as UPC and
+HTML descriptions are repaired, a volume can be moved to another
+title, dates added are shown and filterable, tome numbers are shown and
+edited in place, and an agent can propose a management label on a
+doubtful record. **Five additive migrations.** The section below has
+the detail; every release before it has its own section further down,
+and this is the file that carries them — the README quotes only the
+current release, and the website tells the same story for a different
+audience.
 
-**Next:** epic 13 — a collapsible left sidebar in place of the top
+**Next:** epic 14 — a collapsible left sidebar in place of the top
 navigation bar ([#547](https://github.com/guycorbaz/mybibli/issues/547)),
-unless a bug comes first; then epic 14 — agent proposals of a volume's
-purchase price and current value, to estimate what a collection is
-worth ([#564](https://github.com/guycorbaz/mybibli/issues/564)). The
+UX mock-up first, unless a bug comes first; then epic 15 — agent
+proposals of a volume's purchase price and current value, to estimate
+what a collection is worth
+([#564](https://github.com/guycorbaz/mybibli/issues/564)). Later
+candidates, awaiting prioritisation: the agent requests filed during
+epic 13 — a cover sent without base64 transcription
+([#587](https://github.com/guycorbaz/mybibli/issues/587)), more
+proposable fields ([#589](https://github.com/guycorbaz/mybibli/issues/589)),
+proposals that modify a series
+([#590](https://github.com/guycorbaz/mybibli/issues/590)), merging
+duplicates ([#591](https://github.com/guycorbaz/mybibli/issues/591)) —
+and an instance time zone for day boundaries
+([#602](https://github.com/guycorbaz/mybibli/issues/602)). The
 base-path setting for reverse proxies
 ([#492](https://github.com/guycorbaz/mybibli/issues/492)) comes later.
 Everything else open lives in the issue tracker.
+
+## v1.23.0 — cataloguing for real *(shipped)*
+
+Shipped 2026-11-04. The closing release of epic 13, planned from the
+first mass entry session (2026-10-31 → 11-02, about 260 volumes), its
+production logs and an agent session on the comics (371 proposals
+filed). **Five additive migrations** (`metadata_fetch_retries`,
+`data_repairs`, `titles.detected_tome`, a `label_attach` proposal kind
+and a `volumes` proposal target) — back up first.
+
+- **Scanning a pile**
+  ([#574](https://github.com/guycorbaz/mybibli/issues/574),
+  [#585](https://github.com/guycorbaz/mybibli/issues/585)). A double
+  read within one second is ignored; re-scanning a V-code says
+  "already recorded" or names the title that holds it, with a link; a
+  failed shelving or a deleted active location is reported.
+- **Throttled lookups retried**
+  ([#583](https://github.com/guycorbaz/mybibli/issues/583)). A lookup
+  that met a saturated provider goes on a retry queue, retried after
+  15 min, 1 h, 4 h, 12 h and 24 h.
+- **ISBN-10 stored as UPC**
+  ([#584](https://github.com/guycorbaz/mybibli/issues/584)). At every
+  start, printed titles catalogued before v1.21.0 with an ISBN-10 get
+  their ISBN-13 and are looked up again through the retry queue; a
+  collision with an existing ISBN-13 is logged until resolved by hand.
+- **Plain-text descriptions**
+  ([#578](https://github.com/guycorbaz/mybibli/issues/578)). HTML from
+  Google Books, Comic Vine or an agent is converted to text; stored
+  descriptions are repaired once at the first start (hand-edited ones
+  untouched).
+- **Move a volume to another title**
+  ([#580](https://github.com/guycorbaz/mybibli/issues/580)) from its
+  page; a loan follows the volume.
+- **Dates added**
+  ([#586](https://github.com/guycorbaz/mybibli/issues/586)). *Added on*
+  / *Modified on* on title and volume pages; an *Added since* filter
+  and an *Added* column and sort on the home page; *Recent cataloged*
+  counts titles that received a volume. Days are cut in UTC
+  ([#602](https://github.com/guycorbaz/mybibli/issues/602)).
+- **Lists**: *Recent additions* follow the List/Grid toggle
+  ([#577](https://github.com/guycorbaz/mybibli/issues/577)); the
+  title-page series selector lists every series
+  ([#576](https://github.com/guycorbaz/mybibli/issues/576)); volume
+  lists show full location paths
+  ([#582](https://github.com/guycorbaz/mybibli/issues/582)).
+- **Tome numbers**
+  ([#579](https://github.com/guycorbaz/mybibli/issues/579)). "Tome N" /
+  "Volume N" display, inline position edit, a detected number as a hint;
+  tome markers stripped from provider titles at (re-)download unless
+  the title was edited by hand.
+- **Agents: 14 MCP tools.** `list_labels` and `propose_label` — an
+  agent proposes a management label on a doubtful title or volume
+  ([#581](https://github.com/guycorbaz/mybibli/issues/581)); `get_title`
+  and `search_titles` return dates, location paths, labels and the
+  detected tome; an owned title may fill an expected tome by proposal
+  ([#588](https://github.com/guycorbaz/mybibli/issues/588)); agent
+  descriptions are converted to plain text at filing.
+- **API key revocation** retried on a database deadlock instead of a
+  server error ([#554](https://github.com/guycorbaz/mybibli/issues/554)).
+
+Upgrade notes: the first start runs the one-time description repair
+and the ISBN-10 conversion (both logged); titles left empty by a
+saturated provider before the upgrade can simply be re-downloaded;
+tome markers are stripped only on (re-)download — titles already
+catalogued are not cleaned in bulk, and a real title shaped like a
+marker ("L'Ennemi public n°1") needs one hand edit. Monitoring tip: point
+an uptime or Prometheus/blackbox probe at `/health`, not `/` — every
+cookieless request to `/` creates an anonymous session.
 
 ## v1.22.0 — proposals, after a first real use *(shipped)*
 

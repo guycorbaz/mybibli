@@ -148,6 +148,100 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.23.0}\label{sec:whats-new-1.23.0}
+
+La version 1.23.0 clôt l'epic 13, « cataloguer pour de vrai »,
+planifiée à partir d'une première séance de saisie en masse (quelque
+260 volumes en trois jours), de ses journaux de production et d'une
+séance d'agent sur les bandes dessinées. Elle apporte \emph{cinq
+migrations additives}, exécutées automatiquement au premier démarrage
+(la file de relance des métadonnées, le registre des réparations
+uniques, le numéro de tome détecté et deux nouvelles valeurs pour les
+propositions d'étiquette) : faites d'abord une sauvegarde de la base,
+comme pour toute mise à jour (chapitre~\ref{ch:backup}). Aucun réglage
+à modifier.
+
+\begin{itemize}
+  \item \textbf{\#574, \#585 \string— scanner une pile.} Une double
+        lecture du même code-barres en moins d'une seconde est ignorée.
+        Rescanner un code V déjà sur le titre courant le signale ; un
+        code V porté par un autre titre nomme ce titre, avec un lien ;
+        un rangement qui échoue est signalé
+        (section~\ref{sec:scan-existing-vcode}).
+  \item \textbf{\#583 \string— recherches saturées relancées.} Une
+        recherche qui a rencontré un fournisseur saturé est relancée en
+        arrière-plan après 15~minutes, 1, 4, 12 et 24~heures
+        (section~\ref{sec:startup-repairs}).
+  \item \textbf{\#584 \string— ISBN-10 enregistré comme UPC.} Les
+        titres imprimés catalogués avant la 1.21.0 avec un ISBN-10
+        reçoivent leur ISBN-13 et sont recherchés à nouveau.
+  \item \textbf{\#578 \string— résumés en texte brut.} Les résumés
+        balisés en HTML (Google Books, Comic Vine, un agent) sont
+        convertis en texte brut (chapitre~\ref{ch:providers}).
+  \item \textbf{\#580 \string— rattacher un volume à un autre titre}
+        depuis sa page ; un prêt suit le volume
+        (section~\ref{sec:move-volume-title}).
+  \item \textbf{\#586 \string— dates.} \emph{Ajouté le} et
+        \emph{Modifié le} sur les pages de titre et de volume, un filtre
+        \emph{Ajoutés depuis le} et une colonne \emph{Ajouté} sur la page
+        d'accueil (section~\ref{sec:added-since}). Les jours sont
+        découpés en UTC (\#602).
+  \item \textbf{\#577, \#576, \#582 \string—} les \emph{Ajouts récents}
+        suivent le choix Liste/Grille ; le sélecteur de série de la page
+        de titre liste toutes les séries ; les listes de volumes
+        montrent le chemin complet des emplacements.
+  \item \textbf{\#579 \string— numéros de tome.} Affichage « Tome~N »
+        (français) / « Volume~N » (anglais), position modifiable sur
+        place, numéro détecté proposé en indication ; les mentions de
+        tome sont retirées des titres des fournisseurs au téléchargement
+        (section~\ref{sec:tome-number}).
+  \item \textbf{\#581, \#588 \string— agents.} Le serveur MCP compte
+        désormais 14~outils : un agent liste les étiquettes de gestion
+        et en propose une sur un titre ou un volume douteux
+        (\texttt{list\_labels}, \texttt{propose\_label}) ;
+        \texttt{get\_title} et \texttt{search\_titles} renvoient les
+        dates, les chemins d'emplacement, les étiquettes et le tome
+        détecté ; un titre possédé peut résoudre un tome attendu par
+        proposition (chapitre~\ref{ch:agents}).
+  \item \textbf{\#554 \string—} révoquer une clé d'API ne finit plus en
+        erreur serveur lorsqu'elle rencontre un interblocage de la base.
+\end{itemize}
+
+\paragraph{Après la mise à jour.} Le premier démarrage est plus long
+et quelques nouvelles lignes apparaissent dans le journal
+(section~\ref{sec:startup-repairs}) :
+\begin{itemize}
+  \item \textbf{Réparation unique des résumés.} Les résumés enregistrés
+        qui contiennent du HTML sont convertis une fois en texte brut
+        (ceux modifiés à la main sont laissés tels quels), avec ceux des
+        propositions en attente ; les réponses de fournisseurs en cache
+        qui contiennent du balisage sont écartées. La table
+        \texttt{data\_repairs} le consigne pour qu'elle ne s'exécute
+        jamais deux fois.
+  \item \textbf{Conversion des ISBN-10 au démarrage.} Les titres
+        convertis passent dans la file de relance et sont recherchés à
+        nouveau dans les minutes qui suivent. Un titre dont l'ISBN-13
+        appartient déjà à un autre titre reste inchangé et est signalé
+        au niveau \texttt{warn} à chaque démarrage, jusqu'à ce que vous
+        régliez le doublon à la main.
+  \item \textbf{File de relance.} Les titres laissés vides par un
+        fournisseur saturé sont désormais relancés d'eux-mêmes ; ceux
+        laissés vides avant la mise à jour peuvent simplement être
+        retéléchargés.
+  \item \textbf{Mentions de tome.} Elles sont retirées quand un titre
+        est téléchargé ou retéléchargé (sauf modification à la main) ;
+        les titres déjà catalogués ne sont \emph{pas} nettoyés en
+        masse. Un vrai titre qui ressemble à une mention (« L'Ennemi
+        public n°1~») demande une modification à la main pour être
+        protégé.
+  \item \textbf{Agents.} Reconnectez l'agent pour voir les 14~outils.
+  \item \textbf{Conseil de supervision.} Une sonde Prometheus/blackbox
+        (ou tout contrôle de disponibilité) doit viser
+        \texttt{/health}, pas \texttt{/} : chaque requête sur
+        \texttt{/} sans cookie crée une session anonyme, alors que
+        \texttt{/health} ne crée rien.
+\end{itemize}
+
 \section{Nouveautés de la 1.22.0}\label{sec:whats-new-1.22.0}
 
 La version 1.22.0 clôt l'epic 12, planifiée à partir de la première
