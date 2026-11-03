@@ -43,19 +43,19 @@ pub fn decide(volume_title_id: u64, context_title_id: u64) -> ExistingLabelCase 
     }
 }
 
-/// How the owner title is named in the warning: its text, followed by its
-/// ISBN when it has one. Before metadata arrives a title's text IS its ISBN
-/// (the skeleton title), so the ISBN is not repeated then.
-pub fn owner_label(title: &str, isbn: Option<&str>, loc: &str) -> String {
+/// The ISBN clause after the quoted owner title: " (ISBN …)" when it has
+/// one, empty otherwise. Before metadata arrives a title's text IS its ISBN
+/// (the skeleton title), so the ISBN is not repeated then. The quotes go
+/// around the title only (review 13-1 round 2).
+pub fn isbn_suffix(title: &str, isbn: Option<&str>, loc: &str) -> String {
     match isbn.map(str::trim).filter(|i| !i.is_empty()) {
         Some(isbn) if isbn != title.trim() => rust_i18n::t!(
-            "feedback.volume_owner_with_isbn",
+            "feedback.volume_owner_isbn_suffix",
             locale = loc,
-            title = title,
             isbn = isbn
         )
         .to_string(),
-        _ => title.to_string(),
+        _ => String::new(),
     }
 }
 
@@ -73,18 +73,25 @@ pub fn same_title_feedback(label: &str, loc: &str) -> String {
     )
 }
 
-/// Warning entry: the label is on another title. Names the owner (`None`
+/// Warning entry: the label is on another title. Names the owner — its
+/// title and the [`isbn_suffix`] — (`None`
 /// when the owner title cannot be read — the message then says "another
 /// title"), says what to do, and links to the volume page.
 /// `feedback_html_with_link` escapes the message, the hint, the href and the
 /// link label (AC6) — nothing is pre-escaped here, which would double-escape.
-pub fn other_title_feedback(label: &str, volume_id: u64, owner: Option<&str>, loc: &str) -> String {
+pub fn other_title_feedback(
+    label: &str,
+    volume_id: u64,
+    owner: Option<(&str, &str)>,
+    loc: &str,
+) -> String {
     let message = match owner {
-        Some(owner) => rust_i18n::t!(
+        Some((title, isbn)) => rust_i18n::t!(
             "feedback.volume_on_other_title",
             locale = loc,
             label = label,
-            owner = owner
+            title = title,
+            isbn = isbn
         ),
         None => rust_i18n::t!(
             "feedback.volume_on_unknown_title",
@@ -145,9 +152,12 @@ pub async fn existing_label_response(
         }
         ExistingLabelCase::OtherTitle => {
             let owner = TitleModel::find_by_id(pool, existing.title_id).await?;
-            let owner = owner
-                .as_ref()
-                .map(|t| owner_label(&t.title, t.isbn.as_deref(), loc));
+            let owner = owner.as_ref().map(|t| {
+                (
+                    t.title.as_str(),
+                    isbn_suffix(&t.title, t.isbn.as_deref(), loc),
+                )
+            });
             tracing::info!(
                 label = %existing.label,
                 volume_id = existing.id,
@@ -155,7 +165,12 @@ pub async fn existing_label_response(
                 context_title_id,
                 "Existing label scanned under another title; nothing written"
             );
-            other_title_feedback(&existing.label, existing.id, owner.as_deref(), loc)
+            other_title_feedback(
+                &existing.label,
+                existing.id,
+                owner.as_ref().map(|(t, i)| (*t, i.as_str())),
+                loc,
+            )
         }
     };
     Ok(Html(html).into_response())
@@ -176,27 +191,43 @@ mod tests {
     }
 
     #[test]
-    fn owner_label_appends_the_isbn() {
-        let s = owner_label("Les Gorilles", Some("9782800100000"), "en");
-        assert!(s.contains("Les Gorilles"), "{s}");
-        assert!(s.contains("9782800100000"), "{s}");
+    fn isbn_suffix_names_the_isbn() {
+        let s = isbn_suffix("Les Gorilles", Some("9782800100000"), "en");
+        assert_eq!(s, " (ISBN 9782800100000)");
     }
 
     #[test]
-    fn owner_label_without_isbn_is_the_title() {
-        assert_eq!(owner_label("Les Gorilles", None, "en"), "Les Gorilles");
+    fn isbn_suffix_is_empty_without_isbn() {
+        assert_eq!(isbn_suffix("Les Gorilles", None, "en"), "");
+        assert_eq!(isbn_suffix("Les Gorilles", Some("  "), "en"), "");
+    }
+
+    #[test]
+    fn isbn_suffix_does_not_repeat_an_isbn_used_as_title() {
         assert_eq!(
-            owner_label("Les Gorilles", Some("  "), "en"),
-            "Les Gorilles"
+            isbn_suffix("9782800100000", Some("9782800100000"), "en"),
+            ""
         );
     }
 
     #[test]
-    fn owner_label_does_not_repeat_an_isbn_used_as_title() {
-        assert_eq!(
-            owner_label("9782800100000", Some("9782800100000"), "en"),
-            "9782800100000"
-        );
+    fn quotes_enclose_the_title_only_with_the_isbn_outside() {
+        for loc in ["en", "fr", "de", "it"] {
+            let html = other_title_feedback(
+                "V1527",
+                42,
+                Some(("Les Gorilles", " (ISBN 9782800100000)")),
+                loc,
+            );
+            let title_at = html.find("Les Gorilles").unwrap();
+            let isbn_at = html.find("(ISBN 9782800100000)").unwrap();
+            let closing = ["”", "»", "“"]
+                .iter()
+                .filter_map(|q| html[title_at..].find(q).map(|i| title_at + i))
+                .min()
+                .unwrap_or_else(|| panic!("{loc}: no closing quote in {html}"));
+            assert!(closing < isbn_at, "{loc}: ISBN inside the quotes: {html}");
+        }
     }
 
     #[test]
@@ -209,7 +240,7 @@ mod tests {
 
     #[test]
     fn other_title_feedback_is_warning_with_volume_link() {
-        let html = other_title_feedback("V1527", 42, Some("Les Gorilles (ISBN 978)"), "en");
+        let html = other_title_feedback("V1527", 42, Some(("Les Gorilles", " (ISBN 978)")), "en");
         assert!(html.contains("border-amber-500"), "warning variant: {html}");
         assert!(html.contains("V1527"));
         assert!(html.contains("Les Gorilles"));
@@ -219,7 +250,12 @@ mod tests {
 
     #[test]
     fn other_title_feedback_escapes_the_owner() {
-        let html = other_title_feedback("V0001", 1, Some("<script>alert(1)</script> & co"), "en");
+        let html = other_title_feedback(
+            "V0001",
+            1,
+            Some(("<script>alert(1)</script> & co", "")),
+            "en",
+        );
         assert!(!html.contains("<script>"), "{html}");
         assert!(html.contains("&lt;script&gt;"));
         assert!(html.contains("&amp; co"));

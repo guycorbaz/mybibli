@@ -107,15 +107,19 @@
             var lastPost = null;
             // A failed post did no work: forget it, so re-pressing Enter on
             // the code the error handler restored (mybibli.js) is not taken
-            // for a double read. A successful post stays remembered.
+            // for a double read. Only the failure of THAT code's post clears
+            // the memory; a successful post stays remembered.
             function forgetFailedScanPost(e) {
-                var d = e.detail || {};
-                var path = (d.requestConfig && d.requestConfig.path) ||
-                    (d.pathInfo && d.pathInfo.requestPath) || "";
-                if (path === "/catalog/scan") lastPost = null;
+                var cfg = (e.detail || {}).requestConfig || {};
+                if (cfg.path !== "/catalog/scan" || !lastPost) return;
+                var failedCode = cfg.formData && typeof cfg.formData.get === "function"
+                    ? cfg.formData.get("code")
+                    : (cfg.parameters || {}).code;
+                if (failedCode === lastPost.code) lastPost = null;
             }
             document.body.addEventListener("htmx:responseError", forgetFailedScanPost);
             document.body.addEventListener("htmx:sendError", forgetFailedScanPost);
+            document.body.addEventListener("htmx:timeout", forgetFailedScanPost);
             field.addEventListener("keydown", function (e) {
                 if (e.key !== "Enter") return;
 

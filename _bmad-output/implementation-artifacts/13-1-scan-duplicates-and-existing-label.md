@@ -1,6 +1,6 @@
 # Story 13.1: Scan duplicates and an existing label
 
-Status: review
+Status: done
 
 GitHub issues: #574 (type:bug), #585 (type:bug). Covers: bug fixes. Epic 13 — first story; ships in v1.23.0 at the epic close.
 
@@ -77,3 +77,10 @@ Round 1 (independent reviewer, on f30e7f3): 0 High, 1 Medium, 5 Low.
 - [x] [Review][Patch] L3 — `catalog-volume.spec.ts` waits for the "already in your catalog" info specifically.
 - [x] [Review][Patch] L4 — wording: en/de/fr/it say "assigned to / zugeordnet / attribué à / assegnata a"; it uses "esemplare" in the hint and link.
 - [x] [Review][Patch] L5 — a `Conflict` from `create_volume` now shows its own (user-facing) message at warning level instead of `error.internal`.
+
+Round 2: 0 High/Medium, 4 Low.
+
+- [x] [Review][Patch] L1 — `scan-field.js` forgets the last post only when the failed request's `code` (htmx 2 `requestConfig.formData`) equals it, and also on `htmx:timeout`.
+- [x] [Review][Patch] L2 — the quotes enclose the owner title only; the ISBN clause (`feedback.volume_owner_isbn_suffix`, renamed from `volume_owner_with_isbn`) follows outside them in all four locales; unit test `quotes_enclose_the_title_only_with_the_isbn_outside`.
+- [x] [Review][Patch] L3 — Rule #9: the hint now says what to do with the book in hand ("Scan another label for this book, or open the volume to check it.", fr/de/it equivalents, it keeps "esemplare").
+- [x] [Review][Dismiss] L4 — noted, not fixed: `shelve_failed` is covered by a unit test only (a DB failure on the UPDATE is not reproducible in the integration harness); pre-existing behaviour of `VolumeModel::update_location` returning `Ok` on 0 rows affected is out of this story's scope.
