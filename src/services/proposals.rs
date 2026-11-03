@@ -1113,11 +1113,38 @@ impl ProposalService {
     /// not revoked (unknown, already revoked or deleted, or `version`
     /// moved); nothing is changed then. The caller discards
     /// [`KeyRevocation::staged_files`] after this returns.
+    ///
+    /// Story 13-14 (#554): a deadlock (SQLSTATE 40001) re-runs the whole
+    /// transaction, up to [`REVOKE_MAX_ATTEMPTS`]; a lock-wait timeout or
+    /// any other error is returned as is.
     pub async fn revoke_key(
         pool: &DbPool,
         api_key_id: u64,
         version: i32,
     ) -> Result<Option<KeyRevocation>, AppError> {
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match Self::revoke_key_once(pool, api_key_id, version).await {
+                Err(RevokeAttemptError::Sqlx(e))
+                    if attempt < REVOKE_MAX_ATTEMPTS
+                        && crate::services::acceptance::is_deadlock(&e) =>
+                {
+                    tracing::warn!(api_key_id, attempt, "Key revocation deadlocked; retrying");
+                }
+                Err(RevokeAttemptError::Sqlx(e)) => return Err(AppError::from(e)),
+                Err(RevokeAttemptError::App(e)) => return Err(e),
+                Ok(done) => return Ok(done),
+            }
+        }
+    }
+
+    /// One attempt of [`Self::revoke_key`] in its own transaction.
+    async fn revoke_key_once(
+        pool: &DbPool,
+        api_key_id: u64,
+        version: i32,
+    ) -> Result<Option<KeyRevocation>, RevokeAttemptError> {
         let mut tx = pool.begin().await?;
         if crate::models::api_key::ApiKeyModel::revoke_in(&mut tx, api_key_id, version).await? == 0
         {
@@ -1145,6 +1172,34 @@ impl ProposalService {
     }
 }
 
+/// Attempts of a key revocation on a deadlock (story 13-14, #554).
+pub const REVOKE_MAX_ATTEMPTS: usize = 3;
+
+/// Error of one revocation attempt: the raw `sqlx::Error` is kept so a
+/// deadlock can be recognised (an `AppError` no longer carries the
+/// SQLSTATE).
+enum RevokeAttemptError {
+    Sqlx(sqlx::Error),
+    App(AppError),
+}
+
+impl From<sqlx::Error> for RevokeAttemptError {
+    fn from(e: sqlx::Error) -> Self {
+        RevokeAttemptError::Sqlx(e)
+    }
+}
+
+impl From<AppError> for RevokeAttemptError {
+    fn from(e: AppError) -> Self {
+        // Model helpers convert `sqlx::Error` into `AppError::Database`;
+        // unwrap it back so a deadlock inside them is retried too.
+        match e {
+            AppError::Database(inner) => RevokeAttemptError::Sqlx(inner),
+            other => RevokeAttemptError::App(other),
+        }
+    }
+}
+
 /// Log a committed filing (after the commit, so a failed commit never
 /// leaves a "filed" line for a proposal that does not exist).
 pub fn log_filed(id: u64, proposal: &NewProposal) {
@@ -1169,6 +1224,21 @@ fn stale_update() -> StatusUpdate {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // Story 13-14 — a database error raised inside a model helper (as
+    // `AppError::Database`) stays recognisable as a deadlock for the
+    // revocation retry; other errors are passed through.
+    #[test]
+    fn revoke_attempt_error_keeps_the_raw_sqlx_error() {
+        assert!(matches!(
+            RevokeAttemptError::from(AppError::Database(sqlx::Error::RowNotFound)),
+            RevokeAttemptError::Sqlx(sqlx::Error::RowNotFound)
+        ));
+        assert!(matches!(
+            RevokeAttemptError::from(AppError::Internal("x".into())),
+            RevokeAttemptError::App(AppError::Internal(_))
+        ));
+    }
 
     fn srcs(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
