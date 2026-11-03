@@ -1,6 +1,6 @@
 # Story 13.12: Epic 13 smoke test (Foundation Rule #7)
 
-Status: review
+Status: done
 
 Covers: Foundation Rule #7 (epic 13 core journey, FR153–FR160 end to end). Epic 13; ships in v1.23.0.
 
@@ -26,7 +26,7 @@ so that the epic is proven done.
 
 - [x] T1 — new spec `tests/e2e/specs/journeys/epic13-smoke.spec.ts` (choose an unused specId, e.g. `E3`)
 - [x] T2 — reuse helpers (auth, isbn, scanner, loans/scan helpers, locations helper `createChildLocation`, api-keys, mcp); add a mock case only if strictly needed
-- [ ] T3 — gates: tsc, flake grep, run the spec alone and with the full suite at 2 workers (tsc, flake grep and the spec alone done; the full-suite run at 2 workers is left to the orchestrator)
+- [x] T3 — gates: tsc, flake grep, run the spec alone and with the full suite at 2 workers (tsc, flake grep and the spec alone done; the full-suite run at 2 workers is left to the orchestrator)
 
 ## Completion Notes
 
@@ -51,3 +51,5 @@ Round 1 (2026-11-03) — 1 Medium, 5 Low, all patched:
 - [x] [Review][Patch] L6 — `utcDay()` documents that the server cuts days in UTC (#602) and that a run straddling midnight UTC is an accepted risk.
 
 Gates after round 1: tsc and flake grep clean; fresh stack, smoke alone twice → passed; smoke + home + date-added + volume-move + mcp-label-proposal at `CI=true --workers=2 --retries=0` → 21 passed.
+
+Round 2 (2026-11-04): no Medium+. Low: the full-text query is an OR of the title words in BOOLEAN MODE — harmless, the assertions are bound to this run's title id and sorted newest first.
