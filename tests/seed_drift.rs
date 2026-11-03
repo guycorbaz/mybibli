@@ -35,6 +35,8 @@ const ENTITY_TABLES_WITH_SOFT_DELETE: &[&str] = &[
     "proposal_items",
     // Story 11-10 (AR29).
     "series_expected_tomes",
+    // Story 13-2 — throttled-fetch retry queue.
+    "metadata_fetch_retries",
 ];
 
 #[sqlx::test(migrations = "./migrations")]

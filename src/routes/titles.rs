@@ -968,17 +968,9 @@ pub async fn redownload_metadata(
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     // Determine code and code_type
-    let (code, code_type) = if let Some(isbn) = &title.isbn {
-        (isbn.clone(), crate::models::media_type::CodeType::Isbn)
-    } else if let Some(upc) = &title.upc {
-        (upc.clone(), crate::models::media_type::CodeType::Upc)
-    } else if let Some(issn) = &title.issn {
-        (issn.clone(), crate::models::media_type::CodeType::Issn)
-    } else {
-        return Err(AppError::BadRequest(
-            "No code available for re-download".to_string(),
-        ));
-    };
+    let (code, code_type) = title.lookup_code().ok_or_else(|| {
+        AppError::BadRequest("No code available for re-download".to_string())
+    })?;
 
     let media_type = title.media_type.parse::<crate::models::media_type::MediaType>()
         .unwrap_or_else(|_| {
@@ -1015,6 +1007,9 @@ pub async fn redownload_metadata(
         &per_provider_timeouts,
     )
     .await;
+    // Story 13-2 — throttled: retry later in the background; found: drop a queued retry.
+    let found = outcome.result.is_some();
+    crate::tasks::metadata_retry::note_chain_outcome(pool, id, found, outcome.throttled, "redownload").await;
 
     let metadata = match outcome.result {
         Some(m) => m,

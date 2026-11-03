@@ -272,7 +272,7 @@ development_status:
   # Next: Epic 14 = sidebar (#547); Epic 15 = agent price / value (#564).
   epic-13: backlog
   13-1-scan-duplicates-and-existing-label: done
-  13-2-throttled-fetch-retried: ready-for-dev
+  13-2-throttled-fetch-retried: review
   13-3-isbn10-upc-titles-converted: backlog
   13-4-descriptions-as-plain-text: backlog
   13-5-series-selector-and-recent-additions-table: backlog

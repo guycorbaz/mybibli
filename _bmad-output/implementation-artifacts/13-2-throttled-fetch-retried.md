@@ -1,6 +1,6 @@
 # Story 13.2: A throttled metadata fetch is retried
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #583 (type:bug, severity:medium). Covers: bug fix. Epic 13; ships in v1.23.0.
 
@@ -36,13 +36,31 @@ Google Books answered HTTP 503 several hundred times; eight titles (335, 337, 89
 
 ## Tasks / Subtasks
 
-- [ ] T1 — migration + model for the queue (enqueue, due batch, bump, dequeue)
-- [ ] T2 — enqueue on `Throttled` (scan path and manual re-download path; the bulk loop keeps its own retries and does not enqueue unless its own retries are exhausted)
-- [ ] T3 — retry task + schedule (pure function) + spawn in `main.rs`
-- [ ] T4 — tests (AC7)
-- [ ] T5 — gates; `cargo sqlx prepare`; full suites once on the final code before the single push
+- [x] T1 — migration + model for the queue (enqueue, due batch, bump, dequeue)
+- [x] T2 — enqueue on `Throttled` (scan path and manual re-download path; the bulk loop keeps its own retries and does not enqueue unless its own retries are exhausted)
+- [x] T3 — retry task + schedule (pure function) + spawn in `main.rs`
+- [x] T4 — tests (AC7)
+- [x] T5 — gates (targeted; the full suites run once by the orchestrator); `cargo sqlx prepare`; full suites once on the final code before the single push
 
 ## Dev Notes
 
 - The task needs the same inputs as the scan path (`ProviderRegistry`, timeouts, `reqwest::Client`, `covers_dir`): take them from `AppState` exactly as `routes/catalog.rs` does when it spawns `fetch_metadata_chain`.
 - Deployment follow-up (not code): after v1.23.0, the eight production titles of #583 can simply be re-downloaded by hand.
+
+## Completion Notes
+
+**What was done**
+
+- **Queue** — migration `migrations/20261103120000_create_metadata_fetch_retries.sql` (`title_id` unique, `attempts`, `next_attempt_at`, AR24 quartet, FK `ON DELETE CASCADE` to `titles` so the 30-day purge takes the row along). Model `src/models/metadata_retry.rs` (`enqueue`, `due_batch`, `reschedule`, `dequeue`; dequeue = soft delete). Enqueueing a live row leaves it untouched (a rescan cannot postpone a retry); enqueueing a soft-deleted row revives it with `attempts = 0`. Table added to `tests/seed_drift.rs`.
+- **Enqueue** (`src/tasks/metadata_retry.rs`): the scan wrapper `fetch_metadata_chain` (all scan-time call sites, unchanged) enqueues on `FetchOutcome::Throttled`; the manual re-download (`routes/titles.rs::redownload_metadata`) enqueues on a throttled miss and *dequeues* on a found result (no repeat of a lookup the librarian just made). Genuine misses are never queued. Delivery rows are still marked as before.
+- **Bulk loop (#419), decision**: it calls `fetch_metadata_chain_outcome` directly, so its in-run attempts never enqueue; only a title still throttled after `THROTTLE_RETRY_BACKOFF` is exhausted is handed to the queue (`routes/admin.rs`). No doubling: the retry task likewise calls `_outcome` directly and owns its reschedule.
+- **Retry task**: `tick(&AppState)` (separately callable) takes ≤ 20 due rows oldest first, re-reads each title (deleted / `metadata_source` already set / no code → dequeued without lookup), runs `fetch_metadata_chain_outcome(force_refresh = true)` (same path as a scan: `manually_edited_fields`, provenance, cover download), pauses `bulk_refetch_delay_ms` between lookups. Pure `verdict`: not throttled → dequeue; throttled → `attempts + 1` and next delay from `RETRY_SCHEDULE_SECS` (15 min, 1 h, 4 h, 12 h, 24 h), give up with a `warn` after the 5th retry. `spawn` in `main.rs`: 2 min warm-up, tick every 5 min, `MissedTickBehavior::Skip`.
+- `TitleModel::lookup_code()` (ISBN → UPC → ISSN) shared by the re-download handler and the task (DRY; shrinks `titles.rs` by 5 lines).
+
+**"Already has metadata"** is read as `titles.metadata_source IS NOT NULL` (a provider resolved it) rather than "title differs from the code", so a title created by hand with a typed name and an ISBN still gets its other fields on retry.
+
+**Tests**: unit (`tasks::metadata_retry`: schedule lock, enqueue decision, verdict; `models::title::lookup_code_prefers_isbn_then_upc_then_issn`); DB integration `tests/metadata_retry.rs` (11 tests, stub provider: throttled enqueues once, genuine miss not queued, revived row, resolved row dequeued + title updated + source recorded, manual edits respected, rescheduled, past last attempt dequeued, deleted title skipped, already-resolved skipped, not-yet-due untouched, found elsewhere drops the row).
+
+**Deviations**: no `.sqlx` change — the queries are runtime `sqlx::query` (no macros), so `cargo sqlx prepare` has nothing to regenerate. **E2E skipped** (no UI change; the DB test is the proof, as the story allows). No locale change.
+
+**Files above 2000 lines**: `src/routes/titles.rs` 2727 (pre-existing, 2732 before; net −5), `src/routes/catalog.rs` 3200 (untouched).

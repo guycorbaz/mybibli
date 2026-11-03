@@ -11,6 +11,7 @@ pub mod location;
 pub mod location_node_type;
 pub mod media_type;
 pub mod metadata_cache;
+pub mod metadata_retry;
 pub mod saved_search;
 pub mod series;
 pub mod proposal;
