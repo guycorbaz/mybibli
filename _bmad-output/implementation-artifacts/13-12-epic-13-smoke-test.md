@@ -1,6 +1,6 @@
 # Story 13.12: Epic 13 smoke test (Foundation Rule #7)
 
-Status: ready-for-dev
+Status: review
 
 Covers: Foundation Rule #7 (epic 13 core journey, FR153–FR160 end to end). Epic 13; ships in v1.23.0.
 
@@ -24,6 +24,17 @@ so that the epic is proven done.
 
 ## Tasks
 
-- [ ] T1 — new spec `tests/e2e/specs/journeys/epic13-smoke.spec.ts` (choose an unused specId, e.g. `E3`)
-- [ ] T2 — reuse helpers (auth, isbn, scanner, loans/scan helpers, locations helper `createChildLocation`, api-keys, mcp); add a mock case only if strictly needed
-- [ ] T3 — gates: tsc, flake grep, run the spec alone and with the full suite at 2 workers
+- [x] T1 — new spec `tests/e2e/specs/journeys/epic13-smoke.spec.ts` (choose an unused specId, e.g. `E3`)
+- [x] T2 — reuse helpers (auth, isbn, scanner, loans/scan helpers, locations helper `createChildLocation`, api-keys, mcp); add a mock case only if strictly needed
+- [ ] T3 — gates: tsc, flake grep, run the spec alone and with the full suite at 2 workers (tsc, flake grep and the spec alone done; the full-suite run at 2 workers is left to the orchestrator)
+
+## Completion Notes
+
+- **Spec:** `tests/e2e/specs/journeys/epic13-smoke.spec.ts` (spec ID `E3`), one test chaining 13-6 (two-level tree, full path on the title page), 13-1 (V-code submitted twice back to back → one "attached" + one "shelved" entry, no error, banner "1 vol"), 13-10 (title without the marker, "Tome 3 (detected)"), 13-7 ("Added on"; home "added since today" + sort by date added lists the title), 13-8 (move through the modal, target ISBN as a scanner burst; second title lists the volume), 13-9 (admin creates a label and a `propose` key; MCP `list_labels` then `propose_label`; librarian opens the proposal from `/proposals?status=pending` and accepts; volume page shows the label chip, `/labels/{id}` lists the volume). Key revoked in `afterEach` from a fresh context.
+- **Blank browser / logins:** `clearCookies()` + `loginAs` only (librarian → admin → librarian); no cookie injection.
+- **Unique data, re-runnable on a non-reset stack:** per-run seconds stamp. Marker ISBN = `specIsbn("TN", 91000–99999)` — the existing 13-10 mock case (seq ≥ 1000) in a band `tome-number.spec.ts` (1000–90999) never draws; second ISBN `specIsbn("E3", RUN)`; V-code band V0360–V0439 (no other spec hardcodes/derives it, except the suite-wide random generators of loans/home specs that every spec already lives with); L-codes in bucket 8 (`specLcode(8, …)`, unused).
+- **Reorder vs. AC2:** the location tree is created **before** the scans so the L-code is scanned right after the V-code (an L-code shelves the session's last volume label, which a later ISBN scan clears); all steps are otherwise as specified.
+- **Not covered:** 13-4 HTML description (optional per AC2.2): its only mock case is a fixed Google Books ISBN owned by `html-description.spec.ts`; no mock case added.
+- **DRY:** the label-creation step of `mcp-label-proposal.spec.ts` moved to a new helper `tests/e2e/helpers/labels.ts::createLabel`, used by both specs.
+- **Gates:** `npx tsc --noEmit` clean; flake grep clean; on a fresh stack (`E2E_HOST_PORT=18080 ./scripts/e2e-reset.sh`) `CI=true npx playwright test epic13-smoke mcp-label-proposal --workers=2` → 2 passed; the smoke re-run twice more on the non-reset stack → passed both times. The full suite at 2 workers was left to the orchestrator's final gate (per the dev brief).
+- No product code changed; no bug found.

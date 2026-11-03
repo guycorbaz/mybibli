@@ -18,33 +18,18 @@
  * by any other spec); unique label and key names; assertions only on rows
  * this test creates.
  */
-import { test, expect, request as playwrightRequest, Page } from "@playwright/test";
+import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume } from "../../helpers/loans";
 import { volumeIdByLabel } from "../../helpers/catalog";
 import { createApiKey } from "../../helpers/api-keys";
+import { createLabel } from "../../helpers/labels";
 import { MCP_TOOLS, mcpCallTool, mcpPost } from "../../helpers/mcp";
 import { acceptFromDetail, revokeProposeKey } from "../../helpers/proposals";
 
 const SOURCE = "https://example.org/notice-lb";
 const NOTE = "The ISBN printed on this copy belongs to another book.";
-
-/** Create a label through Admin → Reference data. */
-async function createLabel(page: Page, name: string) {
-  await page.goto("/admin?tab=reference_data");
-  await page
-    .getByRole("button", {
-      name: /Add label|Ajouter une étiquette|Etikett hinzufügen|Aggiungi etichetta/i,
-    })
-    .click();
-  const addSlot = page.locator("#admin-ref-labels-add");
-  await addSlot.locator('input[name="name"]').fill(name);
-  await addSlot.getByRole("button", { name: /Save|Enregistrer|Speichern|Salva/i }).click();
-  await expect(
-    page.locator("#admin-ref-labels-list").getByText(name, { exact: true }),
-  ).toBeVisible({ timeout: 10000 });
-}
 
 test.describe("Story 13-9 — the agent proposes a label", () => {
   test.setTimeout(90000);
