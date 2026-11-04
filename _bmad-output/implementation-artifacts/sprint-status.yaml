@@ -306,7 +306,7 @@ development_status:
   # Sequencing: 15-1 -> 15-2 -> 15-3 -> 15-4 -> 15-5 -> 15-6 -> 15-7 (epic smoke, Rule #7) -> 15-8 -> retrospective -> release.
   epic-15: in-progress
   15-1-instance-time-zone: done
-  15-2-mcp-skills-admin-tab: backlog
+  15-2-mcp-skills-admin-tab: in-progress
   15-3-mcp-skills-served-to-agent: backlog
   15-4-series-modification-proposals: backlog
   15-5-volume-value-proposals: backlog
