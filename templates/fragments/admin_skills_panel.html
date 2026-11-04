@@ -1,0 +1,18 @@
+{# Story 15-2 (#614, UX-DR40) — Admin → Skills panel.
+   The editor (create by default, filled by a row's Edit) sits above the
+   list. Both are swap targets: a save swaps the editor and refreshes the
+   list out of band; row actions swap the list. #}
+<section id="admin-skills-panel" aria-labelledby="admin-skills-heading" class="space-y-8">
+    <header>
+        <h2 id="admin-skills-heading" class="text-2xl font-semibold">{{ panel_heading }}</h2>
+    </header>
+    <p class="text-stone-700 dark:text-stone-300 max-w-3xl">{{ intro }}</p>
+    <p class="text-sm text-stone-600 dark:text-stone-400 max-w-3xl">{{ safety_note }}</p>
+
+    {{ editor_html|safe }}
+
+    <section aria-labelledby="admin-skills-list-heading">
+        <h3 id="admin-skills-list-heading" class="text-lg font-semibold mb-3">{{ section_list }}</h3>
+        <div id="admin-skills-list">{{ list_html|safe }}</div>
+    </section>
+</section>

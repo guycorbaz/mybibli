@@ -6,6 +6,7 @@ pub mod title_lifecycle;
 pub mod admin_labels;
 pub mod entity_labels;
 pub mod admin_reference_data;
+pub mod admin_skills;
 pub mod admin_system;
 pub mod admin_system_proposals;
 pub mod admin_system_time_zone;
@@ -795,6 +796,37 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .route(
             "/admin/api-keys/{id}",
             axum::routing::delete(admin_api_keys::admin_api_keys_delete),
+        )
+        // Story 15-2 (#614) — Admin → Skills (MCP skills). All
+        // Admin-gated; CSRF-protected by the 8-2 middleware.
+        .route(
+            "/admin/skills",
+            axum::routing::get(admin_skills::admin_skills_panel)
+                .post(admin_skills::admin_skills_create),
+        )
+        .route(
+            "/admin/skills/new",
+            axum::routing::get(admin_skills::admin_skills_new_form),
+        )
+        .route(
+            "/admin/skills/{id}",
+            axum::routing::post(admin_skills::admin_skills_update),
+        )
+        .route(
+            "/admin/skills/{id}/edit",
+            axum::routing::get(admin_skills::admin_skills_edit_form),
+        )
+        .route(
+            "/admin/skills/{id}/active",
+            axum::routing::post(admin_skills::admin_skills_set_active),
+        )
+        .route(
+            "/admin/skills/{id}/delete-modal",
+            axum::routing::get(admin_skills::admin_skills_delete_modal),
+        )
+        .route(
+            "/admin/skills/{id}/delete",
+            axum::routing::post(admin_skills::admin_skills_delete),
         )
         // Story 8-8 — first-launch setup wizard. Whitelisted by the
         // setup-gate middleware (so this is reachable on a fresh install

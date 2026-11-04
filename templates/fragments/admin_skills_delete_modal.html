@@ -1,0 +1,19 @@
+{# Story 15-2 — delete-skill confirm (UX-DR8 macro, Pattern A in
+   #modal-slot). A soft delete: the skill moves to the Trash, restorable
+   for 30 days, so no type-the-name friction. `body_html` is built and
+   escaped by the handler. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "delete",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "POST",
+    csrf_token,
+    "#admin-skills-list",
+    "innerHTML",
+    version,
+    "",
+) %}{% endcall %}

@@ -1,12 +1,13 @@
 //! Admin page shell + Health tab + Trash.
 //!
-//! One entry point (`GET /admin`) with six tabs, all shipped:
+//! One entry point (`GET /admin`) with seven tabs, all shipped:
 //!   - Health        → this module
 //!   - Users         → `admin_users.rs`
 //!   - Reference     → `admin_reference_data.rs` + `admin_labels.rs`
 //!   - System        → `admin_system.rs`
 //!   - Trash         → this module (view, restore, permanent delete)
 //!   - API keys      → `admin_api_keys.rs`
+//!   - Skills        → `admin_skills.rs` (story 15-2)
 //!
 //! Middleware order follows AR16 — admin routes live at the top level
 //! alongside the non-catalog routes so they skip `pending_updates_middleware`
@@ -45,6 +46,8 @@ pub enum AdminTab {
     Trash,
     System,
     ApiKeys,
+    /// Story 15-2 (#614) — MCP skills.
+    Skills,
 }
 
 impl AdminTab {
@@ -57,6 +60,7 @@ impl AdminTab {
             "trash" => AdminTab::Trash,
             "system" => AdminTab::System,
             "api_keys" => AdminTab::ApiKeys,
+            "skills" => AdminTab::Skills,
             _ => AdminTab::Health,
         }
     }
@@ -70,6 +74,7 @@ impl AdminTab {
             AdminTab::Trash => "trash",
             AdminTab::System => "system",
             AdminTab::ApiKeys => "api_keys",
+            AdminTab::Skills => "skills",
         }
     }
 
@@ -83,6 +88,7 @@ impl AdminTab {
             AdminTab::Trash => "trash",
             AdminTab::System => "system",
             AdminTab::ApiKeys => "api-keys",
+            AdminTab::Skills => "skills",
         }
     }
 }
@@ -263,6 +269,8 @@ struct AdminTrashPanel {
     filter_entity_borrowers: String,
     filter_entity_series: String,
     filter_entity_storage_locations: String,
+    // Story 15-2 — trashed MCP skills.
+    filter_entity_mcp_skills: String,
     search_placeholder: String,
     col_item_name: String,
     col_type: String,
@@ -1200,6 +1208,7 @@ fn render_shell(
             AdminTab::ApiKeys => {
                 rust_i18n::t!("admin.tabs.api_keys", locale = loc).to_string()
             }
+            AdminTab::Skills => rust_i18n::t!("admin.tabs.skills", locale = loc).to_string(),
         },
         aria_selected: tab == active,
         badge_count: if tab == AdminTab::Trash {
@@ -1222,6 +1231,7 @@ fn render_shell(
             mk(AdminTab::Trash),
             mk(AdminTab::System),
             mk(AdminTab::ApiKeys),
+            mk(AdminTab::Skills),
         ],
         tabs_aria: rust_i18n::t!("admin.tabs_aria", locale = loc).to_string(),
         active_tab_name: active.as_str(),
@@ -1261,6 +1271,9 @@ async fn render_panel(
         }
         AdminTab::ApiKeys => {
             crate::routes::admin_api_keys::render_panel_html(state, loc, session).await
+        }
+        AdminTab::Skills => {
+            crate::routes::admin_skills::render_panel_html(state, loc, session).await
         }
     }
 }
@@ -1368,6 +1381,7 @@ async fn render_trash_panel(
         filter_entity_borrowers: rust_i18n::t!("admin.trash.filter_entity_borrowers", locale = loc).to_string(),
         filter_entity_series: rust_i18n::t!("admin.trash.filter_entity_series", locale = loc).to_string(),
         filter_entity_storage_locations: rust_i18n::t!("admin.trash.filter_entity_storage_locations", locale = loc).to_string(),
+        filter_entity_mcp_skills: rust_i18n::t!("admin.trash.filter_entity_mcp_skills", locale = loc).to_string(),
         search_placeholder: rust_i18n::t!("admin.trash.search_placeholder", locale = loc).to_string(),
         col_item_name: rust_i18n::t!("admin.trash.col_item_name", locale = loc).to_string(),
         col_type: rust_i18n::t!("admin.trash.col_type", locale = loc).to_string(),
@@ -1639,6 +1653,12 @@ mod tests {
             AdminTab::from_query_str(Some("system")),
             AdminTab::System
         );
+        assert_eq!(
+            AdminTab::from_query_str(Some("skills")),
+            AdminTab::Skills
+        );
+        assert_eq!(AdminTab::Skills.as_str(), "skills");
+        assert_eq!(AdminTab::Skills.hx_path(), "skills");
     }
 
     #[test]

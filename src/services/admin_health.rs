@@ -365,8 +365,8 @@ mod tests {
         // the badge-count test rather than silently shrink it.
         assert_eq!(
             ALLOWED_TABLES.len(),
-            7,
-            "ALLOWED_TABLES = 7 since issue #69; extending the whitelist requires updating this regression guard."
+            8,
+            "ALLOWED_TABLES = 8 since story 15-2 (mcp_skills); extending the whitelist requires updating this regression guard."
         );
     }
 

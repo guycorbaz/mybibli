@@ -389,6 +389,21 @@ series:
   omnibus_help_text: "Seleziona questa casella quando il libro raggruppa più volumi della serie (es. un omnibus che raccoglie i volumi 1–3). Il modulo mostrerà allora un campo «Posizione finale» in modo che il titolo copra un intervallo di posizioni invece di una sola."
   select_series: "Seleziona una serie…"
 error:
+  # Story 15-2 (#614) — MCP skills validation and write errors.
+  mcp_skills:
+    name_required: "Il nome è obbligatorio"
+    name_too_long: "Il nome deve avere al massimo %{max_name} caratteri"
+    name_shape: "Il nome può contenere solo lettere minuscole, cifre e trattini singoli (per esempio regole-catalogo)"
+    description_required: "La descrizione è obbligatoria"
+    description_too_long: "La descrizione deve avere al massimo %{max_description} caratteri"
+    description_not_one_line: "La descrizione deve stare su una riga"
+    body_required: "Le istruzioni sono obbligatorie"
+    body_too_large: "Le istruzioni devono pesare al massimo %{max_kib} KiB"
+    body_control_character: "Le istruzioni non possono contenere caratteri di controllo oltre agli a capo e alle tabulazioni"
+    name_taken: "Non è stato possibile salvare lo skill. Un altro skill si chiama già %{name}. Scegli un altro nome, oppure modifica quello skill."
+    name_in_trash: "Non è stato possibile rinominare lo skill. Uno skill chiamato %{name} è nel cestino. Scegli un altro nome, oppure prima ripristina o elimina definitivamente lo skill nel cestino."
+    stale: "Non è stato possibile salvare la modifica. Qualcuno ha modificato questo skill dopo che lo hai aperto. Ricarica la scheda Skill per vedere la versione più recente, poi rifai la modifica."
+    gone: "Questo skill non è stato trovato. Nel frattempo è stato eliminato. Ricarica la scheda Skill; puoi ripristinare lo skill dal cestino."
   # Story 13-8 (#580) — spostare un esemplare su un altro titolo.
   volume_move_no_target: "L'esemplare non è stato spostato perché non è stato scelto alcun titolo. Cerca il titolo, sceglilo nell'elenco e conferma."
   volume_move_same_title: "L'esemplare non è stato spostato perché è già associato a questo titolo. Scegli un altro titolo nell'elenco."
@@ -836,6 +851,7 @@ admin:
     trash: Cestino
     system: Sistema
     api_keys: Chiavi API
+    skills: "Skill"
   trash:
     badge_aria: "Cestino, %{count} elementi"
     heading: Cestino (elementi eliminati)
@@ -848,6 +864,7 @@ admin:
     filter_entity_borrowers: "Lettori"
     filter_entity_series: "Serie"
     filter_entity_storage_locations: "Ubicazioni"
+    filter_entity_mcp_skills: "Skill"
     search_placeholder: "Cerca per nome…"
     pagination_aria: "Impaginazione del Cestino"
     col_item_name: Elemento
@@ -1055,6 +1072,53 @@ admin:
     # CR #396 — timeout per fornitore (override).
     provider_timeouts_help: "Sovrascrivi il timeout dei metadati per i singoli fornitori. Lascia un campo vuoto per usare il valore globale predefinito (%{default} s). Intervallo 1–60. Applicato alla prossima scansione — nessun riavvio."
     btn_save_provider_timeouts: "Salva timeout per fornitore"
+  # Story 15-2 (#614) — Admin → Skills (MCP skills).
+  skills:
+    panel_heading: "Skill per l'agente"
+    intro: "Uno skill è un insieme di istruzioni che scrivi una volta qui, in Markdown, per non doverle più incollare in ogni sessione con l'agente collegato tramite MCP. L'agente può leggere solo gli skill attivi e non può modificarli. Solo gli amministratori modificano gli skill."
+    safety_note: "Le istruzioni sono salvate e mostrate come testo semplice: questa pagina non le trasforma mai in una pagina web."
+    section_list: "Skill"
+    empty_state: "Ancora nessuno skill. Scrivi il primo qui sopra."
+    heading_new: "Nuovo skill"
+    heading_edit: "Modifica lo skill %{name}"
+    name_label: "Nome"
+    name_help: "Lettere minuscole, cifre e trattini singoli, al massimo %{max} caratteri — per esempio regole-catalogo. L'agente chiede uno skill con questo nome."
+    description_label: "Descrizione"
+    description_help: "Una riga, al massimo %{max} caratteri: a cosa serve lo skill. L'agente la vede nell'elenco degli skill."
+    body_label: "Istruzioni (Markdown)"
+    body_help: "Al massimo %{max} KiB."
+    active_label: "Attivo — l'agente può leggerlo"
+    btn_create: "Crea skill"
+    btn_save: "Salva le modifiche"
+    btn_cancel_edit: "Annulla la modifica"
+    col_name: "Nome"
+    col_description: "Descrizione"
+    col_status: "Stato"
+    col_last_change: "Ultima modifica"
+    col_actions: "Azioni"
+    status_active: "Attivo"
+    status_inactive: "Inattivo"
+    show_body: "Mostra le istruzioni"
+    last_change_by: "da %{name}"
+    last_change_unknown_author: "autore sconosciuto"
+    btn_edit: "Modifica"
+    edit_aria: "Modifica lo skill %{name}"
+    btn_activate: "Attiva"
+    activate_aria: "Attiva lo skill %{name}"
+    btn_deactivate: "Disattiva"
+    deactivate_aria: "Disattiva lo skill %{name}"
+    btn_delete: "Elimina"
+    delete_aria: "Elimina lo skill %{name}"
+    delete_modal_title: "Eliminare questo skill?"
+    delete_modal_body: "Lo skill %{name} finisce nel cestino e l'agente non lo vede più. Puoi ripristinarlo dal cestino per 30 giorni."
+    delete_modal_confirm: "Sposta nel cestino"
+    delete_modal_cancel: "Annulla"
+    feedback_created: "Skill %{name} creato."
+    feedback_reactivated: "Lo skill %{name} era nel cestino: è tornato, con il testo che hai appena inserito."
+    feedback_updated: "Skill %{name} salvato."
+    feedback_activated: "Lo skill %{name} è attivo: l'agente può leggerlo."
+    feedback_deactivated: "Lo skill %{name} è inattivo: l'agente non lo vede più."
+    feedback_deleted: "Skill %{name} spostato nel cestino."
   api_keys:
     panel_heading: "Chiavi API"
     intro: "Le chiavi API autenticano chiamanti esterni all'API JSON HTTP sotto /api/v1/*. Le chiavi di lettura possono elencare e recuperare i record; le chiavi di scrittura possono anche modificare via PATCH i campi del titolo abilitati; le chiavi di proposta leggono come una chiave di lettura e possono inviare proposte che un bibliotecario esamina, senza mai modificare direttamente il catalogo. Ogni chiave è mostrata UNA SOLA volta alla creazione — copiala subito o revocala e ricreala."

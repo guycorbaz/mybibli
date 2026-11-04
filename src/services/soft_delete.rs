@@ -22,6 +22,9 @@ pub const ALLOWED_TABLES: &[&str] = &[
     // they were unreachable before because the handler delegated to
     // `TrashService::permanent_delete` which rejected `users` outright.
     "users",
+    // Story 15-2 (#614): a deleted MCP skill goes to the Trash, restorable
+    // for 30 days. No child rows; its name column is `name`.
+    "mcp_skills",
 ];
 
 // v1.5.1 fix #284 — `api_keys` is NOT in this whitelist on purpose.
@@ -86,6 +89,8 @@ mod tests {
         assert!(ALLOWED_TABLES.contains(&"series"));
         // Issue #69 — deactivated users are soft-deleted into Trash.
         assert!(ALLOWED_TABLES.contains(&"users"));
+        // Story 15-2 — trashed MCP skills.
+        assert!(ALLOWED_TABLES.contains(&"mcp_skills"));
     }
 
     #[test]

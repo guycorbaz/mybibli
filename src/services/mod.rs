@@ -18,6 +18,7 @@ pub mod expected_tomes;
 pub mod label_acceptance;
 pub mod label_proposals;
 pub mod loans;
+pub mod mcp_skills;
 pub mod locations;
 pub mod locking;
 pub mod metadata_acceptance;
