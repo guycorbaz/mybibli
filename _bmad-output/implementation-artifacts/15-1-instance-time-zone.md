@@ -1,6 +1,6 @@
 # Story 15.1: Instance time zone
 
-Status: review
+Status: done
 
 GitHub issue: #602 (type:change-request). Covers: FR161. Epic 15; ships in v1.25.0.
 
@@ -186,3 +186,7 @@ Independent review of 875ace4 (one Medium, five Lows).
 - tests/e2e/specs/journeys/epic13-smoke.spec.ts
 - (new) tests/e2e/specs/journeys/instance-time-zone.spec.ts
 - _bmad-output/implementation-artifacts/15-1-instance-time-zone.md
+
+#### Round 2 (53b016a)
+
+No Medium+ finding. Residual Low accepted: if the spec fails before returning its loan, a local rerun on an un-reset stack within the same 100 s bucket may meet the volume still on loan (CI unaffected; `e2e-reset` clears it).
