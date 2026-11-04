@@ -94,7 +94,9 @@ pub fn genre(value: Option<String>) -> Result<Option<String>, ToolError> {
 /// Story 13-7 (#586) — validate an optional `added_since` filter: a
 /// date `YYYY-MM-DD` (from midnight UTC that day) or an ISO 8601 instant
 /// (`2026-10-31T08:00:00Z`, an offset, or no offset = UTC); empty or
-/// absent means no filter. Returns the UTC lower bound.
+/// absent means no filter. Returns the UTC lower bound. Story 15-1
+/// (#602): the MCP server stays UTC — a bare date is the UTC day, not the
+/// instance zone's; an agent wanting a local day passes an offset.
 pub fn added_since(value: Option<String>) -> Result<Option<chrono::NaiveDateTime>, ToolError> {
     let value = text("added_since", value)?;
     if value.is_empty() {

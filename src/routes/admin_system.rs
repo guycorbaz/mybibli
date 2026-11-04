@@ -151,6 +151,7 @@ pub(crate) struct AdminSystemPanel {
     pub timeouts_form_html: String,
     pub provider_timeouts_form_html: String,
     pub language_form_html: String,
+    pub time_zone_form_html: String,
     pub valuation_form_html: String,
     pub log_form_html: String,
     pub sessions_form_html: String,
@@ -347,7 +348,7 @@ pub(crate) async fn fetch_setting_rows(
 ) -> Result<HashMap<String, (String, i32)>, AppError> {
     let rows: Vec<(String, String, i32)> = sqlx::query_as(
         "SELECT setting_key, setting_value, version FROM settings \
-         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
+         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
     )
     .bind(KEY_OVERDUE_THRESHOLD)
     .bind(KEY_DEFAULT_LANGUAGE)
@@ -362,6 +363,7 @@ pub(crate) async fn fetch_setting_rows(
     .bind(KEY_SESSION_TIMEOUT_HOURS)
     .bind(KEY_BULK_REFETCH_DELAY)
     .bind(crate::services::proposal_history::KEY_RESUBMISSION_DELAY_DAYS)
+    .bind(crate::services::admin_system::KEY_TIME_ZONE)
     .fetch_all(pool)
     .await?;
     let mut map = HashMap::new();
@@ -809,6 +811,8 @@ pub async fn render_panel_html(
     let log_form_html = render_log_form(csrf, loc, &log_level, log_level_version)?;
     let sessions_form_html =
         render_sessions_form(csrf, loc, session_timeout_hours, session_timeout_version)?;
+    let time_zone_form_html =
+        crate::routes::admin_system_time_zone::render_from_rows(csrf, loc, &rows)?;
     let proposals_form_html = crate::routes::admin_system_proposals::render_from_rows(
         csrf, loc, &rows,
     )?;
@@ -830,6 +834,7 @@ pub async fn render_panel_html(
         timeouts_form_html,
         provider_timeouts_form_html,
         language_form_html,
+        time_zone_form_html,
         valuation_form_html,
         log_form_html,
         sessions_form_html,

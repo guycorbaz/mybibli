@@ -43,6 +43,8 @@ use crate::utils::base_context;
 pub struct WishlistPageTemplate {
     pub base: crate::utils::BaseContextFields,
     pub items: Vec<WishlistItem>,
+    /// Story 15-1 (#602) — the instance zone for the "Added" dates.
+    pub time_zone: chrono_tz::Tz,
     pub can_edit: bool,
     pub label_list_title: String,
     pub label_add: String,
@@ -77,6 +79,7 @@ pub async fn wishlist_page(
     let template = WishlistPageTemplate {
         base,
         items,
+        time_zone: state.time_zone(),
         can_edit: session.role >= Role::Librarian,
         label_list_title: rust_i18n::t!("wishlist.list_title", locale = loc).to_string(),
         label_add: rust_i18n::t!("wishlist.add_button", locale = loc).to_string(),
@@ -371,6 +374,8 @@ pub(crate) async fn audit_wishlist_add(
 pub struct WishlistDetailTemplate {
     pub base: crate::utils::BaseContextFields,
     pub item: WishlistItem,
+    /// Story 15-1 (#602) — the instance zone for the "Added" date.
+    pub time_zone: chrono_tz::Tz,
     pub can_edit: bool,
     pub label_isbn: String,
     pub label_authors: String,
@@ -401,6 +406,7 @@ pub async fn wishlist_detail(
     let template = WishlistDetailTemplate {
         base,
         item,
+        time_zone: state.time_zone(),
         can_edit: session.role >= Role::Librarian,
         label_isbn: rust_i18n::t!("wishlist.col_isbn", locale = loc).to_string(),
         label_authors: rust_i18n::t!("wishlist.col_authors", locale = loc).to_string(),
@@ -600,9 +606,12 @@ pub async fn wishlist_export_pdf(
     let loc = locale.0;
 
     let items = WishlistItemModel::list_active(pool).await?;
-    let bytes = crate::services::wishlist_pdf::render(&items, loc)?;
+    // Story 15-1 (#602): "today" is the instance zone's, never the
+    // server's (the container's TZ must not matter).
+    let clock = state.local_clock();
+    let bytes = crate::services::wishlist_pdf::render(&items, loc, clock.today())?;
 
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = clock.today();
     let disposition = format!(r#"attachment; filename="wishlist-{today}.pdf""#);
 
     Ok((
@@ -637,7 +646,9 @@ pub async fn wishlist_print(
     let loc = locale.0;
     let items = WishlistItemModel::list_active(pool).await?;
     let item_count = items.len() as i64;
-    let generated_at = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
+    let clock = state.local_clock();
+    let generated_at =
+        crate::utils::local_time::format_local_date_time(clock.now_utc(), clock.tz());
 
     let template = WishlistPrintTemplate {
         items,

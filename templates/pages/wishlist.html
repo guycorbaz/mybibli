@@ -68,7 +68,7 @@
                     <td class="px-3 py-2 text-stone-700 dark:text-stone-300">
                         {% match item.publisher %}{% when Some with (p) %}{{ p }}{% when None %}<span class="text-stone-500 dark:text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
                     </td>
-                    <td class="px-3 py-2 text-stone-500 dark:text-stone-400 text-xs tabular-nums">{{ item.created_at.format("%Y-%m-%d") }}</td>
+                    <td class="px-3 py-2 text-stone-500 dark:text-stone-400 text-xs tabular-nums">{{ item.created_on(time_zone) }}</td>
                     {% if can_edit %}
                     <td class="px-3 py-2 text-right whitespace-nowrap">
                         <button type="button"
@@ -112,7 +112,7 @@
                 {% match item.publisher %}{% when Some with (p) %}
                 <div class="flex gap-2"><dt class="font-medium text-stone-500 dark:text-stone-400">{{ label_col_publisher }}:</dt><dd>{{ p }}</dd></div>
                 {% when None %}{% endmatch %}
-                <div class="flex gap-2"><dt class="font-medium text-stone-500 dark:text-stone-400">{{ label_col_added }}:</dt><dd class="tabular-nums">{{ item.created_at.format("%Y-%m-%d") }}</dd></div>
+                <div class="flex gap-2"><dt class="font-medium text-stone-500 dark:text-stone-400">{{ label_col_added }}:</dt><dd class="tabular-nums">{{ item.created_on(time_zone) }}</dd></div>
             </dl>
         </li>
         {% endfor %}

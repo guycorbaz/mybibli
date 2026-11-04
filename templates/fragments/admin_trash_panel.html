@@ -67,7 +67,7 @@
                                     {% else %}{{ entry.table_name }}{% endif %}
                                 </span>
                             </td>
-                            <td class="px-4 py-3 text-xs text-stone-600 dark:text-stone-400">{{ entry.deleted_at.format("%Y-%m-%d %H:%M") }}</td>
+                            <td class="px-4 py-3 text-xs text-stone-600 dark:text-stone-400">{{ entry.deleted_at }}</td>
                             <td class="px-4 py-3 text-center font-semibold {% if entry.days_remaining <= 7 %}text-red-600 dark:text-red-400{% endif %}">{{ entry.days_remaining }}</td>
                             <td class="px-4 py-3 text-right space-x-2">
                                 {# Issue #478: POST (the route mutates, so it rides the CSRF layer),

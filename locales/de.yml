@@ -478,6 +478,7 @@ error:
     bulk_refetch_delay_invalid: "Die Pause beim Cover-Nachzug muss zwischen 0 und 60000 Millisekunden liegen."
     session_timeout_invalid: "Das Sitzungs-Zeitlimit muss zwischen 1 und 720 Stunden liegen."
     resubmission_delay_invalid: "Die Frist muss eine ganze Zahl von Tagen zwischen 0 und %{max} sein."
+    time_zone_invalid: "Unbekannte Zeitzone — geben Sie einen IANA-Namen wie Europe/Zurich an."
     version_mismatch: "Die Einstellungen wurden durch einen anderen Administrator geändert — neu laden und erneut versuchen"
     provider_version_mismatch: "%{provider} wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
   code:
@@ -1017,7 +1018,7 @@ admin:
     panel_heading: Systemeinstellungen
     section_loans: Ausleihen
     section_providers: Metadaten-Anbieter
-    section_language: Sprache
+    section_language: Sprache und Zeitzone
     section_valuation: Bibliothekswert
     overdue_threshold_label: "Überfälligkeitsgrenze (Tage)"
     overdue_threshold_help: "Eine Ausleihe gilt als überfällig, sobald ihre Dauer diese Anzahl Tage überschreitet."
@@ -1052,6 +1053,9 @@ admin:
     resubmission_delay_label: "Frist, bevor ein abgelehnter Vorschlag erneut eingereicht werden kann (Tage)"
     resubmission_delay_help: "Wie lange ein KI-Agent warten muss, bevor er einen Vorschlag erneut einreicht, der einem von einem Bibliothekar abgelehnten entspricht (gleiche Art und gleiches Ziel: dieselbe Serie, derselbe Titel mit denselben Feldern bei Metadaten, derselbe Titel bei einem Cover). Von 0 (keine Frist) bis %{max} Tage. Gilt für den nächsten Vorschlag, ohne Neustart. Standard: 90 Tage."
     btn_save_proposals: "Vorschlagseinstellungen speichern"
+    time_zone_label: "Zeitzone"
+    time_zone_help: "IANA-Zonenname (z. B. Europe/Zurich, Europe/Paris, America/New_York), in dem die Seiten Daten anzeigen und Tage abgrenzen (hinzugefügt seit, überfällige Ausleihen). Gespeicherte Daten, die API und KI-Agenten bleiben in UTC. Gilt ab der nächsten Seite, ohne Neustart. Standard: Europe/Zurich."
+    btn_save_time_zone: "Zeitzone speichern"
     # v1.7.9 fix #334 — Metadata-Chain + Provider-Health Zeitüberschreitungen.
     metadata_chain_timeout_label: "Zeitüberschreitung pro Metadaten-Anbieter (Sekunden)"
     metadata_chain_timeout_help: "Maximale Wartezeit für einen Anbieter, bevor die Kette zum nächsten übergeht. Standard 5. Erhöhen Sie den Wert, wenn DNS oder TLS langsam sind (ländliches Glasfasernetz, VPN, Satellit). Grenzen 1–60. Beim nächsten Scan wirksam — kein Neustart."
@@ -1160,6 +1164,7 @@ success:
     provider_timeouts_saved: "Zeitüberschreitungen pro Anbieter gespeichert — beim nächsten Scan wirksam, kein Neustart erforderlich"
     sessions_saved: "Sitzungseinstellungen gespeichert — ab der nächsten Anfrage wirksam, kein Neustart erforderlich"
     proposals_saved: "Vorschlagseinstellungen gespeichert — gilt für den nächsten Vorschlag, ohne Neustart"
+    time_zone_saved: "Zeitzone gespeichert — gilt ab der nächsten Seite, ohne Neustart"
     no_changes: "Keine Änderungen"
     provider_set: "%{provider}-Schlüssel gespeichert"
     provider_cleared: "%{provider}-Schlüssel gelöscht"

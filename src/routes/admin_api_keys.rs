@@ -24,6 +24,7 @@ use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
 use crate::middleware::locale::Locale;
 use crate::models::api_key::{ApiKey, ApiKeyModel, ApiKeyScope, mint_plaintext_key};
 use crate::utils::feedback_html;
+use crate::utils::local_time::format_local_date_time;
 use crate::services::password::hash_password;
 
 // ─── Forms ────────────────────────────────────────────────────────
@@ -146,7 +147,7 @@ pub async fn render_panel_html(
     session: &Session,
 ) -> Result<String, AppError> {
     let keys = ApiKeyModel::list_for_admin(&state.pool).await?;
-    let list_html = render_list_html(loc, &session.csrf_token, &keys)?;
+    let list_html = render_list_html(loc, &session.csrf_token, &keys, state.time_zone())?;
 
     let panel = AdminApiKeysPanel {
         panel_heading: rust_i18n::t!("admin.api_keys.panel_heading", locale = loc).to_string(),
@@ -180,7 +181,12 @@ pub async fn render_panel_html(
         .map_err(|_| AppError::Internal("admin api_keys panel render failed".to_string()))
 }
 
-fn render_list_html(loc: &'static str, _csrf_token: &str, keys: &[ApiKey]) -> Result<String, AppError> {
+fn render_list_html(
+    loc: &'static str,
+    _csrf_token: &str,
+    keys: &[ApiKey],
+    tz: chrono_tz::Tz,
+) -> Result<String, AppError> {
     let empty_state = if keys.is_empty() {
         rust_i18n::t!("admin.api_keys.empty_state", locale = loc).to_string()
     } else {
@@ -211,10 +217,10 @@ fn render_list_html(loc: &'static str, _csrf_token: &str, keys: &[ApiKey]) -> Re
                 scope_label,
                 scope_chip_class,
                 key_prefix: k.key_prefix.clone(),
-                created_at: k.created_at.format("%Y-%m-%d %H:%M").to_string(),
+                created_at: format_local_date_time(k.created_at.naive_utc(), tz),
                 last_used_at: k
                     .last_used_at
-                    .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
+                    .map(|t| format_local_date_time(t.naive_utc(), tz))
                     .unwrap_or_else(|| never_label.clone()),
                 status_label,
                 status_chip_class,
@@ -354,7 +360,7 @@ pub async fn admin_api_keys_create(
 
     // Refresh the list view and assemble OOB updates.
     let keys = ApiKeyModel::list_for_admin(&state.pool).await?;
-    let list_html = render_list_html(loc, &session.csrf_token, &keys)?;
+    let list_html = render_list_html(loc, &session.csrf_token, &keys, state.time_zone())?;
 
     let feedback = feedback_html(
         "success",
@@ -493,7 +499,7 @@ pub async fn admin_api_keys_revoke(
     }
 
     let keys = ApiKeyModel::list_for_admin(&state.pool).await?;
-    let list_html = render_list_html(loc, &session.csrf_token, &keys)?;
+    let list_html = render_list_html(loc, &session.csrf_token, &keys, state.time_zone())?;
 
     let feedback = feedback_html(
         "success",
@@ -632,7 +638,7 @@ pub async fn admin_api_keys_delete(
     }
 
     let keys = ApiKeyModel::list_for_admin(pool).await?;
-    let list_html = render_list_html(loc, &session.csrf_token, &keys)?;
+    let list_html = render_list_html(loc, &session.csrf_token, &keys, state.time_zone())?;
 
     let feedback = feedback_html(
         "success",

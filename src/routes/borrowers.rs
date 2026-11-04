@@ -172,7 +172,7 @@ pub async fn borrower_detail(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
-    let active_loans = LoanModel::list_active_by_borrower(pool, borrower.id).await?;
+    let active_loans = LoanModel::list_active_by_borrower(pool, borrower.id, &state.local_clock()).await?;
     let threshold = state.settings.read().unwrap().overdue_threshold_days;
 
     // "borrower-detail" (not "borrowers") so the body[data-page] hook in
@@ -571,6 +571,7 @@ mod tests {
             borrower_name: "Detail-User".to_string(),
             volume_label: "V0099".to_string(),
             title_name: "Detail Test Book".to_string(),
+            loaned_on: chrono::NaiveDate::from_ymd_opt(2026, 5, 14).unwrap(),
             loaned_at: chrono::NaiveDate::from_ymd_opt(2026, 5, 14)
                 .unwrap()
                 .and_hms_opt(9, 0, 0)

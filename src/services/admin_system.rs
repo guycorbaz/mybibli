@@ -32,6 +32,10 @@ pub const KEY_SETUP_STEP_3_DONE: &str = "setup_step_3_done";
 pub const KEY_DEFAULT_CURRENCY: &str = "default_currency";
 pub const KEY_SHOW_VALUE_INDICATORS: &str = "show_value_indicators";
 
+// Story 15-1 (#602) — the instance time zone (IANA name). Seeded by
+// migration 20261104120000; `routes/admin_system_time_zone.rs` writes it.
+pub const KEY_TIME_ZONE: &str = "time_zone";
+
 // v1.7.1 fix #308 — runtime log-level. CR #301 (v1.7.0) advertised
 // "flip log level from /admin > System without a redeploy", but the
 // admin form + runtime reload were never implemented. Seeded by
@@ -147,6 +151,16 @@ pub fn validate_resubmission_delay_days(raw: &str, loc: &'static str) -> Result<
             .to_string(),
         )),
     }
+}
+
+/// Story 15-1 (#602) — validate the instance time zone as typed: an IANA
+/// zone name, exact spelling (surrounding blanks ignored).
+pub fn validate_time_zone(raw: &str, loc: &'static str) -> Result<chrono_tz::Tz, AppError> {
+    crate::utils::local_time::parse_time_zone(raw).ok_or_else(|| {
+        AppError::BadRequest(
+            rust_i18n::t!("error.system.time_zone_invalid", locale = loc).to_string(),
+        )
+    })
 }
 
 /// Validate the log-level setting. Accepts:
@@ -347,6 +361,23 @@ mod tests {
         assert!(validate_session_timeout_hours(1, "en").is_ok());
         assert!(validate_session_timeout_hours(4, "en").is_ok());
         assert!(validate_session_timeout_hours(720, "en").is_ok());
+    }
+
+    #[test]
+    fn validate_time_zone_accepts_iana_names_only() {
+        assert_eq!(
+            validate_time_zone(" Europe/Paris ", "en").unwrap(),
+            chrono_tz::Europe::Paris
+        );
+        for bad in ["", "Paris", "europe/zurich", "UTC+1", "Europe/Zurich/x"] {
+            assert!(
+                matches!(
+                    validate_time_zone(bad, "en"),
+                    Err(AppError::BadRequest(m)) if m.contains("Europe/Zurich")
+                ),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

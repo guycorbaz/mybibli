@@ -44,7 +44,7 @@
                 <dd class="text-stone-700 dark:text-stone-300 tabular-nums">{{ y }}</dd>
                 {% when None %}{% endmatch %}
                 <dt class="text-stone-500 dark:text-stone-400">{{ label_added_at }}</dt>
-                <dd class="text-stone-700 dark:text-stone-300 tabular-nums">{{ item.created_at.format("%Y-%m-%d") }}</dd>
+                <dd class="text-stone-700 dark:text-stone-300 tabular-nums">{{ item.created_on(time_zone) }}</dd>
             </dl>
 
             {% match item.notes %}{% when Some with (n) %}

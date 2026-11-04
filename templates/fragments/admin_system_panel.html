@@ -25,6 +25,8 @@
     <section aria-labelledby="admin-system-language-heading">
         <h3 id="admin-system-language-heading" class="text-lg font-semibold mb-3">{{ section_language }}</h3>
         {{ language_form_html|safe }}
+        {# Story 15-1 (#602) — instance time zone. #}
+        {{ time_zone_form_html|safe }}
     </section>
 
     {# v1.5.1 fix #283 — Library valuation section. Currency + opt-in

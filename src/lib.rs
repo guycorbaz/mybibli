@@ -317,6 +317,21 @@ impl AppState {
             .map(|s| s.bulk_refetch_delay_ms)
             .unwrap_or_else(|_| AppSettings::default().bulk_refetch_delay_ms)
     }
+
+    /// Story 15-1 (#602): the instance time zone, for every date the web
+    /// interface shows or cuts (`utils::local_time`). Read per request,
+    /// so an Admin → System change applies to the next page.
+    pub fn time_zone(&self) -> chrono_tz::Tz {
+        self.settings
+            .read()
+            .map(|s| s.time_zone)
+            .unwrap_or(crate::utils::local_time::DEFAULT_TIME_ZONE)
+    }
+
+    /// Story 15-1 (#602): "now" in the instance zone, for day counts.
+    pub fn local_clock(&self) -> crate::utils::local_time::LocalClock {
+        crate::utils::local_time::LocalClock::now(self.time_zone())
+    }
 }
 
 #[cfg(test)]

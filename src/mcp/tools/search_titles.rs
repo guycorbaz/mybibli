@@ -82,7 +82,7 @@ impl McpTool for SearchTitles {
             "added_since": {
                 "type": "string",
                 "maxLength": args::MAX_QUERY_CHARS,
-                "description": "Only titles entered, or given a new volume, on or after this moment: a date YYYY-MM-DD (from 00:00 UTC) or an ISO 8601 date-time (2026-10-31T08:00:00Z). Empty or omitted: no date filter."
+                "description": "Only titles entered, or given a new volume, on or after this moment: a date YYYY-MM-DD (the UTC day: from 00:00 UTC) or an ISO 8601 date-time, in UTC (2026-10-31T08:00:00Z) or with an offset (2026-10-31T00:00:00+01:00 for a day starting at local midnight in UTC+1). Empty or omitted: no date filter."
             }
         }))
     }

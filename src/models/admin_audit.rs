@@ -26,7 +26,7 @@ impl AdminAuditModel {
     /// The returned `timestamp` is the actual DB-assigned value (read back via
     /// `LAST_INSERT_ID()` since MariaDB doesn't reliably support `INSERT ...
     /// RETURNING`) — Patch P13. Previously this returned a Rust-side
-    /// `chrono::Local::now()` which drifted from the stored row whenever the
+    /// timestamp from the process local clock, which drifted from the stored row whenever the
     /// process clock and DB clock disagreed.
     ///
     /// `CAST(timestamp AS DATETIME)` is needed because dynamic-query SQLx

@@ -104,11 +104,11 @@
                 <dt class="text-stone-500 dark:text-stone-400">{{ col_title }}</dt>
                 <dd class="text-stone-900 dark:text-stone-100 text-right break-words">{{ loan.title_name }}</dd>
                 <dt class="text-stone-500 dark:text-stone-400">{{ col_date }}</dt>
-                <dd class="text-stone-900 dark:text-stone-100 text-right">{{ loan.loaned_at.format("%Y-%m-%d") }}</dd>
+                <dd class="text-stone-900 dark:text-stone-100 text-right">{{ loan.loaned_on }}</dd>
                 <dt class="text-stone-500 dark:text-stone-400">{{ col_duration }}</dt>
-                <dd class="text-right {% if loan.duration_days >= overdue_threshold %}text-red-600 dark:text-red-400 font-semibold{% elif loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% else %}text-stone-900 dark:text-stone-100{% endif %}">
+                <dd class="text-right {% if loan.duration_days > overdue_threshold %}text-red-600 dark:text-red-400 font-semibold{% elif loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% else %}text-stone-900 dark:text-stone-100{% endif %}">
                     {{ loan.duration_days }} {{ days_label }}
-                    {% if loan.duration_days >= overdue_threshold %}
+                    {% if loan.duration_days > overdue_threshold %}
                     <span class="ml-1 inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">{{ overdue_label }}</span>
                     {% endif %}
                 </dd>
@@ -163,10 +163,10 @@
                     <td class="px-4 py-3"><a href="/borrower/{{ loan.borrower_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ loan.borrower_name }}</a></td>
                     <td class="px-4 py-3">{{ loan.volume_label }}</td>
                     <td class="hidden md:table-cell px-4 py-3">{{ loan.title_name }}</td>
-                    <td class="hidden md:table-cell px-4 py-3">{{ loan.loaned_at.format("%Y-%m-%d") }}</td>
-                    <td class="px-4 py-3 {% if loan.duration_days >= overdue_threshold %}text-red-600 dark:text-red-400 font-semibold{% elif loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% endif %}">
+                    <td class="hidden md:table-cell px-4 py-3">{{ loan.loaned_on }}</td>
+                    <td class="px-4 py-3 {% if loan.duration_days > overdue_threshold %}text-red-600 dark:text-red-400 font-semibold{% elif loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% endif %}">
                         {{ loan.duration_days }} {{ days_label }}
-                        {% if loan.duration_days >= overdue_threshold %}
+                        {% if loan.duration_days > overdue_threshold %}
                         <span class="ml-1 inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">{{ overdue_label }}</span>
                         {% endif %}
                     </td>

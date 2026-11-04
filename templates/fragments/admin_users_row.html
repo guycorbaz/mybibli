@@ -9,10 +9,10 @@
             <span class="px-2 py-1 bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 rounded text-xs">{{ status_deactivated }}</span>
         {% endif %}
     </td>
-    <td class="px-4 py-2 text-xs">{{ user.created_at.format("%Y-%m-%d") }}</td>
+    <td class="px-4 py-2 text-xs">{{ user.created_on(time_zone) }}</td>
     <td class="px-4 py-2 text-xs">
-        {% if let Some(login_time) = user.last_login %}
-            {{ login_time.format("%Y-%m-%d") }}
+        {% if let Some(login_day) = user.last_login_on(time_zone) %}
+            {{ login_day }}
         {% else %}
             {{ last_login_never }}
         {% endif %}

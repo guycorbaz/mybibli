@@ -1,9 +1,11 @@
-use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveDateTime};
 use sqlx::Row;
+use sqlx::mysql::MySqlRow;
 
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::{DEFAULT_PAGE_SIZE, PaginatedList};
+use crate::utils::local_time::{LocalClock, local_date};
 
 #[derive(Debug, Clone)]
 pub struct LoanModel {
@@ -26,7 +28,37 @@ pub struct LoanWithDetails {
     pub volume_label: String,
     pub title_name: String,
     pub loaned_at: NaiveDateTime,
+    /// Story 15-1 (#602) — the calendar day of `loaned_at` in the
+    /// instance zone, as the loan lists show it.
+    pub loaned_on: NaiveDate,
+    /// Whole local calendar days since the loan (since the return, for
+    /// `list_recent_returns`), cut in the instance zone
+    /// (`LocalClock::days_since`).
     pub duration_days: i64,
+}
+
+/// Story 15-1 (#602) — one loan-list row. `since_col` names the instant
+/// the day count starts from (`loaned_at`, or `returned_at` for the
+/// recent returns). Day counts and the shown date are local to the
+/// instance zone; the SQL no longer computes `DATEDIFF` in UTC.
+fn details_from_row(
+    r: &MySqlRow,
+    clock: &LocalClock,
+    since_col: &str,
+) -> Result<LoanWithDetails, sqlx::Error> {
+    let loaned_at: NaiveDateTime = r.try_get("loaned_at")?;
+    let since: NaiveDateTime = r.try_get(since_col)?;
+    Ok(LoanWithDetails {
+        id: r.try_get("id")?,
+        volume_id: r.try_get("volume_id")?,
+        borrower_id: r.try_get("borrower_id")?,
+        borrower_name: r.try_get("borrower_name")?,
+        volume_label: r.try_get("volume_label")?,
+        title_name: r.try_get("title_name")?,
+        loaned_at,
+        loaned_on: local_date(loaned_at, clock.tz()),
+        duration_days: clock.days_since(since),
+    })
 }
 
 /// Story 9-8 — narrow projection for the volume-detail page's
@@ -73,7 +105,9 @@ fn map_loan_sort_column(sort: &str) -> &str {
         "borrower" => "b.name",
         "title" => "t.title",
         "date" => "l.loaned_at",
-        "duration" => "duration_days",
+        // Story 15-1: a longer loan is an earlier one — the duration sort
+        // runs on `loaned_at` with the direction flipped (`list_active`).
+        "duration" => "l.loaned_at",
         _ => "l.loaned_at",
     }
 }
@@ -111,11 +145,19 @@ impl LoanModel {
         page: u32,
         sort: &Option<String>,
         dir: &Option<String>,
+        clock: &LocalClock,
     ) -> Result<PaginatedList<LoanWithDetails>, AppError> {
         let offset = (page.saturating_sub(1)) * DEFAULT_PAGE_SIZE;
         let sort_col = validated_loan_sort(sort);
         let sort_dir = validated_dir(dir);
         let sql_col = map_loan_sort_column(sort_col);
+        // The duration sort runs on `loaned_at`, reversed (see
+        // `map_loan_sort_column`).
+        let sql_dir = match (sort_col, sort_dir) {
+            ("duration", "asc") => "desc",
+            ("duration", _) => "asc",
+            (_, dir) => dir,
+        };
 
         // JOIN parents with `deleted_at IS NULL` so the pagination total
         // matches the data SELECT below (which already does this filter).
@@ -137,8 +179,7 @@ impl LoanModel {
                       CAST(l.loaned_at AS DATETIME) AS loaned_at,
                       b.name AS borrower_name,
                       v.label AS volume_label,
-                      t.title AS title_name,
-                      DATEDIFF(NOW(), l.loaned_at) AS duration_days
+                      t.title AS title_name
                FROM loans l
                JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL
                JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL
@@ -146,7 +187,7 @@ impl LoanModel {
                WHERE l.returned_at IS NULL AND l.deleted_at IS NULL
                ORDER BY {} {}
                LIMIT ? OFFSET ?"#,
-            sql_col, sort_dir
+            sql_col, sql_dir
         );
 
         let rows = sqlx::query(&data_sql)
@@ -157,18 +198,7 @@ impl LoanModel {
 
         let items: Vec<LoanWithDetails> = rows
             .iter()
-            .map(|r| {
-                Ok(LoanWithDetails {
-                    id: r.try_get("id")?,
-                    volume_id: r.try_get("volume_id")?,
-                    borrower_id: r.try_get("borrower_id")?,
-                    borrower_name: r.try_get("borrower_name")?,
-                    volume_label: r.try_get("volume_label")?,
-                    title_name: r.try_get("title_name")?,
-                    loaned_at: r.try_get("loaned_at")?,
-                    duration_days: r.try_get::<i64, _>("duration_days").unwrap_or(0),
-                })
-            })
+            .map(|r| details_from_row(r, clock, "loaned_at"))
             .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
         Ok(PaginatedList::new(
@@ -244,14 +274,14 @@ impl LoanModel {
     pub async fn find_active_by_volume_label(
         pool: &DbPool,
         label: &str,
+        clock: &LocalClock,
     ) -> Result<Option<LoanWithDetails>, AppError> {
         let row = sqlx::query(
             r#"SELECT l.id, l.volume_id, l.borrower_id,
                       CAST(l.loaned_at AS DATETIME) AS loaned_at,
                       b.name AS borrower_name,
                       v.label AS volume_label,
-                      t.title AS title_name,
-                      DATEDIFF(NOW(), l.loaned_at) AS duration_days
+                      t.title AS title_name
                FROM loans l
                JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL
                JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL
@@ -263,16 +293,7 @@ impl LoanModel {
         .await?;
 
         match row {
-            Some(r) => Ok(Some(LoanWithDetails {
-                id: r.try_get("id")?,
-                volume_id: r.try_get("volume_id")?,
-                borrower_id: r.try_get("borrower_id")?,
-                borrower_name: r.try_get("borrower_name")?,
-                volume_label: r.try_get("volume_label")?,
-                title_name: r.try_get("title_name")?,
-                loaned_at: r.try_get("loaned_at")?,
-                duration_days: r.try_get::<i64, _>("duration_days").unwrap_or(0),
-            })),
+            Some(r) => Ok(Some(details_from_row(&r, clock, "loaned_at")?)),
             None => Ok(None),
         }
     }
@@ -281,14 +302,14 @@ impl LoanModel {
     pub async fn list_active_by_borrower(
         pool: &DbPool,
         borrower_id: u64,
+        clock: &LocalClock,
     ) -> Result<Vec<LoanWithDetails>, AppError> {
         let rows = sqlx::query(
             r#"SELECT l.id, l.volume_id, l.borrower_id,
                       CAST(l.loaned_at AS DATETIME) AS loaned_at,
                       b.name AS borrower_name,
                       v.label AS volume_label,
-                      t.title AS title_name,
-                      DATEDIFF(NOW(), l.loaned_at) AS duration_days
+                      t.title AS title_name
                FROM loans l
                JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL
                JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL
@@ -302,18 +323,7 @@ impl LoanModel {
 
         let items: Vec<LoanWithDetails> = rows
             .iter()
-            .map(|r| {
-                Ok(LoanWithDetails {
-                    id: r.try_get("id")?,
-                    volume_id: r.try_get("volume_id")?,
-                    borrower_id: r.try_get("borrower_id")?,
-                    borrower_name: r.try_get("borrower_name")?,
-                    volume_label: r.try_get("volume_label")?,
-                    title_name: r.try_get("title_name")?,
-                    loaned_at: r.try_get("loaned_at")?,
-                    duration_days: r.try_get::<i64, _>("duration_days").unwrap_or(0),
-                })
-            })
+            .map(|r| details_from_row(r, clock, "loaned_at"))
             .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
         Ok(items)
@@ -337,25 +347,32 @@ impl LoanModel {
         Ok(row.0)
     }
 
-    /// Count of overdue active loans (story 9-5 AC8). Strict `>` on
-    /// `DATEDIFF(NOW(), loaned_at)`: a loan whose age exactly equals
-    /// the threshold is NOT overdue per FR48 ("exceeds this number of
-    /// days"). The boundary is locked by
-    /// `count_overdue_threshold_boundary` in `tests/dashboard_overdue.rs`.
+    /// Count of overdue active loans (story 9-5 AC8). Strict `>` on the
+    /// loan's age in whole local calendar days: a loan whose age exactly
+    /// equals the threshold is NOT overdue per FR48 ("exceeds this number
+    /// of days"). Story 15-1 (#602): the age is cut in the instance zone —
+    /// `days_since > n` ⇔ `loaned_at < clock.start_of_day_days_ago(n)`,
+    /// a UTC bound, so the SQL compares instants only. The boundary is
+    /// locked by `count_overdue_threshold_boundary` in
+    /// `tests/dashboard_overdue.rs`.
     ///
     /// JOINs `borrowers` / `volumes` / `titles` with `deleted_at IS NULL` so the count
     /// matches `list_overdue`'s output exactly even when a parent row has been soft-
     /// deleted underneath an active loan (issue #117).
-    pub async fn count_overdue(pool: &DbPool, threshold_days: i32) -> Result<i64, AppError> {
+    pub async fn count_overdue(
+        pool: &DbPool,
+        threshold_days: i32,
+        clock: &LocalClock,
+    ) -> Result<i64, AppError> {
         let row: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM loans l \
              JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL \
              JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL \
              JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL \
              WHERE l.returned_at IS NULL AND l.deleted_at IS NULL \
-             AND DATEDIFF(NOW(), l.loaned_at) > ?",
+             AND l.loaned_at < ?",
         )
-        .bind(threshold_days)
+        .bind(clock.start_of_day_days_ago(i64::from(threshold_days)))
         .fetch_one(pool)
         .await?;
         Ok(row.0)
@@ -369,42 +386,31 @@ impl LoanModel {
         pool: &DbPool,
         threshold_days: i32,
         limit: u32,
+        clock: &LocalClock,
     ) -> Result<Vec<LoanWithDetails>, AppError> {
         let rows = sqlx::query(
             r#"SELECT l.id, l.volume_id, l.borrower_id,
                       CAST(l.loaned_at AS DATETIME) AS loaned_at,
                       b.name AS borrower_name,
                       v.label AS volume_label,
-                      t.title AS title_name,
-                      DATEDIFF(NOW(), l.loaned_at) AS duration_days
+                      t.title AS title_name
                FROM loans l
                JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL
                JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL
                JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL
                WHERE l.returned_at IS NULL AND l.deleted_at IS NULL
-               AND DATEDIFF(NOW(), l.loaned_at) > ?
+               AND l.loaned_at < ?
                ORDER BY l.loaned_at ASC
                LIMIT ?"#,
         )
-        .bind(threshold_days)
+        .bind(clock.start_of_day_days_ago(i64::from(threshold_days)))
         .bind(limit)
         .fetch_all(pool)
         .await?;
 
         let items: Vec<LoanWithDetails> = rows
             .iter()
-            .map(|r| {
-                Ok(LoanWithDetails {
-                    id: r.try_get("id")?,
-                    volume_id: r.try_get("volume_id")?,
-                    borrower_id: r.try_get("borrower_id")?,
-                    borrower_name: r.try_get("borrower_name")?,
-                    volume_label: r.try_get("volume_label")?,
-                    title_name: r.try_get("title_name")?,
-                    loaned_at: r.try_get("loaned_at")?,
-                    duration_days: r.try_get::<i64, _>("duration_days").unwrap_or(0),
-                })
-            })
+            .map(|r| details_from_row(r, clock, "loaned_at"))
             .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
         Ok(items)
@@ -456,6 +462,7 @@ impl LoanModel {
         pool: &DbPool,
         days: i32,
         limit: u32,
+        clock: &LocalClock,
     ) -> Result<Vec<LoanWithDetails>, AppError> {
         let rows = sqlx::query(
             r#"SELECT l.id, l.volume_id, l.borrower_id,
@@ -463,7 +470,7 @@ impl LoanModel {
                       b.name AS borrower_name,
                       v.label AS volume_label,
                       t.title AS title_name,
-                      DATEDIFF(NOW(), l.returned_at) AS duration_days
+                      CAST(l.returned_at AS DATETIME) AS returned_at
                FROM loans l
                JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL
                JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL
@@ -481,18 +488,7 @@ impl LoanModel {
 
         let items: Vec<LoanWithDetails> = rows
             .iter()
-            .map(|r| {
-                Ok(LoanWithDetails {
-                    id: r.try_get("id")?,
-                    volume_id: r.try_get("volume_id")?,
-                    borrower_id: r.try_get("borrower_id")?,
-                    borrower_name: r.try_get("borrower_name")?,
-                    volume_label: r.try_get("volume_label")?,
-                    title_name: r.try_get("title_name")?,
-                    loaned_at: r.try_get("loaned_at")?,
-                    duration_days: r.try_get::<i64, _>("duration_days").unwrap_or(0),
-                })
-            })
+            .map(|r| details_from_row(r, clock, "returned_at"))
             .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
         Ok(items)
@@ -573,6 +569,10 @@ mod tests {
     use super::*;
     use chrono::NaiveDate;
 
+    fn utc_clock() -> LocalClock {
+        LocalClock::now(chrono_tz::UTC)
+    }
+
     #[test]
     fn test_loan_model_struct() {
         let loan = LoanModel {
@@ -649,7 +649,8 @@ mod tests {
         assert_eq!(map_loan_sort_column("borrower"), "b.name");
         assert_eq!(map_loan_sort_column("title"), "t.title");
         assert_eq!(map_loan_sort_column("date"), "l.loaned_at");
-        assert_eq!(map_loan_sort_column("duration"), "duration_days");
+        // Story 15-1: the duration sort runs on loaned_at, reversed.
+        assert_eq!(map_loan_sort_column("duration"), "l.loaned_at");
         assert_eq!(map_loan_sort_column("unknown"), "l.loaned_at");
     }
 
@@ -685,6 +686,7 @@ mod tests {
             borrower_name: "Jean Dupont".to_string(),
             volume_label: "V0042".to_string(),
             title_name: "Les Misérables".to_string(),
+            loaned_on: chrono::NaiveDate::from_ymd_opt(2026, 4, 1).unwrap(),
             loaned_at: NaiveDate::from_ymd_opt(2026, 4, 1)
                 .unwrap()
                 .and_hms_opt(10, 0, 0)
@@ -757,7 +759,7 @@ mod tests {
 
         // Sanity: both pre-soft-delete numbers see the loan.
         assert_eq!(LoanModel::count_active(&pool).await?, 1);
-        assert_eq!(LoanModel::count_overdue(&pool, 30).await?, 1);
+        assert_eq!(LoanModel::count_overdue(&pool, 30, &utc_clock()).await?, 1);
 
         // Soft-delete the borrower. The loan row stays live, but its parent
         // is now in the trash.
@@ -766,8 +768,8 @@ mod tests {
             .execute(&pool)
             .await?;
 
-        let overdue_count = LoanModel::count_overdue(&pool, 30).await?;
-        let overdue_list_len = LoanModel::list_overdue(&pool, 30, 100).await?.len() as i64;
+        let overdue_count = LoanModel::count_overdue(&pool, 30, &utc_clock()).await?;
+        let overdue_list_len = LoanModel::list_overdue(&pool, 30, 100, &utc_clock()).await?.len() as i64;
         assert_eq!(
             overdue_count, overdue_list_len,
             "count_overdue must equal list_overdue.len() — was the divergence in #117"
@@ -776,7 +778,7 @@ mod tests {
 
         let active_count = LoanModel::count_active(&pool).await?;
         let active_list_len =
-            LoanModel::list_active(&pool, 1, &None, &None).await?.total_items as i64;
+            LoanModel::list_active(&pool, 1, &None, &None, &utc_clock()).await?.total_items as i64;
         assert_eq!(
             active_count, active_list_len,
             "count_active must equal list_active total_count for pagination integrity"

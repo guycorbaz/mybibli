@@ -75,7 +75,8 @@ pub async fn loans_page(
     let pool = &state.pool;
     let loc = locale.0;
 
-    let loans = LoanModel::list_active(pool, params.page, &params.sort, &params.dir).await?;
+    let loans = LoanModel::list_active(pool, params.page, &params.sort, &params.dir, &state.local_clock())
+        .await?;
     let threshold = state.settings.read().unwrap().overdue_threshold_days;
 
     // Resolve current sort/dir for template (matches what list_active actually used)
@@ -409,7 +410,7 @@ pub async fn scan_on_loans(
     }
 
     // Check if volume is on loan
-    match LoanModel::find_active_by_volume_label(pool, &code).await? {
+    match LoanModel::find_active_by_volume_label(pool, &code, &state.local_clock()).await? {
         Some(loan_detail) => {
             // Return highlighted loan row
             let row_html = loan_row_html(&loan_detail, true, loc);
@@ -439,7 +440,7 @@ fn loan_row_html(loan: &LoanWithDetails, highlight: bool, loc: &str) -> String {
     let escaped_borrower = crate::utils::html_escape(&loan.borrower_name);
     let escaped_label = crate::utils::html_escape(&loan.volume_label);
     let escaped_title = crate::utils::html_escape(&loan.title_name);
-    let date = loan.loaned_at.format("%Y-%m-%d").to_string();
+    let date = loan.loaned_on.to_string();
     let days = rust_i18n::t!("loan.days", locale = loc).to_string();
     let return_label = rust_i18n::t!("loan.return", locale = loc).to_string();
 
@@ -494,7 +495,24 @@ pub struct SeedOverdueLoanForm {
     pub volume_label: String,
     /// Borrower name (exact match) — same lookup convenience as above.
     pub borrower_name: String,
+    #[serde(default)]
     pub days_overdue: u32,
+    /// Story 15-1 (#602) — an exact UTC instant `YYYY-MM-DD HH:MM:SS`
+    /// instead of `days_overdue`, so a spec can place a loan just before
+    /// a local midnight and watch its day follow the instance zone.
+    #[serde(default)]
+    pub loaned_at: Option<String>,
+}
+
+/// Story 15-1 — the `loaned_at` of the seed form: absent or empty means
+/// "use `days_overdue`"; anything else must read as a UTC date-time.
+fn parse_seed_instant(raw: Option<&str>) -> Result<Option<chrono::NaiveDateTime>, AppError> {
+    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+        None => Ok(None),
+        Some(s) => chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+            .map(Some)
+            .map_err(|_| AppError::BadRequest("loaned_at must be YYYY-MM-DD HH:MM:SS".to_string())),
+    }
 }
 
 pub async fn debug_seed_overdue_loan(
@@ -507,7 +525,8 @@ pub async fn debug_seed_overdue_loan(
         return Err(AppError::NotFound("disabled".to_string()));
     }
     session.require_role(Role::Admin, locale.0)?;
-    if form.days_overdue == 0 {
+    let exact = parse_seed_instant(form.loaned_at.as_deref())?;
+    if exact.is_none() && form.days_overdue == 0 {
         return Err(AppError::BadRequest(
             "days_overdue must be >= 1".to_string(),
         ));
@@ -537,13 +556,22 @@ pub async fn debug_seed_overdue_loan(
     // loaned_at, which `register_loan` cannot produce. Mirror of
     // the pattern used in `models::loan` integration tests
     // (line 749-756) that already exercises this shape.
-    let result = sqlx::query(
-        "INSERT INTO loans (volume_id, borrower_id, loaned_at) \
-         VALUES (?, ?, NOW() - INTERVAL ? DAY)",
-    )
-    .bind(volume_id)
-    .bind(borrower_id)
-    .bind(form.days_overdue)
+    let insert = match exact {
+        Some(at) => sqlx::query(
+            "INSERT INTO loans (volume_id, borrower_id, loaned_at) VALUES (?, ?, ?)",
+        )
+        .bind(volume_id)
+        .bind(borrower_id)
+        .bind(at),
+        None => sqlx::query(
+            "INSERT INTO loans (volume_id, borrower_id, loaned_at) \
+             VALUES (?, ?, NOW() - INTERVAL ? DAY)",
+        )
+        .bind(volume_id)
+        .bind(borrower_id)
+        .bind(form.days_overdue),
+    };
+    let result = insert
     .execute(&state.pool)
     .await
     .map_err(|e| AppError::Internal(format!("Failed to seed overdue loan: {e}")))?;
@@ -562,6 +590,17 @@ pub async fn debug_seed_overdue_loan(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seed_instant_is_optional_and_exact() {
+        assert_eq!(parse_seed_instant(None).unwrap(), None);
+        assert_eq!(parse_seed_instant(Some("  ")).unwrap(), None);
+        assert_eq!(
+            parse_seed_instant(Some("2026-01-15 23:30:00")).unwrap(),
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 15).unwrap().and_hms_opt(23, 30, 0)
+        );
+        assert!(parse_seed_instant(Some("2026-01-15")).is_err());
+    }
 
     #[test]
     fn test_create_loan_form_fields() {
@@ -634,6 +673,7 @@ mod tests {
             borrower_name: "Jean".to_string(),
             volume_label: "V0042".to_string(),
             title_name: "Test Book".to_string(),
+            loaned_on: chrono::NaiveDate::from_ymd_opt(2026, 4, 1).unwrap(),
             loaned_at: chrono::NaiveDate::from_ymd_opt(2026, 4, 1)
                 .unwrap()
                 .and_hms_opt(10, 0, 0)
@@ -662,6 +702,7 @@ mod tests {
             borrower_name: "Marie".to_string(),
             volume_label: "V0001".to_string(),
             title_name: "Another".to_string(),
+            loaned_on: chrono::NaiveDate::from_ymd_opt(2026, 4, 1).unwrap(),
             loaned_at: chrono::NaiveDate::from_ymd_opt(2026, 4, 1)
                 .unwrap()
                 .and_hms_opt(10, 0, 0)
@@ -683,6 +724,7 @@ mod tests {
             borrower_name: "O'Brien <script>".to_string(),
             volume_label: "V0003".to_string(),
             title_name: "Book & Title".to_string(),
+            loaned_on: chrono::NaiveDate::from_ymd_opt(2026, 4, 1).unwrap(),
             loaned_at: chrono::NaiveDate::from_ymd_opt(2026, 4, 1)
                 .unwrap()
                 .and_hms_opt(10, 0, 0)
@@ -729,6 +771,32 @@ mod tests {
         }
     }
 
+    /// Story 15-1 review (L3): a loan of exactly `overdue_threshold` days is
+    /// not overdue (FR48 "exceeds"), like `LoanModel::count_overdue`; one
+    /// day more is.
+    #[test]
+    fn loans_template_marks_overdue_strictly_above_the_threshold() {
+        let loan = |days: i64| LoanWithDetails {
+            id: 8,
+            volume_id: 100,
+            borrower_id: 200,
+            borrower_name: "Boundary-User".to_string(),
+            volume_label: "V0008".to_string(),
+            title_name: "Boundary Title".to_string(),
+            loaned_on: chrono::NaiveDate::from_ymd_opt(2026, 5, 14).unwrap(),
+            loaned_at: chrono::NaiveDate::from_ymd_opt(2026, 5, 14)
+                .unwrap()
+                .and_hms_opt(9, 0, 0)
+                .unwrap(),
+            duration_days: days,
+        };
+        let at = build_loans_template_for_test(loan(30)).render().unwrap();
+        assert!(!at.contains(">Overdue<"), "30 days at threshold 30 is not overdue");
+        assert!(!at.contains("text-red-600"));
+        let above = build_loans_template_for_test(loan(31)).render().unwrap();
+        assert_eq!(above.matches(">Overdue<").count(), 2, "card and row");
+    }
+
     /// Story 10-3: the loans page must render BOTH the mobile-card list
     /// (md:hidden) AND the desktop table (hidden md:block), each carrying
     /// the same loan data, so the layout switches purely via the Tailwind
@@ -742,6 +810,7 @@ mod tests {
             borrower_name: "Mobile-Card-User".to_string(),
             volume_label: "V0007".to_string(),
             title_name: "Mobile Test Title".to_string(),
+            loaned_on: chrono::NaiveDate::from_ymd_opt(2026, 5, 14).unwrap(),
             loaned_at: chrono::NaiveDate::from_ymd_opt(2026, 5, 14)
                 .unwrap()
                 .and_hms_opt(9, 0, 0)

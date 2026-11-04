@@ -59,8 +59,13 @@ fn load_font_family() -> Result<&'static FontFamily<FontData>, AppError> {
     Ok(FONT_FAMILY.get().expect("font family was just set"))
 }
 
-/// Render the wish list as a PDF. Returns the raw bytes.
-pub fn render(items: &[WishlistItem], loc: &str) -> Result<Vec<u8>, AppError> {
+/// Render the wish list as a PDF. Returns the raw bytes. `today` is the
+/// "generated on" date, in the instance zone (story 15-1).
+pub fn render(
+    items: &[WishlistItem],
+    loc: &str,
+    today: chrono::NaiveDate,
+) -> Result<Vec<u8>, AppError> {
     let family = load_font_family()?.clone();
     let mut doc = Document::new(family);
 
@@ -96,7 +101,7 @@ pub fn render(items: &[WishlistItem], loc: &str) -> Result<Vec<u8>, AppError> {
     let date_label = rust_i18n::t!(
         "wishlist.pdf.generated_on",
         locale = loc,
-        date = chrono::Local::now().format("%Y-%m-%d").to_string()
+        date = today.to_string()
     )
     .to_string();
     doc.push(
@@ -200,7 +205,7 @@ mod tests {
             fake_item(1, "L'Écume des jours", Some("Boris Vian"), Some("9782070360246")),
             fake_item(2, "Le Comte de Monte-Cristo", Some("Alexandre Dumas"), None),
         ];
-        let bytes = render(&items, "fr").expect("render must succeed");
+        let bytes = render(&items, "fr", chrono::NaiveDate::from_ymd_opt(2026, 11, 4).unwrap()).expect("render must succeed");
         assert!(bytes.len() > 1000, "PDF must be more than 1 KB; got {}", bytes.len());
         assert!(bytes.starts_with(b"%PDF-"), "must start with %PDF-x.y header");
     }
@@ -209,7 +214,7 @@ mod tests {
     /// document) with at least the header + empty-state line.
     #[test]
     fn render_empty_list_still_emits_valid_pdf() {
-        let bytes = render(&[], "en").expect("render must succeed on empty list");
+        let bytes = render(&[], "en", chrono::NaiveDate::from_ymd_opt(2026, 11, 4).unwrap()).expect("render must succeed on empty list");
         assert!(bytes.starts_with(b"%PDF-"));
         assert!(bytes.len() > 500);
     }
@@ -226,7 +231,7 @@ mod tests {
             Some("Émile Zola"),
             None,
         )];
-        let bytes = render(&items, "fr").expect("render must succeed");
+        let bytes = render(&items, "fr", chrono::NaiveDate::from_ymd_opt(2026, 11, 4).unwrap()).expect("render must succeed");
         assert!(bytes.len() > 1000);
     }
 }

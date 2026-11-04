@@ -28,6 +28,8 @@ pub(super) fn render_search_fragment(
     added_since: Option<chrono::NaiveDate>,
     session: &Session,
     loc: &str,
+    // Story 15-1 (#602) — the instance zone of the "Added" dates.
+    tz: chrono_tz::Tz,
 ) -> String {
     let mut html = String::new();
 
@@ -53,7 +55,7 @@ pub(super) fn render_search_fragment(
                 r#"<table class="browse-table w-full text-sm text-left"><tbody>"#,
             );
             for item in &paginated.items {
-                html.push_str(&render_search_table_row(item, loc));
+                html.push_str(&render_search_table_row(item, loc, tz));
             }
             html.push_str("</tbody></table></div>");
 
@@ -133,10 +135,15 @@ fn render_search_row(
 struct BrowseTableRowTemplate<'a> {
     item: &'a SearchResult,
     row_lang: &'a str,
+    row_tz: chrono_tz::Tz,
 }
 
-fn render_search_table_row(item: &SearchResult, row_lang: &str) -> String {
-    BrowseTableRowTemplate { item, row_lang }
+fn render_search_table_row(item: &SearchResult, row_lang: &str, row_tz: chrono_tz::Tz) -> String {
+    BrowseTableRowTemplate {
+        item,
+        row_lang,
+        row_tz,
+    }
         .render()
         .unwrap_or_else(|e| {
             tracing::warn!(title_id = item.id, error = %e, "browse table row render failed");
@@ -297,7 +304,17 @@ mod tests {
             "test-csrf".to_string(),
         );
         let html =
-            render_search_fragment(&Some(paginated), "", &None, &None, &None, None, &session, "en");
+            render_search_fragment(
+                &Some(paginated),
+                "",
+                &None,
+                &None,
+                &None,
+                None,
+                &session,
+                "en",
+                chrono_tz::UTC,
+            );
 
         assert!(
             html.contains(r#"<div class="browse-table-wrap"#),
@@ -345,7 +362,7 @@ mod tests {
                 .and_then(|d| d.and_hms_opt(23, 59, 0)),
             tome_positions: Vec::new(),
         };
-        let html = render_search_table_row(&item, "de");
+        let html = render_search_table_row(&item, "de", chrono_tz::UTC);
         assert!(html.trim_start().starts_with("<tr"), "row starts with <tr>: {html}");
         assert_eq!(html.matches("<td").count(), 7, "seven cells: {html}");
         assert!(

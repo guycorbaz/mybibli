@@ -360,3 +360,60 @@ async fn get_title_returns_the_title_and_volume_dates(pool: DbPool) {
         "the title itself is old: {doc}"
     );
 }
+
+// ─── Story 15-1 (#602) — the web cuts days in the instance zone ─────
+
+/// A title entered at 23:30 UTC on 4 Nov 2026 was entered at 00:30 on
+/// 5 Nov in Zurich: the web filter "added since 5 Nov" (bound = start of
+/// that local day, `utils::local_time::day_start_utc`, what
+/// `routes::home_added_since::lower_bound` passes) keeps it; the UTC day
+/// (the MCP semantic of a bare date) does not.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_title_entered_at_half_past_midnight_in_zurich_is_added_that_day(pool: DbPool) {
+    use mybibli::utils::local_time::day_start_utc;
+
+    let late = add_title(&pool, "Saisi après minuit", "book", "Roman", None).await;
+    sqlx::query("UPDATE titles SET created_at = ?, updated_at = ? WHERE id = ?")
+        .bind(utc("2026-11-04 23:30:00"))
+        .bind(utc("2026-11-04 23:30:00"))
+        .bind(late)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let zurich = chrono_tz::Europe::Zurich;
+    let nov5 = chrono::NaiveDate::from_ymd_opt(2026, 11, 5).unwrap();
+    let nov6 = chrono::NaiveDate::from_ymd_opt(2026, 11, 6).unwrap();
+    let search = |since: NaiveDateTime| {
+        let pool = pool.clone();
+        async move {
+            result_ids(
+                SearchService::search(
+                    &pool,
+                    "Saisi",
+                    None,
+                    None,
+                    &None,
+                    &None,
+                    1,
+                    false,
+                    false,
+                    Some(since),
+                )
+                .await
+                .unwrap(),
+            )
+        }
+    };
+
+    assert_eq!(day_start_utc(nov5, zurich), utc("2026-11-04 23:00:00"));
+    assert_eq!(search(day_start_utc(nov5, zurich)).await, [late]);
+    assert!(title_added_since(&pool, late, day_start_utc(nov5, zurich)).await.unwrap());
+    assert!(search(day_start_utc(nov6, zurich)).await.is_empty());
+    // The same date read as a UTC day leaves it out.
+    assert!(search(day_start_utc(nov5, chrono_tz::UTC)).await.is_empty());
+}
+
+fn utc(s: &str) -> NaiveDateTime {
+    NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap()
+}

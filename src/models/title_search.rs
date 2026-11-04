@@ -54,11 +54,16 @@ impl SearchResult {
     }
 
     /// The latest addition date in the convention of `locale` (browse
-    /// table cell, [`crate::utils::format_date_localized`]), or an em dash
-    /// when unknown.
-    pub fn added_date(&self, locale: &str) -> String {
+    /// table cell, [`crate::utils::format_date_localized`]), as a day of
+    /// the instance zone `tz` (story 15-1), or an em dash when unknown.
+    pub fn added_date(&self, locale: &str, tz: &chrono_tz::Tz) -> String {
         self.last_added_at
-            .map(|d| crate::utils::format_date_localized(d.date(), locale))
+            .map(|at| {
+                crate::utils::format_date_localized(
+                    crate::utils::local_time::local_date(at, *tz),
+                    locale,
+                )
+            })
             .unwrap_or_else(|| "\u{2014}".to_string())
     }
 }
@@ -605,14 +610,26 @@ mod tests {
             last_added_at: None,
             tome_positions: Vec::new(),
         };
-        assert_eq!(result.added_date("fr"), "\u{2014}");
+        let utc = chrono_tz::UTC;
+        assert_eq!(result.added_date("fr", &utc), "\u{2014}");
         let dated = SearchResult {
             last_added_at: chrono::NaiveDate::from_ymd_opt(2026, 10, 31)
                 .and_then(|d| d.and_hms_opt(9, 0, 0)),
             ..result.clone()
         };
-        assert_eq!(dated.added_date("fr"), "31/10/2026");
-        assert_eq!(dated.added_date("en"), "2026-10-31");
+        assert_eq!(dated.added_date("fr", &utc), "31/10/2026");
+        assert_eq!(dated.added_date("en", &utc), "2026-10-31");
+        // Story 15-1 — 23:30 UTC is the next day in Zurich.
+        let late = SearchResult {
+            last_added_at: chrono::NaiveDate::from_ymd_opt(2026, 10, 31)
+                .and_then(|d| d.and_hms_opt(23, 30, 0)),
+            ..result.clone()
+        };
+        assert_eq!(late.added_date("en", &utc), "2026-10-31");
+        assert_eq!(
+            late.added_date("en", &chrono_tz::Europe::Zurich),
+            "2026-11-01"
+        );
         assert_eq!(result.id, 1);
         assert_eq!(result.title, "L'Étranger");
         assert_eq!(result.primary_contributor, Some("Albert Camus".to_string()));

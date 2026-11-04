@@ -453,7 +453,7 @@
                                 </thead>
                                 <tbody>
                                     {% for item in paginated.items %}
-                                    {% let row_lang = base.lang.as_str() %}{% include "components/browse_table_row.html" %}
+                                    {% let row_lang = base.lang.as_str() %}{% let row_tz = time_zone %}{% include "components/browse_table_row.html" %}
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -550,9 +550,9 @@
                             <span class="font-medium text-stone-900 dark:text-stone-100 truncate">{{ loan.title_name }}</span>
                             <span class="text-sm text-stone-600 dark:text-stone-400">— {{ loan.borrower_name }}</span>
                         </div>
-                        <p class="mt-1 text-sm {% if loan.duration_days >= overdue_threshold_days %}text-red-600 dark:text-red-400 font-semibold{% else if loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% endif %}">
+                        <p class="mt-1 text-sm {% if loan.duration_days > overdue_threshold_days %}text-red-600 dark:text-red-400 font-semibold{% else if loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% endif %}">
                             {{ loan.duration_days }} {{ days_label }}
-                            {% if loan.duration_days >= overdue_threshold_days %}
+                            {% if loan.duration_days > overdue_threshold_days %}
                             <span class="ml-1 inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">{{ overdue_badge_label }}</span>
                             {% endif %}
                         </p>
@@ -692,7 +692,7 @@
                             </thead>
                             <tbody>
                                 {% for item in recent_additions %}
-                                {% let row_lang = base.lang.as_str() %}{% include "components/browse_table_row.html" %}
+                                {% let row_lang = base.lang.as_str() %}{% let row_tz = time_zone %}{% include "components/browse_table_row.html" %}
                                 {% endfor %}
                             </tbody>
                         </table>

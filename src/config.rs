@@ -418,6 +418,12 @@ pub struct AppSettings {
     /// Same `1..=60` bounds as the scalar — out-of-range rows are skipped
     /// with a warning at load time.
     pub metadata_chain_provider_timeout_overrides: std::collections::HashMap<String, u64>,
+    // === Story 15-1 (#602) — instance time zone ===
+    /// IANA zone in which the web interface shows dates and cuts days
+    /// (`utils::local_time`). Storage, API and MCP stay UTC. Seeded to
+    /// `Europe/Zurich` by migration 20261104120000; an invalid row warn-
+    /// logs and reads as that default.
+    pub time_zone: chrono_tz::Tz,
 }
 
 impl Default for AppSettings {
@@ -454,6 +460,7 @@ impl Default for AppSettings {
             bulk_refetch_delay_ms: 1000,
             // CR #396: no overrides — every provider uses the scalar above.
             metadata_chain_provider_timeout_overrides: std::collections::HashMap::new(),
+            time_zone: crate::utils::local_time::DEFAULT_TIME_ZONE,
         }
     }
 }
@@ -687,6 +694,15 @@ impl AppSettings {
                         key = %key,
                         value = %value,
                         "Invalid setting value, using default"
+                    ),
+                },
+                // Story 15-1 (#602): instance time zone, an IANA name.
+                "time_zone" => match crate::utils::local_time::parse_time_zone(value) {
+                    Some(tz) => settings.time_zone = tz,
+                    None => tracing::warn!(
+                        key = %key,
+                        value = %value,
+                        "time_zone is not an IANA zone name, using default Europe/Zurich"
                     ),
                 },
                 "log_level" => {
@@ -983,6 +999,29 @@ mod tests {
         );
     }
 
+    /// Story 15-1 (#602) — the migration seeds `Europe/Zurich`; a valid
+    /// IANA name takes effect; an invalid row warns and reads as the
+    /// default.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn load_from_db_time_zone_seeded_valid_and_invalid(pool: DbPool) {
+        let settings = AppSettings::load_from_db(&pool).await.expect("load ok");
+        assert_eq!(settings.time_zone, chrono_tz::Europe::Zurich);
+
+        for (value, expected) in [
+            ("America/New_York", chrono_tz::America::New_York),
+            ("Not/A_Zone", chrono_tz::Europe::Zurich),
+            ("", chrono_tz::Europe::Zurich),
+        ] {
+            sqlx::query("UPDATE settings SET setting_value = ? WHERE setting_key = 'time_zone'")
+                .bind(value)
+                .execute(&pool)
+                .await
+                .expect("update setting");
+            let settings = AppSettings::load_from_db(&pool).await.expect("load ok");
+            assert_eq!(settings.time_zone, expected, "row {value:?}");
+        }
+    }
+
     #[test]
     fn test_config_with_all_vars() {
         let vars = HashMap::from([
@@ -1070,6 +1109,7 @@ mod tests {
                 "bnf".to_string(),
                 12_u64,
             )]),
+            time_zone: chrono_tz::America::New_York,
         };
         let cloned = settings.clone();
         assert_eq!(cloned.overdue_threshold_days, 60);
@@ -1084,6 +1124,7 @@ mod tests {
         assert_eq!(cloned.tmdb_api_key, "tmdb-key");
         assert_eq!(cloned.metadata_chain_per_provider_timeout_secs, 7);
         assert_eq!(cloned.provider_health_probe_timeout_secs, 15);
+        assert_eq!(cloned.time_zone, chrono_tz::America::New_York);
         assert_eq!(
             cloned
                 .metadata_chain_provider_timeout_overrides

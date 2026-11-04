@@ -10,7 +10,10 @@
  * does not, and an unreadable date is a tool error.
  *
  * Spec ID "DA" for ISBNs; unique key label. Dates are UTC days, like the
- * database's timestamps.
+ * agent's (MCP stays UTC). The web filter cuts days in the instance zone
+ * (story 15-1): Europe/Zurich by default, or UTC while
+ * instance-time-zone.spec.ts runs — in both, the start of today's UTC
+ * date is never after a title created today.
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";

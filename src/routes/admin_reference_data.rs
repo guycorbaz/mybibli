@@ -899,7 +899,7 @@ pub async fn volume_states_loanable_toggle(
     if row.is_loanable && !new_loanable {
         let active = VolumeStateModel::count_active_loans_for_state(&state.pool, id).await?;
         if active > 0 {
-            let samples = sample_active_loans(&state.pool, id, 5).await?;
+            let samples = sample_active_loans(&state.pool, id, 5, state.time_zone()).await?;
             // Story 8-4 P2: pass `row.version` (DB-authoritative) so the
             // modal carries the current version even if the form's was
             // somehow racing with another edit.
@@ -1471,6 +1471,7 @@ async fn sample_active_loans(
     pool: &crate::db::DbPool,
     state_id: u64,
     limit: i64,
+    tz: chrono_tz::Tz,
 ) -> Result<Vec<LoanSampleDisplay>, AppError> {
     // Story 8-4 P26: deterministic tiebreaker (`l.id DESC`) so two loans
     // sharing the same `loaned_at` timestamp don't shuffle between renders.
@@ -1506,7 +1507,7 @@ async fn sample_active_loans(
         samples.push(LoanSampleDisplay {
             label,
             borrower_name: borrower,
-            loaned_at: loaned_at.format("%Y-%m-%d").to_string(),
+            loaned_at: crate::utils::local_time::format_local_date(loaned_at, tz),
         });
     }
     Ok(samples)
