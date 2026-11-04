@@ -1,6 +1,6 @@
 # Story 15.2: MCP skills — admin tab
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #614 (type:change-request), part 1 of 2. Covers: FR162, UX-DR40. Epic 15; ships in v1.25.0.
 
@@ -30,3 +30,118 @@ Admin-only editing through a web tab; the agent can only read skills (story 15-3
 4. **AC4 — safety.** The body is displayed escaped (text, e.g. in a `<pre>`/whitespace-preserving block); no unescaped HTML and no Markdown-to-HTML rendering in this story. CSP clean, CSRF on every form.
 5. **AC5 — i18n & copy.** All labels in four locales (`locale_parity`); errors follow the style guide.
 6. **AC6 — tests.** Unit (validation shapes, accepted/refused names), DB integration (CRUD, uniqueness among live rows, version conflict, soft delete + restore, name reuse), E2E (new specId: admin creates, edits, deactivates, deletes and restores a skill; Librarian refused; axe on the tab and the form). Full suites green.
+
+## Tasks / Subtasks
+
+- [x] AC1 — migration `20261104150000_create_mcp_skills.sql` (table `mcp_skills`).
+- [x] AC2 — `src/models/mcp_skill.rs` + `src/services/mcp_skills.rs` (positive-shape validation).
+- [x] AC3 — `AdminTab::Skills`, `src/routes/admin_skills.rs`, four templates, Trash integration.
+- [x] AC4 — body escaped (`<textarea>`, `<pre>`), no Markdown rendering, CSP / CSRF clean.
+- [x] AC5 — `admin.skills.*`, `admin.tabs.skills`, `admin.trash.filter_entity_mcp_skills`, `error.mcp_skills.*` in en/fr/de/it.
+- [x] AC6 — unit, DB integration (`tests/mcp_skills.rs`) and E2E (`admin-skills.spec.ts`); full suites run.
+
+## Dev Agent Record
+
+### Completion Notes
+
+**AC1 — table.** `mcp_skills` (`id`, `name` VARCHAR(64), `description`
+VARCHAR(200), `body` MEDIUMTEXT, `active` BOOLEAN default TRUE,
+`updated_by` → `users(id)` ON DELETE SET NULL, `version`, `created_at`,
+`updated_at`, `deleted_at`). **Name reuse — chosen: reactivate.** `name`
+is UNIQUE across all rows (so unique among live rows too); creating a
+skill whose name belongs to a trashed row reactivates that row with the
+text just typed (`CreateOutcome::Reactivated`, feedback says so), which
+means a Trash restore can never collide with a live namesake. Renaming a
+skill onto a trashed name is refused (`name_in_trash`: restore or purge
+it first). No charset/collation pinned: the Trash UNIONs every trashable
+table's name column, a different collation would break it.
+
+**AC2 — model / service.** `McpSkillModel::{list_all, find_by_id,
+list_active, find_active_by_name, create, update, set_active,
+soft_delete}`; every write is version-guarded and returns
+`SkillWriteError::{NameTaken, NameInTrash, Stale, Gone, Db}`.
+`list_active` / `find_active_by_name` return `ActiveSkill {name,
+description, body}`, live and active only — the two reads story 15-3
+needs. `services::mcp_skills::validate` (Rule #20, refuse never rewrite):
+name slug `^[a-z0-9]+(-[a-z0-9]+)*$` ≤ 64 (hand-written parser, uppercase
+refused not lowercased), description one line (no control character)
+≤ 200 characters, body not blank, ≤ 64 KiB of UTF-8, no control
+character except `\n` `\r` `\t`. Only name and description are trimmed;
+the body is stored exactly as typed.
+
+**AC3 — Admin → Skills.** `/admin?tab=skills`, `/admin/skills` (panel),
+`POST /admin/skills` (create), `GET /admin/skills/new`,
+`GET /admin/skills/{id}/edit`, `POST /admin/skills/{id}` (save, version),
+`POST /admin/skills/{id}/active`, `GET /admin/skills/{id}/delete-modal`,
+`POST /admin/skills/{id}/delete`. Every handler starts with
+`require_role_with_return(Role::Admin, "/admin?tab=skills")` (Librarian →
+403, Anonymous → login). List: name, description (+ the body in a
+`<details><pre>`), Active/Inactive chip, last change (date in the
+instance zone through `format_local_date_time`, story 15-1) and author.
+Editor above the list (create by default, filled by Edit, Cancel back to
+create). Refused saves (validation 400, conflicts 409) re-render the
+editor with what was typed plus the localized message
+(`HX-Trigger: validation-error`). Delete: UX-DR8 macro in `#modal-slot`
+→ soft delete → Trash (`mcp_skills` added to `ALLOWED_TABLES`,
+`PURGE_DELETION_ORDER`, Trash filter + type chip) → restorable.
+Focus (Rule #21): the submit and row buttons keep stable ids, so HTMX
+restores focus to them after a swap — covered in E2E.
+
+**AC4 — safety.** Askama escapes the body into the `<textarea>` and the
+`<pre>`; no `|safe`, no Markdown renderer. Forms carry `_csrf_token`;
+`templates_audit` passes (one fix: the `<pre>` scroller needed
+`**:scroll-mt-0!`).
+
+**AC5 — i18n.** Keys in four locales; `locale_parity` green. Field hints
+are terse; write errors are tripartite (`name_taken`, `name_in_trash`,
+`stale`, `gone`).
+
+**AC6 — tests.** Unit: `services::mcp_skills` (accepted/refused names,
+descriptions, bodies, byte limit, translations), `routes::admin_skills`
+(escaping in list and textarea, instance-zone date, error copy),
+`routes::admin` (tab resolution). DB integration `tests/mcp_skills.rs`
+(9): CRUD + active reads, uniqueness, version conflicts, soft delete +
+Trash restore, name reuse by reactivation, 64 KiB body, auto-purge, role
+gating, full route round trip. E2E `admin-skills.spec.ts` (specId SK,
+names `sk-<random>`): create/edit/deactivate/delete/restore journey from
+a blank browser with axe on the tab and the edit form, refused name, and
+Librarian refused.
+
+### Deviations
+
+- `static/js/csrf.js`: the #91 `validation-error` swap opt-in now also
+  accepts 409, so a conflict re-renders the editor instead of the generic
+  "Server error (409)" toast.
+- The author join (`LEFT JOIN users`) has no `deleted_at IS NULL`: it
+  names who made a past change, and a deactivated admin still made it
+  (commented in the model). After a purge `updated_by` is NULL → "author
+  unknown".
+- No admin_audit row for skill writes (not asked; `tracing::info!` only).
+
+### Gates (2026-11-04)
+
+- `cargo check`: clean.
+- `mem-guard cargo clippy --all-targets -- -D warnings`: clean.
+- `cargo sqlx prepare --check --workspace -- --all-targets`: clean (dynamic
+  queries only, no `.sqlx/` change).
+- `cargo test --test locale_parity`: 3 passed.
+- Full Rust suite with the DB (`mem-guard cargo test -j 2 --no-fail-fast`;
+  the first run without `-j 2` was killed at the memory cap during the
+  build and retried): 2484 passed, 0 failed.
+- `tsc --noEmit`: clean; `waitForTimeout` grep: no hit.
+- Full Playwright suite on a freshly reset stack
+  (`CI=true --workers=2`, port 18080): 447 passed, 2 skipped, 0 failed.
+
+### File List
+
+- `migrations/20261104150000_create_mcp_skills.sql` (new)
+- `src/models/mcp_skill.rs` (new), `src/models/mod.rs`
+- `src/services/mcp_skills.rs` (new), `src/services/mod.rs`
+- `src/routes/admin_skills.rs` (new), `src/routes/admin.rs`, `src/routes/mod.rs`
+- `src/services/soft_delete.rs`, `src/services/auto_purge.rs`, `src/services/admin_health.rs`
+- `templates/fragments/admin_skills_{panel,editor,list,delete_modal}.html` (new),
+  `templates/fragments/admin_trash_panel.html`
+- `static/js/csrf.js`
+- `locales/{en,fr,de,it}.yml`
+- `tests/mcp_skills.rs` (new), `tests/e2e/specs/journeys/admin-skills.spec.ts` (new)
+- `CLAUDE.md`
