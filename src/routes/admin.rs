@@ -1161,7 +1161,7 @@ pub(crate) async fn render_admin(
         return Ok((StatusCode::OK, Html(tabs_html)).into_response());
     }
 
-    let base = crate::utils::base_context(session, loc, "admin", uri, state.session_timeout_secs());
+    let base = crate::utils::base_context(session, loc, "admin", uri, state.page_settings());
     let page = AdminPageTemplate {
         base,
         admin_page_title: rust_i18n::t!("admin.page_title", locale = loc).to_string(),

@@ -193,7 +193,7 @@ pub async fn title_detail(
             .await?,
             loc,
         );
-        let base = crate::utils::base_context(&session, loc, "title", &uri, state.session_timeout_secs());
+        let base = crate::utils::base_context(&session, loc, "title", &uri, state.page_settings());
         let tome = crate::services::tome::TitleTomeView::load(pool, title.id, !series_assignments.is_empty(), loc).await?;
         let template = TitleDetailTemplate {
             tome,

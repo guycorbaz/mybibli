@@ -69,8 +69,10 @@
     }
 }
 
-/* Story 14-2 (AC3) — the page behind the open drawer does not scroll. */
-@media (width < 1024px) {
+/* Story 14-2 (AC3) — the page behind the open drawer does not scroll.
+   Screen only (review): a page printed with the drawer open is not cut
+   to one viewport. */
+@media screen and (width < 1024px) {
     html.nav-drawer-open {
         overflow: hidden;
     }

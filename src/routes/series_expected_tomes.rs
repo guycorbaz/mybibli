@@ -73,7 +73,7 @@ fn render_form(
         "expected_tome.form_title_new"
     };
     let template = ExpectedTomeFormTemplate {
-        base: crate::utils::base_context(session, loc, "series", uri, state.session_timeout_secs()),
+        base: crate::utils::base_context(session, loc, "series", uri, state.page_settings()),
         heading: rust_i18n::t!(heading_key, locale = loc).to_string(),
         series_id: series.id,
         series_name: series.name.clone(),

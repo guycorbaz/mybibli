@@ -43,8 +43,19 @@ impl LoginTemplate {
         // instead of inline t!() calls — the last page handler still doing so.
         // Login is always anonymous (authenticated users are redirected before
         // render), so session_timeout_secs is irrelevant (guarded in base.html)
-        // — pass 0. role + csrf_token come off the (anonymous) session.
-        let base = crate::utils::base_context(session, loc, "login", uri, 0);
+        // — pass 0; no AppState here, so the scanner burst threshold is the
+        // settings default (it only tunes the drawer's keyboard handling).
+        // role + csrf_token come off the (anonymous) session.
+        let base = crate::utils::base_context(
+            session,
+            loc,
+            "login",
+            uri,
+            crate::utils::PageSettings {
+                session_timeout_secs: 0,
+                ..Default::default()
+            },
+        );
         LoginTemplate {
             base,
             login_title: rust_i18n::t!("login.title", locale = loc).to_string(),

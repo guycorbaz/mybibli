@@ -23,20 +23,30 @@
 // in the drawer, or the viewport growing to `lg`: everything above is
 // undone and focus returns to the menu button, except when a link was
 // followed (the page is navigating) or the viewport crossed to `lg` (the
-// button is no longer displayed).
+// button is no longer displayed). Story 14-2 review — the drawer also
+// closes when the session-timeout toast or the connection-lost overlay
+// appears, so they are never stuck behind an inert page / a focus trap
+// (focus goes back to the menu button only if it was in the drawer).
 //
-// Keyboard activation while open. scanner-guard.js blocks every printable
+// Keyboard operation while open. scanner-guard.js blocks every printable
 // key and Enter outside text inputs while a modal is open — also a human
-// Enter on a link or Space on a button. A drawer that cannot be driven
-// from a keyboard would fail WCAG 2.1.1, so a window-capture listener
-// (runs before the guard's document-capture one) activates the focused
-// drawer link (Enter) or button (Enter / Space) itself when the key came
-// at human pace: at least the burst threshold after the previous keydown.
-// A scanner's terminating Enter follows its last character within a few
-// ms, so it stays blocked.
+// Enter on a link, Space on a button, or a key choosing a language in the
+// <select>. A drawer that cannot be driven from a keyboard would fail
+// WCAG 2.1.1, so a window-capture listener (runs before the guard's
+// document-capture one) stops the propagation of such a key when it came
+// at human pace — at least the burst threshold after the previous
+// keydown — on a drawer link / button (Enter, Space) or on the language
+// <select> (Enter, Space, a printable key for type-ahead). The guard never
+// sees it and the browser's own default runs (story 14-2 review: no
+// synthetic click, so Space cannot activate a button twice). A scanner's
+// characters and terminating Enter follow one another within a few ms,
+// so they still reach the guard and are blocked. Known limit, as for
+// every burst detector here: the FIRST key of a burst has no predecessor
+// and passes; on the select it can only match an option's first letter
+// (F / E / D / I), which no ISBN / V- / L-code starts with.
 //
-// Threshold source: `#search-field[data-scanner-threshold]` (home page
-// only), else 50 ms (the `scanner_burst_threshold_ms` default), floor
+// Threshold source: `<body data-scanner-threshold>` (the admin's
+// `scanner_burst_threshold_ms`, layouts/base.html), else 50 ms, floor
 // 10 ms (fix #147).
 //
 // CSP-clean: no inline handlers, no eval, all listeners via addEventListener.
@@ -51,7 +61,8 @@
     var COLUMN_ID = "page-column";
     var OPEN_CLASS = "nav-drawer-open";
     var WIDE_QUERY = "(min-width: 1024px)";
-    var SEARCH_FIELD_ID = "search-field";
+    var OVERLAY_ID = "connection-lost-overlay";
+    var SESSION_TOAST_ID = "session-timeout-toast";
     var DEFAULT_BURST_THRESHOLD_MS = 50;
     var MIN_BURST_THRESHOLD_MS = 10;
 
@@ -70,11 +81,9 @@
     ].join(", ");
 
     function getBurstThresholdMs() {
-        var search = document.getElementById(SEARCH_FIELD_ID);
-        if (search && search.dataset && search.dataset.scannerThreshold) {
-            var n = parseInt(search.dataset.scannerThreshold, 10);
-            if (!isNaN(n) && n >= MIN_BURST_THRESHOLD_MS) return n;
-        }
+        var raw = document.body && document.body.getAttribute("data-scanner-threshold");
+        var n = parseInt(raw || "", 10);
+        if (!isNaN(n) && n >= MIN_BURST_THRESHOLD_MS) return n;
         return DEFAULT_BURST_THRESHOLD_MS;
     }
 
@@ -125,8 +134,13 @@
             }
         }
 
+        // `restoreFocus`: true, false, or "if-inside" (only when the focus
+        // is still in the drawer — another surface may have taken it).
         function close(restoreFocus) {
             if (!isOpen) return;
+            if (restoreFocus === "if-inside") {
+                restoreFocus = nav.contains(document.activeElement);
+            }
             isOpen = false;
             root.classList.remove(OPEN_CLASS);
             wrapper.removeAttribute("role");
@@ -166,6 +180,25 @@
             else if (wide.addListener) wide.addListener(onWide);
         }
 
+        // A surface that must stay reachable appears: close the drawer.
+        function interrupting() {
+            var overlay = document.getElementById(OVERLAY_ID);
+            return (
+                !!document.getElementById(SESSION_TOAST_ID) ||
+                (!!overlay && !overlay.classList.contains("hidden"))
+            );
+        }
+        if (typeof MutationObserver === "function") {
+            new MutationObserver(function () {
+                if (isOpen && interrupting()) close("if-inside");
+            }).observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ["class"],
+            });
+        }
+
         // Escape + focus trap.
         document.addEventListener("keydown", function (e) {
             if (!isOpen || otherModalOpen()) return;
@@ -191,22 +224,24 @@
             }
         });
 
-        // Human-paced Enter / Space on a drawer control (see header).
+        // Human-paced keys on a drawer control (see header): keep them
+        // away from scanner-guard so the browser's default runs.
         window.addEventListener("keydown", function (e) {
             var now = Date.now();
             var delta = now - lastKeydownAt;
             lastKeydownAt = now;
             if (!isOpen || otherModalOpen()) return;
-            if (e.key !== "Enter" && e.key !== " ") return;
-            if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
             if (delta < burstThresholdMs) return;
             var t = e.target;
             if (!t || t.nodeType !== 1 || !nav.contains(t)) return;
-            var isLink = t.matches("a[href]");
-            var isButton = t.matches("button:not([disabled])");
-            if (!(isButton || (isLink && e.key === "Enter"))) return;
-            e.preventDefault();
-            t.click();
+            var activates = e.key === "Enter" || e.key === " ";
+            var printable = !!e.key && e.key.length === 1;
+            var ok =
+                (t.matches("a[href]") && e.key === "Enter") ||
+                (t.matches("button:not([disabled])") && activates) ||
+                (t.matches("select:not([disabled])") && (activates || printable));
+            if (ok) e.stopPropagation();
         }, true);
     }
 

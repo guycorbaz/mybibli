@@ -84,7 +84,7 @@ pub async fn loans_page(
 
     // CR #35 (v1.7.11 slice): shared page-template fields built via the
     // base_context helper. The remaining fields are page-specific.
-    let base = base_context(&session, loc, "loans", &uri, state.session_timeout_secs());
+    let base = base_context(&session, loc, "loans", &uri, state.page_settings());
     let template = LoansTemplate {
         base,
         list_title: rust_i18n::t!("loan.list_title", locale = loc).to_string(),

@@ -146,7 +146,7 @@ pub async fn audit_list_page(
         });
     }
 
-    let base = crate::utils::base_context(&session, loc, "audit", &uri, state.session_timeout_secs());
+    let base = crate::utils::base_context(&session, loc, "audit", &uri, state.page_settings());
     let template = AuditListTemplate {
         base,
         page_heading: rust_i18n::t!("audit.heading", locale = loc).to_string(),

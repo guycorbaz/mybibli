@@ -249,7 +249,7 @@ impl CatalogTemplate {
     fn new(
         session: &Session,
         guide_message: &str,
-        session_timeout_secs: u64,
+        page: crate::utils::PageSettings,
         loc: &str,
         current_url_value: String,
         highest_codes_line: String,
@@ -262,7 +262,7 @@ impl CatalogTemplate {
         let url_uri: axum::http::Uri = current_url_value
             .parse()
             .unwrap_or_else(|_| axum::http::Uri::from_static("/catalog"));
-        let base = base_context(session, loc, "catalog", &url_uri, session_timeout_secs);
+        let base = base_context(session, loc, "catalog", &url_uri, page);
         CatalogTemplate {
             base,
             catalog_title: rust_i18n::t!("catalog.title", locale = loc).to_string(),
@@ -327,7 +327,7 @@ pub async fn catalog_page(
     let template = CatalogTemplate::new(
         &session,
         &guide,
-        state.session_timeout_secs(),
+        state.page_settings(),
         loc,
         crate::utils::current_url(&uri),
         highest_codes,
@@ -1366,7 +1366,7 @@ pub async fn handle_scan(
         let template = CatalogTemplate::new(
             &session,
             "",
-            state.session_timeout_secs(),
+            state.page_settings(),
             loc,
             "/catalog".to_string(),
             build_highest_codes_line(&state.pool, loc).await,
@@ -1651,7 +1651,7 @@ pub async fn title_form_page(
                 let catalog = CatalogTemplate::new(
                     &session,
                     "",
-                    state.session_timeout_secs(),
+                    state.page_settings(),
                     loc,
                     crate::utils::current_url(&uri),
                     build_highest_codes_line(&state.pool, loc).await,
@@ -2553,7 +2553,7 @@ pub async fn volume_detail(
         .await?,
         loc,
     );
-    let base = base_context(&session, loc, "catalog", &uri, state.session_timeout_secs());
+    let base = base_context(&session, loc, "catalog", &uri, state.page_settings());
     let template = VolumeDetailTemplate {
         record_dates,
         base,
@@ -2626,7 +2626,7 @@ pub async fn volume_edit_page(
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
     let states = VolumeModel::find_volume_states(pool).await?;
 
-    let base = base_context(&session, loc, "catalog", &uri, state.session_timeout_secs());
+    let base = base_context(&session, loc, "catalog", &uri, state.page_settings());
     let template = VolumeEditTemplate {
         base,
         version: volume.version,
@@ -3108,7 +3108,7 @@ mod tests {
         let template = CatalogTemplate::new(
             &session,
             "",
-            crate::config::AppSettings::default().session_timeout_secs,
+            crate::utils::PageSettings::default(),
             "en",
             "/catalog".to_string(),
             String::new(),
@@ -3134,7 +3134,7 @@ mod tests {
         let template = CatalogTemplate::new(
             &session,
             "",
-            crate::config::AppSettings::default().session_timeout_secs,
+            crate::utils::PageSettings::default(),
             "en",
             "/catalog".to_string(),
             String::new(),

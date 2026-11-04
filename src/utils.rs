@@ -565,6 +565,10 @@ pub struct BaseContextFields {
     pub connection_status: ConnectionStatusContext,
     pub shortcuts_cheat_sheet: ShortcutsCheatSheetContext,
     pub session_timeout_secs: u64,
+    /// Story 14-2 review — `AppSettings::scanner_burst_threshold_ms`,
+    /// emitted once as `<body data-scanner-threshold>` for client modules
+    /// that tell a scanner burst from human typing (static/js/nav.js).
+    pub scanner_burst_threshold_ms: u64,
     pub csrf_token: String,
     /// Story 14-1 (#547) — the navigation entries of the session's role,
     /// grouped (Home · browsing · Librarian+ management · Admin), built
@@ -663,18 +667,38 @@ pub fn proposals_badge_aria(count: Option<u64>, locale: &str) -> Option<String> 
     }
 }
 
+/// Story 14-2 review — the settings scalars every full page carries.
+/// Handlers get them from `AppState::page_settings()` (one read of the
+/// settings cache) and hand them to [`base_context`], which stays pool-
+/// and state-free so it is unit-testable.
+#[derive(Debug, Clone, Copy)]
+pub struct PageSettings {
+    pub session_timeout_secs: u64,
+    pub scanner_burst_threshold_ms: u64,
+}
+
+impl Default for PageSettings {
+    fn default() -> Self {
+        let s = crate::config::AppSettings::default();
+        PageSettings {
+            session_timeout_secs: s.session_timeout_secs,
+            scanner_burst_threshold_ms: s.scanner_burst_threshold_ms,
+        }
+    }
+}
+
 /// Build the shared fields for a full-page render. Caller provides the
 /// page-specific `current_page` slug + the original request URI (used
 /// for the language-toggle hidden input and the lang-toggle aria label),
-/// plus the `session_timeout_secs` scalar (handler reads it off
-/// `AppState.session_timeout_secs()` and passes it in — keeping the
-/// helper pool-free so it stays unit-testable without a live DbPool).
+/// plus the [`PageSettings`] (handler reads them off
+/// `AppState::page_settings()` and passes them in — keeping the helper
+/// pool-free so it stays unit-testable without a live DbPool).
 pub fn base_context(
     session: &crate::middleware::auth::Session,
     locale: &str,
     current_page: &'static str,
     uri: &axum::http::Uri,
-    session_timeout_secs: u64,
+    page: PageSettings,
 ) -> BaseContextFields {
     BaseContextFields {
         lang: locale.to_string(),
@@ -683,7 +707,8 @@ pub fn base_context(
         skip_label: rust_i18n::t!("nav.skip_to_content", locale = locale).to_string(),
         connection_status: ConnectionStatusContext::new(locale),
         shortcuts_cheat_sheet: ShortcutsCheatSheetContext::new(locale),
-        session_timeout_secs,
+        session_timeout_secs: page.session_timeout_secs,
+        scanner_burst_threshold_ms: page.scanner_burst_threshold_ms,
         csrf_token: session.csrf_token.clone(),
         nav_groups: nav_groups(
             &session.role.to_string(),
@@ -729,6 +754,7 @@ pub(crate) fn test_base_context(
         connection_status: ConnectionStatusContext::new(locale),
         shortcuts_cheat_sheet: ShortcutsCheatSheetContext::new(locale),
         session_timeout_secs,
+        scanner_burst_threshold_ms: PageSettings::default().scanner_burst_threshold_ms,
         csrf_token: "tok".to_string(),
         nav_groups: nav_groups(role, current_page, locale, None),
         nav_login: rust_i18n::t!("nav.login", locale = locale).to_string(),
@@ -1074,25 +1100,30 @@ mod tests {
         let session = crate::middleware::auth::Session::anonymous_with_token(
             "csrf-token-abc".to_string(),
         );
-        let ctx = base_context(&session, "en", "loans", &test_uri(), 7200);
+        let page = PageSettings {
+            session_timeout_secs: 7200,
+            scanner_burst_threshold_ms: 35,
+        };
+        let ctx = base_context(&session, "en", "loans", &test_uri(), page);
         assert_eq!(ctx.role, "anonymous");
         assert_eq!(ctx.csrf_token, "csrf-token-abc");
         assert_eq!(ctx.current_page, "loans");
         assert_eq!(ctx.session_timeout_secs, 7200);
+        assert_eq!(ctx.scanner_burst_threshold_ms, 35);
     }
 
     #[test]
     fn base_context_current_url_reflects_uri() {
         let session = crate::middleware::auth::Session::anonymous_with_token(String::new());
-        let ctx = base_context(&session, "en", "x", &test_uri(), 0);
+        let ctx = base_context(&session, "en", "x", &test_uri(), PageSettings::default());
         assert_eq!(ctx.current_url, "/some/path?q=test");
     }
 
     #[test]
     fn base_context_resolves_i18n_keys_per_locale() {
         let session = crate::middleware::auth::Session::anonymous_with_token(String::new());
-        let en = base_context(&session, "en", "x", &test_uri(), 0);
-        let fr = base_context(&session, "fr", "x", &test_uri(), 0);
+        let en = base_context(&session, "en", "x", &test_uri(), PageSettings::default());
+        let fr = base_context(&session, "fr", "x", &test_uri(), PageSettings::default());
         // lang field reflects the requested locale.
         assert_eq!(en.lang, "en");
         assert_eq!(fr.lang, "fr");
@@ -1117,7 +1148,7 @@ mod tests {
         // Every nav.* i18n key exists in en.yml — silent miss would
         // surface as empty string here.
         let session = crate::middleware::auth::Session::anonymous_with_token(String::new());
-        let ctx = base_context(&session, "en", "x", &test_uri(), 0);
+        let ctx = base_context(&session, "en", "x", &test_uri(), PageSettings::default());
         let entry_labels: Vec<(&str, &String)> = ctx
             .nav_groups
             .iter()

@@ -40,7 +40,7 @@ pub async fn contributor_detail(
         let html = contributor_detail_fragment(&contributor, &titles, loc);
         Ok(Html(html).into_response())
     } else {
-        let base = crate::utils::base_context(&session, loc, "contributor", &uri, state.session_timeout_secs());
+        let base = crate::utils::base_context(&session, loc, "contributor", &uri, state.page_settings());
         let template = ContributorDetailTemplate {
             base,
             contributor,

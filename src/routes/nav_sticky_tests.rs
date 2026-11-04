@@ -494,9 +494,12 @@ mod tests {
             css.contains("&:where(.nav-drawer-open *)") && css.contains("@media (width < 1024px)"),
             "`nav-open:` applies below `lg` only"
         );
+        let lock = css
+            .find("html.nav-drawer-open {\n        overflow: hidden;")
+            .expect("the page behind the open drawer does not scroll");
         assert!(
-            css.contains("html.nav-drawer-open {\n        overflow: hidden;"),
-            "the page behind the open drawer does not scroll"
+            css[..lock].ends_with("@media screen and (width < 1024px) {\n    "),
+            "the scroll lock is screen-only and below `lg` (story 14-2 review)"
         );
     }
 
@@ -568,6 +571,15 @@ mod tests {
         ] {
             assert!(nav.contains(needle), "nav.js: {needle}");
         }
+        // Review — human-paced keys skip the guard without a synthetic
+        // click; the threshold is the admin setting, read off <body>.
+        assert!(nav.contains("e.stopPropagation()") && !nav.contains(".click()"));
+        assert!(nav.contains("getAttribute(\"data-scanner-threshold\")"));
+        let html = render("librarian");
+        assert!(
+            opening_tag(&html, "<body").contains("data-scanner-threshold=\"50\""),
+            "<body> carries scanner_burst_threshold_ms"
+        );
         assert!(
             read("scanner-guard.js")
                 .contains("var MODAL_SELECTOR = 'dialog[open], [aria-modal=\"true\"]';"),

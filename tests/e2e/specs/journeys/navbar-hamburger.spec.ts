@@ -20,11 +20,18 @@
  *      connection-lost overlay; reduced motion: no slide.
  *   7. axe with the drawer open and closed, light and dark.
  *
- * Spec ID "NH" — no ISBNs generated.
+ * Story 14-2 review — keyboard operation of the open drawer (Enter on the
+ * close button, Space on the theme toggle once, type-ahead in the
+ * language select) and a positive control for the burst test.
+ *
+ * Spec ID "NH" — one ISBN (`specIsbn("NH", 1)`, the burst test's control
+ * scan).
  */
 import { test, expect, Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { checkAccessibility } from "../../helpers/accessibility";
+import { simulateScan } from "../../helpers/scanner";
+import { specIsbn } from "../../helpers/isbn";
 import {
   DRAWER,
   DRAWER_CLOSE,
@@ -182,7 +189,12 @@ test.describe("Story 14-2 — the navigation drawer", () => {
     await page.goto("/catalog");
     const scan = page.locator("#scan-field");
     await expect(scan).toBeAttached();
-    const feedbackBefore = await page.locator(".feedback-entry").count();
+    // A scan answers with a skeleton, replaced in place by the entry once
+    // the metadata arrive: count both.
+    const answers = page.locator(
+      "#feedback-list .feedback-skeleton, #feedback-list .feedback-entry",
+    );
+    const feedbackBefore = await answers.count();
 
     const drawer = await openDrawer(page);
     // A burst while the close button holds the focus …
@@ -195,10 +207,57 @@ test.describe("Story 14-2 — the navigation drawer", () => {
     await expectDrawerOpen(page);
     await expect(page).toHaveURL(/\/catalog$/);
     await expect(scan).toHaveValue("");
-    await expect(page.locator(".feedback-entry")).toHaveCount(feedbackBefore);
+    await expect(answers).toHaveCount(feedbackBefore);
 
     await page.keyboard.press("Escape");
     await expectDrawerClosed(page);
+
+    // Positive control: a real scan, once the drawer is closed, lands in
+    // the scan field and produces its feedback. Only then is the absence
+    // above meaningful: exactly ONE new answer (the control's), no
+    // navigation — the bursts produced nothing.
+    await simulateScan(page, "#scan-field", specIsbn("NH", 1));
+    await expect(answers).toHaveCount(feedbackBefore + 1, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/catalog$/);
+  });
+
+  test("keyboard in the open drawer: Enter on the close button, Space on the theme toggle once", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.setViewportSize(PHONE);
+    await page.goto("/catalog");
+    await openDrawer(page);
+    // Focus is on the close button; no keydown since: a human-paced Enter.
+    await expect(page.locator(DRAWER_CLOSE)).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expectDrawerClosed(page);
+    await expect(page.locator(MENU_BUTTON)).toBeFocused();
+
+    const drawer = await openDrawer(page);
+    const dark = () => page.evaluate(() => document.documentElement.classList.contains("dark"));
+    expect(await dark()).toBe(false);
+    await drawer.locator("#theme-toggle").focus();
+    await page.keyboard.press("Space");
+    // Exactly once: a double activation would flip it back to light.
+    await expect.poll(dark).toBe(true);
+    await expectDrawerOpen(page);
+    expect(await dark()).toBe(true);
+  });
+
+  test("keyboard in the open drawer: type-ahead in the language select changes the language", async ({
+    page,
+  }) => {
+    // Anonymous: the choice lives in this visitor's own session only.
+    await page.setViewportSize(PHONE);
+    await page.goto("/catalog");
+    const drawer = await openDrawer(page);
+    const select = drawer.locator("#lang-select");
+    const target = (await select.inputValue()) === "it" ? "d" : "i";
+    await select.focus();
+    await page.keyboard.press(target);
+    await expect(page.locator("html")).toHaveAttribute("lang", target === "i" ? "it" : "de");
+    await expect(page).toHaveURL(/\/catalog/);
   });
 
   test("a human Enter on a focused entry follows it, and the next page shows the drawer closed", async ({
@@ -270,6 +329,28 @@ test.describe("Story 14-2 — the navigation drawer", () => {
     );
     await expect(page.locator("#connection-lost-overlay")).toBeVisible();
     expect(await hit(20, PHONE.height / 2)).toBe("overlay");
+    // Review — the overlay must stay reachable: the drawer closes (its
+    // inert page and focus trap would otherwise hold the keyboard).
+    await expectDrawerClosed(page);
+    await expect(page.locator("#page-column")).not.toHaveAttribute("inert", "");
+  });
+
+  test("the session-timeout toast closes the open drawer", async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await loginAs(page, "librarian");
+    await page.goto("/catalog");
+    await openDrawer(page);
+    // Stand-in for session-timeout.js's toast (its timer is minutes long):
+    // the drawer reacts to the element's appearance.
+    await page.evaluate(() => {
+      const toast = document.createElement("div");
+      toast.id = "session-timeout-toast";
+      document.body.appendChild(toast);
+    });
+    await expectDrawerClosed(page);
+    await expect(page.locator("#page-column")).not.toHaveAttribute("inert", "");
+    // Focus was in the drawer: it goes back to the menu button.
+    await expect(page.locator(MENU_BUTTON)).toBeFocused();
   });
 
   test("prefers-reduced-motion: no slide", async ({ page }) => {

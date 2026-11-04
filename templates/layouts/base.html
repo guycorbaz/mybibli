@@ -33,7 +33,7 @@
     <script src="/static/js/sidebar.js"></script>
     {% block head %}{% endblock %}
 </head>
-<body class="{% block body_class %}bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 min-h-full{% endblock %}" data-page="{{ base.current_page }}" data-user-role="{{ base.role }}"{% if base.role != "anonymous" %} data-session-timeout="{{ base.session_timeout_secs }}"{% endif %}>
+<body class="{% block body_class %}bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 min-h-full{% endblock %}" data-page="{{ base.current_page }}" data-user-role="{{ base.role }}" data-scanner-threshold="{{ base.scanner_burst_threshold_ms }}"{% if base.role != "anonymous" %} data-session-timeout="{{ base.session_timeout_secs }}"{% endif %}>
     <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:px-4 focus:py-2 focus:rounded focus:shadow">{{ base.skip_label }}</a>
     {# Story 14-1 (#547, AC6) — from `lg` the page is a row: the sticky,
        full-height sidebar, then a column holding the content (which takes
