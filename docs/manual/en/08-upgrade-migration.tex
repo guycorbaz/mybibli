@@ -139,6 +139,55 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.24.0}\label{sec:whats-new-1.24.0}
+
+Version 1.24.0 closes epic 14, ``the sidebar''
+(\href{https://github.com/guycorbaz/mybibli/issues/547}{\#547}): the
+top navigation bar, which no longer fitted an admin's entries in French
+or German, is replaced by a collapsible sidebar on wide screens and a
+drawer on small ones. \emph{No migration}, no setting changed --- pull
+the image, recreate the container (\texttt{docker compose up -d}),
+done.
+
+\begin{itemize}
+  \item \textbf{Sidebar from 1024\,px.} Every entry with its icon and
+        label, grouped (Home · Catalog, Locations, Series
+        · Borrowers, Loans, Wish list, Labels, Proposals
+        · Admin, per role), the current page marked. Language,
+        theme, Log out and a \textbf{Collapse menu} button sit at its
+        foot. Collapsed, it shrinks to a 64\,px column of icons with
+        tooltips, giving the width back to the tables; the Proposals
+        badge becomes a pill on its icon. The browser remembers the
+        choice (section~\ref{sec:navbar}).
+  \item \textbf{Drawer below 1024\,px} (phones and tablets). A slim top
+        bar with the menu button opens the same navigation from the
+        left, over a dimmed page; Escape, the dimmed page, the close
+        button or a link close it. While it is open, the page behind
+        does not scroll and a barcode scanner's read is ignored.
+  \item \textbf{New Home entry} at the top of the navigation (the logo
+        still links home too).
+  \item \textbf{The theme toggle really switches light / dark.} Before
+        this release the whole interface followed the operating system
+        and the toggle only changed the home-page cards. The browser
+        remembers the choice; without one, mybibli follows the system.
+        Printing is always light.
+\end{itemize}
+
+\paragraph{Fixes.}
+\begin{itemize}
+  \item With browser storage blocked (strict privacy settings), the
+        theme toggle, the scan sound and the list / grid toggle no
+        longer break the page: they fall back to their defaults.
+  \item The session-timeout and connection-lost notices are positioned
+        again at the bottom right of the screen.
+  \item The error page follows the chosen theme.
+\end{itemize}
+
+\paragraph{After the upgrade.} Nothing to do on the server. Each
+browser starts with the sidebar expanded and the theme of its system.
+If you had chosen a theme before, the stored choice now applies to the
+whole interface, not just the home cards.
+
 \section{What's new in 1.23.0}\label{sec:whats-new-1.23.0}
 
 Version 1.23.0 closes epic 13, ``cataloguing for real'', planned from a
