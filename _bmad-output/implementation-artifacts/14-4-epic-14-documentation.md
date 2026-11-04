@@ -1,6 +1,6 @@
 # Story 14.4: Documentation
 
-Status: review
+Status: done
 
 GitHub issue: #547. Covers: UX-DR38, UX-DR39 (documentation). Epic 14; ships in v1.24.0.
 
@@ -53,3 +53,7 @@ Passages that describe the old top bar / hamburger (EN and FR mirror each other)
 - `docs/manual/mybibli-manual-{en,fr}.pdf`
 - `docs/screenshots/01-home-desktop-{en,fr}.png`, `docs/screenshots/04-locations-desktop-{en,fr}.png` (new)
 - `_bmad-output/implementation-artifacts/14-4-epic-14-documentation.md`
+
+### Review Findings
+
+Reviewed by the orchestrating session (documentation story): FR and EN usage sections read; remaining "hamburger" hits are the Google Cloud console menu (intentional). No finding.
