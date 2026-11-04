@@ -1,6 +1,9 @@
 // Story 13-4 (#578) — HTML descriptions to plain text.
 mod plain_text;
 pub use plain_text::{decode_char_references, description_paragraphs, html_to_plain_text};
+// Story 14-1 (#547) — the single source of the navigation entries.
+mod nav;
+pub use nav::{NavEntry, nav_groups};
 
 /// Generate a STANDARD-base64-encoded 32-byte session token (44 chars
 /// w/ padding). Canonical implementation for `sessions.token`. Earlier
@@ -563,24 +566,22 @@ pub struct BaseContextFields {
     pub shortcuts_cheat_sheet: ShortcutsCheatSheetContext,
     pub session_timeout_secs: u64,
     pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    /// CR #443 — Librarian+ entry to the labels page.
-    pub nav_labels: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    /// Story 11-21 (FR143) — Librarian+ entry to `/proposals`.
-    pub nav_proposals: String,
-    /// Badge text ("3", "99+"); `None` at zero or when not counted.
-    pub nav_proposals_badge: Option<String>,
-    /// The entry's accessible name with the exact count; `None` with the badge.
-    pub nav_proposals_aria: Option<String>,
+    /// Story 14-1 (#547) — the navigation entries of the session's role,
+    /// grouped (Home · browsing · Librarian+ management · Admin), built
+    /// once by [`nav_groups`] and rendered by `components/nav_entries.html`
+    /// in the sidebar and the small-screen panel.
+    pub nav_groups: Vec<Vec<NavEntry>>,
     pub nav_login: String,
     pub nav_logout: String,
     pub nav_menu_open: String,
+    /// Story 14-1 — the sidebar collapse toggle's two names.
+    pub nav_collapse: String,
+    pub nav_expand: String,
+    /// Story 14-1 (AC9) — the theme toggle's name, localized (it was a
+    /// hard-coded English `aria-label`).
+    pub nav_theme_toggle: String,
+    /// Story 14-1 — the visible label of the sidebar's language row.
+    pub nav_language_label: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
     /// Issue #386 — JSON i18n bundle for client-side JS modules, emitted
@@ -679,20 +680,19 @@ pub fn base_context(
         shortcuts_cheat_sheet: ShortcutsCheatSheetContext::new(locale),
         session_timeout_secs,
         csrf_token: session.csrf_token.clone(),
-        nav_catalog: rust_i18n::t!("nav.catalog", locale = locale).to_string(),
-        nav_loans: rust_i18n::t!("nav.loans", locale = locale).to_string(),
-        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = locale).to_string(),
-        nav_locations: rust_i18n::t!("nav.locations", locale = locale).to_string(),
-        nav_labels: rust_i18n::t!("labels.nav", locale = locale).to_string(),
-        nav_series: rust_i18n::t!("nav.series", locale = locale).to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = locale).to_string(),
-        nav_admin: rust_i18n::t!("nav.admin", locale = locale).to_string(),
-        nav_proposals: rust_i18n::t!("nav.proposals", locale = locale).to_string(),
-        nav_proposals_badge: proposals_badge_text(session.pending_proposals),
-        nav_proposals_aria: proposals_badge_aria(session.pending_proposals, locale),
+        nav_groups: nav_groups(
+            &session.role.to_string(),
+            current_page,
+            locale,
+            session.pending_proposals,
+        ),
         nav_login: rust_i18n::t!("nav.login", locale = locale).to_string(),
         nav_logout: rust_i18n::t!("nav.logout", locale = locale).to_string(),
         nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
+        nav_collapse: rust_i18n::t!("nav.collapse_menu", locale = locale).to_string(),
+        nav_expand: rust_i18n::t!("nav.expand_menu", locale = locale).to_string(),
+        nav_theme_toggle: rust_i18n::t!("nav.theme_toggle", locale = locale).to_string(),
+        nav_language_label: rust_i18n::t!("nav.language_label", locale = locale).to_string(),
         current_url: current_url(uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = locale).to_string(),
         js_i18n: build_js_i18n_bundle(locale),
@@ -723,20 +723,14 @@ pub(crate) fn test_base_context(
         shortcuts_cheat_sheet: ShortcutsCheatSheetContext::new(locale),
         session_timeout_secs,
         csrf_token: "tok".to_string(),
-        nav_catalog: rust_i18n::t!("nav.catalog", locale = locale).to_string(),
-        nav_loans: rust_i18n::t!("nav.loans", locale = locale).to_string(),
-        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = locale).to_string(),
-        nav_locations: rust_i18n::t!("nav.locations", locale = locale).to_string(),
-        nav_labels: rust_i18n::t!("labels.nav", locale = locale).to_string(),
-        nav_series: rust_i18n::t!("nav.series", locale = locale).to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = locale).to_string(),
-        nav_admin: rust_i18n::t!("nav.admin", locale = locale).to_string(),
-        nav_proposals: rust_i18n::t!("nav.proposals", locale = locale).to_string(),
-        nav_proposals_badge: None,
-        nav_proposals_aria: None,
+        nav_groups: nav_groups(role, current_page, locale, None),
         nav_login: rust_i18n::t!("nav.login", locale = locale).to_string(),
         nav_logout: rust_i18n::t!("nav.logout", locale = locale).to_string(),
         nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
+        nav_collapse: rust_i18n::t!("nav.collapse_menu", locale = locale).to_string(),
+        nav_expand: rust_i18n::t!("nav.expand_menu", locale = locale).to_string(),
+        nav_theme_toggle: rust_i18n::t!("nav.theme_toggle", locale = locale).to_string(),
+        nav_language_label: rust_i18n::t!("nav.language_label", locale = locale).to_string(),
         current_url: "/".to_string(),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = locale).to_string(),
         js_i18n: build_js_i18n_bundle(locale),
@@ -1098,9 +1092,9 @@ mod tests {
         // "Emprunteurs"). If both came back identical, the i18n key
         // lookup is failing silently.
         assert_ne!(
-            en.nav_borrowers, fr.nav_borrowers,
+            en.nav_groups[1][0].label, fr.nav_groups[1][0].label,
             "EN and FR translations must differ — check that locale files \
-             ship the nav.borrowers key in both"
+             ship the nav.catalog key in both"
         );
         // skip_to_content + language_toggle_aria similarly differ.
         assert_ne!(en.skip_label, fr.skip_label);
@@ -1115,18 +1109,22 @@ mod tests {
         // surface as empty string here.
         let session = crate::middleware::auth::Session::anonymous_with_token(String::new());
         let ctx = base_context(&session, "en", "x", &test_uri(), 0);
-        for (name, value) in [
-            ("nav_catalog", &ctx.nav_catalog),
-            ("nav_loans", &ctx.nav_loans),
-            ("nav_wishlist", &ctx.nav_wishlist),
-            ("nav_locations", &ctx.nav_locations),
-            ("nav_series", &ctx.nav_series),
-            ("nav_borrowers", &ctx.nav_borrowers),
-            ("nav_admin", &ctx.nav_admin),
+        let entry_labels: Vec<(&str, &String)> = ctx
+            .nav_groups
+            .iter()
+            .flatten()
+            .map(|e| (e.key, &e.label))
+            .collect();
+        assert!(!entry_labels.is_empty(), "the anonymous navigation has entries");
+        for (name, value) in entry_labels.into_iter().chain([
             ("nav_login", &ctx.nav_login),
             ("nav_logout", &ctx.nav_logout),
             ("nav_menu_open", &ctx.nav_menu_open),
-        ] {
+            ("nav_collapse", &ctx.nav_collapse),
+            ("nav_expand", &ctx.nav_expand),
+            ("nav_theme_toggle", &ctx.nav_theme_toggle),
+            ("nav_language_label", &ctx.nav_language_label),
+        ]) {
             assert!(!value.is_empty(), "{name} must not be empty");
             assert!(
                 !value.contains('.'),

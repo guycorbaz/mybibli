@@ -1,6 +1,6 @@
 # Story 14.1: Sidebar on wide screens
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #547 (type:change-request). Covers: UX-DR38. Epic 14; ships in v1.24.0.
 
@@ -43,12 +43,12 @@ The project lead approved the interactive mock-up `_bmad-output/planning-artifac
 
 ## Tasks / Subtasks
 
-- [ ] T1 — single navigation source + icons include (AC1, AC2)
-- [ ] T2 — sidebar layout in `base.html`, foot, collapsed state CSS (AC2–AC4, AC6)
-- [ ] T3 — pre-paint state script + toggle JS (AC5, AC8)
-- [ ] T4 — below-`lg` bar/panel switch to `lg` (AC7)
-- [ ] T5 — locales (AC9)
-- [ ] T6 — tests; adapt existing specs; gates; full suites once before the single push (AC10)
+- [x] T1 — single navigation source + icons include (AC1, AC2)
+- [x] T2 — sidebar layout in `base.html`, foot, collapsed state CSS (AC2–AC4, AC6)
+- [x] T3 — pre-paint state script + toggle JS (AC5, AC8)
+- [x] T4 — below-`lg` bar/panel switch to `lg` (AC7)
+- [x] T5 — locales (AC9)
+- [x] T6 — tests; adapt existing specs; gates; full suites once before the single push (AC10)
 
 ## Dev Notes
 
@@ -56,3 +56,26 @@ The project lead approved the interactive mock-up `_bmad-output/planning-artifac
 - Keep `HtmxResponse` OOB targets that live in the nav working (grep `data-proposals-badge`, any OOB that updates the badge).
 - Session-timeout, connection monitor, shortcuts (`static/js/shortcuts.js`) may reference nav elements — grep before renaming ids.
 - Foundation Rule #12: keep every touched file under 2000 lines.
+
+## Completion Notes (2026-11-04)
+
+**Single navigation source (AC1).** `src/utils/nav.rs` builds the entries once — `nav_groups(role, current_page, locale, pending_proposals) -> Vec<Vec<NavEntry>>` (key/icon, href, label, `current`, Proposals `badge` + `aria_label`, `tooltip()`), groups as in the mock-up, role gates in Rust (unknown role fails closed to anonymous), empty groups never emitted. `BaseContextFields.nav_groups` replaces the nine `nav_<entry>` / `nav_proposals_*` fields; new `nav_collapse`, `nav_expand`, `nav_theme_toggle`, `nav_language_label`. `templates/components/nav_entries.html` is the only markup for the entries; it is included by the sidebar and by the small-screen panel (`#mobile-nav`) — the unit test `sidebar_and_panel_render_the_same_entries` pins identical markup. Story 14-2's drawer can include `nav_entries.html` + reuse `nav_macros.html` as is. `templates/components/nav_macros.html`: `icon(name)` (Heroicons v2 outline paths from the mock-up, + `login`), `item_class`, `idle_class`, `current_class`, `tooltip(text)`.
+
+**Sidebar (AC2–AC4, AC6).** `templates/components/sidebar.html`: `<nav aria-label="Main navigation" id="sidebar">`, `hidden lg:flex`, `sticky top-0 self-start h-screen`, `w-56` / `sb-collapsed:w-16`, `z-40`, `print:hidden`; logo link on top; entries in their own `overflow-y-auto` scroller; foot = language form (named, CSRF, `data-auto-submit`, noscript, `#lang-select`), theme toggle (`#theme-toggle`, localized text name), Log out POST form (CSRF) or Log in, collapse toggle (`data-sidebar-toggle`, `aria-controls="sidebar"`, `aria-expanded`, CSS-driven name "Collapse menu"/"Expand menu"). Current page: `aria-current="page"` + bold + 3 px left bar (`before:`). Collapsed: labels `sb-collapsed:sr-only` (accessible names kept), tooltip spans `aria-hidden`, shown on `group-hover` and `group-focus-visible`; they are `fixed left-18 z-50` with only `left` set, so they keep their static vertical position and escape the entries scroller's clipping (an `absolute` tooltip would be cut at 64 px). Badge becomes a pill on the icon. `layouts/base.html`: a `lg:flex` row (sidebar + `lg:flex-1 lg:min-w-0` column holding the header, `<main>` and the footer); `<main>` gains `lg:scroll-mt-0 lg:**:scroll-mt-0` (no bar above the content from `lg`; D-11-4-8 unchanged — still no root scroll-padding).
+
+**State (AC5, AC8).** `static/js/sidebar.js`, loaded in `<head>` after `theme.js`: reads `localStorage["mybibli.sidebar"]` ("collapsed"/"expanded", try/catch → expanded) and sets `sidebar-collapsed` on `<html>` before first paint; the custom variant `sb-collapsed` (`static/css/input.css`, `@media (width >= 1024px)` + `:where(.sidebar-collapsed *)`) does the rest. On DOMContentLoaded it syncs `aria-expanded` and wires the toggle. AC8: the toggle prevents `mousedown`'s default, so a mouse click never takes focus — on /catalog the scan field keeps it and the next scan lands there; from the keyboard focus stays on the toggle. Feedback entries untouched.
+
+**Below `lg` (AC7).** `components/nav_bar.html` is now the small-screen header only (`lg:hidden`): no link strip, no bar logout (it was `hidden xl:contents`), hamburger `lg:hidden`, panel `hidden lg:hidden`; the panel's entries come from `nav_entries.html` (they now carry icons and the Home entry). Ids suffixed `-bar` (`#lang-select-bar`, `#theme-toggle-bar`); the sidebar holds `#lang-select` / `#theme-toggle`. `theme.js` wires every `[data-theme-toggle]` and no longer overwrites the name with English "Switch to … mode".
+
+**i18n (AC9).** `nav.home`, `nav.collapse_menu`, `nav.expand_menu`, `nav.language_label` in en/fr/de/it (mock-up wording); the theme toggle uses the existing `nav.theme_toggle`.
+
+**Tests (AC10).** Unit: `src/utils/nav.rs` (7 tests: order per role, fail-closed, current page, localization, badge/aria/tooltip); `src/routes/nav_sticky_tests.rs` rewritten (20 render tests: sidebar shell classes, entries per role + separators, single source, current marker, foot, collapsed names/tooltips/pill, head script, small bar `lg` switch, logout/login placement, Proposals badge, language-form landmarks, localized theme name); `utils.rs` base-context tests adapted; `templates_audit.rs` updated (sidebar exempt from the inner-scroller rule like the panel; `lg:` scroll-margin resets allowed on `<main>`; base-context tell moved to `nav_logout`; z-50 doc mentions the sidebar). Integration: `tests/navbar_role_visibility.rs` (landmark test: one per breakpoint), `navbar_hamburger.rs` (`lg:hidden`), `proposals_access.rs` (badge texts helper). E2E: new `tests/e2e/specs/journeys/sidebar.spec.ts` (spec ID "SD", 11 tests: collapse/expand + persistence + first-frame width, blocked storage, tooltips on hover and keyboard focus, Tab reachability in both states, current marker, no overflow at 1024/1280/1440 × fr/en/de/it with a forced `99+` badge, axe expanded/collapsed × light/dark, /catalog focus + feedback, badge in both states via a real MCP proposal); adapted `responsive-layouts`, `navbar-hamburger`, `navbar-role-visibility`, `cross-cutting`, `login-smoke`, `proposals-access`, `series-epic11-smoke`, `helpers/proposals.ts` (`NAV = "nav#sidebar"`; landmark locators via `getByRole("navigation", { name: "Main navigation" })`, which only resolves the displayed one).
+
+**Deviations / found on the way.**
+- Two `<nav aria-label="Main navigation">` exist in the markup (sidebar ≥ lg, small bar < lg), never displayed together; 14-2 removes the bar.
+- The mock-up's "Signed in: guy (Admin)" line in the foot is not implemented (not in the ACs; `BaseContext` carries no user name).
+- Theme toggle name is the constant "Toggle theme" (localized) rather than the mock-up's state-dependent "Dark theme"/"Light theme".
+- Pre-existing bug fixed: the Docker CSS stage only scanned `templates/`, so utilities used only in JS class strings (`bottom-4 right-4` of the session / connection toasts) were missing from the shipped `output.css`; the toasts sat at their static position. The sidebar makes the page ≥ 100vh, which pushed the session toast below the fold (`session-inactivity-timeout.spec.ts` failed). Fix: `Dockerfile` copies `static/js/` into the CSS stage and `input.css` declares `@source "../js"` (htmx.min.js excluded).
+- `dark:` utilities follow `prefers-color-scheme` (Tailwind default), not the `.dark` class the theme toggle sets — pre-existing, unchanged; axe dark runs use `emulateMedia({ colorScheme: "dark" })`.
+
+**Gates.** `cargo check` ✓; `cargo clippy --all-targets -- -D warnings` ✓; `cargo test --test locale_parity` ✓ (3); full Rust suite with DB: 2441 passed, 0 failed; `tsc --noEmit` ✓; `waitForTimeout` gate ✓; full Playwright `CI=true --workers=2` on a reset stack: 421 passed, 2 skipped, 0 flaky, 0 failed.

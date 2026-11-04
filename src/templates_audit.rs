@@ -476,10 +476,11 @@ fn hx_confirm_in_rust_strings_matches_allowlist() {
 /// CR #354 — every full-page handler in `src/routes/` must build the 20 shared
 /// base fields (lang, role, csrf_token, nav_*, current_url, …) via
 /// `crate::utils::base_context()`, never inline. The tell of an inline builder
-/// is a template-struct literal assigning `nav_catalog: rust_i18n::t!(...)`
-/// directly. After the migration that pattern lives ONLY in `base_context()`
-/// itself (`src/utils.rs`, outside this walk), so any match under `src/routes/`
-/// is a regression — a new page handler hand-rolling the shared fields.
+/// is a template-struct literal assigning `nav_logout: rust_i18n::t!(...)`
+/// directly (story 14-1 moved the entry labels into `nav_groups`, so the
+/// tell moved from `nav_catalog` to `nav_logout`). After the migration that
+/// pattern lives ONLY in `base_context()` itself (`src/utils.rs`, outside
+/// this walk), so any match under `src/routes/` is a regression — a new page handler hand-rolling the shared fields.
 #[test]
 fn routes_build_base_context_via_helper() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -499,7 +500,7 @@ fn routes_build_base_context_via_helper() {
             Ok(s) => s,
             Err(_) => return,
         };
-        let n = raw.matches("nav_catalog: rust_i18n::t!").count();
+        let n = raw.matches("nav_logout: rust_i18n::t!").count();
         if n == 0 {
             return;
         }
@@ -1062,7 +1063,8 @@ fn csrf_exempt_routes_frozen() {
     );
 }
 
-/// Story 11-4 (#496) — the navigation `<header>` is `sticky … z-40`. Every
+/// Story 11-4 (#496) — the navigation `<header>` is `sticky … z-40`, and so
+/// is the wide-screen sidebar (story 14-1, `components/sidebar.html`). Every
 /// `position: fixed` surface — full-viewport overlays (modals, the
 /// connection-lost overlay) and the toasts built in `static/js` — must sit
 /// above it, so its class list must carry `z-50`. Modals promoted with
@@ -1162,7 +1164,8 @@ fn fixed_surfaces_stack_above_sticky_nav() {
 /// would keep a focused row 48/56 px below the list's own top and shift the
 /// list. Each inner vertical scroller must reset it with `**:scroll-mt-0!`
 /// (the `!` beats both breakpoints of the inherited rule). The mobile menu
-/// lives in `<header>`, outside `<main>`, and is exempt. Detected: the
+/// lives in `<header>`, outside `<main>`, and is exempt; so is the sidebar
+/// (story 14-1), a sibling of `<main>`. Detected: the
 /// `overflow-{,y-}{auto,scroll}` utilities (any variant, either `!` form);
 /// not detected: a bounded `overflow-x-auto` / `overflow-hidden` box or a
 /// `<dialog>` inside `<main>` (none exist — modals mount outside `<main>`).
@@ -1181,8 +1184,11 @@ fn inner_vertical_scrollers_reset_the_bar_scroll_margin() {
         let Ok(raw) = fs::read_to_string(path) else {
             return;
         };
-        // The mobile menu (`#mobile-nav`) lives in <header>, outside <main>.
-        if path.ends_with("components/nav_bar.html") {
+        // The mobile menu (`#mobile-nav`) lives in <header>, outside <main>;
+        // the sidebar (story 14-1) is a sibling of <main>.
+        if path.ends_with("components/nav_bar.html")
+            || path.ends_with("components/sidebar.html")
+        {
             return;
         }
         let content = strip_html_comments(&raw);
@@ -1240,11 +1246,15 @@ fn inner_vertical_scrollers_reset_the_bar_scroll_margin() {
 fn scroll_offset_utilities_stay_on_main_and_inner_scrollers() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let class_attr_re = Regex::new(r#"\bclass\s*=\s*"([^"]*)""#).unwrap();
+    // Story 14-1 (AC6) — `lg:` resets: from `lg` no bar sits above the
+    // content (the sidebar sits beside it).
     let main_set = [
         "scroll-mt-12",
         "md:scroll-mt-14",
+        "lg:scroll-mt-0",
         "**:scroll-mt-12",
         "md:**:scroll-mt-14",
+        "lg:**:scroll-mt-0",
     ];
     let mut violations: Vec<String> = Vec::new();
     visit(&root.join("templates"), &mut |path| {

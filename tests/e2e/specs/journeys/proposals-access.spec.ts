@@ -84,9 +84,9 @@ test.describe("Story 11-21 — access to the proposals page", () => {
       await page.setViewportSize({ width: 1280, height: 720 });
 
       // The entry leads to /proposals and is marked current there.
-      await page.locator(`${NAV} > div a[href="/proposals"]`).click();
+      await page.locator(`${NAV} a[href="/proposals"]`).click();
       await expect(page).toHaveURL(/\/proposals$/);
-      await expect(page.locator(`${NAV} > div a[href="/proposals"]`)).toHaveAttribute(
+      await expect(page.locator(`${NAV} a[href="/proposals"]`)).toHaveAttribute(
         "aria-current",
         "page",
       );

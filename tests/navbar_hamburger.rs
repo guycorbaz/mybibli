@@ -146,8 +146,8 @@ async fn mobile_menu_button_renders_with_correct_attributes(pool: MySqlPool) {
         html.contains(r#"aria-controls="mobile-nav""#),
         "trigger must announce the controlled panel via aria-controls; got: {html}"
     );
-    // Visibility breakpoint — xl:hidden hides the trigger on ≥ 1280px
-    // (Tailwind xl). Locked here as a regression guard against ACCIDENTAL
+    // Visibility breakpoint — lg:hidden hides the trigger on ≥ 1024px
+    // (Tailwind lg). Locked here as a regression guard against ACCIDENTAL
     // breakpoint flips; this one was deliberate.
     //
     // CR #443 moved it from `md` to `lg`. The Labels nav entry brought an
@@ -162,11 +162,15 @@ async fn mobile_menu_button_renders_with_correct_attributes(pool: MySqlPool) {
     // the project lead chose the breakpoint again, for every role, rather
     // than compacting the bar.
     //
+    // Story 14-1 (#547, UX-DR38) moved it back to `lg`: from 1024 px the
+    // entries live in the sidebar, whose width does not depend on the
+    // labels' length, so the `xl` stopgap is superseded.
+    //
     // The guard did its job: it forced the change to be stated rather than
     // slipped in. Keep it locked to whatever the current decision is.
     assert!(
-        html.contains(r#"class="xl:hidden p-2"#),
-        "trigger must keep the xl:hidden visibility gate; got: {html}"
+        html.contains(r#"class="lg:hidden p-2"#),
+        "trigger must keep the lg:hidden visibility gate; got: {html}"
     );
     // Stable panel id (the trigger's aria-controls target)
     assert!(

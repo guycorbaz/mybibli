@@ -1,5 +1,35 @@
 @import "tailwindcss";
 
+/*
+ * Story 14-1 — class strings built in first-party JS (the session-timeout
+ * and connection-restored toasts: `fixed bottom-4 right-4 …`) must be
+ * compiled too. The Docker CSS stage only had templates/ in its context,
+ * so those utilities were missing from the shipped output.css and the
+ * toasts sat at their static position — at the end of the body. With the
+ * sidebar making the page at least one viewport tall, that put them below
+ * the fold. The vendored, minified htmx is not scanned.
+ */
+@source "../js";
+@source not "../js/htmx.min.js";
+
+/*
+ * Story 14-1 (#547, UX-DR38) — `sb-collapsed:` applies from `lg` (1024 px)
+ * while <html> carries `sidebar-collapsed` (set before first paint by
+ * static/js/sidebar.js from localStorage). Used only on the sidebar's
+ * markup (components/sidebar.html, nav_entries.html, nav_macros.html);
+ * below `lg` it never matches, so the same entries read "expanded" in the
+ * small-screen panel. `:where()` keeps the variant's specificity equal to
+ * the base utility's, so the source order (variants after utilities)
+ * decides, as for any Tailwind variant.
+ */
+@custom-variant sb-collapsed {
+    @media (width >= 1024px) {
+        &:where(.sidebar-collapsed *) {
+            @slot;
+        }
+    }
+}
+
 @theme {
     /* Warm stone neutral palette */
     --color-stone-50: #fafaf9;

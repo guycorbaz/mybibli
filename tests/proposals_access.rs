@@ -44,8 +44,19 @@ async fn file_metadata(agent: &Agent, title_id: u64, subtitle: &str) -> u64 {
         .expect("proposal_id")
 }
 
-/// The strip entry's opening tag (the first `/proposals` link: the
-/// desktop strip comes before the mobile panel).
+/// The sidebar entry's opening tag (the first `/proposals` link: the
+/// sidebar comes before the small-screen panel — story 14-1).
+/// Story 14-1 — the texts of the nav badges (sidebar + panel).
+fn badge_texts(html: &str) -> Vec<&str> {
+    html.match_indices("<span data-proposals-badge")
+        .map(|(i, _)| {
+            let start = html[i..].find('>').unwrap() + i + 1;
+            let end = html[start..].find("</span>").unwrap() + start;
+            &html[start..end]
+        })
+        .collect()
+}
+
 fn entry_tag(html: &str) -> &str {
     let start = html
         .find("<a href=\"/proposals\"")
@@ -63,9 +74,9 @@ async fn no_badge_and_no_indicator_without_pending_proposals(pool: DbPool) {
     assert_eq!(
         html.matches("<a href=\"/proposals\"").count(),
         2,
-        "strip + panel"
+        "sidebar + panel"
     );
-    assert!(html.contains(">Propositions</a>"));
+    assert!(html.contains(">Propositions</span>"));
     assert!(!entry_tag(&html).contains("aria-label="));
     assert!(!html.contains("data-proposals-badge"));
     assert!(!html.contains("filter-tag-pending-proposals"));
@@ -89,9 +100,9 @@ async fn a_pending_proposal_shows_the_badge_and_the_indicator(pool: DbPool) {
     assert_eq!(
         html.matches("data-proposals-badge").count(),
         2,
-        "strip + panel badge"
+        "sidebar + panel badge"
     );
-    assert!(html.contains(">2</span></a>"));
+    assert_eq!(badge_texts(&html), ["2", "2"]);
     assert!(html.contains("<a href=\"/proposals\" id=\"filter-tag-pending-proposals\""));
     assert!(html.contains("aria-label=\"Propositions en attente: 2\""));
 
@@ -204,8 +215,7 @@ async fn the_badge_caps_at_99_plus_and_the_name_keeps_the_count(pool: DbPool) {
     let lib = librarian(&pool, &agent).await;
     let (_, html) = lib.get(&agent.app, "/").await;
     assert!(entry_tag(&html).contains("Propositions, 105 en attente"));
-    assert!(html.contains(">99+</span></a>"));
-    assert!(!html.contains(">105</span></a>"));
+    assert_eq!(badge_texts(&html), ["99+", "99+"]);
     // The dashboard pill shows the exact number.
     assert!(html.contains("aria-label=\"Propositions en attente: 105\""));
 }

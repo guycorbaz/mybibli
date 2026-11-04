@@ -24,6 +24,10 @@ WORKDIR /app
 RUN npm install tailwindcss @tailwindcss/cli
 COPY static/css/input.css ./static/css/
 COPY templates/ ./templates/
+# Story 14-1 — the first-party JS modules build class strings too (the
+# session and connection toasts): Tailwind must see them, as it does in a
+# local build run from the repo root. Sourced explicitly in input.css.
+COPY static/js/ ./static/js/
 RUN npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify
 
 # Stage 3: Runtime

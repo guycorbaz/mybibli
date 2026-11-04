@@ -71,19 +71,20 @@ export async function acceptFromDetail(page: Page) {
   ).toBeVisible({ timeout: 10000 });
 }
 
-/** The desktop navigation strip (story 11-21). */
-export const NAV = 'nav[aria-label="Main navigation"]';
+/** The wide-screen navigation: the sidebar since story 14-1 (#547), the
+ * desktop strip before (story 11-21). The default 1280 px viewport shows it. */
+export const NAV = "nav#sidebar";
 const PILL_LABEL = /Pending proposals|Propositions en attente|Offene Vorschläge|Proposte in attesa/;
 
 /**
- * The pending count shown on the current page (story 11-21): the strip
+ * The pending count shown on the current page (story 11-21): the sidebar
  * entry's accessible name ("Propositions, 3 en attente"), 0 when it
  * carries none. Checks the badge text matches (capped at 99+) and, on
  * the home page, that the dashboard pill shows the same number. The
  * count is library-wide: callers assert relatively.
  */
 export async function shownPendingCount(page: Page): Promise<number> {
-  const entry = page.locator(`${NAV} > div a[href="/proposals"]`);
+  const entry = page.locator(`${NAV} a[href="/proposals"]`);
   await expect(entry).toHaveCount(1);
   const aria = await entry.getAttribute("aria-label");
   const badge = entry.locator("[data-proposals-badge]");

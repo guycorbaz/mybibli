@@ -24,7 +24,7 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
   }) => {
     await page.goto("/login");
 
-    const desktopNav = page.locator("nav[aria-label='Main navigation']");
+    const desktopNav = page.getByRole("navigation", { name: "Main navigation" });
 
     // Desktop — visible
     await expect(desktopNav.locator("a[href='/']").first()).toBeVisible();
@@ -72,7 +72,7 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     await loginAs(page, "librarian");
     await page.goto("/loans");
 
-    const desktopNav = page.locator("nav[aria-label='Main navigation']");
+    const desktopNav = page.getByRole("navigation", { name: "Main navigation" });
 
     // Desktop — visible
     await expect(desktopNav.locator("a[href='/']").first()).toBeVisible();
@@ -102,8 +102,9 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     await expect(panel.locator("a[href='/loans']")).toBeVisible();
     await expect(panel.locator("a[href='/proposals']")).toBeVisible();
     await expect(panel.locator("form[action='/logout']")).toBeVisible();
-    // Story 11-21 (#545) — below `xl` the bar's own logout is hidden; the
-    // panel's one (above) is the way out.
+    // Story 11-21 (#545) — the small-screen bar has no logout of its own;
+    // the panel's one (above) is the way out. (Story 14-1: below `lg` the
+    // "Main navigation" landmark resolves to that bar.)
     await expect(desktopNav.locator("form[action='/logout'] button")).toBeHidden();
 
     // Mobile — hidden
@@ -118,7 +119,7 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     // Use canonical URL — /admin server-side redirects to /admin?tab=health (story 8-1)
     await page.goto("/admin?tab=health");
 
-    const desktopNav = page.locator("nav[aria-label='Main navigation']");
+    const desktopNav = page.getByRole("navigation", { name: "Main navigation" });
 
     // Desktop — visible (full set)
     await expect(desktopNav.locator("a[href='/']").first()).toBeVisible();

@@ -1,0 +1,73 @@
+{# Story 14-1 (#547, UX-DR38) — the building blocks of the navigation,
+   shared by the sidebar (`components/sidebar.html`), its entries
+   (`components/nav_entries.html`) and the small-screen panel
+   (`components/nav_bar.html`); Story 14-2's drawer reuses them.
+
+   Usage: `{% import "components/nav_macros.html" as nav %}`, then
+   `{% call nav::icon("catalog") %}{% endcall %}` etc.
+
+   `sb-collapsed:` is the custom variant of `static/css/input.css`: it
+   applies from `lg` while `<html>` carries `sidebar-collapsed` (set before
+   first paint by `static/js/sidebar.js`). Below `lg` it never applies, so
+   the same markup reads "expanded" in the small-screen panel. #}
+
+{# The row of an entry or a foot control: icon + label, 40 px high.
+   Collapsed: icon centred, label visually hidden but kept as the
+   accessible name (`sb-collapsed:sr-only`, never `display: none`). #}
+{%- macro item_class() -%}
+group relative flex w-full items-center gap-3 px-2.5 py-2 rounded-md text-sm text-left whitespace-nowrap cursor-pointer bg-transparent border-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 sb-collapsed:justify-center sb-collapsed:px-0
+{%- endmacro -%}
+
+{# Not-current colours; the current entry gets `current_class`. #}
+{%- macro idle_class() -%}
+text-stone-600 dark:text-stone-400 hover:bg-stone-100 hover:text-stone-900 dark:hover:bg-stone-700 dark:hover:text-stone-100
+{%- endmacro -%}
+
+{# The current page: tinted background, bold weight and a 3 px left bar —
+   a non-colour marker on top of `aria-current="page"` (WCAG 1.4.1). #}
+{%- macro current_class() -%}
+font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-100 before:absolute before:-left-2 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-sm before:bg-indigo-600 dark:before:bg-indigo-300
+{%- endmacro -%}
+
+{# The tooltip of a collapsed entry — shown on hover AND keyboard focus
+   (`group-focus-visible`), CSS only, no inline style (CSP). Hidden from
+   assistive tech: it repeats the accessible name the row already has.
+   `fixed` with only `left` set: the vertical position stays the static
+   one (centred on the row, the row being a flex box with
+   `items-center`), and a fixed box escapes the clipping of the entries'
+   own vertical scroller — an `absolute` tooltip would be cut at the
+   64 px edge. `left-18` = 64 px rail + 8 px gap; the sidebar is pinned
+   to the viewport's left edge. `z-50`: the rule for every fixed surface
+   (templates_audit::fixed_surfaces_stack_above_sticky_nav). #}
+{%- macro tooltip(text) -%}
+<span aria-hidden="true" data-nav-tooltip class="hidden fixed left-18 z-50 px-2 py-1 rounded text-xs font-medium whitespace-nowrap bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 shadow-md pointer-events-none sb-collapsed:group-hover:block sb-collapsed:group-focus-visible:block">{{ text }}</span>
+{%- endmacro -%}
+
+{# Heroicons v2 outline (MIT, https://heroicons.com), self-hosted as
+   inline SVG — no icon font, no CDN, CSP unchanged. Paths copied as-is
+   from the approved mock-up
+   (`_bmad-output/planning-artifacts/ux-sidebar-mockup.html`); `login` is
+   Heroicons' arrow-left-end-on-rectangle. Decorative (`aria-hidden`):
+   every row carries its name in text or `aria-label`. An unknown name
+   renders an empty 20 px box rather than failing the page. #}
+{%- macro icon(name) -%}
+<svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+{%- if name == "home" -%}<path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/>
+{%- else if name == "catalog" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/>
+{%- else if name == "locations" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z"/>
+{%- else if name == "series" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M6 6.878V6a2.25 2.25 0 0 1 2.25-2.25h7.5A2.25 2.25 0 0 1 18 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 0 0 4.5 9v.878m13.5-3A2.25 2.25 0 0 1 19.5 9v.878m0 0a2.246 2.246 0 0 0-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0 1 21 12v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6c0-.98.626-1.813 1.5-2.122"/>
+{%- else if name == "borrowers" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/>
+{%- else if name == "loans" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/>
+{%- else if name == "wishlist" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"/>
+{%- else if name == "labels" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6Z"/>
+{%- else if name == "proposals" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 0 1 2.012 1.244l.256.512a2.25 2.25 0 0 0 2.013 1.244h3.218a2.25 2.25 0 0 0 2.013-1.244l.256-.512a2.25 2.25 0 0 1 2.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 0 0-2.15-1.588H6.911a2.25 2.25 0 0 0-2.15 1.588L2.35 13.177a2.25 2.25 0 0 0-.1.661Z"/>
+{%- else if name == "admin" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+{%- else if name == "lang" -%}<path stroke-linecap="round" stroke-linejoin="round" d="m10.5 21 5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 0 1 6-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 0 1-3.827-5.802"/>
+{%- else if name == "moon" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"/>
+{%- else if name == "sun" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"/>
+{%- else if name == "logout" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9"/>
+{%- else if name == "collapse" -%}<path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15L5.25 12l7.5 7.5"/>
+{%- else if name == "expand" -%}<path stroke-linecap="round" stroke-linejoin="round" d="m5.25 4.5 7.5 7.5-7.5 7.5m6-15 7.5 7.5-7.5 7.5"/>
+{%- else if name == "login" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75"/>
+{%- endif -%}</svg>
+{%- endmacro -%}

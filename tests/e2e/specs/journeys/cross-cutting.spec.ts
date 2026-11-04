@@ -97,7 +97,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
   }) => {
     await page.goto("/catalog");
 
-    const nav = page.locator("nav[aria-label='Main navigation']");
+    const nav = page.getByRole("navigation", { name: "Main navigation" });
     await expect(nav).toBeVisible();
 
     // Catalog link should be visible for librarian
@@ -114,7 +114,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
     await context.clearCookies();
     await page.goto("/");
 
-    const nav = page.locator("nav[aria-label='Main navigation']");
+    const nav = page.getByRole("navigation", { name: "Main navigation" });
     await expect(nav).toBeVisible();
 
     // Read-only browsing links must remain visible to anonymous.
@@ -146,9 +146,11 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
     await page.goto("/catalog");
 
     const themeBtn = page.locator("#theme-toggle");
-    const label = await themeBtn.getAttribute("aria-label");
 
-    // Should have an accessible label
-    expect(label).toMatch(/Toggle theme|Switch to (light|dark) mode/);
+    // Should have an accessible name. Story 14-1 (AC9): the localized
+    // `nav.theme_toggle`, shown as the sidebar entry's text.
+    await expect(themeBtn).toHaveAccessibleName(
+      /Toggle theme|Basculer le thème|Thema umschalten|Cambia tema/,
+    );
   });
 });

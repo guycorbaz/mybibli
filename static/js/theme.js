@@ -20,15 +20,9 @@
         } else {
             document.documentElement.classList.remove("dark");
         }
-        // Update theme toggle button aria-label (no-op on bare.html where the
-        // button doesn't exist — early-return keeps the file CSP-safe).
-        var btn = document.getElementById("theme-toggle");
-        if (btn) {
-            btn.setAttribute(
-                "aria-label",
-                theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
-            );
-        }
+        // Story 14-1 (AC9) — the toggles keep their server-rendered,
+        // localized name (`nav.theme_toggle`); the hard-coded English
+        // aria-label this function used to set is gone.
     }
 
     function toggleTheme() {
@@ -62,13 +56,18 @@
             }
         });
 
-    // Wire #theme-toggle button (idempotent). Bare.html (login/logout) has
-    // no nav, so the button is absent — wireToggle is a no-op there.
+    // Wire every `[data-theme-toggle]` button (idempotent). Story 14-1 —
+    // two exist: the sidebar's `#theme-toggle` (≥ lg) and the small-screen
+    // bar's `#theme-toggle-bar`. Bare.html (login/logout) has no nav, so
+    // none is present — wireToggle is a no-op there.
     function wireToggle() {
-        var btn = document.getElementById("theme-toggle");
-        if (!btn || btn.dataset.wired === "true") return;
-        btn.dataset.wired = "true";
-        btn.addEventListener("click", toggleTheme);
+        var buttons = document.querySelectorAll("[data-theme-toggle]");
+        for (var i = 0; i < buttons.length; i++) {
+            var btn = buttons[i];
+            if (btn.dataset.wired === "true") continue;
+            btn.dataset.wired = "true";
+            btn.addEventListener("click", toggleTheme);
+        }
     }
 
     if (document.readyState === "loading") {

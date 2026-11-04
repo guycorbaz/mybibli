@@ -97,9 +97,12 @@ async fn body_text(resp: axum::response::Response) -> String {
     String::from_utf8(bytes.to_vec()).unwrap()
 }
 
-/// Slice the `<nav aria-label="Main navigation">` strip out of the rendered
+/// Slice the first `<nav aria-label="Main navigation">` out of the rendered
 /// HTML so desktop-link assertions see ONLY the desktop nav (and never the
-/// mobile-panel twin links). Walks `<nav>`/`</nav>` tags tracking nesting
+/// mobile-panel twin links). Story 14-1 (#547): the desktop nav is now the
+/// sidebar (`components/sidebar.html`, ≥ lg), which comes first in the
+/// document and carries the entries plus the foot (language, theme,
+/// Log in / Log out). Walks `<nav>`/`</nav>` tags tracking nesting
 /// depth so the helper stays correct if the desktop strip later gains a
 /// nested `<nav>` (e.g., a sub-nav for grouped sections).
 fn extract_desktop_nav(html: &str) -> String {
@@ -493,7 +496,7 @@ async fn logout_is_post_form_with_csrf_token(pool: MySqlPool) {
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_text(resp).await;
 
-    // Issue #150: two POST logout forms — one in the desktop strip, one
+    // Issue #150: two POST logout forms — one in the sidebar (story 14-1), one
     // in the mobile panel. Both share the CSRF input + same `/logout`
     // action. The CSRF assertion below targets the FIRST form (desktop)
     // via `html.find(...)` so the contract still pins down the desktop
@@ -530,7 +533,11 @@ async fn logout_is_post_form_with_csrf_token(pool: MySqlPool) {
     );
 }
 
-// AC7 — `<nav aria-label="Main navigation">` landmark present exactly once.
+// AC7 — `<nav aria-label="Main navigation">` landmark present exactly once
+// per breakpoint. Story 14-1 (#547): two in the markup — the sidebar
+// (`hidden lg:flex`) and the small-screen bar (inside a `lg:hidden`
+// header) — never displayed together, so exactly one is exposed at any
+// width.
 #[sqlx::test(migrations = "./migrations")]
 async fn nav_landmark_has_aria_label(pool: MySqlPool) {
     let app = build_router(build_state(pool));
@@ -543,9 +550,24 @@ async fn nav_landmark_has_aria_label(pool: MySqlPool) {
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_text(resp).await;
 
-    let landmark_count = html.matches(r#"<nav aria-label="Main navigation""#).count();
+    let landmarks: Vec<&str> = html
+        .match_indices(r#"<nav aria-label="Main navigation""#)
+        .map(|(i, _)| &html[i..i + html[i..].find('>').unwrap()])
+        .collect();
     assert_eq!(
-        landmark_count, 1,
-        "expected exactly 1 <nav aria-label=Main navigation> landmark; got {landmark_count}"
+        landmarks.len(),
+        2,
+        "expected the sidebar + the small-screen bar; got {landmarks:?}"
+    );
+    assert!(
+        landmarks[0].contains(r#"id="sidebar""#) && landmarks[0].contains("hidden lg:flex"),
+        "the first is the sidebar, shown from lg only: {}",
+        landmarks[0]
+    );
+    let header_at = html.find("<header").expect("header");
+    let header_tag = &html[header_at..header_at + html[header_at..].find('>').unwrap()];
+    assert!(
+        header_tag.contains("lg:hidden") && html.find(landmarks[1]).unwrap() > header_at,
+        "the second is the bar, inside the lg:hidden header: {header_tag}"
     );
 }
