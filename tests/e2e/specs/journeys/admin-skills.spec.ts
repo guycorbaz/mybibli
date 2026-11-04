@@ -97,8 +97,9 @@ test.describe("Story 15-2 — MCP skills admin tab", () => {
     await editor.locator("#admin-skills-description").fill("Should not replace it");
     await editor.locator("#admin-skills-body").fill("replacement text");
     await editor.locator("#admin-skills-submit").click();
+    // Match the refusal itself, not the earlier "moved to the Trash" entry.
     await expect(page.locator(".feedback-entry").last()).toContainText(
-      /Trash|corbeille|Papierkorb|cestino/i,
+      /couldn't create the skill|n'avons pas pu créer la compétence|konnte nicht erstellt werden|possibile creare lo skill/i,
       { timeout: 10000 },
     );
     await expect(editor.locator("#admin-skills-name")).toHaveValue(name);

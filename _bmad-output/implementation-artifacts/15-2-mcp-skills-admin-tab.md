@@ -1,6 +1,6 @@
 # Story 15.2: MCP skills — admin tab
 
-Status: review
+Status: done
 
 GitHub issue: #614 (type:change-request), part 1 of 2. Covers: FR162, UX-DR40. Epic 15; ships in v1.25.0.
 
@@ -180,3 +180,7 @@ Gates after the fixes are listed below under "Gates after review".
   3 passed (the journey now also checks that a trashed name is refused on
   create and that the restored skill keeps its own text). Full Playwright
   not re-run: no shared code changed in this round.
+
+#### Round 2 (32dbdfa)
+
+No Medium+ finding. Low fixed: the E2E refusal check now matches the creation-refusal copy (four locales) instead of any "Trash" word, which the earlier "moved to the Trash" entry already contained. admin-skills.spec: 3 passed on a fresh stack.
