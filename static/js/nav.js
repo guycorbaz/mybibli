@@ -1,55 +1,76 @@
-// nav.js — mobile-menu disclosure controller (story 9-17).
+// nav.js — the small-screen navigation drawer (story 14-2, #547, UX-DR39).
 //
-// Replaces and supersedes the basic mobile-menu toggle that used to live
-// in `mybibli.js` pre-9-17. Adds, on top of the click-to-toggle:
-//   - Outside-click close (mousedown on document)
-//   - Escape close + focus restoration to the trigger button
-//   - Focus trap (Tab/Shift+Tab cycle inside #mobile-nav, mirror of modal.js)
-//   - Link-click close (Ctrl-click new-tab also collapses the panel)
-//   - Scanner-burst auto-close (a USB barcode scanner burst on the page
-//     while the panel is open closes it AND forwards the burst-confirming
-//     keystroke to #scan-field if the page has one)
+// Below `lg` (1024 px) the sidebar's `<nav id="sidebar">`
+// (templates/components/sidebar.html) is an off-canvas drawer; the menu
+// button `#mobile-menu-toggle` of the sticky bar
+// (templates/components/nav_bar.html) opens it. Supersedes the story 9-17
+// dropdown panel (`#mobile-nav`) and its stand-alone burst detector.
 //
-// Standalone burst detector — does NOT depend on scanner-guard.js's modal
-// stack (the mobile nav panel is neither <dialog open> nor [aria-modal])
-// and does NOT duplicate search.js's full state machine. A single
-// `lastKeydownAt = Date.now()` timestamp + threshold compare is enough
-// for nav.js's needs.
+// Open:
+//   - `nav-drawer-open` on <html>: CSS slides the drawer in, shows the
+//     scrim (`nav-open:` variant, static/css/input.css) and stops the page
+//     behind from scrolling; `motion-safe:` only, so prefers-reduced-motion
+//     gets no animation;
+//   - the `#nav-drawer` wrapper becomes `role="dialog"` +
+//     `aria-modal="true"` + its accessible name (`data-dialog-label`):
+//     scanner-guard.js then treats it as a modal surface — a USB scanner
+//     burst neither reaches `#scan-field` nor activates a drawer control;
+//   - `#page-column` (bar, <main>, footer) becomes `inert`, and Tab /
+//     Shift+Tab cycle inside the drawer (the skip link and the modal
+//     slots, outside the column, are still reachable otherwise);
+//   - focus moves to the close button.
+// Close — Escape, a tap on the scrim, the close button, following a link
+// in the drawer, or the viewport growing to `lg`: everything above is
+// undone and focus returns to the menu button, except when a link was
+// followed (the page is navigating) or the viewport crossed to `lg` (the
+// button is no longer displayed). Story 14-2 review — the drawer also
+// closes when the session-timeout toast or the connection-lost overlay
+// appears, so they are never stuck behind an inert page / a focus trap
+// (focus goes back to the menu button only if it was in the drawer).
 //
-// Threshold source: `<input id="search-field" data-scanner-threshold="...">`
-// at templates/pages/home.html:33 (only the home page renders the search
-// field; the catalog `#scan-field` does NOT carry the attribute), else
-// hardcoded fallback 50ms (matches `scanner_burst_threshold_ms` config
-// default).
+// Keyboard operation while open. scanner-guard.js blocks every printable
+// key and Enter outside text inputs while a modal is open — also a human
+// Enter on a link, Space on a button, or a key choosing a language in the
+// <select>. A drawer that cannot be driven from a keyboard would fail
+// WCAG 2.1.1, so a window-capture listener (runs before the guard's
+// document-capture one) stops the propagation of such a key when it came
+// at human pace — at least the burst threshold after the previous
+// keydown — on a drawer link / button (Enter, Space) or on the language
+// <select> (Enter, Space, a printable key for type-ahead). The guard never
+// sees it and the browser's own default runs (story 14-2 review: no
+// synthetic click, so Space cannot activate a button twice). A scanner's
+// characters and terminating Enter follow one another within a few ms,
+// so they still reach the guard and are blocked. Known limit, as for
+// every burst detector here: the FIRST key of a burst has no predecessor
+// and passes; on the select it can only match an option's first letter
+// (F / E / D / I), which no ISBN / V- / L-code starts with.
 //
-// Known v1 limitation: the FIRST keystroke of a burst cannot be classified
-// as "burst" (no prior timestamp). It is consumed by the panel's normal
-// focus target. Re-scanning is the recovery path. See AC8 for the
-// acceptance rationale.
+// Threshold source: `<body data-scanner-threshold>` (the admin's
+// `scanner_burst_threshold_ms`, layouts/base.html), else 50 ms, floor
+// 10 ms (fix #147).
 //
 // CSP-clean: no inline handlers, no eval, all listeners via addEventListener.
 (function () {
     "use strict";
 
     var TOGGLE_ID = "mobile-menu-toggle";
-    var PANEL_ID = "mobile-nav";
-    var SCAN_FIELD_ID = "scan-field";
-    var SEARCH_FIELD_ID = "search-field";
+    var WRAPPER_ID = "nav-drawer";
+    var NAV_ID = "sidebar";
+    var SCRIM_ID = "nav-scrim";
+    var CLOSE_ID = "nav-drawer-close";
+    var COLUMN_ID = "page-column";
+    var OPEN_CLASS = "nav-drawer-open";
+    var WIDE_QUERY = "(min-width: 1024px)";
+    var OVERLAY_ID = "connection-lost-overlay";
+    var SESSION_TOAST_ID = "session-timeout-toast";
     var DEFAULT_BURST_THRESHOLD_MS = 50;
-    // Mirror of scanner-guard.js's MODAL_SELECTOR. When a UX-DR8 modal is
-    // open above the panel, nav.js's outside-click + Escape handlers must
-    // defer to modal.js (which owns the topmost surface's close semantics).
-    // Without this gate, both modules would close on the same Escape and a
-    // backdrop mousedown would fight modal.js's focus restoration.
+    var MIN_BURST_THRESHOLD_MS = 10;
+
+    // Another modal above the drawer (UX-DR8 dialog, connection-lost
+    // overlay) owns Escape and Tab while it is open.
     var MODAL_SELECTOR = 'dialog[open], [aria-modal="true"]';
 
-    function isModalOpen() {
-        return document.querySelector(MODAL_SELECTOR) !== null;
-    }
-
-    // Mirror of modal.js's FOCUSABLE_SELECTOR. Rule-of-three not yet hit
-    // (modal.js + nav.js = 2 callers); a future story can extract once a
-    // third surface (e.g., a sidebar) needs the same selector.
+    // Mirror of modal.js's FOCUSABLE_SELECTOR.
     var FOCUSABLE_SELECTOR = [
         'a[href]:not([tabindex="-1"])',
         "button:not([disabled])",
@@ -59,164 +80,169 @@
         '[tabindex]:not([tabindex="-1"])',
     ].join(", ");
 
-    function focusableInside(el) {
-        return Array.prototype.slice
-            .call(el.querySelectorAll(FOCUSABLE_SELECTOR))
-            .filter(function (e) { return e.offsetParent !== null; });
-    }
-
-    // Fix #147 — admin-configurable burst threshold lives on the
-    // search field's `data-scanner-threshold` attribute. The previous
-    // guard rejected only NaN / ≤0 values, so a pathological admin
-    // config of n=1ms (or even 5ms) would classify every human
-    // keystroke as a scanner burst and short-circuit the nav-menu
-    // hotkey detection. Clamp to a sane floor of 10ms — well below
-    // the project's real-world threshold envelope (default 50ms, USB
-    // scanner ≤20ms) but above any plausible keyboard repeat rate.
-    var MIN_BURST_THRESHOLD_MS = 10;
     function getBurstThresholdMs() {
-        var search = document.getElementById(SEARCH_FIELD_ID);
-        if (search && search.dataset && search.dataset.scannerThreshold) {
-            var n = parseInt(search.dataset.scannerThreshold, 10);
-            if (!isNaN(n) && n >= MIN_BURST_THRESHOLD_MS) return n;
-        }
+        var raw = document.body && document.body.getAttribute("data-scanner-threshold");
+        var n = parseInt(raw || "", 10);
+        if (!isNaN(n) && n >= MIN_BURST_THRESHOLD_MS) return n;
         return DEFAULT_BURST_THRESHOLD_MS;
     }
 
     function init() {
         var btn = document.getElementById(TOGGLE_ID);
-        var panel = document.getElementById(PANEL_ID);
-        if (!btn || !panel) return;
+        var wrapper = document.getElementById(WRAPPER_ID);
+        var nav = document.getElementById(NAV_ID);
+        if (!btn || !wrapper || !nav) return;
         if (btn.dataset.wired === "true") return;
         btn.dataset.wired = "true";
 
-        var state = { open: false, previousActiveElement: null };
-        var lastKeydownAt = 0;
+        var scrim = document.getElementById(SCRIM_ID);
+        var closeBtn = document.getElementById(CLOSE_ID);
+        var column = document.getElementById(COLUMN_ID);
+        var root = document.documentElement;
+        var wide = window.matchMedia ? window.matchMedia(WIDE_QUERY) : null;
         var burstThresholdMs = getBurstThresholdMs();
+        var isOpen = false;
+        var lastKeydownAt = 0;
 
-        function openPanel() {
-            if (state.open) return;
-            state.open = true;
-            state.previousActiveElement = document.activeElement;
-            panel.classList.remove("hidden");
+        function focusableInside() {
+            return Array.prototype.slice
+                .call(nav.querySelectorAll(FOCUSABLE_SELECTOR))
+                .filter(function (e) { return e.offsetParent !== null; });
+        }
+
+        function otherModalOpen() {
+            var all = document.querySelectorAll(MODAL_SELECTOR);
+            for (var i = 0; i < all.length; i++) {
+                if (all[i] !== wrapper) return true;
+            }
+            return false;
+        }
+
+        function open() {
+            if (isOpen) return;
+            if (wide && wide.matches) return;
+            isOpen = true;
+            root.classList.add(OPEN_CLASS);
+            wrapper.setAttribute("role", "dialog");
+            wrapper.setAttribute("aria-modal", "true");
+            wrapper.setAttribute("aria-label", wrapper.getAttribute("data-dialog-label") || "");
+            if (column) column.inert = true;
             btn.setAttribute("aria-expanded", "true");
-            var first = focusableInside(panel)[0];
-            if (first) {
-                try { first.focus(); } catch (_) { /* ignore */ }
+            var target = closeBtn || focusableInside()[0];
+            if (target) {
+                try { target.focus(); } catch (_) { /* ignore */ }
             }
         }
 
-        function closePanel(opts) {
-            if (!state.open) return;
-            state.open = false;
-            panel.classList.add("hidden");
+        // `restoreFocus`: true, false, or "if-inside" (only when the focus
+        // is still in the drawer — another surface may have taken it).
+        function close(restoreFocus) {
+            if (!isOpen) return;
+            if (restoreFocus === "if-inside") {
+                restoreFocus = nav.contains(document.activeElement);
+            }
+            isOpen = false;
+            root.classList.remove(OPEN_CLASS);
+            wrapper.removeAttribute("role");
+            wrapper.removeAttribute("aria-modal");
+            wrapper.removeAttribute("aria-label");
+            if (column) column.inert = false;
             btn.setAttribute("aria-expanded", "false");
-            var restoreFocus = !opts || opts.restoreFocus !== false;
-            if (restoreFocus && document.contains(btn)) {
+            if (restoreFocus && btn.offsetParent !== null) {
                 try { btn.focus(); } catch (_) { /* ignore */ }
             }
-            state.previousActiveElement = null;
         }
 
-        // Trigger click — toggle.
         btn.addEventListener("click", function () {
-            if (state.open) closePanel();
-            else openPanel();
+            if (isOpen) close(true);
+            else open();
+        });
+        if (closeBtn) {
+            closeBtn.addEventListener("click", function () { close(true); });
+        }
+        if (scrim) {
+            scrim.addEventListener("click", function () { close(true); });
+        }
+
+        // Following a link closes the drawer (also a Ctrl-click opening a
+        // new tab: a re-open must be intentional). No focus return: the
+        // page is navigating.
+        nav.addEventListener("click", function (e) {
+            if (!isOpen) return;
+            var link = e.target && e.target.closest && e.target.closest("a[href]");
+            if (link && nav.contains(link)) close(false);
         });
 
-        // Outside-click close — mousedown (not click) so a drag that started
-        // inside the panel and ended outside (text selection) does NOT
-        // count as a backdrop click. Mirror of modal.js's mousedown gate.
-        document.addEventListener("mousedown", function (e) {
-            if (!state.open) return;
-            // Defer to the modal: a UX-DR8 dialog above the panel owns the
-            // topmost surface's close semantics. Without this gate, every
-            // backdrop mousedown on the modal would also call closePanel()
-            // and fight modal.js's focus restoration.
-            if (isModalOpen()) return;
-            var t = e.target;
-            if (t && (panel.contains(t) || btn.contains(t))) return;
-            closePanel();
-        });
+        // Growing to `lg` turns the drawer back into the sidebar.
+        if (wide) {
+            var onWide = function (e) { if (e.matches) close(false); };
+            if (wide.addEventListener) wide.addEventListener("change", onWide);
+            else if (wide.addListener) wide.addListener(onWide);
+        }
 
-        // Escape close + focus trap — same listener so Escape and Tab share
-        // the early `state.open` short-circuit and do not race each other.
+        // A surface that must stay reachable appears: close the drawer.
+        function interrupting() {
+            var overlay = document.getElementById(OVERLAY_ID);
+            return (
+                !!document.getElementById(SESSION_TOAST_ID) ||
+                (!!overlay && !overlay.classList.contains("hidden"))
+            );
+        }
+        if (typeof MutationObserver === "function") {
+            new MutationObserver(function () {
+                if (isOpen && interrupting()) close("if-inside");
+            }).observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ["class"],
+            });
+        }
+
+        // Escape + focus trap.
         document.addEventListener("keydown", function (e) {
-            if (!state.open) return;
-            // Defer to the modal: Escape on a modal-above-panel must close
-            // only the modal, not both surfaces. modal.js's keydown handler
-            // is registered when the modal opens, so without this gate a
-            // single Escape would collapse both surfaces.
-            if (isModalOpen()) return;
-
+            if (!isOpen || otherModalOpen()) return;
             if (e.key === "Escape") {
                 e.preventDefault();
-                closePanel();
+                close(true);
                 return;
             }
-
-            if (e.key === "Tab") {
-                var items = focusableInside(panel);
-                if (items.length === 0) return;
-                var first = items[0];
-                var last = items[items.length - 1];
-                var active = document.activeElement;
-                if (e.shiftKey) {
-                    if (active === first || !panel.contains(active)) {
-                        e.preventDefault();
-                        last.focus();
-                    }
-                } else {
-                    if (active === last || !panel.contains(active)) {
-                        e.preventDefault();
-                        first.focus();
-                    }
+            if (e.key !== "Tab") return;
+            var items = focusableInside();
+            if (items.length === 0) return;
+            var first = items[0];
+            var last = items[items.length - 1];
+            var active = document.activeElement;
+            if (e.shiftKey) {
+                if (active === first || !nav.contains(active)) {
+                    e.preventDefault();
+                    last.focus();
                 }
+            } else if (active === last || !nav.contains(active)) {
+                e.preventDefault();
+                first.focus();
             }
         });
 
-        // Link-click close — Ctrl-click / middle-click new-tab keeps the
-        // current page; the panel should still collapse so a re-open is
-        // intentional. Use `restoreFocus: false` to NOT fight the
-        // navigation in the regular full-page case.
-        panel.addEventListener("click", function (e) {
-            var link = e.target && e.target.closest && e.target.closest("a[href]");
-            if (link && panel.contains(link)) {
-                closePanel({ restoreFocus: false });
-            }
-        });
-
-        // Scanner-burst auto-close. Track lastKeydownAt unconditionally so
-        // the FIRST keydown of a burst seeds the timestamp; the SECOND
-        // keydown is the one that classifies the pair as "burst" and
-        // triggers the close. The first keystroke is consumed by the
-        // panel's normal focus target — accepted v1 limitation (AC8).
-        document.addEventListener("keydown", function (e) {
+        // Human-paced keys on a drawer control (see header): keep them
+        // away from scanner-guard so the browser's default runs.
+        window.addEventListener("keydown", function (e) {
             var now = Date.now();
             var delta = now - lastKeydownAt;
             lastKeydownAt = now;
-            if (!state.open) return;
-            if (e.key && e.key.length !== 1) return;     // navigation/modifier keys excluded
+            if (!isOpen || otherModalOpen()) return;
             if (e.ctrlKey || e.metaKey || e.altKey) return;
-            if (delta >= burstThresholdMs) return;        // human-paced typing — leave panel open
-
-            // Confirmed burst: consume the keystroke (preventDefault stops
-            // the browser's default keypress/input flow from also delivering
-            // this same character to #scan-field after we focus it — which
-            // would produce a duplicate "B" on browsers that re-evaluate
-            // focus before downstream events). Then close + forward.
-            e.preventDefault();
-            closePanel({ restoreFocus: false });
-            var scan = document.getElementById(SCAN_FIELD_ID);
-            if (scan) {
-                scan.value = (scan.value || "") + e.key;
-                scan.dispatchEvent(new Event("input", { bubbles: true }));
-                try { scan.focus(); } catch (_) { /* ignore */ }
-            }
-        });
-
-        // pagehide is a no-op — state is closure-scoped and dies with the
-        // document. Documented for parity with connection-monitor.js.
+            if (delta < burstThresholdMs) return;
+            var t = e.target;
+            if (!t || t.nodeType !== 1 || !nav.contains(t)) return;
+            var activates = e.key === "Enter" || e.key === " ";
+            var printable = !!e.key && e.key.length === 1;
+            var ok =
+                (t.matches("a[href]") && e.key === "Enter") ||
+                (t.matches("button:not([disabled])") && activates) ||
+                (t.matches("select:not([disabled])") && (activates || printable));
+            if (ok) e.stopPropagation();
+        }, true);
     }
 
     if (document.readyState === "loading") {

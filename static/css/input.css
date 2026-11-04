@@ -55,6 +55,29 @@
     }
 }
 
+/*
+ * Story 14-2 (#547, UX-DR39) — below `lg` the same `<nav id="sidebar">` is
+ * an off-canvas drawer; `nav-open:` applies while <html> carries
+ * `nav-drawer-open` (set by static/js/nav.js when the menu button opens
+ * it). From `lg` it never matches: the sidebar is always in place.
+ */
+@custom-variant nav-open {
+    @media (width < 1024px) {
+        &:where(.nav-drawer-open *) {
+            @slot;
+        }
+    }
+}
+
+/* Story 14-2 (AC3) — the page behind the open drawer does not scroll.
+   Screen only (review): a page printed with the drawer open is not cut
+   to one viewport. */
+@media screen and (width < 1024px) {
+    html.nav-drawer-open {
+        overflow: hidden;
+    }
+}
+
 @theme {
     /* Warm stone neutral palette */
     --color-stone-50: #fafaf9;

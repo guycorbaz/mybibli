@@ -1064,10 +1064,14 @@ fn csrf_exempt_routes_frozen() {
 }
 
 /// Story 11-4 (#496) — the navigation `<header>` is `sticky … z-40`, and so
-/// is the wide-screen sidebar (story 14-1, `components/sidebar.html`). Every
-/// `position: fixed` surface — full-viewport overlays (modals, the
-/// connection-lost overlay) and the toasts built in `static/js` — must sit
-/// above it, so its class list must carry `z-50`. Modals promoted with
+/// is the wide-screen sidebar (story 14-1, `components/sidebar.html`,
+/// `lg:z-40`). Every `position: fixed` surface — full-viewport overlays
+/// (modals, the connection-lost overlay), the toasts built in `static/js`,
+/// and since story 14-2 the small-screen drawer and its scrim (the same
+/// `<nav>` below `lg`, `fixed … z-50`) — must sit above it, so its class
+/// list must carry `z-50`. Among `z-50` surfaces document order decides:
+/// the drawer comes first in `<body>`, so the connection-lost overlay and
+/// the toasts paint above it (pinned by the drawer E2E). Modals promoted with
 /// `showModal()` reach the top layer anyway; this pins the declarative
 /// `<dialog open>` fallback and every non-dialog surface.
 ///
@@ -1163,9 +1167,9 @@ fn fixed_surfaces_stack_above_sticky_nav() {
 /// inside an inner vertical scroller (dropdown list, saved-searches list) it
 /// would keep a focused row 48/56 px below the list's own top and shift the
 /// list. Each inner vertical scroller must reset it with `**:scroll-mt-0!`
-/// (the `!` beats both breakpoints of the inherited rule). The mobile menu
-/// lives in `<header>`, outside `<main>`, and is exempt; so is the sidebar
-/// (story 14-1), a sibling of `<main>`. Detected: the
+/// (the `!` beats both breakpoints of the inherited rule). The sidebar
+/// (story 14-1, also the small-screen drawer since 14-2), a sibling of
+/// `<main>`, is exempt. Detected: the
 /// `overflow-{,y-}{auto,scroll}` utilities (any variant, either `!` form);
 /// not detected: a bounded `overflow-x-auto` / `overflow-hidden` box or a
 /// `<dialog>` inside `<main>` (none exist — modals mount outside `<main>`).
@@ -1184,11 +1188,8 @@ fn inner_vertical_scrollers_reset_the_bar_scroll_margin() {
         let Ok(raw) = fs::read_to_string(path) else {
             return;
         };
-        // The mobile menu (`#mobile-nav`) lives in <header>, outside <main>;
-        // the sidebar (story 14-1) is a sibling of <main>.
-        if path.ends_with("components/nav_bar.html")
-            || path.ends_with("components/sidebar.html")
-        {
+        // The sidebar / drawer (stories 14-1, 14-2) is a sibling of <main>.
+        if path.ends_with("components/sidebar.html") {
             return;
         }
         let content = strip_html_comments(&raw);

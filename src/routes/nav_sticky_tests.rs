@@ -1,5 +1,6 @@
 //! Render tests for the navigation shell: the sticky small-screen bar
-//! (story 11-4, #496) and the wide-screen sidebar (story 14-1, #547). Both
+//! (story 11-4, #496), the wide-screen sidebar (story 14-1, #547) and the
+//! small-screen drawer it becomes below `lg` (story 14-2, #547). All
 //! live in the shared layout (`layouts/base.html`,
 //! `components/sidebar.html`, `components/nav_bar.html`,
 //! `components/nav_entries.html`), so rendering one page that extends it
@@ -96,10 +97,6 @@ mod tests {
         element(html, "<header", "header")
     }
 
-    fn panel(html: &str) -> &str {
-        element(html, "<div id=\"mobile-nav\"", "div")
-    }
-
     /// The `<ul>` lists of the entries inside `region`, concatenated.
     fn entry_lists(region: &str) -> String {
         region
@@ -143,31 +140,41 @@ mod tests {
             assert_has(
                 nav,
                 &[
-                    "hidden",
-                    "lg:flex",
+                    "flex",
                     "flex-col",
-                    "sticky",
-                    "top-0",
-                    "self-start",
-                    "h-screen",
-                    "shrink-0",
-                    "w-56",
+                    "lg:visible",
+                    "lg:translate-none",
+                    "lg:sticky",
+                    "lg:top-0",
+                    "lg:bottom-auto",
+                    "lg:left-auto",
+                    "lg:self-start",
+                    "lg:h-screen",
+                    "lg:max-w-none",
+                    "lg:shrink-0",
+                    "lg:w-56",
                     "sb-collapsed:w-16",
-                    "z-40",
+                    "lg:z-40",
                     "print:hidden",
                 ],
                 "the sidebar",
             );
             let row = opening_tag(&html, "<div class=\"lg:flex\"");
             let row_at = html.find(row).unwrap();
+            let wrapper_at = html.find("<div id=\"nav-drawer\"").unwrap();
             let nav_at = html.find(nav).unwrap();
             let main_at = html.find("<main id=\"main-content\"").unwrap();
             assert!(
-                row_at < nav_at && nav_at < main_at,
-                "row > sidebar, then content"
+                row_at < wrapper_at && wrapper_at < nav_at && nav_at < main_at,
+                "row > drawer wrapper > sidebar, then content"
             );
             assert_has(
-                opening_tag(&html[nav_at..], "<div class=\"lg:flex-1"),
+                opening_tag(&html, "<div id=\"nav-drawer\""),
+                &["lg:contents"],
+                "from `lg` the wrapper adds no box: the nav is the row's flex item",
+            );
+            assert_has(
+                opening_tag(&html[nav_at..], "<div id=\"page-column\""),
                 &["lg:flex-1", "lg:min-w-0"],
                 "the content column takes the remaining width",
             );
@@ -235,21 +242,29 @@ mod tests {
                 );
             }
             // The logo links home at the top.
-            let logo = opening_tag(side, "<a href=\"/\" class=\"flex items-center gap-2 h-14");
+            let logo = opening_tag(
+                side,
+                "<a href=\"/\" class=\"flex flex-1 min-w-0 items-center gap-2 h-full",
+            );
             assert!(logo.contains("aria-label=\"mybibli — home\""), "{logo}");
         }
     }
 
-    /// AC1 — one navigation source: the sidebar and the small-screen panel
-    /// render the very same entry markup (one include, `nav_entries.html`).
+    /// AC1 (14-1) / AC2 (14-2) — one navigation source, rendered ONCE:
+    /// the sidebar's `<nav>` is also the small-screen drawer, so the page
+    /// carries a single copy of the entries (no panel copy any more).
     #[test]
-    fn sidebar_and_panel_render_the_same_entries() {
+    fn the_entries_are_rendered_once_for_every_width() {
         for role in ["anonymous", "librarian", "admin"] {
             let html = render_with(role, Some(4), "catalog");
             let side = entry_lists(sidebar(&html));
-            let panel = entry_lists(panel(&html));
             assert!(!side.is_empty());
-            assert_eq!(side, panel, "{role}: one source, identical markup");
+            assert_eq!(entry_lists(&html), side, "{role}: the only entry lists");
+            assert_eq!(
+                html.matches("<li><a href=\"/catalog\"").count(),
+                1,
+                "{role}"
+            );
         }
         let entries = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -409,12 +424,175 @@ mod tests {
         assert!(script < head_end, "applied before first paint");
     }
 
-    // ─── Story 11-4 / 14-1 — the small-screen bar (below lg) ─────
+    // ─── Story 14-2 — the drawer (below lg) ───────────────────────
 
-    /// AC1 / AC5 (11-4) — the `<header>` (bar + mobile panel) sticks to the
-    /// top, above in-content popovers (≤ z-30) and below overlays (z-50 /
-    /// top layer), and falls back to `static` in print. Story 14-1 (AC7):
-    /// it only shows below `lg`.
+    /// AC2 / AC3 / AC4 — below `lg` the sidebar's `<nav>` is an off-canvas
+    /// drawer from the left (280 px, at most 85 vw), off-screen and
+    /// `invisible` (neither focusable nor exposed) until `nav-open:`;
+    /// `fixed z-50` like every fixed surface, with a scrim behind it. The
+    /// slide and the fade are `motion-safe:` only (reduced motion: none).
+    #[test]
+    fn below_lg_the_sidebar_is_an_off_canvas_drawer() {
+        for role in ["anonymous", "librarian", "admin"] {
+            let html = render(role);
+            let nav = opening_tag(&html, "<nav aria-label=\"Main navigation\" id=\"sidebar\"");
+            assert_has(
+                nav,
+                &[
+                    "fixed",
+                    "inset-y-0",
+                    "left-0",
+                    "z-50",
+                    "w-70",
+                    "max-w-[85vw]",
+                    "invisible",
+                    "-translate-x-full",
+                    "nav-open:visible",
+                    "nav-open:translate-x-0",
+                    "motion-safe:transition-[width,translate,visibility]",
+                    "nav-open:motion-safe:transition-[width,translate]",
+                ],
+                "the drawer",
+            );
+            assert!(
+                !classes(nav).iter().any(|c| c.starts_with("transition")),
+                "no animation without motion-safe: {nav}"
+            );
+            let scrim = opening_tag(&html, "<div id=\"nav-scrim\"");
+            assert!(scrim.contains("aria-hidden=\"true\""), "{scrim}");
+            assert_has(
+                scrim,
+                &[
+                    "fixed",
+                    "inset-0",
+                    "z-50",
+                    "invisible",
+                    "opacity-0",
+                    "nav-open:visible",
+                    "nav-open:opacity-100",
+                    "lg:hidden",
+                ],
+                "the scrim",
+            );
+            // The scrim sits under the drawer: same z, earlier in the DOM.
+            assert!(html.find(scrim).unwrap() < html.find(nav).unwrap());
+            // Dialog semantics are given by nav.js while open only (at
+            // ≥ `lg` the sidebar must never be a modal for scanner-guard).
+            let wrapper = opening_tag(&html, "<div id=\"nav-drawer\"");
+            assert!(wrapper.contains("data-dialog-label=\"Menu\""), "{wrapper}");
+            assert!(!wrapper.contains("role="), "{wrapper}");
+            assert!(!html.contains("aria-modal=\"true\""), "no modal at load");
+        }
+        let css =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/static/css/input.css"))
+                .unwrap();
+        assert!(
+            css.contains("@custom-variant nav-open"),
+            "the variant exists"
+        );
+        assert!(
+            css.contains("&:where(.nav-drawer-open *)") && css.contains("@media (width < 1024px)"),
+            "`nav-open:` applies below `lg` only"
+        );
+        let lock = css
+            .find("html.nav-drawer-open {\n        overflow: hidden;")
+            .expect("the page behind the open drawer does not scroll");
+        assert!(
+            css[..lock].ends_with("@media screen and (width < 1024px) {\n    "),
+            "the scroll lock is screen-only and below `lg` (story 14-2 review)"
+        );
+    }
+
+    /// AC2 — the drawer's head carries the close button (localized name,
+    /// never shown from `lg`); the collapse toggle is wide-screen only (the
+    /// drawer is always expanded); the foot keeps language, theme and
+    /// Log out / Log in for every width.
+    #[test]
+    fn drawer_head_has_a_close_button_and_no_collapse_toggle_below_lg() {
+        let html = render("librarian");
+        let side = sidebar(&html);
+        let close = opening_tag(side, "<button id=\"nav-drawer-close\"");
+        assert!(close.contains("aria-label=\"Close menu\""), "{close}");
+        assert!(close.contains("type=\"button\""), "{close}");
+        assert_has(close, &["lg:hidden"], "close button below lg only");
+        let logo_at = side.find("<a href=\"/\"").unwrap();
+        let close_at = side.find(close).unwrap();
+        let entries_at = side.find("<ul role=\"list\"").unwrap();
+        assert!(
+            logo_at < close_at && close_at < entries_at,
+            "head: logo, close"
+        );
+        let at = side.find("data-sidebar-toggle").unwrap();
+        let wrapper_at = side[..at].rfind("<div").unwrap();
+        assert_eq!(
+            opening_tag(&side[wrapper_at..], "<div"),
+            "<div class=\"hidden lg:block\">",
+            "the collapse toggle shows from `lg` only"
+        );
+    }
+
+    /// AC5 (14-2) — exactly one "Main navigation" landmark in the DOM, at
+    /// every width (the old bar's `<nav>` is gone; the sidebar is the
+    /// drawer); the bar carries no `<nav>`.
+    #[test]
+    fn exactly_one_main_navigation_landmark() {
+        for role in ["anonymous", "librarian", "admin"] {
+            let html = render(role);
+            assert_eq!(
+                html.matches("aria-label=\"Main navigation\"").count(),
+                1,
+                "{role}"
+            );
+            assert!(
+                !header(&html).contains("<nav"),
+                "{role}: no <nav> in the bar"
+            );
+            assert!(!html.contains("id=\"mobile-nav\""), "{role}: panel removed");
+        }
+    }
+
+    /// AC4 — the drawer is a modal surface for `scanner-guard.js` while
+    /// open: nav.js gives the wrapper `role="dialog"`, `aria-modal` and a
+    /// name, and the guard's selector matches `[aria-modal="true"]`.
+    #[test]
+    fn the_open_drawer_is_a_modal_surface_for_the_scanner_guard() {
+        let read = |f: &str| {
+            std::fs::read_to_string(format!("{}/static/js/{f}", env!("CARGO_MANIFEST_DIR")))
+                .unwrap()
+        };
+        let nav = read("nav.js");
+        for needle in [
+            "wrapper.setAttribute(\"role\", \"dialog\")",
+            "wrapper.setAttribute(\"aria-modal\", \"true\")",
+            "wrapper.setAttribute(\"aria-label\"",
+            "wrapper.removeAttribute(\"aria-modal\")",
+            "column.inert = true",
+            "column.inert = false",
+        ] {
+            assert!(nav.contains(needle), "nav.js: {needle}");
+        }
+        // Review — human-paced keys skip the guard without a synthetic
+        // click; the threshold is the admin setting, read off <body>.
+        assert!(nav.contains("e.stopPropagation()") && !nav.contains(".click()"));
+        assert!(nav.contains("getAttribute(\"data-scanner-threshold\")"));
+        let html = render("librarian");
+        assert!(
+            opening_tag(&html, "<body").contains("data-scanner-threshold=\"50\""),
+            "<body> carries scanner_burst_threshold_ms"
+        );
+        assert!(
+            read("scanner-guard.js")
+                .contains("var MODAL_SELECTOR = 'dialog[open], [aria-modal=\"true\"]';"),
+            "scanner-guard watches aria-modal surfaces"
+        );
+    }
+
+    // ─── Story 11-4 / 14-2 — the small-screen bar (below lg) ─────
+
+    /// AC1 / AC5 (11-4) — the `<header>` sticks to the top, above
+    /// in-content popovers (≤ z-30) and below overlays and the drawer
+    /// (z-50 / top layer), and falls back to `static` in print. Story 14-1
+    /// (AC7): it only shows below `lg`.
     #[test]
     fn header_is_sticky_below_overlays_static_in_print_and_below_lg_only() {
         for role in ["anonymous", "librarian", "admin"] {
@@ -454,7 +632,7 @@ mod tests {
             !classes(root).iter().any(|c| c.contains("scroll-p")),
             "no root scroll-padding: it would scroll the page when a bar control takes focus, got {root}"
         );
-        let bar = opening_tag(header(&html), "<nav aria-label=\"Main navigation\"");
+        let bar = opening_tag(&html, "<header");
         assert_has(
             bar,
             &["h-12", "md:h-14"],
@@ -469,53 +647,36 @@ mod tests {
         );
     }
 
-    /// AC3 (11-4) — once stuck, the mobile panel can no longer be reached
-    /// by scrolling the page: it is bounded to the viewport below the bar
-    /// and scrolls internally (D-11-4-3). Story 14-1: switch at `lg`.
+    /// AC1 (14-2) — a slim bar: the menu button (named, `aria-expanded`,
+    /// `aria-controls` = the drawer's `<nav>`) then the logo linking home;
+    /// language, theme and Log in / Log out moved to the drawer foot. No
+    /// `xl:` stopgap left (story 11-21, superseded by UX-DR38/39). Bar
+    /// heights unchanged (epic 11: not compacted).
     #[test]
-    fn mobile_panel_is_bounded_to_the_viewport() {
-        let html = render("admin");
-        let panel = opening_tag(&html, "<div id=\"mobile-nav\"");
-        assert_has(
-            panel,
-            &[
-                "max-h-[calc(100vh-48px)]",
-                "md:max-h-[calc(100vh-56px)]",
-                "supports-[height:100dvh]:max-h-[calc(100dvh-48px)]",
-                "md:supports-[height:100dvh]:max-h-[calc(100dvh-56px)]",
-                "overflow-y-auto",
-                "overscroll-contain",
-                "hidden",
-                "lg:hidden",
-            ],
-            "the mobile panel must fit the viewport under the stuck bar",
-        );
-    }
-
-    /// AC7 (14-1) — the bar's switch is `lg` again (UX-DR38 supersedes the
-    /// `xl` stopgap of story 11-21): no `xl:` left in the navigation, no
-    /// link strip in the bar (the sidebar holds the entries from `lg`).
-    /// Bar heights unchanged (epic 11: not compacted).
-    #[test]
-    fn the_bar_switches_at_lg_and_carries_no_link_strip() {
-        let html = render("admin");
-        let head = header(&html);
-        let bar = element(head, "<nav aria-label=\"Main navigation\"", "nav");
-        assert_has(
-            opening_tag(bar, "<nav"),
-            &["h-12", "md:h-14"],
-            "bar height unchanged",
-        );
-        let toggle = opening_tag(&html, "<button id=\"mobile-menu-toggle\"");
-        assert_has(toggle, &["lg:hidden"], "hamburger switches at `lg`");
-        assert!(
-            !head.contains("xl:") && !sidebar(&html).contains("xl:"),
-            "no `xl` switch left"
-        );
-        assert!(
-            !bar.contains("href=\"/catalog\""),
-            "no link strip in the bar"
-        );
+    fn the_bar_carries_only_the_menu_button_and_the_logo() {
+        for role in ["anonymous", "librarian", "admin"] {
+            let html = render(role);
+            let head = header(&html);
+            let toggle = opening_tag(head, "<button id=\"mobile-menu-toggle\"");
+            for attr in [
+                "type=\"button\"",
+                "aria-label=\"Open menu\"",
+                "aria-expanded=\"false\"",
+                "aria-controls=\"sidebar\"",
+            ] {
+                assert!(toggle.contains(attr), "{role}: {attr} in {toggle}");
+            }
+            let logo_at = head.find("<a href=\"/\"").expect("logo links home");
+            assert!(head.find(toggle).unwrap() < logo_at, "menu button first");
+            assert!(head.contains("aria-label=\"mybibli — home\""));
+            for absent in ["<nav", "<form", "/login", "data-theme-toggle", "<select"] {
+                assert!(!head.contains(absent), "{role}: no {absent} in the bar");
+            }
+            assert!(
+                !head.contains("xl:") && !sidebar(&html).contains("xl:"),
+                "no `xl` switch left"
+            );
+        }
     }
 
     /// The number of logout forms in `region`. (Matched on the action: a
@@ -525,33 +686,24 @@ mod tests {
         region.matches("action=\"/logout\"").count()
     }
 
-    /// Story 11-21 (#545) — the bar has no logout of its own; the panel
-    /// keeps its logout (#150); the sidebar carries one at ≥ `lg`.
+    /// Story 14-2 (AC2) — one Log out (POST + CSRF) for every width, in
+    /// the sidebar / drawer foot; none in the bar (#150, #545).
     #[test]
-    fn logout_lives_in_the_panel_and_the_sidebar_not_the_bar() {
+    fn logout_lives_once_in_the_drawer_foot() {
         let html = render("librarian");
-        let head = header(&html);
-        let bar = element(head, "<nav aria-label=\"Main navigation\"", "nav");
-        assert_eq!(logout_forms(bar), 0, "no logout in the bar");
-        assert_eq!(logout_forms(panel(&html)), 1, "panel logout (#150)");
-        assert_eq!(logout_forms(sidebar(&html)), 1, "sidebar logout");
+        assert_eq!(logout_forms(&html), 1, "one logout form");
+        assert_eq!(logout_forms(sidebar(&html)), 1, "in the sidebar / drawer");
+        assert_eq!(logout_forms(header(&html)), 0, "not in the bar");
     }
 
-    /// Story 11-21 (D-11-21-4) — the anonymous bar's login link yields to
-    /// the panel's below `sm` (a 360 px bar overflowed in French).
+    /// Story 14-2 (AC1 / AC2) — the visitor's Log in is in the drawer foot
+    /// only (the bar never overflows 360 px: D-11-21-4 is moot).
     #[test]
-    fn bar_login_hidden_below_sm_panel_login_kept() {
+    fn login_lives_once_in_the_drawer_foot() {
         let html = render("anonymous");
-        let head = header(&html);
-        let bar = element(head, "<nav aria-label=\"Main navigation\"", "nav");
-        let bar_login = opening_tag(bar, "<a href=\"/login\"");
-        assert_has(
-            bar_login,
-            &["hidden", "sm:inline"],
-            "bar login hidden below sm",
-        );
-        let panel_login = opening_tag(panel(&html), "<a href=\"/login\"");
-        assert!(!classes(panel_login).contains(&"hidden"), "{panel_login}");
+        assert_eq!(html.matches("<a href=\"/login\"").count(), 1);
+        let login = opening_tag(sidebar(&html), "<a href=\"/login\"");
+        assert!(!classes(login).contains(&"hidden"), "{login}");
     }
 
     // ─── Story 11-21 — Proposals entry and badge ──────────────────
@@ -562,10 +714,10 @@ mod tests {
             let html = render_with(role, Some(3), "home");
             assert_eq!(
                 html.matches("<a href=\"/proposals\"").count(),
-                2,
-                "{role}: sidebar + panel entries"
+                1,
+                "{role}: one entry (sidebar = drawer)"
             );
-            assert_eq!(html.matches("data-proposals-badge").count(), 2, "{role}");
+            assert_eq!(html.matches("data-proposals-badge").count(), 1, "{role}");
             assert!(html.contains(">3</span>"), "{role}: badge text");
             assert!(
                 html.contains("<a href=\"/proposals\" aria-label=\"Proposals, 3 pending\""),
@@ -615,34 +767,29 @@ mod tests {
         assert!(entry.contains("aria-current=\"page\""), "{entry}");
         assert_eq!(
             html.matches("aria-current=\"page\"").count(),
-            2,
-            "sidebar + panel"
+            1,
+            "one entry (sidebar = drawer)"
         );
     }
 
     /// Story 11-4 — two language forms named alike and both exposed would
-    /// be two identical landmarks (axe `landmark-unique`). Story 14-1: the
-    /// sidebar's form (≥ `lg`) and the bar's (below `lg`) are named — never
-    /// displayed together; the panel's copy (shown with the bar) is not.
+    /// be two identical landmarks (axe `landmark-unique`). Story 14-2: the
+    /// bar's and the panel's copies are gone — one named form, in the
+    /// sidebar / drawer foot, with its labelled select.
     #[test]
-    fn only_one_named_language_form_per_breakpoint() {
+    fn one_named_language_form() {
         let html = render("admin");
         let forms: Vec<&str> = html
             .match_indices("<form action=\"/language\"")
             .map(|(i, _)| element(&html[i..], "<form", "form"))
             .collect();
-        assert_eq!(forms.len(), 3, "sidebar + bar + panel language forms");
-        for form in forms {
-            let named = opening_tag(form, "<form").contains("aria-label=");
-            let panel_copy = form.contains("id=\"lang-select-mobile\"");
-            assert_eq!(named, !panel_copy, "only the panel copy is unnamed: {form}");
-        }
+        assert_eq!(forms.len(), 1, "one language form");
+        assert!(opening_tag(forms[0], "<form").contains("aria-label=\"Change language\""));
         assert!(sidebar(&html).contains("id=\"lang-select\""));
-        assert!(header(&html).contains("id=\"lang-select-bar\""));
-        assert!(
-            html.contains("<label for=\"lang-select-mobile\" class=\"sr-only\">"),
-            "the mobile select must keep its label"
-        );
+        assert!(html.contains("<label for=\"lang-select\" class=\"sr-only\">"));
+        for gone in ["lang-select-bar", "lang-select-mobile", "theme-toggle-bar"] {
+            assert!(!html.contains(gone), "{gone} removed");
+        }
     }
 
     /// Story 14-1 review (DRY) — the language options and the theme toggle
@@ -667,17 +814,13 @@ mod tests {
         let html = render("librarian");
         assert_eq!(
             html.matches("<option value=\"fr\"").count(),
-            3,
-            "sidebar + bar + panel"
+            1,
+            "one select (sidebar = drawer)"
         );
-        assert_eq!(
-            html.matches("data-theme-toggle").count(),
-            2,
-            "sidebar + bar"
-        );
+        assert_eq!(html.matches("data-theme-toggle").count(), 1, "one toggle");
     }
 
-    /// AC9 (14-1) — the theme toggles are named by the localized
+    /// AC9 (14-1) — the theme toggle is named by the localized
     /// `nav.theme_toggle`, no hard-coded English name left.
     #[test]
     fn theme_toggles_use_the_localized_name() {
@@ -685,11 +828,6 @@ mod tests {
         t.base.nav_theme_toggle = rust_i18n::t!("nav.theme_toggle", locale = "fr").to_string();
         let html = t.render().expect("render");
         assert!(html.contains(">Basculer le thème</span>"), "sidebar toggle");
-        let bar_toggle = opening_tag(&html, "<button id=\"theme-toggle-bar\"");
-        assert!(
-            bar_toggle.contains("aria-label=\"Basculer le thème\""),
-            "{bar_toggle}"
-        );
         assert!(!html.contains("Toggle theme"));
         let theme_js =
             std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/static/js/theme.js"))

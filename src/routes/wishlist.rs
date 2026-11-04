@@ -73,7 +73,7 @@ pub async fn wishlist_page(
 
     let items = WishlistItemModel::list_active(pool).await?;
 
-    let base = base_context(&session, loc, "wishlist", &uri, state.session_timeout_secs());
+    let base = base_context(&session, loc, "wishlist", &uri, state.page_settings());
     let template = WishlistPageTemplate {
         base,
         items,
@@ -126,7 +126,7 @@ pub async fn wishlist_new_page(
     session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let loc = locale.0;
 
-    let base = base_context(&session, loc, "wishlist", &uri, state.session_timeout_secs());
+    let base = base_context(&session, loc, "wishlist", &uri, state.page_settings());
     let template = WishlistNewTemplate {
         base,
         label_form_title: rust_i18n::t!("wishlist.form_title", locale = loc).to_string(),
@@ -397,7 +397,7 @@ pub async fn wishlist_detail(
         AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
     })?;
 
-    let base = base_context(&session, loc, "wishlist", &uri, state.session_timeout_secs());
+    let base = base_context(&session, loc, "wishlist", &uri, state.page_settings());
     let template = WishlistDetailTemplate {
         base,
         item,

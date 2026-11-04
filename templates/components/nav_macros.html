@@ -1,7 +1,8 @@
 {# Story 14-1 (#547, UX-DR38) — the building blocks of the navigation,
-   shared by the sidebar (`components/sidebar.html`), its entries
-   (`components/nav_entries.html`) and the small-screen panel
-   (`components/nav_bar.html`); Story 14-2's drawer reuses them.
+   shared by the sidebar (`components/sidebar.html`, which is also the
+   small-screen drawer since story 14-2), its entries
+   (`components/nav_entries.html`) and the small-screen bar
+   (`components/nav_bar.html`, the menu button).
 
    Usage: `{% import "components/nav_macros.html" as nav %}`, then
    `{% call nav::icon("catalog") %}{% endcall %}` etc.
@@ -9,7 +10,8 @@
    `sb-collapsed:` is the custom variant of `static/css/input.css`: it
    applies from `lg` while `<html>` carries `sidebar-collapsed` (set before
    first paint by `static/js/sidebar.js`). Below `lg` it never applies, so
-   the same markup reads "expanded" in the small-screen panel. #}
+   the same markup reads "expanded" in the small-screen drawer (no
+   tooltips, no pill). #}
 
 {# The row of an entry or a foot control: icon + label, 40 px high.
    Collapsed: icon centred, label visually hidden but kept as the
@@ -46,10 +48,10 @@ font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-1
 {# The language <select> (CR #275 / #276): its sr-only label, the four
    options, auto-submitted by `static/js/mybibli.js` (`data-auto-submit`,
    delegated `change` listener, CSP-clean) and a noscript submit button.
-   Shared by the sidebar, the small-screen bar and its panel (story 14-1
-   review, DRY); `id` keeps each copy's label binding unique, `class`
-   carries the surface's sizing. The enclosing <form> (CSRF + `next`
-   inputs, landmark name or not) stays with each surface. #}
+   Story 14-1 review (DRY); since story 14-2 the sidebar / drawer holds
+   the only copy. `id` binds the label, `class` carries the sizing. The
+   enclosing <form> (CSRF + `next` inputs, landmark name) stays with the
+   surface. #}
 {%- macro lang_select(id, lang, label, class) -%}
 <label for="{{ id }}" class="sr-only">{{ label }}</label>
 <select id="{{ id }}" name="lang" data-auto-submit="true" class="{{ class }} text-sm bg-transparent text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-600 rounded focus-visible:outline-2 focus-visible:outline-indigo-500">
@@ -64,29 +66,25 @@ font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-1
 {%- endmacro -%}
 
 {# The theme toggle, wired by `static/js/theme.js` (`[data-theme-toggle]`).
-   Story 14-1 (AC9) — named by the localized `nav.theme_toggle`. `row`:
-   the sidebar's icon + label row (label hidden but kept as the name when
-   collapsed, with a tooltip); otherwise the small-screen bar's icon-only
-   button named by `aria-label`. The icon shows the theme you switch to. #}
-{%- macro theme_toggle(id, name, row) -%}
-{%- if row -%}
+   Story 14-1 (AC9) — named by the localized `nav.theme_toggle`: an icon +
+   label row (label hidden but kept as the name when collapsed, with a
+   tooltip). Story 14-2 — the small bar's icon-only variant went with the
+   bar's controls (they live in the drawer), so one shape remains. The
+   icon shows the theme you switch to. #}
+{%- macro theme_toggle(id, name) -%}
 <button id="{{ id }}" data-theme-toggle type="button" class="{% call item_class() %}{% endcall %} {% call idle_class() %}{% endcall %}">
     <span class="hidden dark:inline-flex">{% call icon("sun") %}{% endcall %}</span><span class="inline-flex dark:hidden">{% call icon("moon") %}{% endcall %}</span>
     <span class="sb-collapsed:sr-only">{{ name }}</span>
     {% call tooltip(name) %}{% endcall %}
 </button>
-{%- else -%}
-<button id="{{ id }}" data-theme-toggle type="button" aria-label="{{ name }}" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 p-2">
-    <span class="hidden dark:inline-flex">{% call icon("sun") %}{% endcall %}</span><span class="inline-flex dark:hidden">{% call icon("moon") %}{% endcall %}</span>
-</button>
-{%- endif -%}
 {%- endmacro -%}
 
 {# Heroicons v2 outline (MIT, https://heroicons.com), self-hosted as
    inline SVG — no icon font, no CDN, CSP unchanged. Paths copied as-is
    from the approved mock-up
    (`_bmad-output/planning-artifacts/ux-sidebar-mockup.html`); `login` is
-   Heroicons' arrow-left-end-on-rectangle. Decorative (`aria-hidden`):
+   Heroicons' arrow-left-end-on-rectangle; `menu` (bars-3) and `close`
+   (x-mark) are the drawer's buttons (story 14-2). Decorative (`aria-hidden`):
    every row carries its name in text or `aria-label`. An unknown name
    renders an empty 20 px box rather than failing the page. #}
 {%- macro icon(name) -%}
@@ -108,5 +106,7 @@ font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-1
 {%- else if name == "collapse" -%}<path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15L5.25 12l7.5 7.5"/>
 {%- else if name == "expand" -%}<path stroke-linecap="round" stroke-linejoin="round" d="m5.25 4.5 7.5 7.5-7.5 7.5m6-15 7.5 7.5-7.5 7.5"/>
 {%- else if name == "login" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75"/>
+{%- else if name == "menu" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/>
+{%- else if name == "close" -%}<path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
 {%- endif -%}</svg>
 {%- endmacro -%}

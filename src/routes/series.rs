@@ -92,7 +92,7 @@ pub async fn series_list_page(
     }
 
     // CR #35 (v1.7.11 slice): shared page-template fields built via base_context.
-    let base = crate::utils::base_context(&session, loc, "series", &uri, state.session_timeout_secs());
+    let base = crate::utils::base_context(&session, loc, "series", &uri, state.page_settings());
     let template = SeriesListTemplate {
         base,
         list_title: rust_i18n::t!("series.list_title", locale = loc).to_string(),
@@ -271,7 +271,7 @@ pub async fn series_detail_page(
     let sort_dir = crate::services::series::SortDir::from_param(params.dir.as_deref());
     crate::services::series::sort_positions(&mut positions, sort_key, sort_dir);
 
-    let base = crate::utils::base_context(&session, loc, "series", &uri, state.session_timeout_secs());
+    let base = crate::utils::base_context(&session, loc, "series", &uri, state.page_settings());
     let template = SeriesDetailTemplate {
         base,
         series,
@@ -340,11 +340,11 @@ pub struct SeriesFormTemplate {
 
 fn form_template_labels(
     session: &Session,
-    session_timeout_secs: u64,
+    page: crate::utils::PageSettings,
     loc: &str,
     uri: &axum::http::Uri,
 ) -> SeriesFormTemplate {
-    let base = crate::utils::base_context(session, loc, "series", uri, session_timeout_secs);
+    let base = crate::utils::base_context(session, loc, "series", uri, page);
     SeriesFormTemplate {
         base,
         is_edit: false,
@@ -383,7 +383,7 @@ pub async fn create_series_form(
 
     let template = form_template_labels(
         &session,
-        state.session_timeout_secs(),
+        state.page_settings(),
         locale.0,
         &uri,
     );
@@ -515,7 +515,7 @@ pub async fn edit_series_form(
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     let mut template =
-        form_template_labels(&session, state.session_timeout_secs(), loc, &uri);
+        form_template_labels(&session, state.page_settings(), loc, &uri);
     template.is_edit = true;
     template.series_id = series.id;
     template.version = series.version;

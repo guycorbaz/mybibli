@@ -64,7 +64,7 @@ pub async fn borrowers_page(
     let borrowers = BorrowerModel::list_active(pool, params.page).await?;
 
     // CR #35 (v1.7.11 slice): shared page-template fields built via base_context.
-    let base = crate::utils::base_context(&session, loc, "borrowers", &uri, state.session_timeout_secs());
+    let base = crate::utils::base_context(&session, loc, "borrowers", &uri, state.page_settings());
     let template = BorrowersTemplate {
         base,
         list_title: rust_i18n::t!("borrower.list_title", locale = loc).to_string(),
@@ -180,7 +180,7 @@ pub async fn borrower_detail(
     // nav highlight stays on /borrowers via the `borrowers` aria-current
     // matcher in `utils::nav_groups` (no other code keys off this string).
     let base =
-        crate::utils::base_context(&session, loc, "borrower-detail", &uri, state.session_timeout_secs());
+        crate::utils::base_context(&session, loc, "borrower-detail", &uri, state.page_settings());
     let template = BorrowerDetailTemplate {
         base,
         borrower,
@@ -244,7 +244,7 @@ pub async fn edit_borrower_page(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
-    let base = crate::utils::base_context(&session, loc, "borrowers", &uri, state.session_timeout_secs());
+    let base = crate::utils::base_context(&session, loc, "borrowers", &uri, state.page_settings());
     let template = BorrowerEditTemplate {
         base,
         borrower,

@@ -1,263 +1,389 @@
 /**
- * Story 9-17 — NavBar hamburger menu + scanner auto-close E2E.
+ * Story 9-17 — NavBar hamburger menu; rewritten by story 14-2 (#547,
+ * UX-DR39) around the navigation drawer: below `lg` the menu button opens
+ * the sidebar's `<nav>` as a drawer from the left, over a scrim, as a
+ * modal dialog.
  *
- * Covers AC11 — 5 scenarios:
- *   1. Hamburger visible on tablet, hidden on desktop (switch at `lg`:
- *      `xl` since story 11-21, back to `lg` with the sidebar of story
- *      14-1); reverse on resize.
- *   2. Open / link-click / Escape / outside-click — each path closes the
- *      panel and restores aria-expanded=false on the trigger.
- *   3. Focus trap — Tab from last focusable wraps to first; Shift+Tab
- *      from first wraps to last.
- *   4. Scanner-burst auto-close on a page WITH #scan-field (/catalog) —
- *      simulateScan with 20 ms inter-key trips the burst detector; panel
- *      closes; the burst-confirming keystroke is forwarded to #scan-field.
- *   5. Scanner-burst auto-close on a page WITHOUT #scan-field (/login) —
- *      panel closes; no error from missing scan field.
+ *   1. The menu button shows below `lg` only; the drawer is closed until
+ *      opened; growing to `lg` turns it back into the sidebar.
+ *   2. Each way out — close button, scrim, Escape, following a link —
+ *      closes it; focus returns to the menu button except after a link.
+ *   3. On open focus moves into the drawer (close button); Tab and
+ *      Shift+Tab stay inside; the page behind is inert and does not
+ *      scroll.
+ *   4. /catalog: a scanner burst while the drawer is open reaches neither
+ *      `#scan-field` nor a drawer control; a human Enter on a focused link
+ *      still follows it.
+ *   5. Following an entry navigates and the next page shows it closed;
+ *      Log out from the drawer.
+ *   6. Stacking: above the sticky bar and the content, below the
+ *      connection-lost overlay; reduced motion: no slide.
+ *   7. axe with the drawer open and closed, light and dark.
  *
- * Spec ID "NH" — no ISBNs generated.
+ * Story 14-2 review — keyboard operation of the open drawer (Enter on the
+ * close button, Space on the theme toggle once, type-ahead in the
+ * language select) and a positive control for the burst test.
+ *
+ * Spec ID "NH" — one ISBN (`specIsbn("NH", 1)`, the burst test's control
+ * scan).
  */
-import { test, expect } from "@playwright/test";
+import { test, expect, Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { checkAccessibility } from "../../helpers/accessibility";
 import { simulateScan } from "../../helpers/scanner";
+import { specIsbn } from "../../helpers/isbn";
+import {
+  DRAWER,
+  DRAWER_CLOSE,
+  DRAWER_DIALOG,
+  MENU_BUTTON,
+  SCRIM,
+  expectDrawerClosed,
+  expectDrawerOpen,
+  openDrawer,
+} from "../../helpers/drawer";
 
-const TABLET = { width: 600, height: 800 };
+const PHONE = { width: 390, height: 844 };
+const TABLET = { width: 768, height: 1024 };
 const DESKTOP = { width: 1280, height: 720 };
 
-test.describe("Story 9-17 — NavBar hamburger menu", () => {
-  test("hamburger visible on tablet, hidden on desktop", async ({ page }) => {
-    await page.setViewportSize(TABLET);
-    await page.goto("/login");
-
-    const trigger = page.locator("#mobile-menu-toggle");
-    // CR #443 — the strip switched at `lg`, not `md`; story 11-21
-    // (D-11-21-1) moved it on to `xl` for the Proposals entry. Story 14-1
-    // (#547) replaced the strip with the sidebar, shown from `lg`.
-    const desktopNav = page.locator("#sidebar");
-
-    await expect(trigger).toBeVisible();
-    await expect(desktopNav).toBeHidden();
-
-    await page.setViewportSize(DESKTOP);
-
-    await expect(trigger).toBeHidden();
-    await expect(desktopNav).toBeVisible();
+/** The `href` (or id) of the focused element, for readable assertions. */
+async function focused(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const a = document.activeElement as HTMLElement | null;
+    if (!a || a === document.body) return null;
+    return a.getAttribute("href") ?? (a.id || a.tagName.toLowerCase());
   });
+}
 
-  test("open / link-click / Escape / outside-click each close the panel", async ({
+async function focusInsideDrawer(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const nav = document.getElementById("sidebar");
+    return !!nav && nav.contains(document.activeElement);
+  });
+}
+
+test.describe("Story 14-2 — the navigation drawer", () => {
+  test("the menu button shows below lg only; growing to lg closes the drawer", async ({
     page,
   }) => {
     await page.setViewportSize(TABLET);
     await page.goto("/catalog");
+    const button = page.locator(MENU_BUTTON);
+    await expect(button).toBeVisible();
+    await expectDrawerClosed(page);
 
-    const trigger = page.locator("#mobile-menu-toggle");
-    const panel = page.locator("#mobile-nav");
+    await openDrawer(page);
+    await page.setViewportSize(DESKTOP);
+    // The sidebar is back in place, no longer a dialog, the page live.
+    await expect(button).toBeHidden();
+    await expect(page.locator(DRAWER)).toBeVisible();
+    await expect(page.locator(DRAWER_DIALOG)).not.toHaveAttribute("role", "dialog");
+    await expect(page.locator(DRAWER_DIALOG)).not.toHaveAttribute("aria-modal", "true");
+    await expect(page.locator("#page-column")).not.toHaveAttribute("inert", "");
+    await expect(page.locator("html")).not.toHaveClass(/nav-drawer-open/);
+    await expect(page.locator(SCRIM)).toBeHidden();
 
-    // --- Open ---
-    await trigger.click();
-    await expect(panel).not.toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
-    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await page.setViewportSize(TABLET);
+    await expectDrawerClosed(page);
+  });
 
-    // --- Click on a link inside the panel — verifies nav.js's link-click
-    //     handler closes the panel BEFORE navigation. We intercept the
-    //     navigation to avoid asserting against the next page's
-    //     default-hidden render (which would be tautological — every page
-    //     starts with the panel hidden). With navigation cancelled, the
-    //     only thing that can hide the panel is nav.js's handler.
+  test("close button, scrim and Escape close it and give the focus back to the menu button", async ({
+    page,
+  }) => {
+    await page.setViewportSize(PHONE);
+    await page.goto("/catalog");
+    const button = page.locator(MENU_BUTTON);
+
+    await openDrawer(page);
+    await expect(
+      page.getByRole("dialog", { name: /^(Menu|Menü)$/ }).getByRole("navigation", {
+        name: "Main navigation",
+      }),
+    ).toBeVisible();
+    await page.locator(DRAWER_CLOSE).click();
+    await expectDrawerClosed(page);
+    await expect(button).toBeFocused();
+
+    await openDrawer(page);
+    // The scrim, right of the 280 px drawer.
+    await page.mouse.click(PHONE.width - 20, PHONE.height / 2);
+    await expectDrawerClosed(page);
+    await expect(button).toBeFocused();
+
+    await openDrawer(page);
+    await page.keyboard.press("Escape");
+    await expectDrawerClosed(page);
+    await expect(button).toBeFocused();
+  });
+
+  test("following a link closes it without taking the focus back", async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await page.goto("/catalog");
+    const drawer = await openDrawer(page);
+    // Cancel the navigation: the only thing that can close the drawer is
+    // nav.js's link handler (every page starts with it closed).
     await page.evaluate(() => {
-      document.querySelectorAll("#mobile-nav a[href]").forEach((a) => {
+      document.querySelectorAll("#sidebar a[href]").forEach((a) => {
         a.addEventListener("click", (e) => e.preventDefault(), { once: true });
       });
     });
-    await panel.locator("a[href='/locations']").click();
-    await expect(panel).toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
-    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await drawer.locator("a[href='/locations']").click();
+    await expectDrawerClosed(page);
+    await expect(page.locator(MENU_BUTTON)).not.toBeFocused();
+  });
 
-    // --- Escape close ---
-    await page.locator("#mobile-menu-toggle").click();
-    await expect(page.locator("#mobile-nav")).not.toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
-    await page.keyboard.press("Escape");
-    await expect(page.locator("#mobile-nav")).toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
-    await expect(page.locator("#mobile-menu-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-
-    // --- Outside-click close: open again, click in <main> (outside both
-    //     trigger and panel) ---
-    await page.locator("#mobile-menu-toggle").click();
-    await expect(page.locator("#mobile-nav")).not.toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
-    // dispatchEvent for mousedown to match nav.js's listener phase
+  test("focus moves into the drawer, Tab stays inside, the page behind is inert and still", async ({
+    page,
+  }) => {
+    await page.setViewportSize(PHONE);
+    await loginAs(page, "admin");
+    await page.goto("/series");
+    // Scroll down first so a page scroll would show.
     await page.evaluate(() => {
-      const main = document.querySelector("main");
-      if (main) {
-        main.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-      }
+      document.getElementById("main-content")!.style.minHeight = "3000px";
+      window.scrollTo(0, 600);
     });
-    await expect(page.locator("#mobile-nav")).toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
-    await expect(page.locator("#mobile-menu-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-  });
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+    expect(scrollBefore).toBeGreaterThan(500);
 
-  test("focus trap — Tab from last wraps to first, Shift+Tab from first wraps to last", async ({
-    page,
-  }) => {
-    await page.setViewportSize(TABLET);
-    await page.goto("/catalog");
+    await openDrawer(page);
+    await expect(page.locator(DRAWER_CLOSE)).toBeFocused();
+    await expect(page.locator("#page-column")).toHaveAttribute("inert", "");
+    await expect(page.locator("html")).toHaveCSS("overflow-y", "hidden");
 
-    await page.locator("#mobile-menu-toggle").click();
-    await expect(page.locator("#mobile-nav")).not.toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
-
-    // The first focusable inside the panel is the Home entry (story 14-1:
-    // `a[href='/']`, before `/catalog`). After open(), nav.js focuses it.
-    const firstHref = await page.evaluate(
-      () => (document.activeElement as HTMLAnchorElement | null)?.getAttribute("href"),
-    );
-    expect(firstHref).toBe("/");
-
-    // Walk Tab forward to reach the last focusable inside the panel.
-    // The panel contains: catalog, locations, series links, then the
-    // language `<select>` dropdown (v1.7.0 — was originally FR + EN
-    // buttons). On /catalog as anonymous, those are 3 links + 1 select =
-    // 4 focusable items, plus 2 hidden inputs (excluded by the
-    // [type="hidden"] guard) and a `<noscript><button>` fallback that is
-    // not rendered with JS enabled.
-    const focusableCount = await page.locator(
-      "#mobile-nav a[href], #mobile-nav button:not([disabled]), #mobile-nav select",
-    ).count();
-    expect(focusableCount).toBeGreaterThan(0);
-
-    // Tab to last by pressing Tab (focusableCount - 1) times. Then one
-    // more Tab should wrap to the first.
-    for (let i = 0; i < focusableCount - 1; i++) {
+    // Every focusable control of the drawer, in order.
+    const count = await page
+      .locator(`${DRAWER} a[href]:visible, ${DRAWER} button:visible, ${DRAWER} select:visible`)
+      .count();
+    expect(count).toBeGreaterThan(10);
+    const seen = new Set<string | null>();
+    for (let i = 0; i < count + 2; i++) {
       await page.keyboard.press("Tab");
+      expect(await focusInsideDrawer(page), `Tab ${i + 1} stays in the drawer`).toBe(true);
+      seen.add(await focused(page));
     }
-    // We are now on the LAST focusable. Press Tab — should wrap to first.
-    await page.keyboard.press("Tab");
-    const wrappedFirst = await page.evaluate(
-      () => (document.activeElement as HTMLAnchorElement | null)?.getAttribute("href"),
-    );
-    expect(wrappedFirst).toBe("/");
-
-    // Shift+Tab from first wraps to last.
+    expect(seen.has("/admin") && seen.has("lang-select") && seen.has("theme-toggle")).toBe(true);
+    // Shift+Tab from the first control (the logo link) wraps to the last.
+    await page.locator(`${DRAWER} a[href='/']`).first().focus();
     await page.keyboard.press("Shift+Tab");
-    const insidePanel = await page.evaluate(() => {
-      const panel = document.getElementById("mobile-nav");
-      const active = document.activeElement;
-      return panel && active ? panel.contains(active) : false;
-    });
-    expect(insidePanel).toBe(true);
+    expect(await focusInsideDrawer(page)).toBe(true);
+    expect(await focused(page)).toBe("button");
+
+    // The wheel over the scrim does not scroll the page.
+    await page.mouse.move(PHONE.width - 20, PHONE.height / 2);
+    await page.mouse.wheel(0, 800);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+
+    await page.keyboard.press("Escape");
+    await expectDrawerClosed(page);
+    await expect(page.locator("#page-column")).not.toHaveAttribute("inert", "");
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
   });
 
-  test("scanner-burst auto-close on /catalog forwards keystroke to #scan-field", async ({
+  test("on /catalog a scanner burst reaches neither the scan field nor a drawer control", async ({
     page,
   }) => {
-    // #scan-field is gated to librarian/admin on /catalog (templates/pages/
-    // catalog.html:47). Authenticate so the scan field is present.
     await loginAs(page, "librarian");
-    await page.setViewportSize(TABLET);
+    await page.setViewportSize(PHONE);
     await page.goto("/catalog");
-
-    // Confirm prerequisite — #scan-field exists on /catalog for librarian.
-    await expect(page.locator("#scan-field")).toBeAttached();
-
-    await page.locator("#mobile-menu-toggle").click();
-    await expect(page.locator("#mobile-nav")).not.toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
-
-    // Type the burst at document level WITHOUT a trailing Enter — the
-    // Enter would land on #scan-field after nav.js forwards focus to it,
-    // and scan-field.js would route the (invalid) scan via /scan,
-    // navigating away before the value-assertion can read the field.
-    // simulateScan helpfully types "+Enter"; we bypass it here and use
-    // page.keyboard.type directly to keep nav focus where it is.
-    //
-    // delay: 5 ms (well below the 50 ms burst threshold) — at delay: 20
-    // a slow CI runner could slip the second keystroke past 50 ms and
-    // miss the burst classification, producing a flake. delay: 5 holds
-    // a 10× margin which is robust against scheduler jitter.
-    await page.keyboard.type("AB", { delay: 5 });
-
-    // Panel must collapse within ~1s — Playwright's auto-wait under
-    // toHaveClass uses default test timeout but we tighten it to keep
-    // failures fast.
-    await expect(page.locator("#mobile-nav")).toHaveClass(/(?:^|\s)hidden(?:\s|$)/, {
-      timeout: 2000,
-    });
-    await expect(page.locator("#mobile-menu-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "false",
+    const scan = page.locator("#scan-field");
+    await expect(scan).toBeAttached();
+    // A scan answers with a skeleton, replaced in place by the entry once
+    // the metadata arrive: count both.
+    const answers = page.locator(
+      "#feedback-list .feedback-skeleton, #feedback-list .feedback-entry",
     );
+    const feedbackBefore = await answers.count();
 
-    // The burst-confirming keystroke is forwarded to #scan-field. Because
-    // the burst was 'A' → 'B', the first keystroke ('A') is consumed by
-    // the panel's normal focus target (no-op — `<a>` doesn't accept text)
-    // and the SECOND keystroke ('B') is the one that classifies the pair
-    // as "burst" and gets forwarded to #scan-field.
-    const scanValue = await page.locator("#scan-field").inputValue();
-    expect(scanValue).toContain("B");
+    const drawer = await openDrawer(page);
+    // A burst while the close button holds the focus …
+    await page.keyboard.type("9782070360246\n", { delay: 5 });
+    // … and one while an entry holds it (its terminating Enter must not
+    // follow the link).
+    await drawer.locator("a[href='/series']").focus();
+    await page.keyboard.type("V0001\n", { delay: 5 });
+
+    await expectDrawerOpen(page);
+    await expect(page).toHaveURL(/\/catalog$/);
+    await expect(scan).toHaveValue("");
+    await expect(answers).toHaveCount(feedbackBefore);
+
+    await page.keyboard.press("Escape");
+    await expectDrawerClosed(page);
+
+    // Positive control: a real scan, once the drawer is closed, lands in
+    // the scan field and produces its feedback. Only then is the absence
+    // above meaningful: exactly ONE new answer (the control's), no
+    // navigation — the bursts produced nothing.
+    await simulateScan(page, "#scan-field", specIsbn("NH", 1));
+    await expect(answers).toHaveCount(feedbackBefore + 1, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/catalog$/);
   });
 
-  test("scanner-burst auto-close on /login (no #scan-field) closes panel without error", async ({
+  test("keyboard in the open drawer: Enter on the close button, Space on the theme toggle once", async ({
     page,
   }) => {
-    await page.setViewportSize(TABLET);
-    await page.goto("/login");
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.setViewportSize(PHONE);
+    await page.goto("/catalog");
+    await openDrawer(page);
+    // Focus is on the close button; no keydown since: a human-paced Enter.
+    await expect(page.locator(DRAWER_CLOSE)).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expectDrawerClosed(page);
+    await expect(page.locator(MENU_BUTTON)).toBeFocused();
 
-    // Confirm prerequisite — #scan-field does NOT exist on /login.
-    await expect(page.locator("#scan-field")).toHaveCount(0);
-
-    await page.locator("#mobile-menu-toggle").click();
-    await expect(page.locator("#mobile-nav")).not.toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
-
-    // Track JS console errors so we can assert nav.js doesn't blow up
-    // when #scan-field is absent.
-    const errors: string[] = [];
-    page.on("pageerror", (e) => errors.push(String(e)));
-
-    await simulateScan(page, "body", "AB");
-
-    await expect(page.locator("#mobile-nav")).toHaveClass(/(?:^|\s)hidden(?:\s|$)/, {
-      timeout: 2000,
-    });
-    await expect(page.locator("#mobile-menu-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    expect(errors).toHaveLength(0);
+    const drawer = await openDrawer(page);
+    const dark = () => page.evaluate(() => document.documentElement.classList.contains("dark"));
+    expect(await dark()).toBe(false);
+    await drawer.locator("#theme-toggle").focus();
+    await page.keyboard.press("Space");
+    // Exactly once: a double activation would flip it back to light.
+    await expect.poll(dark).toBe(true);
+    await expectDrawerOpen(page);
+    expect(await dark()).toBe(true);
   });
 
-  // Issue #150 — authenticated users on tablet/mobile can log out via
-  // the hamburger panel (parity with the desktop strip hidden by md:hidden).
-  test("logout from mobile panel signs the user out", async ({ page }) => {
+  test("keyboard in the open drawer: type-ahead in the language select changes the language", async ({
+    page,
+  }) => {
+    // Anonymous: the choice lives in this visitor's own session only.
+    await page.setViewportSize(PHONE);
+    await page.goto("/catalog");
+    const drawer = await openDrawer(page);
+    const select = drawer.locator("#lang-select");
+    const target = (await select.inputValue()) === "it" ? "d" : "i";
+    await select.focus();
+    await page.keyboard.press(target);
+    await expect(page.locator("html")).toHaveAttribute("lang", target === "i" ? "it" : "de");
+    await expect(page).toHaveURL(/\/catalog/);
+  });
+
+  test("a human Enter on a focused entry follows it, and the next page shows the drawer closed", async ({
+    page,
+  }) => {
+    await page.setViewportSize(PHONE);
+    await page.goto("/catalog");
+    const drawer = await openDrawer(page);
+    // No keydown since the menu button was clicked: a human-paced Enter.
+    await drawer.locator("a[href='/locations']").focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/locations$/);
+    await expectDrawerClosed(page);
+    // The current entry is marked in the drawer.
+    const reopened = await openDrawer(page);
+    await expect(reopened.locator("a[href='/locations']")).toHaveAttribute("aria-current", "page");
+
+    // A tap on an entry navigates too.
+    await reopened.locator("a[href='/series']").click();
+    await expect(page).toHaveURL(/\/series$/);
+    await expectDrawerClosed(page);
+  });
+
+  // Issue #150 — log out on a phone; story 14-2: from the drawer's foot.
+  test("logout from the drawer signs the user out", async ({ page }) => {
     await loginAs(page, "librarian");
-    await page.setViewportSize(TABLET);
+    await page.setViewportSize(PHONE);
     await page.goto("/catalog");
 
-    await page.locator("#mobile-menu-toggle").click();
-    await expect(page.locator("#mobile-nav")).not.toHaveClass(
-      /(?:^|\s)hidden(?:\s|$)/,
-    );
+    const drawer = await openDrawer(page);
+    const logout = drawer.locator('form[action="/logout"][method="POST"] button[type="submit"]');
+    await expect(logout).toBeVisible();
+    await logout.click();
 
-    // The mobile panel carries its own POST /logout form. Submit it and
-    // follow the redirect to /.
-    const logoutForm = page.locator(
-      '#mobile-nav form[action="/logout"][method="POST"]',
-    );
-    await expect(logoutForm).toBeVisible();
-    await logoutForm.locator('button[type="submit"]').click();
-
-    // Post-logout, the session cookie is cleared and the user lands on
-    // the public landing page with the anonymous navbar.
     await page.waitForURL((u) => u.pathname === "/");
-    await page.setViewportSize(TABLET);
-    await page.locator("#mobile-menu-toggle").click();
-    await expect(
-      page.locator('#mobile-nav a[href="/login"]'),
-    ).toBeVisible();
-    await expect(
-      page.locator('#mobile-nav form[action="/logout"]'),
-    ).toHaveCount(0);
+    const anonymous = await openDrawer(page);
+    await expect(anonymous.locator('a[href="/login"]')).toBeVisible();
+    await expect(anonymous.locator('form[action="/logout"]')).toHaveCount(0);
+  });
+
+  test("stacking: above the bar and the content, below the connection-lost overlay", async ({
+    page,
+  }) => {
+    await page.setViewportSize(PHONE);
+    await loginAs(page, "admin");
+    await page.goto("/catalog");
+    await openDrawer(page);
+
+    const hit = (x: number, y: number) =>
+      page.evaluate(
+        ({ px, py }) => {
+          const el = document.elementFromPoint(px, py);
+          if (!el) return "none";
+          if (el.closest("#connection-lost-overlay")) return "overlay";
+          if (el.closest("#sidebar")) return "drawer";
+          if (el.closest("#nav-scrim")) return "scrim";
+          return "page";
+        },
+        { px: x, py: y },
+      );
+    // Over the sticky bar's area (top-left) the drawer paints; right of it,
+    // the scrim covers the bar and the content.
+    expect(await hit(20, 20)).toBe("drawer");
+    expect(await hit(PHONE.width - 20, 20)).toBe("scrim");
+    expect(await hit(PHONE.width - 20, PHONE.height / 2)).toBe("scrim");
+
+    await page.evaluate(() =>
+      document.getElementById("connection-lost-overlay")!.classList.remove("hidden"),
+    );
+    await expect(page.locator("#connection-lost-overlay")).toBeVisible();
+    expect(await hit(20, PHONE.height / 2)).toBe("overlay");
+    // Review — the overlay must stay reachable: the drawer closes (its
+    // inert page and focus trap would otherwise hold the keyboard).
+    await expectDrawerClosed(page);
+    await expect(page.locator("#page-column")).not.toHaveAttribute("inert", "");
+  });
+
+  test("the session-timeout toast closes the open drawer", async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await loginAs(page, "librarian");
+    await page.goto("/catalog");
+    await openDrawer(page);
+    // Stand-in for session-timeout.js's toast (its timer is minutes long):
+    // the drawer reacts to the element's appearance.
+    await page.evaluate(() => {
+      const toast = document.createElement("div");
+      toast.id = "session-timeout-toast";
+      document.body.appendChild(toast);
+    });
+    await expectDrawerClosed(page);
+    await expect(page.locator("#page-column")).not.toHaveAttribute("inert", "");
+    // Focus was in the drawer: it goes back to the menu button.
+    await expect(page.locator(MENU_BUTTON)).toBeFocused();
+  });
+
+  test("prefers-reduced-motion: no slide", async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await page.goto("/catalog");
+    // Longest transition of the drawer, in seconds. (The global
+    // reduced-motion rule leaves a near-zero duration, not exactly 0s.)
+    const duration = () =>
+      page
+        .locator(DRAWER)
+        .evaluate((el) =>
+          Math.max(...getComputedStyle(el).transitionDuration.split(",").map((d) => parseFloat(d))),
+        );
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    expect(await duration()).toBeGreaterThanOrEqual(0.1);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    expect(await duration()).toBeLessThan(0.01);
+    await openDrawer(page);
+    await page.keyboard.press("Escape");
+    await expectDrawerClosed(page);
+  });
+
+  test("axe passes with the drawer open and closed, light and dark", async ({ page }) => {
+    await loginAs(page, "admin");
+    await page.setViewportSize(PHONE);
+    for (const scheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.goto("/catalog");
+      await checkAccessibility(page);
+      await openDrawer(page);
+      await checkAccessibility(page);
+      await page.keyboard.press("Escape");
+      await expectDrawerClosed(page);
+    }
   });
 });

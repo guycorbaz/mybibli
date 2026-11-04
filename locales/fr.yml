@@ -181,6 +181,10 @@ nav:
   collapse_menu: "Réduire le menu"
   expand_menu: "Déployer le menu"
   language_label: "Langue"
+  # Story 14-2 (#547, UX-DR39) — the small-screen drawer: close button
+  # name and the dialog's accessible name.
+  menu_close: "Fermer le menu"
+  menu_dialog: "Menu"
 title:
   # #202 — provenance des métadonnées affichée sur /title/:id.
   # Le nom du fournisseur n'est PAS traduit (NFR41) : c'est un nom

@@ -136,7 +136,7 @@ pub async fn stats_value_page(
 
     let has_any_data = !totals.is_empty();
 
-    let base = crate::utils::base_context(&session, loc, "stats", &uri, state.session_timeout_secs());
+    let base = crate::utils::base_context(&session, loc, "stats", &uri, state.page_settings());
     let template = StatsValueTemplate {
         base,
 

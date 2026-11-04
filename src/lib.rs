@@ -171,6 +171,20 @@ impl AppState {
             .unwrap_or_else(|_| AppSettings::default().session_timeout_secs)
     }
 
+    /// Story 14-2 review — the settings every full page carries (session
+    /// timeout, scanner burst threshold), read once under one guard for
+    /// `utils::base_context`.
+    pub fn page_settings(&self) -> crate::utils::PageSettings {
+        let read = |s: &AppSettings| crate::utils::PageSettings {
+            session_timeout_secs: s.session_timeout_secs,
+            scanner_burst_threshold_ms: s.scanner_burst_threshold_ms,
+        };
+        self.settings
+            .read()
+            .map(|s| read(&s))
+            .unwrap_or_else(|_| read(&AppSettings::default()))
+    }
+
     /// Story 9-5: read the currently-configured overdue-loan threshold (days).
     /// Clones the scalar out of the `RwLock` so callers never hold the guard
     /// across `.await` points.

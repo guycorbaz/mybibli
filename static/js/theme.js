@@ -79,10 +79,10 @@
             }
         });
 
-    // Wire every `[data-theme-toggle]` button (idempotent). Story 14-1 —
-    // two exist: the sidebar's `#theme-toggle` (≥ lg) and the small-screen
-    // bar's `#theme-toggle-bar`. Bare.html (login/logout) has no nav, so
-    // none is present — wireToggle is a no-op there.
+    // Wire every `[data-theme-toggle]` button (idempotent). Since story
+    // 14-2 there is one, the sidebar's `#theme-toggle` (the sidebar is the
+    // drawer below lg). Bare.html (login/logout) has no nav, so none is
+    // present — wireToggle is a no-op there.
     function wireToggle() {
         var buttons = document.querySelectorAll("[data-theme-toggle]");
         for (var i = 0; i < buttons.length; i++) {

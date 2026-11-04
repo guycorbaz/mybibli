@@ -1,13 +1,15 @@
-//! Story 9-17 — NavBar hamburger menu integration tests (AC10).
+//! Story 9-17 — NavBar hamburger menu integration tests (AC10); story
+//! 14-2 (#547) — the hamburger opens the drawer, which is the sidebar's
+//! `<nav id="sidebar">` below `lg`.
 //!
 //! Verifies:
 //!   1. `<script src="/static/js/nav.js">` is registered in base.html.
-//!   2. The mobile-menu toggle button renders with the correct
-//!      attributes (id, aria-label via i18n, aria-expanded="false",
-//!      aria-controls, xl:hidden class).
-//!   3. The mobile-nav panel applies the same role gates as the desktop
-//!      list — anonymous sees only catalog/locations/series; librarian
-//!      adds borrowers/loans; admin adds /admin.
+//!   2. The menu button renders with the correct attributes (id,
+//!      aria-label via i18n, aria-expanded="false", aria-controls = the
+//!      drawer's nav) inside the `lg:hidden` bar.
+//!   3. The drawer applies the role gates — anonymous sees only
+//!      catalog/locations/series; librarian adds borrowers/loans; admin
+//!      adds /admin.
 //!   4. The aria-label is rendered via the i18n field in FR locale.
 //!
 //! Run locally:
@@ -141,12 +143,13 @@ async fn mobile_menu_button_renders_with_correct_attributes(pool: MySqlPool) {
         html.contains(r#"aria-expanded="false""#),
         "trigger must start with aria-expanded=false; got: {html}"
     );
-    // aria-controls binds to the panel id
+    // aria-controls binds to the drawer (story 14-2: the sidebar's nav)
     assert!(
-        html.contains(r#"aria-controls="mobile-nav""#),
-        "trigger must announce the controlled panel via aria-controls; got: {html}"
+        html.contains(r#"aria-controls="sidebar""#),
+        "trigger must announce the controlled drawer via aria-controls; got: {html}"
     );
-    // Visibility breakpoint — lg:hidden hides the trigger on ≥ 1024px
+    // Visibility breakpoint — lg:hidden hides the bar and its trigger on
+    // ≥ 1024px
     // (Tailwind lg). Locked here as a regression guard against ACCIDENTAL
     // breakpoint flips; this one was deliberate.
     //
@@ -166,17 +169,22 @@ async fn mobile_menu_button_renders_with_correct_attributes(pool: MySqlPool) {
     // entries live in the sidebar, whose width does not depend on the
     // labels' length, so the `xl` stopgap is superseded.
     //
+    // Story 14-2 (#547, UX-DR39) — the gate sits on the slim bar itself
+    // (`<header … lg:hidden>`), which holds only the button and the logo.
+    //
     // The guard did its job: it forced the change to be stated rather than
     // slipped in. Keep it locked to whatever the current decision is.
     assert!(
-        html.contains(r#"class="lg:hidden p-2"#),
-        "trigger must keep the lg:hidden visibility gate; got: {html}"
+        html.contains(r#"<header class="sticky top-0 z-40 print:static lg:hidden"#),
+        "the bar (and its trigger) must keep the lg:hidden visibility gate; got: {html}"
     );
-    // Stable panel id (the trigger's aria-controls target)
+    // Stable drawer id (the trigger's aria-controls target); the story 9-17
+    // panel is gone.
     assert!(
-        html.contains(r#"id="mobile-nav""#),
-        "panel must use the stable id; got: {html}"
+        html.contains(r#"<nav aria-label="Main navigation" id="sidebar""#),
+        "drawer must use the stable id; got: {html}"
     );
+    assert!(!html.contains(r#"id="mobile-nav""#), "the old panel is removed");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -194,7 +202,7 @@ async fn mobile_nav_panel_renders_role_gated_links_anonymous(pool: MySqlPool) {
     // Slice the panel out of the rendered HTML so the assertions only see
     // the mobile panel, not the desktop nav (which has the same gates and
     // the same href values, defeating the role check).
-    let panel = extract_panel(&html);
+    let panel = extract_drawer(&html);
 
     assert!(panel.contains(r#"href="/catalog""#), "panel must include /catalog for anonymous; got panel: {panel}");
     assert!(panel.contains(r#"href="/locations""#), "panel must include /locations for anonymous; got panel: {panel}");
@@ -216,7 +224,7 @@ async fn mobile_nav_panel_renders_role_gated_links_librarian(pool: MySqlPool) {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_text(resp).await;
-    let panel = extract_panel(&html);
+    let panel = extract_drawer(&html);
 
     assert!(panel.contains(r#"href="/catalog""#), "panel must include /catalog for librarian; got panel: {panel}");
     assert!(panel.contains(r#"href="/locations""#), "panel must include /locations for librarian; got panel: {panel}");
@@ -238,7 +246,7 @@ async fn mobile_nav_panel_renders_role_gated_links_admin(pool: MySqlPool) {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_text(resp).await;
-    let panel = extract_panel(&html);
+    let panel = extract_drawer(&html);
 
     assert!(panel.contains(r#"href="/catalog""#), "panel must include /catalog for admin; got panel: {panel}");
     assert!(panel.contains(r#"href="/locations""#), "panel must include /locations for admin; got panel: {panel}");
@@ -266,36 +274,17 @@ async fn aria_label_renders_in_french_locale(pool: MySqlPool) {
     );
 }
 
-/// Slice the `#mobile-nav` panel HTML out of the full body so role-gate
-/// assertions only see panel-internal `<a href>` elements, not the desktop
-/// list which carries the same gate logic.
-///
-/// Walks `<div>` / `</div>` tags tracking nesting depth so the helper
-/// stays correct if the panel later gains nested wrappers. We start INSIDE
-/// the opening `<div ... id="mobile-nav" ...>` tag (so the panel itself
-/// counts as depth 1), and return the slice when the matching closing
-/// `</div>` brings the depth back to 0.
-fn extract_panel(html: &str) -> String {
-    let start_marker = r#"id="mobile-nav""#;
+/// Slice the drawer (`<nav id="sidebar">`, story 14-2 — the only copy of
+/// the entries) out of the full body so role-gate assertions only see its
+/// `<a href>` elements. The nav holds no nested `<nav>`, so the first
+/// `</nav>` after its opening tag closes it.
+fn extract_drawer(html: &str) -> String {
     let start = html
-        .find(start_marker)
-        .expect("rendered HTML must contain the mobile-nav panel id");
-    let tail = &html[start..];
-    let mut depth: i32 = 1;
-    let mut pos = 0;
-    while pos < tail.len() {
-        if tail[pos..].starts_with("<div") {
-            depth += 1;
-            pos += 4;
-        } else if tail[pos..].starts_with("</div>") {
-            depth -= 1;
-            pos += "</div>".len();
-            if depth == 0 {
-                return tail[..pos].to_string();
-            }
-        } else {
-            pos += 1;
-        }
-    }
-    panic!("mobile-nav panel did not close — unbalanced <div>/<\\/div>");
+        .find(r#"<nav aria-label="Main navigation" id="sidebar""#)
+        .expect("rendered HTML must contain the drawer nav");
+    let end = html[start..]
+        .find("</nav>")
+        .expect("the drawer nav must close")
+        + start;
+    html[start..end].to_string()
 }

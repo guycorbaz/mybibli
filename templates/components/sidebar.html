@@ -3,7 +3,7 @@
    `_bmad-output/planning-artifacts/ux-sidebar-mockup.html`: logo on top,
    the entries (`components/nav_entries.html`, single source), and at the
    foot the language select, the theme toggle, Log out / Log in and the
-   collapse toggle — everything the top bar carried on its right.
+   collapse toggle.
 
    Expanded 224 px (`w-56`), collapsed 64 px (`sb-collapsed:w-16`): the
    state is a class on `<html>` (`sidebar-collapsed`), read from
@@ -11,25 +11,56 @@
    in `<head>`; CSS does the rest (no inline script or style, CSP). Starts
    expanded.
 
-   Layout: a flex item of the `lg:flex` row in `layouts/base.html`,
-   `sticky top-0 h-screen`, so it stays in view while the page scrolls and
-   the content uses the remaining width; the entries scroll on their own
-   when the viewport is shorter than the list. `z-40`, like the sticky
-   small-screen bar (story 11-4): above in-content popovers (≤ z-30) so the
-   collapsed tooltips paint over the content, below every `fixed` overlay
-   (z-50 or the top layer — templates_audit::fixed_surfaces_stack_above_sticky_nav).
-   `print:hidden`: a printed page carries no navigation.
+   Layout (≥ `lg`): a flex item of the `lg:flex` row in
+   `layouts/base.html` (the `#nav-drawer` wrapper is `lg:contents`),
+   `sticky top-0 h-screen`, so it stays in view while the page scrolls;
+   the entries scroll on their own when the viewport is shorter than the
+   list. `lg:z-40`, like the sticky small-screen bar (story 11-4): above
+   in-content popovers (≤ z-30) so the collapsed tooltips paint over the
+   content, below every `fixed` overlay. `print:hidden`.
 
-   The `<nav>` keeps the accessible name of the old bar ("Main
-   navigation"); below `lg` it is `display: none` and the small-screen bar
-   of `components/nav_bar.html` (the same name) takes over, so exactly one
-   is exposed at any width. #}
+   Story 14-2 (#547, UX-DR39) — below `lg` THE SAME `<nav>` is the
+   navigation drawer (mock-up states "Mobile"): one DOM, one "Main
+   navigation" landmark at every width, one language form, one theme
+   toggle, no second copy of anything. Classes are mobile-first: the base
+   utilities describe the drawer (`fixed`, from the left, `w-70` = 280 px,
+   at most 85 vw, off-screen and `invisible` while closed — so neither
+   focusable nor exposed), the `lg:` ones restore the sidebar
+   (`lg:translate-none`: no transform at all from `lg`, which would
+   otherwise trap the collapsed tooltips, `fixed` boxes, inside the nav).
+   `nav-open:` (static/css/input.css) applies below `lg` while <html>
+   carries `nav-drawer-open`, set by `static/js/nav.js` when the menu
+   button of `components/nav_bar.html` opens the drawer. Always expanded
+   there (`sb-collapsed:` only matches from `lg`): no collapse toggle, no
+   tooltips. The slide and the scrim fade are `motion-safe:` only
+   (prefers-reduced-motion: no animation). `visibility` is transitioned on
+   closing only (it stays visible while the drawer slides out); on opening
+   the open state's transition list leaves it out, so the drawer is
+   visible — and focusable — at once (a discrete `visibility` transition
+   would keep it hidden at the start, and nav.js's focus() would miss).
+
+   `#nav-drawer` wraps the scrim and the nav. While the drawer is open
+   nav.js gives it `role="dialog"`, `aria-modal="true"` and the accessible
+   name `data-dialog-label` — so `static/js/scanner-guard.js` treats it as
+   a modal surface (a scanner burst neither reaches `#scan-field` nor
+   activates a drawer control) — and removes them on close (at ≥ `lg` it
+   is never a dialog). Stacking: the scrim and the drawer are `fixed z-50`
+   (templates_audit::fixed_surfaces_stack_above_sticky_nav): above the
+   page and the `z-40` sticky bar; they come first in the document, so the
+   later `z-50` surfaces (connection-lost overlay, JS toasts) paint above
+   them, and modals reach the top layer. #}
 {%- import "components/nav_macros.html" as nav -%}
-<nav aria-label="Main navigation" id="sidebar" class="hidden lg:flex flex-col sticky top-0 self-start h-screen shrink-0 w-56 sb-collapsed:w-16 z-40 bg-white dark:bg-stone-800 border-r border-stone-200 dark:border-stone-700 motion-safe:transition-[width] motion-safe:duration-150 print:hidden">
-    <a href="/" class="flex items-center gap-2 h-14 px-4 shrink-0 border-b border-stone-200 dark:border-stone-700 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500" aria-label="mybibli — home">
-        <img src="/logo/svg/mybibli-icon.svg" alt="" aria-hidden="true" class="w-8 h-8 shrink-0">
-        <span class="font-bold text-indigo-600 dark:text-indigo-400 text-lg sb-collapsed:hidden">mybibli</span>
-    </a>
+<div id="nav-drawer" data-dialog-label="{{ base.nav_menu_dialog }}" class="lg:contents">
+<div id="nav-scrim" aria-hidden="true" class="fixed inset-0 z-50 bg-black/50 invisible opacity-0 nav-open:visible nav-open:opacity-100 motion-safe:transition-[opacity,visibility] nav-open:motion-safe:transition-opacity motion-safe:duration-200 lg:hidden print:hidden"></div>
+<nav aria-label="Main navigation" id="sidebar" class="fixed inset-y-0 left-0 z-50 flex flex-col w-70 max-w-[85vw] invisible -translate-x-full shadow-xl nav-open:visible nav-open:translate-x-0 lg:visible lg:translate-none lg:shadow-none lg:sticky lg:top-0 lg:bottom-auto lg:left-auto lg:self-start lg:h-screen lg:max-w-none lg:shrink-0 lg:w-56 sb-collapsed:w-16 lg:z-40 bg-white dark:bg-stone-800 border-r border-stone-200 dark:border-stone-700 motion-safe:transition-[width,translate,visibility] nav-open:motion-safe:transition-[width,translate] motion-safe:duration-200 print:hidden">
+    <div class="flex items-center h-14 shrink-0 border-b border-stone-200 dark:border-stone-700">
+        <a href="/" class="flex flex-1 min-w-0 items-center gap-2 h-full px-4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500" aria-label="mybibli — home">
+            <img src="/logo/svg/mybibli-icon.svg" alt="" aria-hidden="true" class="w-8 h-8 shrink-0">
+            <span class="font-bold text-indigo-600 dark:text-indigo-400 text-lg sb-collapsed:hidden">mybibli</span>
+        </a>
+        {# Story 14-2 — the drawer's close button (never shown from `lg`). #}
+        <button id="nav-drawer-close" type="button" data-nav-drawer-close aria-label="{{ base.nav_menu_close }}" class="lg:hidden mr-2 p-2.5 rounded-md text-stone-600 dark:text-stone-400 hover:bg-stone-100 hover:text-stone-900 dark:hover:bg-stone-700 dark:hover:text-stone-100 focus-visible:outline-2 focus-visible:outline-indigo-500">{% call nav::icon("close") %}{% endcall %}</button>
+    </div>
 
     {# The entries scroll on their own (tall admin list, short viewport).
        Outside <main>, so exempt from the inner-scroller scroll-margin
@@ -42,9 +73,9 @@
         {# CR #275 / #276 (v1.7.0) — the language <select>; submission is
            wired by `static/js/mybibli.js` via `data-auto-submit` (delegated
            `change` listener, CSP-clean); without JS the noscript button
-           submits. Story 11-4 — this is the one named language form
-           exposed at ≥ `lg` (the small-screen bar's is display:none there),
-           so axe `landmark-unique` holds. Collapsed: icon and visible
+           submits. Story 14-2 — the only language form of the page (the
+           small-screen bar's and panel's copies are gone), so axe
+           `landmark-unique` holds at every width. Collapsed: icon and visible
            label hidden, the select stays usable (compact). #}
         <form action="/language" method="post" class="flex items-center gap-3 px-2.5 py-1.5 text-sm text-stone-600 dark:text-stone-400 sb-collapsed:justify-center sb-collapsed:px-0" aria-label="{{ base.lang_toggle_aria }}">
             <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
@@ -57,7 +88,7 @@
         {# `static/js/theme.js` wires every `[data-theme-toggle]`. Story 14-1
            (AC9) — the name is the localized `nav.theme_toggle`, visible
            when expanded (it was a hard-coded English aria-label). #}
-        {% call nav::theme_toggle("theme-toggle", base.nav_theme_toggle, true) %}{% endcall %}
+        {% call nav::theme_toggle("theme-toggle", base.nav_theme_toggle) %}{% endcall %}
 
         {% if base.role == "anonymous" %}
         <a href="/login" class="{% call nav::item_class() %}{% endcall %} {% call nav::idle_class() %}{% endcall %}">
@@ -82,11 +113,16 @@
            toggle). Story 14-1 review — ONE fixed accessible name,
            "Collapse menu" (the visible label when expanded, sr-only when
            collapsed), so the name never flips under a screen reader; the
-           collapsed tooltip ("Expand menu") is a visual hint only. #}
+           collapsed tooltip ("Expand menu") is a visual hint only.
+           Story 14-2 — wide screens only (`hidden lg:block` wrapper): the
+           drawer is always expanded. #}
+        <div class="hidden lg:block">
         <button type="button" data-sidebar-toggle aria-controls="sidebar" aria-expanded="true" class="{% call nav::item_class() %}{% endcall %} {% call nav::idle_class() %}{% endcall %}">
             <span class="inline-flex sb-collapsed:hidden">{% call nav::icon("collapse") %}{% endcall %}</span><span class="hidden sb-collapsed:inline-flex">{% call nav::icon("expand") %}{% endcall %}</span>
             <span class="sb-collapsed:sr-only">{{ base.nav_collapse }}</span>
             {% call nav::tooltip(base.nav_expand) %}{% endcall %}
         </button>
+        </div>
     </div>
 </nav>
+</div>

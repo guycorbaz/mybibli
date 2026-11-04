@@ -180,6 +180,10 @@ nav:
   collapse_menu: "Collapse menu"
   expand_menu: "Expand menu"
   language_label: "Language"
+  # Story 14-2 (#547, UX-DR39) — the small-screen drawer: close button
+  # name and the dialog's accessible name.
+  menu_close: "Close menu"
+  menu_dialog: "Menu"
 title:
   # #202 — metadata provenance shown on /title/:id. The provider name
   # is NOT translated (NFR41) — it is a proper noun. Only the label is.

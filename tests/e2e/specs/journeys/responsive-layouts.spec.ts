@@ -1,19 +1,20 @@
 /**
  * Story 9-21 — responsive per-page layouts E2E; tightened by story 11-21,
- * re-cut by story 14-1.
+ * re-cut by stories 14-1 and 14-2.
  *
- * Story 11-21 (D-11-21-1) moved the nav bar's desktop-strip / hamburger
- * switch from `lg` to `xl` (1280 px). Story 14-1 (#547, UX-DR38) replaced
- * the strip with the sidebar from `lg` (1024 px): below `lg` the small
- * bar (logo, language, theme, hamburger) shows; from `lg` the sidebar and
- * no bar. As an Admin (the longest link set, worst-case `99+` badge), in
+ * Story 14-1 (#547, UX-DR38) put the sidebar from `lg` (1024 px); story
+ * 14-2 (UX-DR39) made the small bar slim (menu button + logo) and the
+ * sidebar the drawer below `lg`. As an Admin (the longest link set), in
  * all four locales, at 360, 1023, 1024 and 1920 px:
  *   - no horizontal page overflow beyond 1 px (was 32 px, which hid
  *     #545's 18 px bar overflow at phone width);
- *   - below `lg` the bar shows and does not overflow, its right-hand
- *     group stays on screen, the hamburger shows, the sidebar is hidden;
- *     from `lg` the reverse (the sidebar's own fit at 1024 / 1280 / 1440
- *     is measured entry by entry in sidebar.spec.ts).
+ *   - below `lg` the bar and its menu button show, the bar does not
+ *     overflow, the drawer is closed; from `lg` the sidebar and no bar
+ *     (the sidebar's own fit at 1024 / 1280 / 1440 is measured entry by
+ *     entry in sidebar.spec.ts).
+ * Story 14-2 (AC6): at 360, 390, 768 and 1023 px, in the four locales,
+ * for anonymous, librarian and admin, drawer closed AND open: no page
+ * overflow, no row of the drawer overflowing it.
  * Plus the tablet (768 px, librarian) and anonymous phone checks of 9-21.
  *
  * The locale comes from `?lang=` (highest-priority source, no write):
@@ -25,6 +26,7 @@
 import { test, expect, Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { checkAccessibility } from "../../helpers/accessibility";
+import { DRAWER, MENU_BUTTON, expectDrawerClosed, openDrawer } from "../../helpers/drawer";
 
 const MOBILE = { width: 375, height: 667 };
 const TABLET = { width: 768, height: 1024 };
@@ -55,25 +57,60 @@ interface NavFit {
   sidebarShown: boolean;
   toggleShown: boolean;
   navOverflow: number;
-  rightGroupOverflow: number;
+  barContentOverflow: number;
 }
 
-/** Measures the small-screen bar and which navigation shows. */
+/** Measures the small-screen bar and which navigation shows. Story 14-2:
+ *  below `lg` the sidebar is the closed drawer (`invisible`, off-screen). */
 async function measureNav(page: Page): Promise<NavFit> {
   await page.waitForLoadState("load");
   return page.evaluate(() => {
     const header = document.querySelector("header")!;
-    const bar = header.querySelector('nav[aria-label="Main navigation"]')!;
     const sidebar = document.getElementById("sidebar")!;
     const toggle = document.getElementById("mobile-menu-toggle")!;
     const barShown = getComputedStyle(header).display !== "none";
-    const right = (bar.querySelector(":scope > div.ml-auto") as HTMLElement).getBoundingClientRect();
+    const side = getComputedStyle(sidebar);
+    const rightmost = Math.max(
+      ...Array.from(header.children).map((c) => c.getBoundingClientRect().right),
+    );
     return {
       barShown,
-      sidebarShown: getComputedStyle(sidebar).display !== "none",
+      sidebarShown:
+        side.display !== "none" &&
+        side.visibility !== "hidden" &&
+        sidebar.getBoundingClientRect().right > 0,
       toggleShown: barShown && getComputedStyle(toggle).display !== "none",
-      navOverflow: barShown ? bar.scrollWidth - bar.clientWidth : 0,
-      rightGroupOverflow: barShown ? right.right - window.innerWidth : 0,
+      navOverflow: barShown ? header.scrollWidth - header.clientWidth : 0,
+      barContentOverflow: barShown ? rightmost - window.innerWidth : 0,
+    };
+  });
+}
+
+/** Story 14-2 (AC6) — the open drawer's fit: inside the viewport, and no
+ *  row (entry, language, theme, Log in / Log out) wider than the drawer. */
+async function measureOpenDrawer(page: Page) {
+  return page.locator(DRAWER).evaluate((nav) => {
+    const box = nav.getBoundingClientRect();
+    const rows = Array.from(
+      nav.querySelectorAll<HTMLElement>("a[href], button, form[action='/language']"),
+    ).filter((el) => el.getClientRects().length > 0);
+    let worst = 0;
+    let worstLabel = "";
+    for (const row of rows) {
+      const over = Math.max(row.scrollWidth - row.clientWidth, row.getBoundingClientRect().right - box.right);
+      if (over > worst) {
+        worst = over;
+        worstLabel = (row.textContent || "").trim();
+      }
+    }
+    return {
+      left: box.left,
+      right: box.right,
+      viewport: window.innerWidth,
+      rows: rows.length,
+      rowOverflow: worst,
+      worstLabel,
+      navOverflow: nav.scrollWidth - nav.clientWidth,
     };
   });
 }
@@ -101,11 +138,52 @@ test.describe("Story 9-21 / 11-21 / 14-1 — responsive layouts and the navigati
           expect(fit.barShown, `${label}: small-screen bar shown`).toBe(!wide);
           expect(fit.toggleShown, `${label}: hamburger shown`).toBe(!wide);
           expect(fit.navOverflow, `${label}: the bar overflows`).toBeLessThanOrEqual(1);
-          expect(fit.rightGroupOverflow, `${label}: right-hand group off screen`).toBeLessThanOrEqual(1);
+          expect(fit.barContentOverflow, `${label}: bar content off screen`).toBeLessThanOrEqual(1);
           await assertNoHorizontalScroll(page, label);
         }
       }
     });
+  }
+
+  // Story 14-2 (AC6) — drawer closed and open, every role and locale.
+  const DRAWER_WIDTHS = [360, 390, 768, 1023] as const;
+  for (const role of ["anonymous", "librarian", "admin"] as const) {
+    for (const lang of LOCALES) {
+      test(`${role}, ${lang} — no overflow at 360 / 390 / 768 / 1023 px, drawer closed and open`, async ({
+        page,
+      }) => {
+        test.setTimeout(60000);
+        if (role !== "anonymous") await loginAs(page, role);
+        for (const width of DRAWER_WIDTHS) {
+          await page.setViewportSize({ width, height: 800 });
+          await page.goto(withLang("/", lang));
+          await expect(page.locator("html")).toHaveAttribute("lang", lang);
+          const label = `${role} ${lang} ${width}px`;
+          const fit = await measureNav(page);
+          expect(fit.barShown && fit.toggleShown, `${label}: bar + menu button`).toBe(true);
+          expect(fit.sidebarShown, `${label}: drawer closed`).toBe(false);
+          expect(fit.navOverflow, `${label}: the bar overflows`).toBeLessThanOrEqual(1);
+          expect(fit.barContentOverflow, `${label}: bar content off screen`).toBeLessThanOrEqual(1);
+          await assertNoHorizontalScroll(page, `${label} closed`);
+
+          await openDrawer(page);
+          const open = await measureOpenDrawer(page);
+          expect(open.left, `${label}: drawer from the left edge`).toBe(0);
+          expect(open.right, `${label}: drawer within the viewport`).toBeLessThanOrEqual(open.viewport);
+          // 280 px, at most 85 vw.
+          expect(Math.round(open.right)).toBe(Math.min(280, Math.floor(width * 0.85)));
+          expect(open.rows, `${label}: rows`).toBeGreaterThan(5);
+          expect(
+            open.rowOverflow,
+            `${label}: a row overflows the drawer ("${open.worstLabel}")`,
+          ).toBeLessThanOrEqual(1);
+          expect(open.navOverflow, `${label}: the drawer scrolls sideways`).toBeLessThanOrEqual(0);
+          await assertNoHorizontalScroll(page, `${label} open`);
+          await page.keyboard.press("Escape");
+          await expectDrawerClosed(page);
+        }
+      });
+    }
   }
 
   test("anonymous, phone (360 / 375 px) — home and catalog fit", async ({ page }) => {
@@ -116,7 +194,7 @@ test.describe("Story 9-21 / 11-21 / 14-1 — responsive layouts and the navigati
       await expect(page.locator("#search-field")).toBeVisible();
       const fit = await measureNav(page);
       expect(fit.navOverflow, "anonymous bar overflows").toBeLessThanOrEqual(1);
-      expect(fit.rightGroupOverflow).toBeLessThanOrEqual(1);
+      expect(fit.barContentOverflow).toBeLessThanOrEqual(1);
       await page.goto("/catalog");
       await assertNoHorizontalScroll(page, `/catalog anonymous ${viewport.width}px`);
     }
@@ -135,8 +213,9 @@ test.describe("Story 9-21 / 11-21 / 14-1 — responsive layouts and the navigati
 /**
  * Story 11-4 (#496) — sticky navigation bar. Story 14-1 (#547): from `lg`
  * the navigation is the sidebar (sticky, full height, beside the content),
- * so the "desktop" cases measure the sidebar — the landmark named "Main
- * navigation" that is displayed — and expect no offset above the content.
+ * so the "desktop" cases measure the sidebar and expect no offset above
+ * the content. Story 14-2: below `lg` the stuck element is the slim bar
+ * (`<header>`, no `<nav>` inside), and the menu opens the drawer.
  *
  * The bar lives in the shared layout, so a few representative pages are
  * enough. Each page is made reliably scrollable through the CSSOM
@@ -144,8 +223,10 @@ test.describe("Story 9-21 / 11-21 / 14-1 — responsive layouts and the navigati
  * `style` attribute) so the assertions never depend on how much data the
  * shared E2E database happens to hold. Read-only: no entity is created.
  */
-/** The displayed navigation landmark: the sidebar from `lg`, the bar below. */
+/** The displayed navigation landmark (the sidebar, from `lg`). */
 const NAV = 'nav[aria-label="Main navigation"]:visible';
+/** What stays at the top: the sidebar from `lg`, the slim bar below. */
+const STUCK = "header:visible, #sidebar:visible";
 
 /** scrollY after two animation frames, so any scroll triggered by the last
  *  action (focus, Escape) has been applied before it is read. */
@@ -163,8 +244,9 @@ interface StuckSample {
   scrollY: number;
   navTop: number;
   navBottom: number;
-  panelTop: number | null;
-  panelOverflows: boolean;
+  drawerTop: number | null;
+  drawerBottom: number | null;
+  entriesOverflow: boolean;
   menuLinkOnTop: boolean;
   headerCoveredAtCentre: boolean;
   lostOverlayOnTopOfBar: boolean;
@@ -187,17 +269,19 @@ async function scrollToBottomAndMeasure(page: Page): Promise<StuckSample> {
         const main = document.getElementById("main-content");
         if (main) main.style.minHeight = "3000px";
         window.scrollTo(0, document.documentElement.scrollHeight);
-        // Story 14-1 — the displayed one: sidebar from `lg`, bar below.
-        const nav = Array.from(
-          document.querySelectorAll('nav[aria-label="Main navigation"]'),
-        ).find((n) => n.getClientRects().length > 0)!;
+        // Story 14-2 — the stuck element: the slim bar below `lg`, the
+        // sidebar from `lg`.
+        const bar = document.querySelector("header")!;
+        const sidebar = document.getElementById("sidebar")!;
+        const nav = getComputedStyle(bar).display !== "none" ? bar : sidebar;
         const r = nav.getBoundingClientRect();
-        const header = nav.closest("header") ?? nav;
-        const panel = document.getElementById("mobile-nav")!;
-        const panelOpen = !panel.classList.contains("hidden");
-        const link = panel.querySelector('a[href="/series"]');
+        const header = nav;
+        const drawerOpen = document.documentElement.classList.contains("nav-drawer-open");
+        const d = sidebar.getBoundingClientRect();
+        const entries = sidebar.querySelector<HTMLElement>(".overflow-y-auto")!;
+        const link = sidebar.querySelector('a[href="/catalog"]');
         let menuLinkOnTop = false;
-        if (panelOpen && link) {
+        if (drawerOpen && link) {
           const l = link.getBoundingClientRect();
           const hit = document.elementFromPoint(l.left + l.width / 2, l.top + l.height / 2);
           menuLinkOnTop = hit !== null && link.contains(hit);
@@ -209,8 +293,9 @@ async function scrollToBottomAndMeasure(page: Page): Promise<StuckSample> {
           scrollY: window.scrollY,
           navTop: r.top,
           navBottom: r.bottom,
-          panelTop: panelOpen ? panel.getBoundingClientRect().top : null,
-          panelOverflows: panelOpen && panel.scrollHeight > panel.clientHeight,
+          drawerTop: drawerOpen ? d.top : null,
+          drawerBottom: drawerOpen ? d.bottom : null,
+          entriesOverflow: drawerOpen && entries.scrollHeight > entries.clientHeight,
           menuLinkOnTop,
           headerCoveredAtCentre: centreHit !== null && !header.contains(centreHit),
           lostOverlayOnTopOfBar: lost !== null && edgeHit !== null && lost.contains(edgeHit),
@@ -291,7 +376,7 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
             ),
           ),
       );
-      await expect(page.locator(NAV)).toBeInViewport();
+      await expect(page.locator(STUCK)).toBeInViewport();
       expect(
         geometry.mainTop,
         `main top (${geometry.mainTop}) must sit below the bar bottom (${geometry.navBottom})`,
@@ -309,7 +394,7 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
     ["landscape phone", LANDSCAPE_PHONE],
     ["tablet", TABLET],
   ] as const) {
-    test(`${name} — the mobile menu stays usable and above the content while stuck`, async ({
+    test(`${name} — the drawer opens over the whole height, above the content, while scrolled`, async ({
       page,
     }) => {
       await page.setViewportSize(viewport);
@@ -317,30 +402,35 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
       await page.goto("/catalog");
       await assertNavStuckAtTop(page, `${name} before menu`);
 
-      await page.locator("#mobile-menu-toggle").click();
-      const panel = page.locator("#mobile-nav");
-      await expect(panel).toBeVisible();
-      const sample = await assertNavStuckAtTop(page, `${name} menu open`);
-      // The panel hangs right below the stuck bar …
-      expect(sample.panelTop).not.toBeNull();
-      expect(Math.abs(sample.panelTop! - sample.navBottom)).toBeLessThanOrEqual(1);
+      await page.locator(MENU_BUTTON).click();
+      const drawer = page.locator(DRAWER);
+      await expect(drawer).toBeVisible();
+      await expect
+        .poll(() => drawer.evaluate((el) => Math.round(el.getBoundingClientRect().left)))
+        .toBe(0);
+      const sample = await scrollToBottomAndMeasure(page);
+      // Story 14-2 — the drawer covers the full viewport height (over the
+      // stuck bar), whatever the scroll position …
+      expect(sample.drawerTop).toBe(0);
+      expect(Math.abs(sample.drawerBottom! - viewport.height)).toBeLessThanOrEqual(1);
       // … above the page content: hit testing at a link's centre lands on
       // that link, not on whatever scrolled underneath.
       expect(sample.menuLinkOnTop, "the menu link must be the topmost element").toBe(true);
-      // On a landscape phone the admin menu is taller than the space left
-      // under the bar: the panel must really overflow and scroll on its own.
+      // On a landscape phone the admin entries are taller than the space
+      // between the head and the foot: they scroll on their own …
       if (viewport === LANDSCAPE_PHONE) {
-        expect(sample.panelOverflows, "the admin menu must overflow a 375 px-high viewport").toBe(
+        expect(sample.entriesOverflow, "the admin entries must overflow a 375 px-high drawer").toBe(
           true,
         );
       }
-      const logout = panel.locator('form[action="/logout"] button');
-      await logout.scrollIntoViewIfNeeded();
-      await expect(logout).toBeInViewport();
+      // … and the foot (Log out) stays in view without scrolling.
+      await expect(drawer.locator('form[action="/logout"] button')).toBeInViewport();
 
       await checkAccessibility(page);
 
-      await panel.locator('a[href="/series"]').click();
+      const series = drawer.locator('a[href="/series"]');
+      await series.scrollIntoViewIfNeeded();
+      await series.click();
       await expect(page).toHaveURL(/\/series$/);
     });
   }
@@ -361,21 +451,17 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
     expect(Math.abs(after - before.scrollY), "the page must not jump").toBeLessThanOrEqual(1);
   });
 
-  test("mobile — closing the stuck menu with Escape does not move the page", async ({
+  test("mobile — closing the drawer with Escape does not move the page", async ({
     page,
   }) => {
     await page.setViewportSize(MOBILE);
     await loginAs(page, "admin");
     await page.goto("/series");
-    // Baseline taken BEFORE opening: the open panel is in the header's flow,
-    // so re-scrolling to the bottom with it open would make the closing
-    // shrink clamp scrollY and look like a jump.
     const before = await assertNavStuckAtTop(page, "/series before menu");
-    await page.locator("#mobile-menu-toggle").click();
-    await expect(page.locator("#mobile-nav")).toBeVisible();
+    await openDrawer(page);
     await page.keyboard.press("Escape");
-    await expect(page.locator("#mobile-nav")).toBeHidden();
-    await expect(page.locator("#mobile-menu-toggle")).toBeFocused();
+    await expectDrawerClosed(page);
+    await expect(page.locator(MENU_BUTTON)).toBeFocused();
     const after = await settledScrollY(page);
     expect(Math.abs(after - before.scrollY), "the page must not jump").toBeLessThanOrEqual(1);
   });

@@ -21,6 +21,7 @@
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { openDrawer } from "../../helpers/drawer";
 import { mcpCallTool } from "../../helpers/mcp";
 import {
   NAV,
@@ -74,10 +75,10 @@ test.describe("Story 11-21 — access to the proposals page", () => {
       expect(afterFiling).toBeGreaterThanOrEqual(1);
       await expect(page.locator("#filter-tag-pending-proposals")).toBeVisible();
 
-      // The mobile panel carries the same entry and badge.
+      // The small-screen drawer (story 14-2) carries the same entry and badge.
       await page.setViewportSize({ width: 360, height: 740 });
-      await page.locator("#mobile-menu-toggle").click();
-      const panelEntry = page.locator('#mobile-nav a[href="/proposals"]');
+      const drawer = await openDrawer(page);
+      const panelEntry = drawer.locator('a[href="/proposals"]');
       await expect(panelEntry).toBeVisible();
       await expect(panelEntry.locator("[data-proposals-badge]")).toBeVisible();
       await expect(panelEntry).toHaveAttribute("aria-label", /\d+/);

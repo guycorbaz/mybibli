@@ -101,9 +101,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
   // AC8: Nav bar has Borrowers link
   test("nav bar shows Borrowers link", async ({ page }) => {
     await page.goto("/borrowers");
-    const navLink = page.locator(
-      'nav a[href="/borrowers"], #mobile-nav a[href="/borrowers"]'
-    );
+    const navLink = page.locator('nav#sidebar a[href="/borrowers"]');
     await expect(navLink.first()).toBeVisible();
   });
 

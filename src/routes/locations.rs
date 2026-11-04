@@ -75,7 +75,7 @@ pub async fn location_detail(
     let volumes =
         VolumeModel::find_by_location(pool, id, &params.sort, &params.dir, params.page).await?;
 
-    let base = base_context(&session, loc, "location", &uri, state.session_timeout_secs());
+    let base = base_context(&session, loc, "location", &uri, state.page_settings());
     let template = LocationDetailTemplate {
         base,
         contents_title: rust_i18n::t!("location.contents_title", locale = loc).to_string(),
@@ -414,7 +414,7 @@ pub async fn locations_page(
         &session.csrf_token,
     );
 
-    let base = base_context(&session, loc, "locations", &uri, state.session_timeout_secs());
+    let base = base_context(&session, loc, "locations", &uri, state.page_settings());
     let template = LocationsTemplate {
         base,
         tree_title: rust_i18n::t!("location.tree_title", locale = loc).to_string(),
@@ -529,7 +529,7 @@ pub async fn edit_location_page(
     let node_types = LocationModel::find_node_types(pool).await?;
     let all_locations = LocationModel::find_all_tree(pool).await?;
 
-    let base = base_context(&session, loc, "locations", &uri, state.session_timeout_secs());
+    let base = base_context(&session, loc, "locations", &uri, state.page_settings());
     let template = LocationEditTemplate {
         base,
         edit_title: rust_i18n::t!("location.edit", locale = loc).to_string(),

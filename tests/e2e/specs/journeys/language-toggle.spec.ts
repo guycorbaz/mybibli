@@ -82,9 +82,9 @@ test.describe("Story 7-3 — language toggle FR/EN", () => {
     // v1.7.0 (CR #275 / #276) — the nav toggle is now a `<select>`
     // dropdown (4 langs). `selectOption("en")` fires the `change` event,
     // which `mybibli.js::initAutoSubmitSelects` listens for and submits
-    // the parent form. The desktop variant has id `lang-select`; the
-    // mobile variant `lang-select-mobile`. We always hit the desktop one
-    // here — the chromium project runs at desktop viewport.
+    // the parent form. Its id is `lang-select` (story 14-2: the only
+    // copy — the sidebar's, which is the drawer below lg); the chromium
+    // project runs at desktop viewport.
     await Promise.all([
       page.waitForLoadState("load"),
       page.locator("#lang-select").selectOption("en"),
@@ -110,9 +110,9 @@ test.describe("Story 7-3 — language toggle FR/EN", () => {
     // v1.7.0 (CR #275 / #276) — the nav toggle is now a `<select>`
     // dropdown (4 langs). `selectOption("en")` fires the `change` event,
     // which `mybibli.js::initAutoSubmitSelects` listens for and submits
-    // the parent form. The desktop variant has id `lang-select`; the
-    // mobile variant `lang-select-mobile`. We always hit the desktop one
-    // here — the chromium project runs at desktop viewport.
+    // the parent form. Its id is `lang-select` (story 14-2: the only
+    // copy — the sidebar's, which is the drawer below lg); the chromium
+    // project runs at desktop viewport.
     await Promise.all([
       page.waitForLoadState("load"),
       page.locator("#lang-select").selectOption("en"),
@@ -142,9 +142,9 @@ test.describe("Story 7-3 — language toggle FR/EN", () => {
     // v1.7.0 (CR #275 / #276) — the nav toggle is now a `<select>`
     // dropdown (4 langs). `selectOption("en")` fires the `change` event,
     // which `mybibli.js::initAutoSubmitSelects` listens for and submits
-    // the parent form. The desktop variant has id `lang-select`; the
-    // mobile variant `lang-select-mobile`. We always hit the desktop one
-    // here — the chromium project runs at desktop viewport.
+    // the parent form. Its id is `lang-select` (story 14-2: the only
+    // copy — the sidebar's, which is the drawer below lg); the chromium
+    // project runs at desktop viewport.
     await Promise.all([
       page.waitForLoadState("load"),
       page.locator("#lang-select").selectOption("en"),

@@ -804,7 +804,7 @@ pub async fn home(
         String::new()
     };
 
-    let base = base_context(&session, loc, "home", &uri, state.session_timeout_secs());
+    let base = base_context(&session, loc, "home", &uri, state.page_settings());
     let template = HomeTemplate {
         base,
         saved_searches_html,

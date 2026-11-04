@@ -12,10 +12,9 @@ test.describe("Login/Logout & Epic 1 Smoke Test (Story 1-9)", () => {
     // Start from home page — no cookies
     await page.goto("/");
 
-    // Click login link in the navigation. Scope to the displayed "Main
-    // navigation" landmark so we don't strict-mode collide with the mirror
-    // links in `<div id="mobile-nav">` (issue #150) and in the small-screen
-    // bar (story 14-1: the sidebar at ≥ lg, the bar below — one displayed).
+    // Click login link in the navigation, scoped to the "Main navigation"
+    // landmark (story 14-2: one at every width — the sidebar, which is the
+    // drawer below lg).
     const loginLink = page
       .getByRole("navigation", { name: "Main navigation" })
       .locator('a[href="/login"]');

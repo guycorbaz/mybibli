@@ -565,15 +565,23 @@ pub struct BaseContextFields {
     pub connection_status: ConnectionStatusContext,
     pub shortcuts_cheat_sheet: ShortcutsCheatSheetContext,
     pub session_timeout_secs: u64,
+    /// Story 14-2 review — `AppSettings::scanner_burst_threshold_ms`,
+    /// emitted once as `<body data-scanner-threshold>` for client modules
+    /// that tell a scanner burst from human typing (static/js/nav.js).
+    pub scanner_burst_threshold_ms: u64,
     pub csrf_token: String,
     /// Story 14-1 (#547) — the navigation entries of the session's role,
     /// grouped (Home · browsing · Librarian+ management · Admin), built
     /// once by [`nav_groups`] and rendered by `components/nav_entries.html`
-    /// in the sidebar and the small-screen panel.
+    /// in the sidebar, which is also the small-screen drawer (story 14-2).
     pub nav_groups: Vec<Vec<NavEntry>>,
     pub nav_login: String,
     pub nav_logout: String,
     pub nav_menu_open: String,
+    /// Story 14-2 (#547, UX-DR39) — the drawer's close button name and the
+    /// accessible name of the drawer while it is open (a modal dialog).
+    pub nav_menu_close: String,
+    pub nav_menu_dialog: String,
     /// Story 14-1 — the sidebar collapse toggle's two names.
     pub nav_collapse: String,
     pub nav_expand: String,
@@ -633,8 +641,9 @@ pub fn build_js_i18n_bundle(locale: &str) -> String {
 }
 
 /// Story 11-21 — above this many pending proposals the nav badge reads
-/// `99+`, so the widest badge is known and fits the bar at `xl` in every
-/// locale (D-11-21-1). The accessible name keeps the exact count.
+/// `99+`, so the widest badge is known and fits the navigation row in
+/// every locale (sidebar, drawer). The accessible name keeps the exact
+/// count.
 pub const PROPOSALS_BADGE_CAP: u64 = 99;
 
 /// The nav badge text for `count` pending proposals: `None` at zero or
@@ -658,18 +667,38 @@ pub fn proposals_badge_aria(count: Option<u64>, locale: &str) -> Option<String> 
     }
 }
 
+/// Story 14-2 review — the settings scalars every full page carries.
+/// Handlers get them from `AppState::page_settings()` (one read of the
+/// settings cache) and hand them to [`base_context`], which stays pool-
+/// and state-free so it is unit-testable.
+#[derive(Debug, Clone, Copy)]
+pub struct PageSettings {
+    pub session_timeout_secs: u64,
+    pub scanner_burst_threshold_ms: u64,
+}
+
+impl Default for PageSettings {
+    fn default() -> Self {
+        let s = crate::config::AppSettings::default();
+        PageSettings {
+            session_timeout_secs: s.session_timeout_secs,
+            scanner_burst_threshold_ms: s.scanner_burst_threshold_ms,
+        }
+    }
+}
+
 /// Build the shared fields for a full-page render. Caller provides the
 /// page-specific `current_page` slug + the original request URI (used
 /// for the language-toggle hidden input and the lang-toggle aria label),
-/// plus the `session_timeout_secs` scalar (handler reads it off
-/// `AppState.session_timeout_secs()` and passes it in — keeping the
-/// helper pool-free so it stays unit-testable without a live DbPool).
+/// plus the [`PageSettings`] (handler reads them off
+/// `AppState::page_settings()` and passes them in — keeping the helper
+/// pool-free so it stays unit-testable without a live DbPool).
 pub fn base_context(
     session: &crate::middleware::auth::Session,
     locale: &str,
     current_page: &'static str,
     uri: &axum::http::Uri,
-    session_timeout_secs: u64,
+    page: PageSettings,
 ) -> BaseContextFields {
     BaseContextFields {
         lang: locale.to_string(),
@@ -678,7 +707,8 @@ pub fn base_context(
         skip_label: rust_i18n::t!("nav.skip_to_content", locale = locale).to_string(),
         connection_status: ConnectionStatusContext::new(locale),
         shortcuts_cheat_sheet: ShortcutsCheatSheetContext::new(locale),
-        session_timeout_secs,
+        session_timeout_secs: page.session_timeout_secs,
+        scanner_burst_threshold_ms: page.scanner_burst_threshold_ms,
         csrf_token: session.csrf_token.clone(),
         nav_groups: nav_groups(
             &session.role.to_string(),
@@ -689,6 +719,8 @@ pub fn base_context(
         nav_login: rust_i18n::t!("nav.login", locale = locale).to_string(),
         nav_logout: rust_i18n::t!("nav.logout", locale = locale).to_string(),
         nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
+        nav_menu_close: rust_i18n::t!("nav.menu_close", locale = locale).to_string(),
+        nav_menu_dialog: rust_i18n::t!("nav.menu_dialog", locale = locale).to_string(),
         nav_collapse: rust_i18n::t!("nav.collapse_menu", locale = locale).to_string(),
         nav_expand: rust_i18n::t!("nav.expand_menu", locale = locale).to_string(),
         nav_theme_toggle: rust_i18n::t!("nav.theme_toggle", locale = locale).to_string(),
@@ -722,11 +754,14 @@ pub(crate) fn test_base_context(
         connection_status: ConnectionStatusContext::new(locale),
         shortcuts_cheat_sheet: ShortcutsCheatSheetContext::new(locale),
         session_timeout_secs,
+        scanner_burst_threshold_ms: PageSettings::default().scanner_burst_threshold_ms,
         csrf_token: "tok".to_string(),
         nav_groups: nav_groups(role, current_page, locale, None),
         nav_login: rust_i18n::t!("nav.login", locale = locale).to_string(),
         nav_logout: rust_i18n::t!("nav.logout", locale = locale).to_string(),
         nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
+        nav_menu_close: rust_i18n::t!("nav.menu_close", locale = locale).to_string(),
+        nav_menu_dialog: rust_i18n::t!("nav.menu_dialog", locale = locale).to_string(),
         nav_collapse: rust_i18n::t!("nav.collapse_menu", locale = locale).to_string(),
         nav_expand: rust_i18n::t!("nav.expand_menu", locale = locale).to_string(),
         nav_theme_toggle: rust_i18n::t!("nav.theme_toggle", locale = locale).to_string(),
@@ -1065,25 +1100,30 @@ mod tests {
         let session = crate::middleware::auth::Session::anonymous_with_token(
             "csrf-token-abc".to_string(),
         );
-        let ctx = base_context(&session, "en", "loans", &test_uri(), 7200);
+        let page = PageSettings {
+            session_timeout_secs: 7200,
+            scanner_burst_threshold_ms: 35,
+        };
+        let ctx = base_context(&session, "en", "loans", &test_uri(), page);
         assert_eq!(ctx.role, "anonymous");
         assert_eq!(ctx.csrf_token, "csrf-token-abc");
         assert_eq!(ctx.current_page, "loans");
         assert_eq!(ctx.session_timeout_secs, 7200);
+        assert_eq!(ctx.scanner_burst_threshold_ms, 35);
     }
 
     #[test]
     fn base_context_current_url_reflects_uri() {
         let session = crate::middleware::auth::Session::anonymous_with_token(String::new());
-        let ctx = base_context(&session, "en", "x", &test_uri(), 0);
+        let ctx = base_context(&session, "en", "x", &test_uri(), PageSettings::default());
         assert_eq!(ctx.current_url, "/some/path?q=test");
     }
 
     #[test]
     fn base_context_resolves_i18n_keys_per_locale() {
         let session = crate::middleware::auth::Session::anonymous_with_token(String::new());
-        let en = base_context(&session, "en", "x", &test_uri(), 0);
-        let fr = base_context(&session, "fr", "x", &test_uri(), 0);
+        let en = base_context(&session, "en", "x", &test_uri(), PageSettings::default());
+        let fr = base_context(&session, "fr", "x", &test_uri(), PageSettings::default());
         // lang field reflects the requested locale.
         assert_eq!(en.lang, "en");
         assert_eq!(fr.lang, "fr");
@@ -1108,7 +1148,7 @@ mod tests {
         // Every nav.* i18n key exists in en.yml — silent miss would
         // surface as empty string here.
         let session = crate::middleware::auth::Session::anonymous_with_token(String::new());
-        let ctx = base_context(&session, "en", "x", &test_uri(), 0);
+        let ctx = base_context(&session, "en", "x", &test_uri(), PageSettings::default());
         let entry_labels: Vec<(&str, &String)> = ctx
             .nav_groups
             .iter()
@@ -1120,6 +1160,8 @@ mod tests {
             ("nav_login", &ctx.nav_login),
             ("nav_logout", &ctx.nav_logout),
             ("nav_menu_open", &ctx.nav_menu_open),
+            ("nav_menu_close", &ctx.nav_menu_close),
+            ("nav_menu_dialog", &ctx.nav_menu_dialog),
             ("nav_collapse", &ctx.nav_collapse),
             ("nav_expand", &ctx.nav_expand),
             ("nav_theme_toggle", &ctx.nav_theme_toggle),
