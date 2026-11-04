@@ -178,7 +178,7 @@ pub async fn borrower_detail(
     // "borrower-detail" (not "borrowers") so the body[data-page] hook in
     // mybibli.js (initBorrowerDetailReload) only fires here, while the
     // nav highlight stays on /borrowers via the `borrowers` aria-current
-    // matcher in nav_bar.html (no other code keys off this string).
+    // matcher in `utils::nav_groups` (no other code keys off this string).
     let base =
         crate::utils::base_context(&session, loc, "borrower-detail", &uri, state.session_timeout_secs());
     let template = BorrowerDetailTemplate {

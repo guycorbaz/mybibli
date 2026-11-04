@@ -4,8 +4,29 @@
 
     var STORAGE_KEY = "mybibli-theme";
 
+    // Story 14-1 review — every storage access is guarded: with storage
+    // blocked (private mode, disabled cookies) `localStorage` throws, which
+    // used to abort this script before the toggles were wired. Blocked
+    // storage = no stored choice: the OS preference applies, and the
+    // toggle still works for the page.
+    function readStored() {
+        try {
+            return window.localStorage.getItem(STORAGE_KEY);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function writeStored(theme) {
+        try {
+            window.localStorage.setItem(STORAGE_KEY, theme);
+        } catch (_) {
+            // Blocked storage: the choice lasts for this page only.
+        }
+    }
+
     function getPreferredTheme() {
-        var stored = localStorage.getItem(STORAGE_KEY);
+        var stored = readStored();
         if (stored) {
             return stored;
         }
@@ -20,15 +41,9 @@
         } else {
             document.documentElement.classList.remove("dark");
         }
-        // Update theme toggle button aria-label (no-op on bare.html where the
-        // button doesn't exist — early-return keeps the file CSP-safe).
-        var btn = document.getElementById("theme-toggle");
-        if (btn) {
-            btn.setAttribute(
-                "aria-label",
-                theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
-            );
-        }
+        // Story 14-1 (AC9) — the toggles keep their server-rendered,
+        // localized name (`nav.theme_toggle`); the hard-coded English
+        // aria-label this function used to set is gone.
     }
 
     function toggleTheme() {
@@ -36,7 +51,7 @@
             ? "dark"
             : "light";
         var next = current === "dark" ? "light" : "dark";
-        localStorage.setItem(STORAGE_KEY, next);
+        writeStored(next);
 
         // Smooth transition via class toggle (CSP-safe — no inline style).
         // Class lives in browse.css; honour prefers-reduced-motion.
@@ -50,25 +65,32 @@
         applyTheme(next);
     }
 
-    // Apply theme immediately to prevent flash
+    // Apply theme immediately to prevent flash. Story 14-1 review — the
+    // `dark:` utilities follow this class (input.css `@custom-variant
+    // dark`), so with nothing stored the OS preference is applied here.
     applyTheme(getPreferredTheme());
 
     // Listen for system theme changes
     window
         .matchMedia("(prefers-color-scheme: dark)")
         .addEventListener("change", function (e) {
-            if (!localStorage.getItem(STORAGE_KEY)) {
+            if (!readStored()) {
                 applyTheme(e.matches ? "dark" : "light");
             }
         });
 
-    // Wire #theme-toggle button (idempotent). Bare.html (login/logout) has
-    // no nav, so the button is absent — wireToggle is a no-op there.
+    // Wire every `[data-theme-toggle]` button (idempotent). Story 14-1 —
+    // two exist: the sidebar's `#theme-toggle` (≥ lg) and the small-screen
+    // bar's `#theme-toggle-bar`. Bare.html (login/logout) has no nav, so
+    // none is present — wireToggle is a no-op there.
     function wireToggle() {
-        var btn = document.getElementById("theme-toggle");
-        if (!btn || btn.dataset.wired === "true") return;
-        btn.dataset.wired = "true";
-        btn.addEventListener("click", toggleTheme);
+        var buttons = document.querySelectorAll("[data-theme-toggle]");
+        for (var i = 0; i < buttons.length; i++) {
+            var btn = buttons[i];
+            if (btn.dataset.wired === "true") continue;
+            btn.dataset.wired = "true";
+            btn.addEventListener("click", toggleTheme);
+        }
     }
 
     if (document.readyState === "loading") {

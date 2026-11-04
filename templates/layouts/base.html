@@ -27,10 +27,24 @@
     <meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/theme.js"></script>
+    {# Story 14-1 (#547, AC5) — applies the remembered sidebar state
+       (`sidebar-collapsed` on <html>) before first paint, like theme.js:
+       a classic blocking script in <head>, external (CSP). #}
+    <script src="/static/js/sidebar.js"></script>
     {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 min-h-full{% endblock %}" data-page="{{ base.current_page }}" data-user-role="{{ base.role }}"{% if base.role != "anonymous" %} data-session-timeout="{{ base.session_timeout_secs }}"{% endif %}>
     <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:px-4 focus:py-2 focus:rounded focus:shadow">{{ base.skip_label }}</a>
+    {# Story 14-1 (#547, AC6) — from `lg` the page is a row: the sticky,
+       full-height sidebar, then a column holding the content (which takes
+       the remaining width, `min-w-0` so wide tables scroll inside it
+       instead of widening the page) and the footer. Below `lg` the row is
+       a plain block: the sidebar is display:none and the sticky
+       small-screen bar (`components/nav_bar.html`, `lg:hidden`) sits on
+       top of the content as before. #}
+    <div class="lg:flex">
+    {% include "components/sidebar.html" %}
+    <div class="lg:flex-1 lg:min-w-0">
     {% include "components/nav_bar.html" %}
     {# Story 11-4 (#496) — scroll-margin-top = the sticky bar height (h-12
        below `md`, md:h-14 from `md`) on <main> and everything inside it, so
@@ -40,13 +54,22 @@
        the stuck bar, and Chromium then scrolls the page up by the padding
        every time one of them takes focus (Escape returning focus to the
        hamburger, Shift+Tab into the nav) — D-11-4-8.
+       Story 14-1 (AC6) — from `lg` there is no bar above the content (the
+       sidebar sits beside it), so the margin is 0 there (`lg:` variants
+       sort after `md:` ones and win). The D-11-4-8 reasoning is unchanged:
+       still no root scroll-padding.
        Side effects, both pinned by templates_audit: the `**:` rule beats any
        scroll-m*/scroll-p* utility on an element inside <main> (keep none);
        scroll-margin applies to every scroll container, so inner vertical
        scrollers reset it with `**:scroll-mt-0!`. #}
-    <main id="main-content" class="scroll-mt-12 md:scroll-mt-14 **:scroll-mt-12 md:**:scroll-mt-14">
+    <main id="main-content" class="scroll-mt-12 md:scroll-mt-14 lg:scroll-mt-0 **:scroll-mt-12 md:**:scroll-mt-14 lg:**:scroll-mt-0">
         {% block content %}{% endblock %}
     </main>
+    <footer class="text-center text-xs text-stone-600 dark:text-stone-400 py-3">
+        <a href="#" data-shortcuts-help-link class="hover:text-stone-900 dark:hover:text-stone-100 underline-offset-2 hover:underline">{{ base.shortcuts_cheat_sheet.footer_link }}</a>
+    </footer>
+    </div>
+    </div>
     {# Story 8-4: stable mount point for admin modals (delete-confirm, loanable warning).
        Decoupled from the panel so modal lifecycle is independent of the panel re-render. #}
     <div id="admin-modal-slot"></div>
@@ -112,9 +135,6 @@
             </div>
         </div>
     </dialog>
-    <footer class="text-center text-xs text-stone-600 dark:text-stone-400 py-3">
-        <a href="#" data-shortcuts-help-link class="hover:text-stone-900 dark:hover:text-stone-100 underline-offset-2 hover:underline">{{ base.shortcuts_cheat_sheet.footer_link }}</a>
-    </footer>
     <script src="/static/js/scan-field.js"></script>
     <script src="/static/js/search.js"></script>
     <script src="/static/js/browse-mode.js"></script>

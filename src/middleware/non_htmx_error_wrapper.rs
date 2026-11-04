@@ -50,6 +50,11 @@ fn body_is_html_fragment(body_str: &str) -> bool {
     !(lower.starts_with("<!doctype html") || lower.starts_with("<html"))
 }
 
+/// Story 14-1 review — `dark:` follows the `dark` class `theme.js` sets on
+/// `<html>` (the stored choice, else the OS preference), so the shell
+/// loads it (external, CSP-clean) or it would always render light. Its
+/// classes must exist in a template: Tailwind does not scan Rust strings
+/// (`dark:bg-stone-900`, not the never-compiled `dark:bg-stone-950`).
 fn wrap_in_minimal_shell(status: StatusCode, fragment: &str) -> String {
     format!(
         r#"<!DOCTYPE html>
@@ -59,8 +64,9 @@ fn wrap_in_minimal_shell(status: StatusCode, fragment: &str) -> String {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Error {code}</title>
 <link rel="stylesheet" href="/static/css/output.css">
+<script src="/static/js/theme.js"></script>
 </head>
-<body class="bg-stone-50 dark:bg-stone-950 min-h-screen flex items-center justify-center p-4">
+<body class="bg-stone-50 dark:bg-stone-900 min-h-screen flex items-center justify-center p-4">
 <div id="feedback-list" class="max-w-2xl w-full space-y-3">
 {fragment}
 </div>
@@ -169,6 +175,37 @@ mod tests {
             s.contains(r#"<div class="feedback-entry">Not found</div>"#),
             "original fragment must survive inside the shell"
         );
+        // Story 14-1 review — the shell follows the chosen theme.
+        assert!(s.contains(r#"<script src="/static/js/theme.js"></script>"#));
+    }
+
+    /// Story 14-1 review — every class of the shell is compiled: Tailwind
+    /// only scans templates/ and static/js, so each one must appear there.
+    #[test]
+    fn shell_classes_exist_in_templates() {
+        let shell = wrap_in_minimal_shell(StatusCode::NOT_FOUND, "");
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/templates");
+        let mut corpus = String::new();
+        let mut stack = vec![std::path::PathBuf::from(root)];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "html") {
+                    corpus.push_str(&std::fs::read_to_string(path).unwrap());
+                }
+            }
+        }
+        for attr in shell.split("class=\"").skip(1) {
+            for class in attr[..attr.find('"').unwrap()].split_whitespace() {
+                assert!(
+                    corpus.split(|c: char| c.is_whitespace() || c == '"')
+                        .any(|t| t == class),
+                    "`{class}` is not used in any template, so it is not compiled"
+                );
+            }
+        }
     }
 
     #[tokio::test]

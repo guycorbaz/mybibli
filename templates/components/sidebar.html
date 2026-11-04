@@ -1,0 +1,92 @@
+{# Story 14-1 (#547, UX-DR38) — the navigation sidebar on wide screens
+   (≥ `lg`, 1024 px), as in the approved mock-up
+   `_bmad-output/planning-artifacts/ux-sidebar-mockup.html`: logo on top,
+   the entries (`components/nav_entries.html`, single source), and at the
+   foot the language select, the theme toggle, Log out / Log in and the
+   collapse toggle — everything the top bar carried on its right.
+
+   Expanded 224 px (`w-56`), collapsed 64 px (`sb-collapsed:w-16`): the
+   state is a class on `<html>` (`sidebar-collapsed`), read from
+   localStorage and applied before first paint by `static/js/sidebar.js`
+   in `<head>`; CSS does the rest (no inline script or style, CSP). Starts
+   expanded.
+
+   Layout: a flex item of the `lg:flex` row in `layouts/base.html`,
+   `sticky top-0 h-screen`, so it stays in view while the page scrolls and
+   the content uses the remaining width; the entries scroll on their own
+   when the viewport is shorter than the list. `z-40`, like the sticky
+   small-screen bar (story 11-4): above in-content popovers (≤ z-30) so the
+   collapsed tooltips paint over the content, below every `fixed` overlay
+   (z-50 or the top layer — templates_audit::fixed_surfaces_stack_above_sticky_nav).
+   `print:hidden`: a printed page carries no navigation.
+
+   The `<nav>` keeps the accessible name of the old bar ("Main
+   navigation"); below `lg` it is `display: none` and the small-screen bar
+   of `components/nav_bar.html` (the same name) takes over, so exactly one
+   is exposed at any width. #}
+{%- import "components/nav_macros.html" as nav -%}
+<nav aria-label="Main navigation" id="sidebar" class="hidden lg:flex flex-col sticky top-0 self-start h-screen shrink-0 w-56 sb-collapsed:w-16 z-40 bg-white dark:bg-stone-800 border-r border-stone-200 dark:border-stone-700 motion-safe:transition-[width] motion-safe:duration-150 print:hidden">
+    <a href="/" class="flex items-center gap-2 h-14 px-4 shrink-0 border-b border-stone-200 dark:border-stone-700 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500" aria-label="mybibli — home">
+        <img src="/logo/svg/mybibli-icon.svg" alt="" aria-hidden="true" class="w-8 h-8 shrink-0">
+        <span class="font-bold text-indigo-600 dark:text-indigo-400 text-lg sb-collapsed:hidden">mybibli</span>
+    </a>
+
+    {# The entries scroll on their own (tall admin list, short viewport).
+       Outside <main>, so exempt from the inner-scroller scroll-margin
+       reset (templates_audit::inner_vertical_scrollers_reset_the_bar_scroll_margin). #}
+    <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2">
+        {% include "components/nav_entries.html" %}
+    </div>
+
+    <div class="shrink-0 border-t border-stone-200 dark:border-stone-700 p-2 flex flex-col gap-0.5">
+        {# CR #275 / #276 (v1.7.0) — the language <select>; submission is
+           wired by `static/js/mybibli.js` via `data-auto-submit` (delegated
+           `change` listener, CSP-clean); without JS the noscript button
+           submits. Story 11-4 — this is the one named language form
+           exposed at ≥ `lg` (the small-screen bar's is display:none there),
+           so axe `landmark-unique` holds. Collapsed: icon and visible
+           label hidden, the select stays usable (compact). #}
+        <form action="/language" method="post" class="flex items-center gap-3 px-2.5 py-1.5 text-sm text-stone-600 dark:text-stone-400 sb-collapsed:justify-center sb-collapsed:px-0" aria-label="{{ base.lang_toggle_aria }}">
+            <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
+            <input type="hidden" name="next" value="{{ base.current_url }}">
+            <span class="inline-flex sb-collapsed:hidden">{% call nav::icon("lang") %}{% endcall %}</span>
+            <span aria-hidden="true" class="sb-collapsed:hidden">{{ base.nav_language_label }}</span>
+            {% call nav::lang_select("lang-select", base.lang, base.lang_toggle_aria, "ml-auto sb-collapsed:ml-0 px-1 py-0.5") %}{% endcall %}
+        </form>
+
+        {# `static/js/theme.js` wires every `[data-theme-toggle]`. Story 14-1
+           (AC9) — the name is the localized `nav.theme_toggle`, visible
+           when expanded (it was a hard-coded English aria-label). #}
+        {% call nav::theme_toggle("theme-toggle", base.nav_theme_toggle, true) %}{% endcall %}
+
+        {% if base.role == "anonymous" %}
+        <a href="/login" class="{% call nav::item_class() %}{% endcall %} {% call nav::idle_class() %}{% endcall %}">
+            {% call nav::icon("login") %}{% endcall %}
+            <span class="sb-collapsed:sr-only">{{ base.nav_login }}</span>
+            {% call nav::tooltip(base.nav_login) %}{% endcall %}
+        </a>
+        {% else %}
+        {# Story 8-2 — logout is a POST form carrying the CSRF token. #}
+        <form method="POST" action="/logout">
+            <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
+            <button type="submit" class="{% call nav::item_class() %}{% endcall %} {% call nav::idle_class() %}{% endcall %}">
+                {% call nav::icon("logout") %}{% endcall %}
+                <span class="sb-collapsed:sr-only">{{ base.nav_logout }}</span>
+                {% call nav::tooltip(base.nav_logout) %}{% endcall %}
+            </button>
+        </form>
+        {% endif %}
+
+        {# The collapse toggle. `aria-expanded` carries the state (synced
+           from the `<html>` class by sidebar.js on load and on every
+           toggle). Story 14-1 review — ONE fixed accessible name,
+           "Collapse menu" (the visible label when expanded, sr-only when
+           collapsed), so the name never flips under a screen reader; the
+           collapsed tooltip ("Expand menu") is a visual hint only. #}
+        <button type="button" data-sidebar-toggle aria-controls="sidebar" aria-expanded="true" class="{% call nav::item_class() %}{% endcall %} {% call nav::idle_class() %}{% endcall %}">
+            <span class="inline-flex sb-collapsed:hidden">{% call nav::icon("collapse") %}{% endcall %}</span><span class="hidden sb-collapsed:inline-flex">{% call nav::icon("expand") %}{% endcall %}</span>
+            <span class="sb-collapsed:sr-only">{{ base.nav_collapse }}</span>
+            {% call nav::tooltip(base.nav_expand) %}{% endcall %}
+        </button>
+    </div>
+</nav>

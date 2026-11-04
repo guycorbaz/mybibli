@@ -178,7 +178,7 @@ test.describe("Epic 11 smoke — an agent proposes, a librarian decides", () => 
       await expect(page.locator("#filter-tag-pending-proposals")).toBeVisible();
 
       // The nav entry leads to the list, which holds this proposal.
-      await page.locator(`${NAV} > div a[href="/proposals"]`).click();
+      await page.locator(`${NAV} a[href="/proposals"]`).click();
       await expect(page).toHaveURL(/\/proposals$/);
       await page.locator(`a[href="/proposals/${proposalId}"]`).click();
       await expect(page).toHaveURL(new RegExp(`/proposals/${proposalId}$`));

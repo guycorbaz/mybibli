@@ -175,6 +175,12 @@ nav:
   # Story 11-21 (FR143) — nav entry + pending-count badge (accessible name).
   proposals: "Propositions"
   proposals_pending_aria: "Propositions, %{count} en attente"
+  # Story 14-1 (#547, UX-DR38) — sidebar: Home entry, collapse toggle
+  # names, language row label.
+  home: "Accueil"
+  collapse_menu: "Réduire le menu"
+  expand_menu: "Déployer le menu"
+  language_label: "Langue"
 title:
   # #202 — provenance des métadonnées affichée sur /title/:id.
   # Le nom du fournisseur n'est PAS traduit (NFR41) : c'est un nom

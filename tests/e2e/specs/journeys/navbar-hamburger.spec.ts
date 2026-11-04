@@ -2,9 +2,9 @@
  * Story 9-17 — NavBar hamburger menu + scanner auto-close E2E.
  *
  * Covers AC11 — 5 scenarios:
- *   1. Hamburger visible on tablet, hidden on desktop (switch at `xl`
- *      since story 11-21);
- *      reverse on resize.
+ *   1. Hamburger visible on tablet, hidden on desktop (switch at `lg`:
+ *      `xl` since story 11-21, back to `lg` with the sidebar of story
+ *      14-1); reverse on resize.
  *   2. Open / link-click / Escape / outside-click — each path closes the
  *      panel and restores aria-expanded=false on the trigger.
  *   3. Focus trap — Tab from last focusable wraps to first; Shift+Tab
@@ -30,14 +30,10 @@ test.describe("Story 9-17 — NavBar hamburger menu", () => {
     await page.goto("/login");
 
     const trigger = page.locator("#mobile-menu-toggle");
-    // CR #443 — the strip switches at `lg`, not `md`: with the Labels entry
-    // an admin carries eight links, which overflowed a 768 px viewport.
-    // Story 11-21 (D-11-21-1) moved it on to `xl` (1280 px) for the
-    // Proposals entry. This locator names the utility class, so it moves
-    // with it.
-    const desktopNav = page
-      .locator("nav[aria-label='Main navigation'] > div.hidden.xl\\:flex")
-      .first();
+    // CR #443 — the strip switched at `lg`, not `md`; story 11-21
+    // (D-11-21-1) moved it on to `xl` for the Proposals entry. Story 14-1
+    // (#547) replaced the strip with the sidebar, shown from `lg`.
+    const desktopNav = page.locator("#sidebar");
 
     await expect(trigger).toBeVisible();
     await expect(desktopNav).toBeHidden();
@@ -114,12 +110,12 @@ test.describe("Story 9-17 — NavBar hamburger menu", () => {
     await page.locator("#mobile-menu-toggle").click();
     await expect(page.locator("#mobile-nav")).not.toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
 
-    // The first focusable inside the panel is `a[href='/catalog']`.
-    // After open(), nav.js focuses it. Verify.
+    // The first focusable inside the panel is the Home entry (story 14-1:
+    // `a[href='/']`, before `/catalog`). After open(), nav.js focuses it.
     const firstHref = await page.evaluate(
       () => (document.activeElement as HTMLAnchorElement | null)?.getAttribute("href"),
     );
-    expect(firstHref).toBe("/catalog");
+    expect(firstHref).toBe("/");
 
     // Walk Tab forward to reach the last focusable inside the panel.
     // The panel contains: catalog, locations, series links, then the
@@ -143,7 +139,7 @@ test.describe("Story 9-17 — NavBar hamburger menu", () => {
     const wrappedFirst = await page.evaluate(
       () => (document.activeElement as HTMLAnchorElement | null)?.getAttribute("href"),
     );
-    expect(wrappedFirst).toBe("/catalog");
+    expect(wrappedFirst).toBe("/");
 
     // Shift+Tab from first wraps to last.
     await page.keyboard.press("Shift+Tab");

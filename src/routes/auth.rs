@@ -257,8 +257,8 @@ pub struct LanguageForm {
 /// - Same-locale no-op: if the current request already resolved to the
 ///   requested lang, skip the cookie/DB write (AC 9).
 ///
-/// CSRF: protected by the global `csrf_middleware` (story 8-2); the form
-/// in `templates/components/nav_bar.html` carries the hidden
+/// CSRF: protected by the global `csrf_middleware` (story 8-2); the forms
+/// in `templates/components/sidebar.html` and `nav_bar.html` carry the hidden
 /// `_csrf_token` input bound to the session's synchronizer token.
 pub async fn change_language(
     State(state): State<AppState>,

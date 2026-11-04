@@ -174,6 +174,12 @@ nav:
   # Story 11-21 (FR143) — nav entry + pending-count badge (accessible name).
   proposals: "Vorschläge"
   proposals_pending_aria: "Vorschläge, %{count} ausstehend"
+  # Story 14-1 (#547, UX-DR38) — sidebar: Home entry, collapse toggle
+  # names, language row label.
+  home: "Startseite"
+  collapse_menu: "Menü einklappen"
+  expand_menu: "Menü ausklappen"
+  language_label: "Sprache"
 title:
   # #202 — Metadaten-Herkunft auf /title/:id. Der Anbietername wird NICHT
   # übersetzt (NFR41) — er ist ein Eigenname. Nur das Label wird übersetzt.
