@@ -6,28 +6,63 @@ fois une fois la bibliothèque opérationnelle : cataloguer un nouveau
 volume, chercher dans la collection, déplacer un volume, le prêter,
 le récupérer, et auditer ce qui est sur les étagères.
 
-\section{La barre de navigation}\label{sec:navbar}
+\section{La barre latérale}\label{sec:navbar}
 
-La barre de navigation\index{barre de navigation} reste en haut de la
-page quand vous faites défiler. Dans une fenêtre d'au moins
-1280\,px de large, elle affiche toutes ses entrées sur une ligne ;
-en dessous, les entrées passent dans un menu qu'ouvre le bouton
-\emph{hamburger} (trois traits horizontaux) à droite de la barre, qui
-contient aussi le bouton \emph{Déconnexion} --- et, sur un téléphone,
-le lien \emph{Connexion}. Les Bibliothécaires et les Admins y
-trouvent une entrée \textbf{Propositions}, avec un badge qui compte
-les propositions en attente de décision (chapitre~\ref{ch:agents}).
+Dans une fenêtre d'au moins 1024\,px de large, la navigation occupe
+une \emph{barre latérale}\index{barre latérale} à gauche de la page ;
+elle reste en place quand la page défile. Ses entrées sont réunies en
+groupes séparés par un filet : \textbf{Accueil} ; puis
+\textbf{Catalogue}, \textbf{Emplacements} et \textbf{Séries} ; puis,
+pour les Bibliothécaires et les Admins, \textbf{Emprunteurs},
+\textbf{Prêts}, \textbf{Wish list}, \textbf{Étiquettes} et
+\textbf{Propositions} ; enfin, pour les seuls Admins, \textbf{Admin}.
+La page où vous vous trouvez est en gras, marquée d'un trait de
+couleur sur sa gauche. L'entrée \textbf{Propositions} porte un badge
+qui compte les propositions en attente de décision (\texttt{99+}
+au-delà de 99 ; chapitre~\ref{ch:agents}).
+
+Le pied de la barre réunit le choix de la langue, le bouton de thème
+et \textbf{Déconnexion} (ou \textbf{Connexion} pour un visiteur
+anonyme). En dessous, le bouton \textbf{Réduire le menu} ramène la
+barre à une colonne d'icônes, ce qui laisse plus de place à la page ;
+le nom de chaque entrée apparaît alors dans une infobulle quand la
+souris survole l'icône ou que la touche Tab l'atteint, et le badge des
+propositions devient une pastille posée sur l'icône. Le même bouton
+redéploie la barre. Le navigateur retient ce choix : la page suivante,
+comme la visite suivante, s'ouvre dans le même état. Le choix est
+propre au navigateur et non au compte --- un autre ordinateur garde le
+sien.
+
+\paragraph{Sur un téléphone ou dans une fenêtre étroite.} En dessous
+de 1024\,px, la barre latérale disparaît ; une fine barre reste en
+haut de la page, avec le bouton de \textbf{menu} (trois traits
+horizontaux) et le logo mybibli. Le bouton de menu ouvre la même
+navigation dans un tiroir qui glisse depuis la gauche par-dessus la
+page assombrie : mêmes entrées, même badge, et au pied le choix de la
+langue, le bouton de thème et Déconnexion (ou Connexion) ; le tiroir
+n'est jamais réduit. On le referme avec Échap, d'un appui sur la page
+assombrie, avec le bouton de fermeture en haut du tiroir, ou en
+suivant l'un de ses liens. Tant qu'il est ouvert, la page derrière lui
+ne défile pas et ne reçoit pas le clavier, et une lecture de la
+douchette est ignorée au lieu d'aboutir dans le champ de scan.
+
+\paragraph{Thème clair ou sombre.} Le bouton de thème fait passer
+toute l'interface du clair au sombre et inversement. Le navigateur
+retient ce choix ; tant que vous n'en avez fait aucun, mybibli suit
+le réglage du système de l'appareil. L'impression est toujours
+claire, quel que soit le thème à l'écran.
 
 \section{La page d'accueil}\label{sec:home}
 
 \begin{figure}[ht]
   \centering
-  \includegraphics[width=0.95\textwidth]{01-home-desktop.png}
-  \caption{La page d'accueil sur une installation réelle~:
-    champ de recherche, puces de filtres par genre, compteurs
-    «~À traiter~», totaux «~Aperçu de la collection~» et bandeau
-    d'ajouts récents avec les jaquettes récupérées via la chaîne
-    de fournisseurs de métadonnées.}
+  \includegraphics[width=0.95\textwidth]{01-home-desktop-fr.png}
+  \caption{La page d'accueil dans une fenêtre de 1280\,px, connecté
+    en Admin~: à gauche la barre latérale déployée (langue, thème et
+    Déconnexion à son pied, le bouton pour la réduire en dessous),
+    puis le champ de recherche, les puces de filtres par genre, les
+    compteurs «~À traiter~» et les totaux «~Aperçu de la
+    collection~».}
   \label{fig:home}
 \end{figure}
 
@@ -597,8 +632,8 @@ volume de la manière habituelle (\autoref{sec:move-volume}).
 
 La \emph{wish list}\index{wish list} est une liste séparée des
 livres que vous aimeriez acheter, distincte du catalogue possédé.
-Elle vit sous \texttt{/wishlist}\index{wishlist@/wishlist} (voir
-la barre de navigation) et est disponible pour les Bibliothécaires
+Elle vit sous \texttt{/wishlist}\index{wishlist@/wishlist} (entrée
+\textbf{Wish list} de la barre latérale) et est disponible pour les Bibliothécaires
 et les Admins. Un tome manquant d'une série s'y ajoute d'un clic
 depuis la page de la série (section~\ref{sec:expected-tomes}).
 
