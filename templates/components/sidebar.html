@@ -51,27 +51,13 @@
             <input type="hidden" name="next" value="{{ base.current_url }}">
             <span class="inline-flex sb-collapsed:hidden">{% call nav::icon("lang") %}{% endcall %}</span>
             <span aria-hidden="true" class="sb-collapsed:hidden">{{ base.nav_language_label }}</span>
-            <label for="lang-select" class="sr-only">{{ base.lang_toggle_aria }}</label>
-            <select id="lang-select" name="lang" data-auto-submit="true"
-                    class="ml-auto sb-collapsed:ml-0 text-sm bg-transparent text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-600 rounded px-1 py-0.5 focus-visible:outline-2 focus-visible:outline-indigo-500">
-                <option value="fr" lang="fr" {% if base.lang == "fr" %}selected{% endif %}>FR</option>
-                <option value="en" lang="en" {% if base.lang == "en" %}selected{% endif %}>EN</option>
-                <option value="de" lang="de" {% if base.lang == "de" %}selected{% endif %}>DE</option>
-                <option value="it" lang="it" {% if base.lang == "it" %}selected{% endif %}>IT</option>
-            </select>
-            <noscript>
-                <button type="submit" class="text-xs text-indigo-600 dark:text-indigo-400 underline">OK</button>
-            </noscript>
+            {% call nav::lang_select("lang-select", base.lang, base.lang_toggle_aria, "ml-auto sb-collapsed:ml-0 px-1 py-0.5") %}{% endcall %}
         </form>
 
         {# `static/js/theme.js` wires every `[data-theme-toggle]`. Story 14-1
            (AC9) — the name is the localized `nav.theme_toggle`, visible
            when expanded (it was a hard-coded English aria-label). #}
-        <button id="theme-toggle" data-theme-toggle type="button" class="{% call nav::item_class() %}{% endcall %} {% call nav::idle_class() %}{% endcall %}">
-            <span class="hidden dark:inline-flex">{% call nav::icon("sun") %}{% endcall %}</span><span class="inline-flex dark:hidden">{% call nav::icon("moon") %}{% endcall %}</span>
-            <span class="sb-collapsed:sr-only">{{ base.nav_theme_toggle }}</span>
-            {% call nav::tooltip(base.nav_theme_toggle) %}{% endcall %}
-        </button>
+        {% call nav::theme_toggle("theme-toggle", base.nav_theme_toggle, true) %}{% endcall %}
 
         {% if base.role == "anonymous" %}
         <a href="/login" class="{% call nav::item_class() %}{% endcall %} {% call nav::idle_class() %}{% endcall %}">
@@ -91,14 +77,15 @@
         </form>
         {% endif %}
 
-        {# The collapse toggle. `aria-expanded` is synced from the `<html>`
-           class by sidebar.js on load and on every toggle; the name is
-           CSS-driven (one label shown per state, the other display:none),
-           so it is right from the first paint. #}
+        {# The collapse toggle. `aria-expanded` carries the state (synced
+           from the `<html>` class by sidebar.js on load and on every
+           toggle). Story 14-1 review — ONE fixed accessible name,
+           "Collapse menu" (the visible label when expanded, sr-only when
+           collapsed), so the name never flips under a screen reader; the
+           collapsed tooltip ("Expand menu") is a visual hint only. #}
         <button type="button" data-sidebar-toggle aria-controls="sidebar" aria-expanded="true" class="{% call nav::item_class() %}{% endcall %} {% call nav::idle_class() %}{% endcall %}">
             <span class="inline-flex sb-collapsed:hidden">{% call nav::icon("collapse") %}{% endcall %}</span><span class="hidden sb-collapsed:inline-flex">{% call nav::icon("expand") %}{% endcall %}</span>
-            <span class="sb-collapsed:hidden">{{ base.nav_collapse }}</span>
-            <span class="hidden sb-collapsed:inline sb-collapsed:sr-only">{{ base.nav_expand }}</span>
+            <span class="sb-collapsed:sr-only">{{ base.nav_collapse }}</span>
             {% call nav::tooltip(base.nav_expand) %}{% endcall %}
         </button>
     </div>

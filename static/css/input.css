@@ -11,6 +11,16 @@
  */
 @source "../js";
 @source not "../js/htmx.min.js";
+@source not "../js/vendor";
+
+/*
+ * Story 14-1 review — `dark:` follows the `dark` class that
+ * static/js/theme.js puts on <html> before first paint (the stored choice,
+ * else the OS preference), so the theme toggle switches every utility.
+ * Without this, Tailwind's default `prefers-color-scheme` media variant
+ * ignored the toggle (only browse.css read the class).
+ */
+@custom-variant dark (&:where(.dark, .dark *));
 
 /*
  * Story 14-1 (#547, UX-DR38) — `sb-collapsed:` applies from `lg` (1024 px)
@@ -121,10 +131,8 @@
     color: var(--color-stone-600) !important;
     opacity: 1 !important;
 }
-@media (prefers-color-scheme: dark) {
-    ::placeholder {
-        color: var(--color-stone-400) !important;
-    }
+.dark ::placeholder {
+    color: var(--color-stone-400) !important;
 }
 
 /* Respect prefers-reduced-motion */

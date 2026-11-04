@@ -56,17 +56,10 @@
 .browse-grid .title-card-meta { display: none; }
 .browse-grid .title-card-volumes { display: none; }
 
-/* Dark mode overrides */
-@media (prefers-color-scheme: dark) {
-    .browse-list .title-card { border-color: #292524; }
-    .browse-list .title-card-link:hover { background: #1c1917; }
-    .browse-list .title-card-title, .browse-grid .title-card-title { color: #f5f5f4; }
-    .browse-list .title-card-meta { color: var(--color-stone-400, #a8a29e); }
-    .title-card-tome { color: var(--color-stone-400, #a8a29e); }
-    .browse-list .title-card-volumes { color: var(--color-stone-400, #a8a29e); }
-    .browse-grid .title-card-link { border-color: #44403c; }
-    .browse-grid .title-card-cover { background: #292524; }
-}
+/* Dark mode overrides — the `dark` class theme.js sets on <html> (OS
+   preference unless the user chose). Story 14-1 review: the former
+   `@media (prefers-color-scheme: dark)` twin of these rules is gone, it
+   kept the cards dark when the user picked the light theme. */
 .dark .browse-list .title-card { border-color: #292524; }
 .dark .browse-list .title-card-link:hover { background: #1c1917; }
 .dark .browse-list .title-card-title, .dark .browse-grid .title-card-title { color: #f5f5f4; }

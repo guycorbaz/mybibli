@@ -14,12 +14,13 @@
 //
 // The toggle (`[data-sidebar-toggle]`, components/sidebar.html):
 //   - flips the class and stores the new state;
-//   - keeps `aria-expanded` in sync (its name is CSS-driven);
-//   - AC8 — does not take focus on a mouse click (mousedown default
-//     prevented), so on /catalog the scan field keeps the focus and the
-//     next scan still lands in it; activated from the keyboard, focus
-//     stays on the toggle (it is already there). Nothing else moves
-//     focus, and no feedback entry is touched.
+//   - keeps `aria-expanded` in sync (its accessible name is fixed);
+//   - AC8 (story 14-1 review) — on a page with a scan field (/catalog)
+//     focus goes back to `#scan-field` after every toggle, mouse or
+//     keyboard, so the next scan lands in it (and a scanner's Enter can
+//     never re-toggle the sidebar); elsewhere focus stays on the toggle
+//     from the keyboard, and a mouse click does not take focus at all
+//     (mousedown default prevented). No feedback entry is touched.
 //
 // CSP-clean: no inline handlers, no eval, listeners via addEventListener.
 (function () {
@@ -28,6 +29,7 @@
     var STORAGE_KEY = "mybibli.sidebar";
     var COLLAPSED_CLASS = "sidebar-collapsed";
     var TOGGLE_SELECTOR = "[data-sidebar-toggle]";
+    var SCAN_FIELD_ID = "scan-field";
 
     function readCollapsed() {
         try {
@@ -75,6 +77,10 @@
                 var next = !isCollapsed();
                 apply(next);
                 writeCollapsed(next);
+                var scan = document.getElementById(SCAN_FIELD_ID);
+                if (scan) {
+                    try { scan.focus(); } catch (_) { /* ignore */ }
+                }
             });
         }
     }

@@ -80,13 +80,26 @@
             osc.stop(ac.currentTime + 0.15);
         },
 
+        // Story 14-1 review — storage access guarded: blocked storage
+        // (private mode) threw here; it now means "audio off" and the
+        // toggle lasts for the page only.
         isEnabled: function () {
-            return localStorage.getItem("mybibli_audio_enabled") === "true";
+            if (this._enabled !== undefined) return this._enabled;
+            try {
+                return localStorage.getItem("mybibli_audio_enabled") === "true";
+            } catch (_) {
+                return false;
+            }
         },
 
         toggle: function () {
             var enabled = !this.isEnabled();
-            localStorage.setItem("mybibli_audio_enabled", String(enabled));
+            this._enabled = enabled;
+            try {
+                localStorage.setItem("mybibli_audio_enabled", String(enabled));
+            } catch (_) {
+                // Blocked storage: kept in memory for this page only.
+            }
             this.updateToggleUI(enabled);
             return enabled;
         },

@@ -81,12 +81,15 @@
             },
         };
 
-        // Respect the prefers-color-scheme: dark contrast for the center
-        // text. Stone-100 vs stone-900 mirrors the surrounding UI. The
-        // plugin reads `theme` via closure so we can mutate it on the
-        // OS-level dark-mode toggle without rebuilding Chart's options.
+        // Respect the dark contrast for the center text. Stone-100 vs
+        // stone-900 mirrors the surrounding UI. The plugin reads `theme`
+        // via closure so we can mutate it when the theme flips without
+        // rebuilding Chart's options. Story 14-1 review — the theme is the
+        // `dark` class theme.js sets on <html> (OS preference unless the
+        // user chose), the same signal the `dark:` utilities follow.
+        var root = document.documentElement;
         var theme = {
-            dark: window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches,
+            dark: root.classList.contains("dark"),
         };
 
         // (Plugin defined inline above; rebound here so it closes over
@@ -158,20 +161,17 @@
             plugins: [centerTextPlugin],
         });
 
-        // Re-render when the OS color scheme flips at runtime so the
-        // center text + slice borders track the surrounding UI.
-        if (window.matchMedia) {
-            var mq = window.matchMedia("(prefers-color-scheme: dark)");
-            var listener = function (e) {
-                theme.dark = e.matches;
-                chart.data.datasets[0].borderColor = e.matches ? "#1c1917" : "#ffffff";
+        // Re-render when the theme flips at runtime (theme toggle, or the
+        // OS scheme while nothing is stored) so the center text + slice
+        // borders track the surrounding UI.
+        if (window.MutationObserver) {
+            new MutationObserver(function () {
+                var dark = root.classList.contains("dark");
+                if (dark === theme.dark) return;
+                theme.dark = dark;
+                chart.data.datasets[0].borderColor = dark ? "#1c1917" : "#ffffff";
                 chart.update();
-            };
-            if (mq.addEventListener) {
-                mq.addEventListener("change", listener);
-            } else if (mq.addListener) {
-                mq.addListener(listener);
-            }
+            }).observe(root, { attributes: true, attributeFilter: ["class"] });
         }
     }
 

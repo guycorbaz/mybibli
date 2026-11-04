@@ -44,8 +44,6 @@ async fn file_metadata(agent: &Agent, title_id: u64, subtitle: &str) -> u64 {
         .expect("proposal_id")
 }
 
-/// The sidebar entry's opening tag (the first `/proposals` link: the
-/// sidebar comes before the small-screen panel — story 14-1).
 /// Story 14-1 — the texts of the nav badges (sidebar + panel).
 fn badge_texts(html: &str) -> Vec<&str> {
     html.match_indices("<span data-proposals-badge")
@@ -57,6 +55,8 @@ fn badge_texts(html: &str) -> Vec<&str> {
         .collect()
 }
 
+/// The sidebar entry's opening tag (the first `/proposals` link: the
+/// sidebar comes before the small-screen panel — story 14-1).
 fn entry_tag(html: &str) -> &str {
     let start = html
         .find("<a href=\"/proposals\"")

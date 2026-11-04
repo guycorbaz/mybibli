@@ -4,8 +4,18 @@
   var KEY = "mybibli_browse_mode";
   var DEFAULT = "list";
 
+  // Story 14-1 review — storage access guarded: blocked storage (private
+  // mode) threw here; it now means the default mode, and a choice lasts
+  // for the page only.
+  var pageMode = null;
+
   function getMode() {
-    return localStorage.getItem(KEY) || DEFAULT;
+    if (pageMode) return pageMode;
+    try {
+      return localStorage.getItem(KEY) || DEFAULT;
+    } catch (_) {
+      return DEFAULT;
+    }
   }
 
   function applyMode(mode) {
@@ -62,7 +72,12 @@
   }
 
   window.mybibliSetBrowseMode = function (mode) {
-    localStorage.setItem(KEY, mode);
+    pageMode = mode;
+    try {
+      localStorage.setItem(KEY, mode);
+    } catch (_) {
+      // Blocked storage: kept for this page only.
+    }
     applyMode(mode);
   };
 

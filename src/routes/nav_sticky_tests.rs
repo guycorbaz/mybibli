@@ -341,8 +341,24 @@ mod tests {
                 toggle.contains("aria-expanded=\"true\""),
                 "starts expanded: {toggle}"
             );
-            assert!(side.contains(">Collapse menu</span>"));
-            assert!(side.contains(">Expand menu</span>"));
+            // Story 14-1 review — one fixed accessible name; "Expand menu"
+            // only in the aria-hidden collapsed tooltip.
+            let at = side.find("data-sidebar-toggle").unwrap();
+            let button = element(
+                &side[side[..at].rfind("<button").unwrap()..],
+                "<button",
+                "button",
+            );
+            assert!(
+                button.contains("<span class=\"sb-collapsed:sr-only\">Collapse menu</span>"),
+                "{button}"
+            );
+            assert_eq!(button.matches("Expand menu").count(), 1, "{button}");
+            let tip = opening_tag(
+                &button[button.find("Expand menu").unwrap() - 400..],
+                "<span aria-hidden",
+            );
+            assert!(tip.contains("data-nav-tooltip"), "{tip}");
         }
     }
 
@@ -626,6 +642,38 @@ mod tests {
         assert!(
             html.contains("<label for=\"lang-select-mobile\" class=\"sr-only\">"),
             "the mobile select must keep its label"
+        );
+    }
+
+    /// Story 14-1 review (DRY) — the language options and the theme toggle
+    /// markup live once, in `nav_macros.html`.
+    #[test]
+    fn language_select_and_theme_toggle_come_from_the_macros() {
+        for file in ["sidebar.html", "nav_bar.html"] {
+            let src = std::fs::read_to_string(format!(
+                "{}/templates/components/{file}",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap();
+            assert!(
+                !src.contains("<option"),
+                "{file} hand-copies the language options"
+            );
+            assert!(
+                !src.contains("data-theme-toggle type="),
+                "{file} hand-copies the theme toggle"
+            );
+        }
+        let html = render("librarian");
+        assert_eq!(
+            html.matches("<option value=\"fr\"").count(),
+            3,
+            "sidebar + bar + panel"
+        );
+        assert_eq!(
+            html.matches("data-theme-toggle").count(),
+            2,
+            "sidebar + bar"
         );
     }
 

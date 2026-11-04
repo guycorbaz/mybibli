@@ -11,8 +11,9 @@
  *   - no label overflows at 1024 / 1280 / 1440 px in fr / en / de / it
  *     with an admin's full set (worst-case `99+` badge forced);
  *   - axe in both states, light and dark;
- *   - /catalog: toggling never takes the scan field's focus, the next
- *     scan lands in it, feedback entries stay.
+ *   - /catalog: after a toggle (mouse or keyboard) the focus is back in
+ *     the scan field, the next scan lands in it, feedback entries stay;
+ *   - the theme toggle really switches the `dark:` utilities (review).
  *
  * The state lives in localStorage (per browser): every test starts from
  * a fresh context, so from the expanded default.
@@ -108,7 +109,8 @@ test.describe("Story 14-1 — the sidebar on wide screens", () => {
     );
 
     await collapse(page);
-    await expect(toggle).toHaveAccessibleName(EXPAND_NAME);
+    // Review — one fixed accessible name; aria-expanded carries the state.
+    await expect(toggle).toHaveAccessibleName(COLLAPSE_NAME);
     // Icons only, names kept.
     const series = page.locator(`${SIDEBAR} a[href="/series"]`);
     await expect(series).toHaveAccessibleName(/^(Series|Séries|Serien|Serie)$/);
@@ -151,7 +153,7 @@ test.describe("Story 14-1 — the sidebar on wide screens", () => {
     await expectWidth(page, EXPANDED_PX);
   });
 
-  test("blocked storage means expanded, and the toggle still works", async ({ page }) => {
+  test("blocked storage means expanded, and both toggles still work", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.addInitScript(() => {
@@ -165,9 +167,15 @@ test.describe("Story 14-1 — the sidebar on wide screens", () => {
     await page.goto("/series");
     await expectWidth(page, EXPANDED_PX);
     await collapse(page);
+    // Review regression — theme.js used to throw on blocked storage before
+    // wiring its toggle.
+    const dark = () => page.evaluate(() => document.documentElement.classList.contains("dark"));
+    const before = await dark();
+    await page.locator("#theme-toggle").click();
+    expect(await dark()).toBe(!before);
     await page.reload();
     await expectWidth(page, EXPANDED_PX);
-    expect(errors.filter((m) => /sidebar/i.test(m))).toEqual([]);
+    expect(errors).toEqual([]);
   });
 
   test("collapsed: a tooltip on hover and on keyboard focus, none when expanded", async ({
@@ -200,7 +208,7 @@ test.describe("Story 14-1 — the sidebar on wide screens", () => {
     await expect(tipOf("/catalog")).toBeHidden();
     await expect(tipOf("/locations")).toBeVisible();
 
-    // Foot controls too: the collapse toggle names the next action.
+    // Foot controls too: the collapse toggle's tooltip names the next action.
     await page.locator(TOGGLE).focus();
     await page.keyboard.press("Shift+Tab");
     await page.keyboard.press("Tab");
@@ -318,6 +326,8 @@ test.describe("Story 14-1 — the sidebar on wide screens", () => {
     await loginAs(page, "librarian");
     await page.goto("/catalog");
     const scan = page.locator("#scan-field");
+    // AC8 (review) — after any toggle the scan page gives the focus back
+    // to the scan field, mouse or keyboard.
     await simulateScan(page, "#scan-field", specIsbn("SD", 1));
     // The first answer is a skeleton, replaced in place once the metadata
     // arrive: count both.
@@ -343,6 +353,43 @@ test.describe("Story 14-1 — the sidebar on wide screens", () => {
     await page.locator(TOGGLE).click();
     await expectWidth(page, EXPANDED_PX);
     await expect(scan).toBeFocused();
+
+    // From the keyboard too: Enter on the toggle, focus back in the field,
+    // and the Enter does not reach it as a scan.
+    const afterScans = await feedback.count();
+    await page.locator(TOGGLE).focus();
+    await page.keyboard.press("Enter");
+    await expectWidth(page, COLLAPSED_PX);
+    await expect(scan).toBeFocused();
+    await expect(feedback).toHaveCount(afterScans);
+  });
+
+  test("the theme toggle switches the page to dark and back, remembered across a reload", async ({
+    page,
+  }) => {
+    // Review regression — `dark:` utilities followed only the OS scheme,
+    // so the toggle changed nothing on most of the page.
+    await page.emulateMedia({ colorScheme: "light" });
+    await loginAs(page, "librarian");
+    await page.goto("/series");
+    const bg = () =>
+      page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    const sidebarBg = () =>
+      page.locator(SIDEBAR).evaluate((el) => getComputedStyle(el).backgroundColor);
+    const lightBody = await bg();
+    const lightSidebar = await sidebarBg();
+    await page.locator("#theme-toggle").click();
+    await expect(page.locator("html")).toHaveClass(/(^|\s)dark(\s|$)/);
+    await expect.poll(bg).not.toBe(lightBody);
+    await expect.poll(sidebarBg).not.toBe(lightSidebar);
+    const darkBody = await bg();
+    await page.reload();
+    await expect.poll(bg).toBe(darkBody);
+    // And back to light, still under a light OS preference.
+    await page.locator("#theme-toggle").click();
+    await expect.poll(bg).toBe(lightBody);
+    await page.reload();
+    await expect.poll(bg).toBe(lightBody);
   });
 
   test("the Proposals badge shows in both states, a pill on the icon when collapsed", async ({

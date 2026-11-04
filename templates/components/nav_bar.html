@@ -16,6 +16,7 @@
    story 14-1 moves it back to `lg` (UX-DR38 supersedes the `xl` stopgap):
    the bar carries no link strip any more — the sidebar holds the entries
    from `lg`, the panel below. #}
+{%- import "components/nav_macros.html" as nav -%}
 <header class="sticky top-0 z-40 print:static lg:hidden">
 <nav aria-label="Main navigation" class="bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 h-12 md:h-14 flex items-center px-4 relative">
     <a href="/" class="flex items-center gap-2 mr-4" aria-label="mybibli — home">
@@ -36,22 +37,9 @@
         <form action="/language" method="post" class="flex items-center gap-1" aria-label="{{ base.lang_toggle_aria }}">
             <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
             <input type="hidden" name="next" value="{{ base.current_url }}">
-            <label for="lang-select-bar" class="sr-only">{{ base.lang_toggle_aria }}</label>
-            <select id="lang-select-bar" name="lang" data-auto-submit="true"
-                    class="text-sm bg-transparent text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-600 rounded px-2 py-1 focus-visible:outline-2 focus-visible:outline-indigo-500">
-                <option value="fr" lang="fr" {% if base.lang == "fr" %}selected{% endif %}>FR</option>
-                <option value="en" lang="en" {% if base.lang == "en" %}selected{% endif %}>EN</option>
-                <option value="de" lang="de" {% if base.lang == "de" %}selected{% endif %}>DE</option>
-                <option value="it" lang="it" {% if base.lang == "it" %}selected{% endif %}>IT</option>
-            </select>
-            <noscript>
-                <button type="submit" class="text-xs text-indigo-600 dark:text-indigo-400 underline">OK</button>
-            </noscript>
+            {% call nav::lang_select("lang-select-bar", base.lang, base.lang_toggle_aria, "px-2 py-1") %}{% endcall %}
         </form>
-        <button id="theme-toggle-bar" data-theme-toggle type="button" aria-label="{{ base.nav_theme_toggle }}" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 p-2">
-            <svg class="w-5 h-5 hidden dark:block" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/></svg>
-            <svg class="w-5 h-5 block dark:hidden" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
-        </button>
+        {% call nav::theme_toggle("theme-toggle-bar", base.nav_theme_toggle, false) %}{% endcall %}
         {% if base.role == "anonymous" %}
         {# Story 11-21 (#545, D-11-21-4) — the visitor's main action stays in
            the bar down to `sm`; on a phone ("Connexion" overflowed 360 px
@@ -89,17 +77,7 @@
     <form action="/language" method="post" class="mt-2 flex items-center gap-2 py-2">
         <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
         <input type="hidden" name="next" value="{{ base.current_url }}">
-        <label for="lang-select-mobile" class="sr-only">{{ base.lang_toggle_aria }}</label>
-        <select id="lang-select-mobile" name="lang" data-auto-submit="true"
-                class="text-sm bg-transparent text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-600 rounded px-2 py-1 focus-visible:outline-2 focus-visible:outline-indigo-500">
-            <option value="fr" lang="fr" {% if base.lang == "fr" %}selected{% endif %}>FR</option>
-            <option value="en" lang="en" {% if base.lang == "en" %}selected{% endif %}>EN</option>
-            <option value="de" lang="de" {% if base.lang == "de" %}selected{% endif %}>DE</option>
-            <option value="it" lang="it" {% if base.lang == "it" %}selected{% endif %}>IT</option>
-        </select>
-        <noscript>
-            <button type="submit" class="text-xs text-indigo-600 dark:text-indigo-400 underline">OK</button>
-        </noscript>
+        {% call nav::lang_select("lang-select-mobile", base.lang, base.lang_toggle_aria, "px-2 py-1") %}{% endcall %}
     </form>
     {# Issue #150 — login/logout in the panel: the bar has no logout (story
        11-21) and hides its login below `sm`. #}

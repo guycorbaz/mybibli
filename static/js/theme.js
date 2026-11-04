@@ -4,8 +4,29 @@
 
     var STORAGE_KEY = "mybibli-theme";
 
+    // Story 14-1 review — every storage access is guarded: with storage
+    // blocked (private mode, disabled cookies) `localStorage` throws, which
+    // used to abort this script before the toggles were wired. Blocked
+    // storage = no stored choice: the OS preference applies, and the
+    // toggle still works for the page.
+    function readStored() {
+        try {
+            return window.localStorage.getItem(STORAGE_KEY);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function writeStored(theme) {
+        try {
+            window.localStorage.setItem(STORAGE_KEY, theme);
+        } catch (_) {
+            // Blocked storage: the choice lasts for this page only.
+        }
+    }
+
     function getPreferredTheme() {
-        var stored = localStorage.getItem(STORAGE_KEY);
+        var stored = readStored();
         if (stored) {
             return stored;
         }
@@ -30,7 +51,7 @@
             ? "dark"
             : "light";
         var next = current === "dark" ? "light" : "dark";
-        localStorage.setItem(STORAGE_KEY, next);
+        writeStored(next);
 
         // Smooth transition via class toggle (CSP-safe — no inline style).
         // Class lives in browse.css; honour prefers-reduced-motion.
@@ -44,14 +65,16 @@
         applyTheme(next);
     }
 
-    // Apply theme immediately to prevent flash
+    // Apply theme immediately to prevent flash. Story 14-1 review — the
+    // `dark:` utilities follow this class (input.css `@custom-variant
+    // dark`), so with nothing stored the OS preference is applied here.
     applyTheme(getPreferredTheme());
 
     // Listen for system theme changes
     window
         .matchMedia("(prefers-color-scheme: dark)")
         .addEventListener("change", function (e) {
-            if (!localStorage.getItem(STORAGE_KEY)) {
+            if (!readStored()) {
                 applyTheme(e.matches ? "dark" : "light");
             }
         });

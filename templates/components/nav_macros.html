@@ -43,6 +43,45 @@ font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-1
 <span aria-hidden="true" data-nav-tooltip class="hidden fixed left-18 z-50 px-2 py-1 rounded text-xs font-medium whitespace-nowrap bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-900 shadow-md pointer-events-none sb-collapsed:group-hover:block sb-collapsed:group-focus-visible:block">{{ text }}</span>
 {%- endmacro -%}
 
+{# The language <select> (CR #275 / #276): its sr-only label, the four
+   options, auto-submitted by `static/js/mybibli.js` (`data-auto-submit`,
+   delegated `change` listener, CSP-clean) and a noscript submit button.
+   Shared by the sidebar, the small-screen bar and its panel (story 14-1
+   review, DRY); `id` keeps each copy's label binding unique, `class`
+   carries the surface's sizing. The enclosing <form> (CSRF + `next`
+   inputs, landmark name or not) stays with each surface. #}
+{%- macro lang_select(id, lang, label, class) -%}
+<label for="{{ id }}" class="sr-only">{{ label }}</label>
+<select id="{{ id }}" name="lang" data-auto-submit="true" class="{{ class }} text-sm bg-transparent text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-600 rounded focus-visible:outline-2 focus-visible:outline-indigo-500">
+    <option value="fr" lang="fr" {% if lang == "fr" %}selected{% endif %}>FR</option>
+    <option value="en" lang="en" {% if lang == "en" %}selected{% endif %}>EN</option>
+    <option value="de" lang="de" {% if lang == "de" %}selected{% endif %}>DE</option>
+    <option value="it" lang="it" {% if lang == "it" %}selected{% endif %}>IT</option>
+</select>
+<noscript>
+    <button type="submit" class="text-xs text-indigo-600 dark:text-indigo-400 underline">OK</button>
+</noscript>
+{%- endmacro -%}
+
+{# The theme toggle, wired by `static/js/theme.js` (`[data-theme-toggle]`).
+   Story 14-1 (AC9) — named by the localized `nav.theme_toggle`. `row`:
+   the sidebar's icon + label row (label hidden but kept as the name when
+   collapsed, with a tooltip); otherwise the small-screen bar's icon-only
+   button named by `aria-label`. The icon shows the theme you switch to. #}
+{%- macro theme_toggle(id, name, row) -%}
+{%- if row -%}
+<button id="{{ id }}" data-theme-toggle type="button" class="{% call item_class() %}{% endcall %} {% call idle_class() %}{% endcall %}">
+    <span class="hidden dark:inline-flex">{% call icon("sun") %}{% endcall %}</span><span class="inline-flex dark:hidden">{% call icon("moon") %}{% endcall %}</span>
+    <span class="sb-collapsed:sr-only">{{ name }}</span>
+    {% call tooltip(name) %}{% endcall %}
+</button>
+{%- else -%}
+<button id="{{ id }}" data-theme-toggle type="button" aria-label="{{ name }}" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 p-2">
+    <span class="hidden dark:inline-flex">{% call icon("sun") %}{% endcall %}</span><span class="inline-flex dark:hidden">{% call icon("moon") %}{% endcall %}</span>
+</button>
+{%- endif -%}
+{%- endmacro -%}
+
 {# Heroicons v2 outline (MIT, https://heroicons.com), self-hosted as
    inline SVG — no icon font, no CDN, CSP unchanged. Paths copied as-is
    from the approved mock-up
