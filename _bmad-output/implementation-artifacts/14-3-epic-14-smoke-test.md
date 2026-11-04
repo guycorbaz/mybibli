@@ -1,6 +1,6 @@
 # Story 14.3: Epic 14 smoke test (Foundation Rule #7)
 
-Status: review
+Status: done
 
 GitHub issue: #547. Covers: Foundation Rule #7. Epic 14; ships in v1.24.0.
 
@@ -36,3 +36,7 @@ so that the epic is proven done.
 
 - `tests/e2e/specs/journeys/epic14-smoke.spec.ts` (new)
 - `_bmad-output/implementation-artifacts/14-3-epic-14-smoke-test.md`
+
+### Review Findings
+
+Reviewed by the orchestrating session (test-only story): blank context checked, real `loginAs`, role/name selectors, cleanup in `finally` (key revoked → proposal stale). No finding.
