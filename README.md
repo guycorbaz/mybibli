@@ -19,6 +19,8 @@
 
 **Status:** in production since v1.1.1 (2026-05-14). 14 epics shipped, the latest replacing the top navigation bar with a collapsible sidebar on wide screens and a drawer on small ones, and making the theme toggle really switch light / dark. Current release: `v1.24.0`. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli). See [ROADMAP.md](ROADMAP.md) for what's coming next.
 
+**Try it, and tell us.** mybibli was shaped by one household's library — books, French comics, CDs, films — and improved by using it every day. If you catalog something it handles badly, that is exactly the feedback it needs: questions and ideas go to [Discussions](https://github.com/guycorbaz/mybibli/discussions), defects to a [bug report](https://github.com/guycorbaz/mybibli/issues/new?template=bug_report.yml), and the [contributing guide](CONTRIBUTING.md) lists other ways to help (translations, [good first issues](https://github.com/guycorbaz/mybibli/labels/good%20first%20issue)). It is a personal project: issues are answered as time allows.
+
 ## What it is
 
 `mybibli` is a self-hosted web app to catalog, locate, and loan your personal library. It is designed for a single household, running on your own hardware (typically a NAS or home server). No cloud sync, no telemetry — all data stays on your local network.
@@ -31,7 +33,7 @@ Built for collectors who want more than a spreadsheet:
 - **AI agents, under supervision.** A built-in MCP server at `/api/mcp` lets an AI agent (Claude Code, or any MCP client over streamable HTTP) with a *propose* API key read the catalog and **propose** new series and their missing tomes, missing metadata or covers — with the sources it used. It never writes the catalog: a librarian reviews each proposal on the Proposals page (side-by-side comparison, edit, accept or reject with a reason). LAN-only, Host/Origin-checked; see chapter 13 of the manual and [`docs/auth-threat-model.md`](docs/auth-threat-model.md).
 - **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow, with a 30-second **Undo** on the last shelving or batch-location action.
 - **Loan management.** Borrower CRUD, loan registration with automatic location restoration on return, overdue threshold (admin-configurable), per-borrower history.
-- **Multi-role auth.** Anonymous (read-only), Librarian (catalog + loans), Admin (everything). Session inactivity timeout with keep-alive toast. FR/EN language toggle with per-user preference.
+- **Multi-role auth.** Anonymous (read-only), Librarian (catalog + loans), Admin (everything). Session inactivity timeout with keep-alive toast. Interface in French, English, German and Italian, with a per-user preference.
 - **Hardened by construction.** Strict Content Security Policy (no `unsafe-inline`/`unsafe-eval`), CSRF synchronizer-token middleware on every state-changing request (with a server-rendered "session expired" feedback when the token drifts — see [`docs/auth-threat-model.md`](docs/auth-threat-model.md)), scanner-guard against burst-keyboard input leaking into modals.
 - **Admin panel.** Health dashboard (entity counts, MariaDB version, disk usage, provider reachability), user management with last-active-admin guard, editable reference data (genres, volume states, contributor roles, location node types), system settings (overdue threshold, provider API keys, default language), trash view + restore + permanent delete, configurable auto-purge after 30 days.
 - **First-launch setup wizard.** Fresh installs walk through Admin → Providers → Preferences → Done; the gate middleware redirects every route to `/setup` until completion. Idempotent — interruptions resume at the right step server-side.
@@ -232,7 +234,7 @@ cargo clippy -- -D warnings          # Lint (zero-warnings policy)
 ### Unit tests
 
 ```bash
-SQLX_OFFLINE=true cargo test --lib   # ~525 unit tests, ~5 s
+SQLX_OFFLINE=true cargo test --lib   # ~1,650 unit tests, a few seconds
 cargo test config::                  # Module-scoped
 cargo test <name> -- --nocapture     # Single test with output
 ```
