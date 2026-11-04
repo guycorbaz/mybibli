@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-11-04 (v1.23.0 — closing release of epic 13, cataloguing for real: scan double reads and existing labels (#574, #585), throttled lookups retried (#583), ISBN-10 stored as UPC converted (#584), plain-text descriptions (#578), every series in the selector and Recent additions table (#576, #577), full location paths (#582), date added for pages, search and the agent (#586), move a volume (#580), tome number (#579), owned title fills an expected tome (#588), the agent proposes a label (#581), key revocation deadlock (#554 item 1). Five additive migrations. Epic-13 retrospective → done; epic-13 → done.)
+# last_updated: 2026-11-04 (epic 14 planned — the sidebar (#547): 14-1 wide screens, 14-2 drawer, 14-3 epic smoke, 14-4 documentation; release v1.24.0 at epic close.)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -286,3 +286,16 @@ development_status:
   13-13-epic-13-documentation: done
   13-14-key-revocation-deadlock: done
   epic-13-retrospective: done
+
+  # ─── Epic 14: The sidebar ──────────────────────────────────────────
+  # Planned 2026-11-04 by the project lead on the interactive mock-up
+  # _bmad-output/planning-artifacts/ux-sidebar-mockup.html. #547. UX-DRs: UX-DR38, UX-DR39
+  # Release: v1.24.0 at epic close.
+  # Sequencing: 14-1 (wide screens) -> 14-2 (drawer) -> 14-3 (epic smoke, Rule #7) -> 14-4 -> retrospective -> release.
+  # Next: Epic 15 = agent price / value (#564); #602 time zone as a small story at the next planning.
+  epic-14: in-progress
+  14-1-sidebar-wide-screens: backlog
+  14-2-navigation-drawer-small-screens: backlog
+  14-3-epic-14-smoke-test: backlog
+  14-4-epic-14-documentation: backlog
+  epic-14-retrospective: optional

@@ -8,6 +8,7 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 
 ## Changelog
 
+- **2026-11-04** — Added **Epic 14: The sidebar** (#547), with new requirements UX-DR38–UX-DR39. Decided by the project lead on 2026-11-04 from the interactive mock-up `ux-sidebar-mockup.html`; ships as v1.24.0. Agent purchase price / value (#564) stays Epic 15; the instance time zone (#602) is a small story at the next planning.
 - **2026-11-03** — Added **Epic 13: Cataloguing for real** (#574, #576–#586, #588), with new requirements FR153–FR160 and UX-DR36–UX-DR37. Decided by the project lead on 2026-11-03, after the first mass entry session and the agent session that enriched the comics; ships as v1.23.0. The sidebar (#547) moves to Epic 14, agent purchase price / value (#564) to Epic 15.
 - **2026-10-30** — Added **Epic 12: Proposals, after a first real use** (#502, #542, #560, #561, #563), with new requirements FR148–FR152 (FR149 refines FR140, FR152 extends FR132) and UX-DR35. Decided by the project lead on 2026-10-30, after the first production agent session; ships as v1.22.0 together with the #558 fix already on `main`. The sidebar (#547) is planned as Epic 13; the base path (#492) comes later.
 - **2026-10-27** — Added **Epic 11: An AI assistant proposes, the librarian decides** (MCP server #493 + fixes #494–#497), with new requirements FR122–FR147, NFR42–NFR48, AR27–AR31, UX-DR31–UX-DR34. Decided in the party-mode session of 2026-10-27. Epic 10 retro action A5 ("no more Epic N+1") is deliberately reversed for this epic.
@@ -308,6 +309,8 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR35: Proposals list row: one obvious link into the proposal, the catalog link secondary and labelled; a proposed-cover thumbnail and the list of proposed fields; keyboard- and screen-reader-accessible, mobile card mode included
 - UX-DR36: Move a volume: a "Move to another title" action on the volume page opens a title search and a UX-DR8 confirmation modal naming both titles
 - UX-DR37: Anomaly mark: a visible badge with its reason on title and volume pages, a mark / clear action, and an anomalies list (titles and volumes, filterable by kind), mobile card mode included
+- UX-DR38: Navigation sidebar on wide screens (≥ `lg`, 1024 px): a full-height left bar, expanded (icon + label, 224 px) or collapsed (icons only, 64 px, a tooltip on hover and keyboard focus); entries grouped by thin separators (Home · Catalog, Locations, Series · Borrowers, Loans, Wish list, Labels, Proposals · Admin, per role); language, theme, logout and the collapse toggle at its foot; the Proposals badge stays a number in both states; the state is remembered per browser and starts expanded; replaces the top bar (supersedes the `xl` stopgap of UX-DR32)
+- UX-DR39: Navigation drawer below `lg`: a slim top bar with the menu button and the logo opens the same navigation as an off-canvas drawer from the left over a scrim, always expanded; Escape, the scrim and a close button dismiss it; focus moves into it and back to the menu button
 
 ### FR Coverage Map
 
@@ -402,8 +405,9 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR31, UX-DR32, UX-DR33, UX-DR34 → Epic 11
 - UX-DR35 → Epic 12
 - UX-DR36, UX-DR37 → Epic 13
+- UX-DR38, UX-DR39 → Epic 14
 
-**Coverage: 160/160 FRs, 48/48 NFRs, 31/31 ARs, 37/37 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03.)
+**Coverage: 160/160 FRs, 48/48 NFRs, 31/31 ARs, 39/39 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04.)
 
 ## Epic List
 
@@ -2896,3 +2900,97 @@ So that a revocation never answers "Server error" — and the CI suite stops fai
 **And** a lock-scope regression test (`a_revocation_does_not_lock_proposals_of_another_key`, two connections) proves one revocation does not wait on the other key's proposals
 **And** #554 item 1 is closed by this story (item 2 stays open)
 
+
+### Epic 14: The sidebar
+
+The top navigation bar no longer scales: an admin's full link set overflowed `lg` in French and German before the Proposals entry was added, the stopgap of story 11-21 moved the bar/menu switch to `xl` with about 16 px to spare in French, and the next entry will overflow again. The epic replaces the bar with a collapsible left sidebar on wide screens and a drawer on small ones, so label length per locale stops mattering and the wide tables (catalog, loans, proposals, admin) get their width back.
+
+**FRs:** none new (navigation shell)
+**NFRs:** none new (NFR3 CSP, NFR12 a11y unchanged)
+**UX-DRs:** UX-DR38, UX-DR39 (UX-DR32's `xl` stopgap superseded)
+**Issues:** #547
+
+**Release.** v1.24.0 at the close of the epic, after its retrospective.
+
+**Key decisions (project lead, 2026-11-04, on the interactive mock-up `_bmad-output/planning-artifacts/ux-sidebar-mockup.html`).**
+- Layout as in the mock-up: expanded 224 px / collapsed 64 px from `lg` (1024 px); drawer below `lg`, tablets included (no third, "always collapsed" behaviour).
+- The collapsed / expanded state is remembered **per browser** (`localStorage`, wrapped in try/catch; no migration) and **starts expanded**.
+- A **Home** entry heads the list (new locale key in the four files); the logo still links home.
+- Language, theme, logout and the collapse toggle sit at the foot of the sidebar; the Proposals badge stays a number in both states (pill on the icon when collapsed).
+- Icons: Heroicons v2 outline (MIT), self-hosted as inline SVG in an Askama include — no icon font, no CDN, CSP unchanged.
+
+**Sequencing.** 14.1 (wide screens) → 14.2 (drawer; removes the old panel) → 14.3 (epic smoke, Foundation Rule #7) → 14.4 → retrospective → release v1.24.0.
+
+**Stories:**
+
+#### Story 14.1: Sidebar on wide screens (UX-DR38)
+
+As a librarian working on a computer,
+I want the navigation in a left sidebar I can collapse,
+So that every entry fits whatever the language and the wide tables get their width back.
+
+**Covers:** UX-DR38
+
+**Acceptance Criteria:**
+
+**Given** any page at a width ≥ 1024 px, for each role (anonymous, librarian, admin)
+**Then** a full-height left sidebar shows the entries of that role in the mock-up's groups and order, each with its icon and label, the current page marked with `aria-current="page"` (never by colour alone); the Proposals entry keeps its badge and its `aria-label` with the exact count; anonymous visitors see Log in at the foot instead of Log out
+**And** the foot carries the language select, the theme toggle, Log out and a collapse toggle (`aria-expanded`, `aria-controls`); collapsed, the bar is 64 px wide, entries show icons only, each keeps its accessible name, and a tooltip appears on hover and on keyboard focus; the badge becomes a pill on the icon
+**And** the state is remembered in `localStorage` (try/catch: a blocked storage just means "expanded"), starts expanded, and is applied before first paint by an external script loaded in `<head>` (CSP: no inline script, no inline style) — no flash of the wrong width
+**And** the sidebar stays in view while the page scrolls (its own scroll if taller than the viewport); modals, toasts and the connection-lost overlay stay above it (`templates_audit::fixed_surfaces_stack_above_sticky_nav` updated); print hides it
+**And** the top bar is gone at ≥ 1024 px; below 1024 px the current bar and panel keep working (their switch moves from `xl` to `lg`) until Story 14.2 replaces them
+**And** on `/catalog`, toggling the sidebar never moves focus out of the scan field's flow nor drops a feedback entry; the scanner-guard invariant is unchanged
+**And** one navigation template is the single source of the entries (no second hand-copied list); a new Home entry uses a new `nav.home` key in the four locales (`locale_parity`)
+**And** no entry overflows at 1024, 1280 and 1440 px in fr, en, de and it with an admin's full link set (Playwright measurement); axe passes in both states, light and dark
+**And** unit tests (template rendering per role, audit tests) and E2E (collapse / expand, persistence across a reload, tooltip on focus, badge in both states, every entry reachable by keyboard) cover it; the specs that target the old bar at ≥ `lg` are adapted
+
+#### Story 14.2: Navigation drawer on small screens (UX-DR39)
+
+As a librarian on a phone or a tablet,
+I want the same navigation in a drawer,
+So that the screen stays for the content and every entry is one tap away.
+
+**Covers:** UX-DR39
+
+**Acceptance Criteria:**
+
+**Given** any page at a width < 1024 px
+**Then** a slim top bar shows the menu button (`aria-expanded`, `aria-controls`) and the logo; the menu button opens the sidebar's navigation as a drawer from the left over a scrim, always expanded (no collapse toggle), with a close button
+**And** Escape, a tap on the scrim, the close button or following a link close it; focus moves into the drawer on open and back to the menu button on close; the page behind is inert while it is open
+**And** while the drawer is open, a scanner burst does not reach `#scan-field` (scanner-guard treats it as a modal surface) and the drawer stacks below modals and toasts
+**And** the old mobile panel, its duplicate language form and the `xl` stopgap are removed; the language select, theme toggle and Log in / Log out live in the drawer's foot
+**And** no horizontal overflow at 360, 390, 768 and 1023 px in the four locales for every role; `responsive-layouts.spec.ts` and `navbar-hamburger.spec.ts` are rewritten around the new layout; axe passes with the drawer open and closed
+**And** unit tests and E2E (open / close by each means, focus return, scanner burst while open, navigation from the drawer) cover it
+
+#### Story 14.3: Epic 14 smoke test (Foundation Rule #7)
+
+As the project,
+I want one end-to-end journey from a blank browser through the new navigation,
+So that the epic is proven done.
+
+**Covers:** Foundation Rule #7
+
+**Acceptance Criteria:**
+
+**Given** a blank browser with no injected cookie
+**When** the test runs
+**Then** it chains, at 1280 px: login through `loginAs` → navigate from the sidebar to Catalog, Loans and Proposals (badge visible) → collapse the sidebar → reload: still collapsed → navigate by an icon → expand; then at 390 px: open the drawer → navigate → the drawer is closed on the new page → log out from the drawer
+
+**And** no `waitForTimeout`; green under `CI=true npx playwright test --workers=2` (Foundation Rule #13)
+**And** if this test fails, the epic is not done
+
+#### Story 14.4: Documentation
+
+As an operator,
+I want the manual to describe the new navigation,
+So that it matches what users see.
+
+**Covers:** UX-DR38, UX-DR39 (documentation)
+
+**Acceptance Criteria:**
+
+**Given** the user manual (English and French)
+**Then** the chapters that describe the menu bar describe the sidebar (expanded, collapsed, remembered per browser) and the drawer; screenshots that show the old bar are replaced
+**And** the PDFs are rebuilt
+**And** `CLAUDE.md` describes the navigation shell (single navigation template, state script, stacking rule) and drops the `xl` stopgap notes
+**And** release documentation (Foundation Rule #19, v1.24.0) is done at release time, not in this story

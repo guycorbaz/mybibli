@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mybibli — maquette de la barre latérale (CR #547, epic 14)</title>
+<style>
+  /* Mock-up only (CR #547). Colours follow the app's Tailwind palette:
+     stone neutrals, indigo primary, amber badge. Icons: Heroicons v2
+     outline (MIT), to be self-hosted inline in the real templates. */
+  :root { --indigo:#4f46e5; --indigo-d:#818cf8; font-family: ui-sans-serif, system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#e7e5e4; color:#1c1917; }
+  .controls { position:sticky; top:0; z-index:100; background:#1c1917; color:#fafaf9; padding:10px 16px; display:flex; flex-wrap:wrap; gap:16px; align-items:center; font-size:14px; }
+  .controls fieldset { border:1px solid #57534e; border-radius:6px; padding:4px 8px; margin:0; display:flex; gap:4px; align-items:center; }
+  .controls legend { font-size:11px; color:#a8a29e; padding:0 4px; }
+  .controls button { background:#292524; color:#fafaf9; border:1px solid #57534e; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:13px; }
+  .controls button[aria-pressed="true"] { background:var(--indigo); border-color:var(--indigo); }
+  .controls h1 { font-size:15px; margin:0 12px 0 0; }
+  .stage { padding:20px; }
+  .caption { max-width:1100px; margin:0 auto 12px; font-size:14px; color:#44403c; }
+  .frame-wrap { margin:0 auto; overflow:hidden; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.25); background:#fff; }
+  .frame { transform-origin:top left; height:760px; position:relative; overflow:hidden; display:flex; }
+
+  /* ---------- App (inside the frame) ---------- */
+  .app { --bg:#fafaf9; --surface:#fff; --border:#e7e5e4; --text:#1c1917; --muted:#57534e; --hover:#f5f5f4; --primary:#4f46e5; --cur-bg:#eef2ff;
+         background:var(--bg); color:var(--text); font-size:15px; }
+  .app.dark { --bg:#1c1917; --surface:#292524; --border:#44403c; --text:#f5f5f4; --muted:#a8a29e; --hover:#3a3533; --primary:#818cf8; --cur-bg:#312e81; }
+  .sidebar { width:224px; flex:none; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; height:100%; transition:width .15s ease-out; }
+  .collapsed .sidebar { width:64px; }
+  .sb-head { height:56px; display:flex; align-items:center; gap:8px; padding:0 16px; border-bottom:1px solid var(--border); }
+  .logo { width:32px; height:32px; border-radius:8px; background:var(--primary); color:#fff; display:grid; place-items:center; font-weight:700; flex:none; }
+  .brand { font-weight:700; color:var(--primary); font-size:18px; }
+  .sb-nav { flex:1; overflow-y:auto; padding:8px; }
+  .sep { height:1px; background:var(--border); margin:8px 4px; }
+  .item { position:relative; display:flex; align-items:center; gap:12px; padding:8px 10px; border-radius:6px; color:var(--muted); text-decoration:none; font-size:14px; white-space:nowrap; cursor:pointer; border:none; background:none; width:100%; text-align:left; font-family:inherit; }
+  .item:hover, .item:focus-visible { background:var(--hover); color:var(--text); outline:none; }
+  .item:focus-visible { box-shadow:0 0 0 2px var(--primary); }
+  .item[aria-current="page"] { background:var(--cur-bg); color:var(--primary); font-weight:600; }
+  .item[aria-current="page"]::before { content:""; position:absolute; left:-8px; top:6px; bottom:6px; width:3px; border-radius:2px; background:var(--primary); }
+  .item svg { width:20px; height:20px; flex:none; }
+  .badge { margin-left:auto; min-width:20px; height:20px; padding:0 6px; border-radius:999px; background:#fef3c7; color:#92400e; font-size:12px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums; }
+  .dark .badge { background:rgba(120,53,15,.4); color:#fde68a; }
+  .sb-foot { border-top:1px solid var(--border); padding:8px; display:flex; flex-direction:column; gap:2px; }
+  .lang { display:flex; align-items:center; gap:12px; padding:6px 10px; color:var(--muted); font-size:14px; }
+  .lang svg { width:20px; height:20px; flex:none; }
+  .lang select { margin-left:auto;  font-size:13px; background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:4px; padding:2px 4px; }
+  .user { font-size:12px; color:var(--muted); padding:4px 10px 6px; }
+  /* collapsed */
+  .collapsed .label, .collapsed .brand, .collapsed .user, .collapsed .lang .label { display:none; }
+  .collapsed .sb-head { padding:0 16px; }
+  .collapsed .item { justify-content:center; padding:10px 0; }
+  .collapsed .lang { justify-content:center; padding:6px 0; }
+  .collapsed .lang svg { display:none; }
+  .collapsed .badge { position:absolute; top:2px; right:4px; min-width:18px; height:18px; font-size:10px; padding:0 4px; margin:0; }
+  .tip { display:none; }
+  .collapsed .item:hover .tip, .collapsed .item:focus-visible .tip { display:block; position:absolute; left:56px; top:50%; transform:translateY(-50%); background:#1c1917; color:#fafaf9; font-size:12px; font-weight:500; padding:4px 8px; border-radius:4px; white-space:nowrap; z-index:20; pointer-events:none; }
+  /* main */
+  .main { flex:1; min-width:0; display:flex; flex-direction:column; height:100%; }
+  .topbar { display:none; height:48px; background:var(--surface); border-bottom:1px solid var(--border); align-items:center; gap:8px; padding:0 8px; }
+  .content { padding:24px 32px; overflow:auto; flex:1; }
+  .content h2 { margin:0 0 16px; font-size:22px; }
+  .scan { display:flex; gap:8px; margin-bottom:16px; }
+  .scan input { flex:1; padding:10px 12px; border:2px solid var(--primary); border-radius:6px; font-size:15px; background:var(--surface); color:var(--text); }
+  .feedback { border-left:4px solid #16a34a; background:var(--surface); padding:8px 12px; border-radius:4px; font-size:14px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; background:var(--surface); border-radius:6px; overflow:hidden; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; font-size:13px; }
+  td.cover { width:36px; } .cv { width:28px; height:40px; border-radius:2px; background:linear-gradient(135deg,#c7d2fe,#fde68a); }
+  /* mobile */
+  .mobile .topbar { display:flex; }
+  .mobile .content { padding:16px; }
+  .mobile .sidebar { position:absolute; left:0; top:0; bottom:0; z-index:30; transform:translateX(-100%); transition:transform .2s ease-out; box-shadow:4px 0 16px rgba(0,0,0,.2); width:280px; }
+  .mobile.drawer-open .sidebar { transform:none; }
+  .scrim { display:none; }
+  .mobile.drawer-open .scrim { display:block; position:absolute; inset:0; background:rgba(0,0,0,.45); z-index:25; }
+  .mobile .collapse-btn { display:none; }
+  .iconbtn { background:none; border:none; color:var(--muted); padding:8px; border-radius:6px; cursor:pointer; display:flex; }
+  .iconbtn svg { width:24px; height:24px; }
+  .close-btn { display:none; margin-left:auto; }
+  .mobile .close-btn { display:flex; }
+  .notes { max-width:1100px; margin:20px auto; font-size:14px; line-height:1.5; color:#292524; background:#fafaf9; border-radius:8px; padding:12px 20px; }
+  .notes h3 { margin:8px 0 4px; font-size:15px; }
+</style>
+</head>
+<body>
+<div class="controls" role="toolbar" aria-label="Réglages de la maquette">
+  <h1>Barre latérale — maquette</h1>
+  <fieldset><legend>Langue</legend>
+    <button data-lang="fr" aria-pressed="true">FR</button><button data-lang="en">EN</button><button data-lang="de">DE</button><button data-lang="it">IT</button>
+  </fieldset>
+  <fieldset><legend>État</legend>
+    <button data-mode="expanded" aria-pressed="true">Bureau, déployée</button>
+    <button data-mode="collapsed">Bureau, repliée</button>
+    <button data-mode="mobile">Mobile, fermée</button>
+    <button data-mode="mobile-open">Mobile, tiroir ouvert</button>
+  </fieldset>
+  <fieldset><legend>Largeur bureau</legend>
+    <button data-width="1024">1024</button><button data-width="1280" aria-pressed="true">1280</button><button data-width="1440">1440</button>
+  </fieldset>
+  <fieldset><legend>Thème</legend>
+    <button data-theme="light" aria-pressed="true">Clair</button><button data-theme="dark">Sombre</button>
+  </fieldset>
+</div>
+
+<div class="stage">
+  <p class="caption" id="caption"></p>
+  <div class="frame-wrap" id="wrap">
+    <div class="frame app" id="app">
+      <div class="scrim" id="scrim"></div>
+      <aside class="sidebar" id="sidebar">
+        <div class="sb-head">
+          <span class="logo" aria-hidden="true">m</span><span class="brand">mybibli</span>
+          <button class="iconbtn close-btn" id="close-btn" type="button"><svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></button>
+        </div>
+        <nav class="sb-nav" id="nav" aria-label="Main navigation"></nav>
+        <div class="sb-foot" id="foot"></div>
+      </aside>
+      <div class="main">
+        <div class="topbar">
+          <button class="iconbtn" id="burger" type="button" aria-expanded="false"><svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg></button>
+          <span class="logo" aria-hidden="true">m</span><span class="brand">mybibli</span>
+        </div>
+        <div class="content">
+          <h2 id="page-title"></h2>
+          <div class="scan"><input id="scan" placeholder="Scanner un code (ISBN, V0001, L0001…)"></div>
+          <div class="feedback">✓ V1532 — « Bienvenue en adolescence » rangé dans Salon → Bibliothèque nord → Étagère 3</div>
+          <table>
+            <thead><tr><th></th><th>Titre</th><th>Auteur</th><th>Série</th><th>Emplacement</th><th>Ajouté le</th><th>Volumes</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h3>Ce que montre la maquette</h3>
+    <ul>
+      <li><b>Bureau (≥ 1024 px)</b> : barre à gauche sur toute la hauteur, déployée (224 px, icône + libellé) ou repliée (64 px, icônes seules, info-bulle au survol et au focus clavier). Le bouton du bas bascule entre les deux ; le choix est mémorisé dans le navigateur.</li>
+      <li><b>Mobile (&lt; 1024 px)</b> : une fine barre en haut avec le bouton menu ; le menu s'ouvre en tiroir par la gauche, toujours déployé, au-dessus d'un voile ; Échap, le voile ou la croix le ferment.</li>
+      <li><b>Groupes</b> : Accueil · consultation (Catalogue, Emplacements, Séries) · gestion (Emprunteurs, Prêts, Wish list, Étiquettes, Propositions) · Administration, séparés par un simple filet.</li>
+      <li><b>Bas de la barre</b> : langue, thème, déconnexion et le bouton replier/déployer — tout ce qui était à droite de la barre du haut.</li>
+      <li><b>Badge des propositions</b> : à droite du libellé quand la barre est déployée, en pastille sur l'icône quand elle est repliée ; toujours un nombre, jamais une couleur seule.</li>
+      <li>Le contenu des pages (champ de scan, tableaux) est fictif et reste en français ; seuls les libellés de la barre suivent la langue choisie.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+const I = {
+  home:'<path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/>',
+  catalog:'<path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/>',
+  locations:'<path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z"/>',
+  series:'<path stroke-linecap="round" stroke-linejoin="round" d="M6 6.878V6a2.25 2.25 0 0 1 2.25-2.25h7.5A2.25 2.25 0 0 1 18 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 0 0 4.5 9v.878m13.5-3A2.25 2.25 0 0 1 19.5 9v.878m0 0a2.246 2.246 0 0 0-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0 1 21 12v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6c0-.98.626-1.813 1.5-2.122"/>',
+  borrowers:'<path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/>',
+  loans:'<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/>',
+  wishlist:'<path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"/>',
+  labels:'<path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6Z"/>',
+  proposals:'<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 0 1 2.012 1.244l.256.512a2.25 2.25 0 0 0 2.013 1.244h3.218a2.25 2.25 0 0 0 2.013-1.244l.256-.512a2.25 2.25 0 0 1 2.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 0 0-2.15-1.588H6.911a2.25 2.25 0 0 0-2.15 1.588L2.35 13.177a2.25 2.25 0 0 0-.1.661Z"/>',
+  admin:'<path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>',
+  lang:'<path stroke-linecap="round" stroke-linejoin="round" d="m10.5 21 5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 0 1 6-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 0 1-3.827-5.802"/>',
+  moon:'<path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"/>',
+  sun:'<path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"/>',
+  logout:'<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9"/>',
+  collapse:'<path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15L5.25 12l7.5 7.5"/>',
+  expand:'<path stroke-linecap="round" stroke-linejoin="round" d="m5.25 4.5 7.5 7.5-7.5 7.5m6-15 7.5 7.5-7.5 7.5"/>'
+};
+const T = {
+  fr:{home:'Accueil',catalog:'Catalogue',locations:'Emplacements',series:'Séries',borrowers:'Emprunteurs',loans:'Prêts',wishlist:'Wish list',labels:'Étiquettes',proposals:'Propositions',admin:'Admin',logout:'Déconnexion',dark:'Thème sombre',light:'Thème clair',collapse:'Réduire le menu',expand:'Déployer le menu',close:'Fermer le menu',open:'Ouvrir le menu',lang:'Langue',user:'Connecté : guy (Admin)'},
+  en:{home:'Home',catalog:'Catalog',locations:'Locations',series:'Series',borrowers:'Borrowers',loans:'Loans',wishlist:'Wish list',labels:'Labels',proposals:'Proposals',admin:'Admin',logout:'Log out',dark:'Dark theme',light:'Light theme',collapse:'Collapse menu',expand:'Expand menu',close:'Close menu',open:'Open menu',lang:'Language',user:'Signed in: guy (Admin)'},
+  de:{home:'Startseite',catalog:'Katalog',locations:'Standorte',series:'Serien',borrowers:'Entleiher',loans:'Ausleihen',wishlist:'Wunschliste',labels:'Etiketten',proposals:'Vorschläge',admin:'Verwaltung',logout:'Abmelden',dark:'Dunkles Design',light:'Helles Design',collapse:'Menü einklappen',expand:'Menü ausklappen',close:'Menü schließen',open:'Menü öffnen',lang:'Sprache',user:'Angemeldet: guy (Admin)'},
+  it:{home:'Home',catalog:'Catalogo',locations:'Ubicazioni',series:'Serie',borrowers:'Lettori',loans:'Prestiti',wishlist:'Lista dei desideri',labels:'Etichette',proposals:'Proposte',admin:'Amministrazione',logout:'Esci',dark:'Tema scuro',light:'Tema chiaro',collapse:'Comprimi menu',expand:'Espandi menu',close:'Chiudi menu',open:'Apri menu',lang:'Lingua',user:'Connesso: guy (Admin)'}
+};
+const GROUPS = [['home'],['catalog','locations','series'],['borrowers','loans','wishlist','labels','proposals'],['admin']];
+const BADGE = '12';
+const st = { lang:'fr', mode:'expanded', width:1280, theme:'light', current:'catalog' };
+const svg = k => `<svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">${I[k]}</svg>`;
+
+function render() {
+  const t = T[st.lang], app = document.getElementById('app');
+  const mobile = st.mode.startsWith('mobile');
+  app.className = 'frame app' + (st.theme==='dark'?' dark':'') + (st.mode==='collapsed'?' collapsed':'') + (mobile?' mobile':'') + (st.mode==='mobile-open'?' drawer-open':'');
+  document.getElementById('nav').innerHTML = GROUPS.map(g => g.map(k => {
+    const cur = k===st.current ? ' aria-current="page"' : '';
+    const badge = k==='proposals' ? `<span class="badge" aria-hidden="true">${BADGE}</span>` : '';
+    const aria = k==='proposals' ? ` aria-label="${t.proposals}, ${BADGE}"` : '';
+    return `<a class="item" href="#" data-k="${k}"${cur}${aria}>${svg(k)}<span class="label">${t[k]}</span>${badge}<span class="tip" role="tooltip">${t[k]}${k==='proposals'?' ('+BADGE+')':''}</span></a>`;
+  }).join('')).join('<div class="sep" role="separator"></div>');
+  const themeKey = st.theme==='dark' ? 'light' : 'dark';
+  const colKey = st.mode==='collapsed' ? 'expand' : 'collapse';
+  document.getElementById('foot').innerHTML =
+    `<div class="user">${t.user}</div>` +
+    `<label class="lang">${svg('lang')}<span class="label">${t.lang}</span><select id="lang-sel" aria-label="${t.lang}">${['fr','en','de','it'].map(l=>`<option value="${l}"${l===st.lang?' selected':''}>${l.toUpperCase()}</option>`).join('')}</select></label>` +
+    `<button class="item" type="button" id="theme-btn">${svg(st.theme==='dark'?'sun':'moon')}<span class="label">${t[themeKey]}</span><span class="tip" role="tooltip">${t[themeKey]}</span></button>` +
+    `<button class="item" type="button">${svg('logout')}<span class="label">${t.logout}</span><span class="tip" role="tooltip">${t.logout}</span></button>` +
+    `<button class="item collapse-btn" type="button" id="col-btn" aria-expanded="${st.mode!=='collapsed'}" aria-controls="sidebar">${svg(colKey)}<span class="label">${t[colKey]}</span><span class="tip" role="tooltip">${t[colKey]}</span></button>`;
+  document.getElementById('close-btn').setAttribute('aria-label', t.close);
+  const burger = document.getElementById('burger');
+  burger.setAttribute('aria-label', t.open); burger.setAttribute('aria-expanded', st.mode==='mobile-open');
+  document.getElementById('page-title').textContent = t[st.current];
+  // frame size + scale
+  const w = mobile ? 390 : st.width;
+  const avail = Math.min(document.querySelector('.stage').clientWidth - 40, 1400);
+  const scale = Math.min(1, avail / w);
+  const frame = document.getElementById('app'), wrap = document.getElementById('wrap');
+  frame.style.width = w + 'px'; frame.style.transform = `scale(${scale})`;
+  wrap.style.width = (w*scale) + 'px'; wrap.style.height = (760*scale) + 'px';
+  const sbw = mobile ? 0 : (st.mode==='collapsed' ? 64 : 224);
+  document.getElementById('caption').textContent =
+    `Écran de ${w} px${scale<1?` (affiché à ${Math.round(scale*100)} %)`:''} — ` +
+    (mobile ? 'menu en tiroir, tout l\'écran reste au contenu' : `barre ${sbw} px, contenu ${w - sbw} px (aujourd'hui : barre du haut, contenu ${w} px moins 56 px en hauteur)`);
+  document.querySelectorAll('[data-lang]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.lang===st.lang));
+  document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.mode===st.mode));
+  document.querySelectorAll('[data-width]').forEach(b=>b.setAttribute('aria-pressed', +b.dataset.width===st.width));
+  document.querySelectorAll('[data-theme]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.theme===st.theme));
+}
+const ROWS = [
+  ['Bienvenue en adolescence','Zep','Titeuf · Tome 14','Salon → Bibliothèque nord → Étagère 3','03.11.2026','1'],
+  ['Le Lotus bleu','Hergé','Tintin · Tome 5','Salon → Bibliothèque nord → Étagère 1','02.11.2026','2'],
+  ['Astérix le Gaulois','Goscinny, Uderzo','Astérix · Tome 1','Bureau → Armoire → Rayon 2','01.11.2026','1'],
+  ['L\'Étranger','Albert Camus','—','Chambre → Étagère','31.10.2026','1'],
+  ['Les Cités obscures — Les Murailles de Samaris','Schuiten, Peeters','Les Cités obscures · Tome 1','Salon → Bibliothèque sud → Étagère 2','31.10.2026','1'],
+  ['Kind of Blue','Miles Davis','—','Salon → Meuble hi-fi','30.10.2026','1'],
+  ['Gaston — Gare aux gaffes','Franquin','Gaston · Tome 2','Salon → Bibliothèque nord → Étagère 4','30.10.2026','1']
+];
+document.getElementById('rows').innerHTML = ROWS.map(r=>`<tr><td class="cover"><div class="cv"></div></td>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('');
+document.querySelector('.controls').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.lang) st.lang = b.dataset.lang;
+  if (b.dataset.mode) st.mode = b.dataset.mode;
+  if (b.dataset.width) { st.width = +b.dataset.width; if (st.mode.startsWith('mobile')) st.mode='expanded'; }
+  if (b.dataset.theme) st.theme = b.dataset.theme;
+  render();
+});
+document.getElementById('app').addEventListener('click', e => {
+  const a = e.target.closest('a.item'); if (a) { e.preventDefault(); st.current = a.dataset.k; if (st.mode==='mobile-open') st.mode='mobile'; render(); return; }
+  if (e.target.closest('#col-btn')) { st.mode = st.mode==='collapsed' ? 'expanded' : 'collapsed'; render(); return; }
+  if (e.target.closest('#theme-btn')) { st.theme = st.theme==='dark' ? 'light' : 'dark'; render(); return; }
+  if (e.target.closest('#burger')) { st.mode = 'mobile-open'; render(); return; }
+  if (e.target.closest('#close-btn') || e.target.id==='scrim') { st.mode = 'mobile'; render(); }
+});
+document.getElementById('app').addEventListener('change', e => { if (e.target.id==='lang-sel') { st.lang = e.target.value; render(); } });
+document.addEventListener('keydown', e => { if (e.key==='Escape' && st.mode==='mobile-open') { st.mode='mobile'; render(); } });
+window.addEventListener('resize', render);
+render();
+</script>
+</body>
+</html>
