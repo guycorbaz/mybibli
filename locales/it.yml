@@ -402,6 +402,7 @@ error:
     body_control_character: "Le istruzioni non possono contenere caratteri di controllo oltre agli a capo e alle tabulazioni"
     name_taken: "Non è stato possibile salvare lo skill. Un altro skill si chiama già %{name}. Scegli un altro nome, oppure modifica quello skill."
     name_in_trash: "Non è stato possibile rinominare lo skill. Uno skill chiamato %{name} è nel cestino. Scegli un altro nome, oppure prima ripristina o elimina definitivamente lo skill nel cestino."
+    name_in_trash_on_create: "Non è stato possibile creare lo skill. Uno skill chiamato %{name} è nel cestino. Ripristinalo dal cestino per continuare a usarlo, oppure scegli un altro nome."
     stale: "Non è stato possibile salvare la modifica. Qualcuno ha modificato questo skill dopo che lo hai aperto. Ricarica la scheda Skill per vedere la versione più recente, poi rifai la modifica."
     gone: "Questo skill non è stato trovato. Nel frattempo è stato eliminato. Ricarica la scheda Skill; puoi ripristinare lo skill dal cestino."
   # Story 13-8 (#580) — spostare un esemplare su un altro titolo.
@@ -1114,7 +1115,6 @@ admin:
     delete_modal_confirm: "Sposta nel cestino"
     delete_modal_cancel: "Annulla"
     feedback_created: "Skill %{name} creato."
-    feedback_reactivated: "Lo skill %{name} era nel cestino: è tornato, con il testo che hai appena inserito."
     feedback_updated: "Skill %{name} salvato."
     feedback_activated: "Lo skill %{name} è attivo: l'agente può leggerlo."
     feedback_deactivated: "Lo skill %{name} è inattivo: l'agente non lo vede più."

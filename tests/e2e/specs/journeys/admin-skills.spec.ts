@@ -91,6 +91,19 @@ test.describe("Story 15-2 — MCP skills admin tab", () => {
     await expect(modal).toHaveCount(0, { timeout: 10000 });
     await expect(rowOf(page, name)).toHaveCount(0, { timeout: 10000 });
 
+    // Its name stays reserved while it sits in the Trash: a new skill with
+    // that name is refused, the trashed one is not overwritten (review M1).
+    await editor.locator("#admin-skills-name").fill(name);
+    await editor.locator("#admin-skills-description").fill("Should not replace it");
+    await editor.locator("#admin-skills-body").fill("replacement text");
+    await editor.locator("#admin-skills-submit").click();
+    await expect(page.locator(".feedback-entry").last()).toContainText(
+      /Trash|corbeille|Papierkorb|cestino/i,
+      { timeout: 10000 },
+    );
+    await expect(editor.locator("#admin-skills-name")).toHaveValue(name);
+    await expect(rowOf(page, name)).toHaveCount(0);
+
     // The Trash lists it as a skill; restore brings it back, still inactive.
     await page.goto("/admin?tab=trash", { waitUntil: "domcontentloaded" });
     await page.locator("#filter-entity-type").selectOption("mcp_skills");
@@ -107,6 +120,9 @@ test.describe("Story 15-2 — MCP skills admin tab", () => {
     await openSkillsTab(page);
     await expect(rowOf(page, name)).toBeVisible();
     await expect(rowOf(page, name).getByText(INACTIVE)).toBeVisible();
+    // Restored with its own text, not the refused replacement.
+    await rowOf(page, name).locator("summary").click();
+    await expect(rowOf(page, name).locator("pre")).toContainText("**Bold** stays Markdown.");
   });
 
   test("a malformed name is refused with a field hint", async ({ page }) => {

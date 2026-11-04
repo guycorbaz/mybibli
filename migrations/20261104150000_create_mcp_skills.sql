@@ -4,10 +4,10 @@
 -- row holds the current text plus the date and author of the last change.
 --
 -- Name reuse: `name` is UNIQUE across ALL rows, trashed ones included.
--- Creating a skill whose name belongs to a soft-deleted row reactivates
--- that row with the new text (same contract as the reference-data
--- taxonomies, `CreateOutcome::Reactivated`), so restoring a skill from
--- the Trash can never collide with a live one.
+-- Creating (or renaming to) a name held by a trashed skill is refused:
+-- the admin restores that skill from the Trash or picks another name. A
+-- trashed skill is never overwritten, and restoring it from the Trash can
+-- never collide with a live one.
 --
 -- `name` is a lowercase slug (`^[a-z0-9]+(-[a-z0-9]+)*$`, checked by
 -- `services::mcp_skills`). No charset / collation is pinned on purpose:

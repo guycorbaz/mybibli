@@ -1,6 +1,6 @@
 //! Story 15-2 (#614, FR162) — MCP skills: the model (CRUD, uniqueness
-//! among live rows, optimistic locking, soft delete + Trash restore, name
-//! reuse, the reads story 15-3 needs) and the Admin → Skills routes (role
+//! among live rows, optimistic locking, soft delete + Trash restore, a
+//! trashed name refused, the reads story 15-3 needs) and the Admin → Skills routes (role
 //! gating, escaping, the delete → Trash → restore round trip).
 //!
 //! Run locally:
@@ -14,7 +14,6 @@ use axum::http::StatusCode;
 use common::mcp::router;
 use common::web::{Browser, PW_HASH, body_string, get_anonymous, seed_admin};
 use mybibli::db::DbPool;
-use mybibli::models::CreateOutcome;
 use mybibli::models::mcp_skill::{McpSkillModel, SkillWriteError};
 use mybibli::services::mcp_skills::{ValidSkill, validate};
 use mybibli::services::trash::TrashService;
@@ -40,13 +39,9 @@ async fn version_of(pool: &DbPool, id: u64) -> i32 {
 }
 
 async fn create(pool: &DbPool, name: &str, body: &str, active: bool) -> u64 {
-    match McpSkillModel::create(pool, &skill(name, body, active), None)
+    McpSkillModel::create(pool, &skill(name, body, active), None)
         .await
         .unwrap_or_else(|e| panic!("create {name}: {e:?}"))
-    {
-        CreateOutcome::Created(id) => id,
-        other => panic!("expected Created, got {other:?}"),
-    }
 }
 
 // ─── Model ───────────────────────────────────────────────────────
@@ -55,13 +50,9 @@ async fn create(pool: &DbPool, name: &str, body: &str, active: bool) -> u64 {
 async fn create_list_and_find(pool: DbPool) {
     seed_admin(&pool, "skills_admin").await;
     let admin = user_id(&pool, "skills_admin").await;
-    let id = match McpSkillModel::create(&pool, &skill("zeta", "# Z", true), Some(admin))
+    let id = McpSkillModel::create(&pool, &skill("zeta", "# Z", true), Some(admin))
         .await
-        .unwrap()
-    {
-        CreateOutcome::Created(id) => id,
-        other => panic!("{other:?}"),
-    };
+        .unwrap();
     create(&pool, "alpha", "# A", false).await;
 
     let all = McpSkillModel::list_all(&pool).await.unwrap();
@@ -153,29 +144,30 @@ async fn soft_delete_goes_to_the_trash_and_restores(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn a_trashed_name_is_reused_by_reactivating_the_row(pool: DbPool) {
+async fn a_trashed_name_is_refused_and_the_trashed_skill_is_kept(pool: DbPool) {
     let id = create(&pool, "rules", "old text", true).await;
     McpSkillModel::soft_delete(&pool, id, 1).await.unwrap();
 
-    // Renaming another skill to the trashed name is refused, explicitly.
+    // Creating it again is refused: the trashed row is never overwritten.
+    let again = McpSkillModel::create(&pool, &skill("rules", "new text", false), None).await;
+    assert!(matches!(again, Err(SkillWriteError::NameInTrash)), "{again:?}");
+
+    // Renaming another skill onto the trashed name is refused the same way.
     let other = create(&pool, "other", "x", true).await;
     let rename = McpSkillModel::update(&pool, other, 1, &skill("rules", "x", true), None).await;
     assert!(matches!(rename, Err(SkillWriteError::NameInTrash)), "{rename:?}");
 
-    // Creating it again reactivates the trashed row with the new text.
-    let outcome = McpSkillModel::create(&pool, &skill("rules", "new text", false), None)
-        .await
-        .unwrap();
-    assert!(matches!(outcome, CreateOutcome::Reactivated(r) if r == id), "{outcome:?}");
+    // The trashed skill is intact and still restorable.
+    let (body, active, version): (String, bool, i32) =
+        sqlx::query_as("SELECT body, active, version FROM mcp_skills WHERE id = ?")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((body.as_str(), active, version), ("old text", true, 1));
+    TrashService::restore(&pool, "mcp_skills", id, version).await.unwrap();
     let s = McpSkillModel::find_by_id(&pool, id).await.unwrap().unwrap();
-    assert_eq!(s.body, "new text");
-    assert!(!s.active);
-    assert_eq!(s.version, 2);
-    // Nothing left in the Trash to collide with on a later restore.
-    let trash = mybibli::models::trash::TrashModel::trash_count(&pool, Some("mcp_skills"), None)
-        .await
-        .unwrap();
-    assert_eq!(trash, 0);
+    assert_eq!(s.body, "old text");
 }
 
 #[sqlx::test(migrations = "./migrations")]

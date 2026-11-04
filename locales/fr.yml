@@ -411,6 +411,7 @@ error:
     body_control_character: "Les consignes ne peuvent contenir aucun caractère de contrôle hormis les retours à la ligne et les tabulations"
     name_taken: "Nous n'avons pas pu enregistrer la compétence. Une autre compétence s'appelle déjà %{name}. Choisissez un autre nom, ou modifiez plutôt cette compétence."
     name_in_trash: "Nous n'avons pas pu renommer la compétence. Une compétence nommée %{name} se trouve dans la corbeille. Choisissez un autre nom, ou restaurez ou supprimez définitivement d'abord la compétence de la corbeille."
+    name_in_trash_on_create: "Nous n'avons pas pu créer la compétence. Une compétence nommée %{name} se trouve dans la corbeille. Restaurez-la depuis la corbeille pour continuer à l'utiliser, ou choisissez un autre nom."
     stale: "Nous n'avons pas pu enregistrer votre modification. Quelqu'un a modifié cette compétence après que vous l'avez ouverte. Rechargez l'onglet Compétences pour voir la dernière version, puis refaites votre modification."
     gone: "Nous n'avons pas trouvé cette compétence. Elle a été supprimée entre-temps. Rechargez l'onglet Compétences ; vous pouvez restaurer la compétence depuis la corbeille."
   # Story 13-8 (#580) — déplacer un volume vers un autre titre.
@@ -1139,7 +1140,6 @@ admin:
     delete_modal_confirm: "Mettre à la corbeille"
     delete_modal_cancel: "Annuler"
     feedback_created: "Compétence %{name} créée."
-    feedback_reactivated: "La compétence %{name} était dans la corbeille : elle est de retour, avec le texte que vous venez de saisir."
     feedback_updated: "Compétence %{name} enregistrée."
     feedback_activated: "La compétence %{name} est active : l'agent peut la lire."
     feedback_deactivated: "La compétence %{name} est inactive : l'agent ne la voit plus."

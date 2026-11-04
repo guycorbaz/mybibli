@@ -7,16 +7,15 @@
 //! MCP tool needs, both limited to live **and** active rows.
 //!
 //! Every write takes already-validated input (`services::mcp_skills`).
-//! Name reuse: `name` is UNIQUE across all rows; creating a skill whose
-//! name belongs to a trashed row reactivates that row with the new text
-//! (`CreateOutcome::Reactivated`), so a Trash restore never collides.
+//! Name reuse: `name` is UNIQUE across all rows, trashed ones included. A
+//! create or a rename onto a trashed name is refused (`NameInTrash`): the
+//! trashed skill is never overwritten, and a Trash restore never collides.
 
 use chrono::NaiveDateTime;
 use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::CreateOutcome;
 use crate::services::mcp_skills::ValidSkill;
 
 /// One skill as the admin list and editor show it.
@@ -49,8 +48,7 @@ pub struct ActiveSkill {
 pub enum SkillWriteError {
     /// Another live skill already has this name.
     NameTaken,
-    /// A skill in the Trash has this name (rename only — a create
-    /// reactivates it instead).
+    /// A skill in the Trash has this name (create or rename).
     NameInTrash,
     /// The row's version moved since the editor was opened.
     Stale,
@@ -164,13 +162,15 @@ impl McpSkillModel {
         .transpose()
     }
 
-    /// Insert a skill. A name held by a trashed row reactivates that row
-    /// with the new text; a name held by a live row is `NameTaken`.
+    /// Insert a skill and return its id. A name held by a live row is
+    /// `NameTaken`; a name held by a trashed row is `NameInTrash` — the
+    /// trashed skill is never overwritten: the admin restores it from the
+    /// Trash or picks another name (story 15-2 review M1).
     pub async fn create(
         pool: &DbPool,
         skill: &ValidSkill,
         user_id: Option<u64>,
-    ) -> Result<CreateOutcome, SkillWriteError> {
+    ) -> Result<u64, SkillWriteError> {
         let inserted = sqlx::query(
             "INSERT INTO mcp_skills (name, description, body, active, updated_by) \
              VALUES (?, ?, ?, ?, ?)",
@@ -183,39 +183,24 @@ impl McpSkillModel {
         .execute(pool)
         .await;
         match inserted {
-            Ok(res) => Ok(CreateOutcome::Created(res.last_insert_id())),
-            Err(err) if is_duplicate_key(&err) => {
-                let trashed: Option<(u64, i32)> = sqlx::query_as(
-                    "SELECT id, version FROM mcp_skills WHERE name = ? AND deleted_at IS NOT NULL",
-                )
-                .bind(&skill.name)
-                .fetch_optional(pool)
-                .await?;
-                let Some((id, version)) = trashed else {
-                    return Err(SkillWriteError::NameTaken);
-                };
-                let res = sqlx::query(
-                    "UPDATE mcp_skills SET deleted_at = NULL, description = ?, body = ?, \
-                     active = ?, updated_by = ?, version = version + 1 \
-                     WHERE id = ? AND version = ? AND deleted_at IS NOT NULL",
-                )
-                .bind(&skill.description)
-                .bind(&skill.body)
-                .bind(skill.active)
-                .bind(user_id)
-                .bind(id)
-                .bind(version)
-                .execute(pool)
-                .await?;
-                if res.rows_affected() == 1 {
-                    Ok(CreateOutcome::Reactivated(id))
-                } else {
-                    // Restored or reactivated by someone else meanwhile.
-                    Err(SkillWriteError::NameTaken)
-                }
-            }
+            Ok(res) => Ok(res.last_insert_id()),
+            Err(err) if is_duplicate_key(&err) => Err(Self::name_holder(pool, &skill.name).await?),
             Err(err) => Err(err.into()),
         }
+    }
+
+    /// After a duplicate-name error: which kind of row holds the name.
+    async fn name_holder(pool: &DbPool, name: &str) -> Result<SkillWriteError, AppError> {
+        let in_trash: Option<(u64,)> =
+            sqlx::query_as("SELECT id FROM mcp_skills WHERE name = ? AND deleted_at IS NOT NULL")
+                .bind(name)
+                .fetch_optional(pool)
+                .await?;
+        Ok(if in_trash.is_some() {
+            SkillWriteError::NameInTrash
+        } else {
+            SkillWriteError::NameTaken
+        })
     }
 
     /// Replace a live skill's fields, guarded by `version`.
@@ -243,19 +228,7 @@ impl McpSkillModel {
         match res {
             Ok(r) if r.rows_affected() == 1 => Ok(()),
             Ok(_) => Err(Self::why_not_written(pool, id).await),
-            Err(err) if is_duplicate_key(&err) => {
-                let in_trash: Option<(u64,)> = sqlx::query_as(
-                    "SELECT id FROM mcp_skills WHERE name = ? AND deleted_at IS NOT NULL",
-                )
-                .bind(&skill.name)
-                .fetch_optional(pool)
-                .await?;
-                Err(if in_trash.is_some() {
-                    SkillWriteError::NameInTrash
-                } else {
-                    SkillWriteError::NameTaken
-                })
-            }
+            Err(err) if is_duplicate_key(&err) => Err(Self::name_holder(pool, &skill.name).await?),
             Err(err) => Err(err.into()),
         }
     }

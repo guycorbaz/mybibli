@@ -412,6 +412,7 @@ error:
     body_control_character: "Instructions may not contain control characters other than line breaks and tabs"
     name_taken: "We couldn't save the skill. Another skill is already named %{name}. Choose a different name, or edit that skill instead."
     name_in_trash: "We couldn't rename the skill. A skill named %{name} is in the Trash. Choose a different name, or restore or permanently delete the skill in the Trash first."
+    name_in_trash_on_create: "We couldn't create the skill. A skill named %{name} is in the Trash. Restore it from the Trash to keep using it, or choose a different name."
     stale: "We couldn't save your change. Someone changed this skill after you opened it. Reload the Skills tab to see the latest version, then make your change again."
     gone: "We couldn't find this skill. It was deleted in the meantime. Reload the Skills tab; you can restore the skill from the Trash."
   # Story 13-8 (#580) — move a volume to another title.
@@ -1143,7 +1144,6 @@ admin:
     delete_modal_confirm: "Move to Trash"
     delete_modal_cancel: "Cancel"
     feedback_created: "Skill %{name} created."
-    feedback_reactivated: "Skill %{name} was in the Trash: it is back, with the text you just entered."
     feedback_updated: "Skill %{name} saved."
     feedback_activated: "Skill %{name} is active: the agent can read it."
     feedback_deactivated: "Skill %{name} is inactive: the agent no longer sees it."

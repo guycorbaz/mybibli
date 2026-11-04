@@ -29,7 +29,6 @@ use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
 use crate::middleware::locale::Locale;
-use crate::models::CreateOutcome;
 use crate::models::mcp_skill::{McpSkill, McpSkillModel, SkillWriteError};
 use crate::routes::admin::{AdminTab, render_admin};
 use crate::services::mcp_skills::{
@@ -448,7 +447,8 @@ pub async fn admin_skills_edit_form(
     )?))
 }
 
-/// `POST /admin/skills` — create (or reactivate a trashed namesake).
+/// `POST /admin/skills` — create. A name held by a trashed skill is
+/// refused (restore it from the Trash, or choose another name).
 pub async fn admin_skills_create(
     State(state): State<AppState>,
     session: Session,
@@ -470,21 +470,23 @@ pub async fn admin_skills_create(
             return Ok(refused(StatusCode::BAD_REQUEST, editor, &e.message(loc)));
         }
     };
-    let outcome = match McpSkillModel::create(&state.pool, &skill, session.user_id).await {
-        Ok(outcome) => outcome,
+    let id = match McpSkillModel::create(&state.pool, &skill, session.user_id).await {
+        Ok(id) => id,
+        Err(SkillWriteError::NameInTrash) => {
+            // A create names the way out: restore the trashed skill.
+            let message = t_name("error.mcp_skills.name_in_trash_on_create", loc, &skill.name);
+            let editor = editor_with_form(loc, csrf, None, &form)?;
+            return Ok(refused(StatusCode::CONFLICT, editor, &message));
+        }
         Err(e) => {
             let message = write_error(e, loc, &skill.name)?;
             let editor = editor_with_form(loc, csrf, None, &form)?;
             return Ok(refused(StatusCode::CONFLICT, editor, &message));
         }
     };
-    let key = match outcome {
-        CreateOutcome::Created(_) => "admin.skills.feedback_created",
-        CreateOutcome::Reactivated(_) => "admin.skills.feedback_reactivated",
-    };
     tracing::info!(
         admin_id = session.user_id.unwrap_or(0),
-        skill_id = outcome.id(),
+        skill_id = id,
         name = %skill.name,
         "MCP skill created"
     );
@@ -492,7 +494,7 @@ pub async fn admin_skills_create(
         main: render_editor(loc, &session.csrf_token, &BLANK)?,
         oob: vec![
             list_oob(current_list(&state, loc, &session.csrf_token).await?),
-            feedback(t_name(key, loc, &skill.name)),
+            feedback(t_name("admin.skills.feedback_created", loc, &skill.name)),
         ],
     }
     .into_response())
@@ -735,6 +737,8 @@ mod tests {
                 let msg = write_error(err, loc, "x").unwrap();
                 assert!(!msg.contains("error.mcp_skills"), "{loc}: {msg}");
             }
+            let msg = t_name("error.mcp_skills.name_in_trash_on_create", loc, "x");
+            assert!(!msg.contains("error.mcp_skills"), "{loc}: {msg}");
         }
     }
 }

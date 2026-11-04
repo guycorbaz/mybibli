@@ -408,6 +408,7 @@ error:
     body_control_character: "Anweisungen dürfen außer Zeilenumbrüchen und Tabulatoren keine Steuerzeichen enthalten"
     name_taken: "Der Skill konnte nicht gespeichert werden. Ein anderer Skill heißt bereits %{name}. Wählen Sie einen anderen Namen oder bearbeiten Sie stattdessen diesen Skill."
     name_in_trash: "Der Skill konnte nicht umbenannt werden. Ein Skill namens %{name} liegt im Papierkorb. Wählen Sie einen anderen Namen oder stellen Sie den Skill im Papierkorb zuerst wieder her bzw. löschen Sie ihn endgültig."
+    name_in_trash_on_create: "Der Skill konnte nicht erstellt werden. Ein Skill namens %{name} liegt im Papierkorb. Stellen Sie ihn aus dem Papierkorb wieder her, um ihn weiter zu nutzen, oder wählen Sie einen anderen Namen."
     stale: "Ihre Änderung konnte nicht gespeichert werden. Jemand hat diesen Skill geändert, nachdem Sie ihn geöffnet haben. Laden Sie den Tab Skills neu, um die neueste Fassung zu sehen, und nehmen Sie Ihre Änderung dann erneut vor."
     gone: "Dieser Skill wurde nicht gefunden. Er wurde inzwischen gelöscht. Laden Sie den Tab Skills neu; Sie können den Skill aus dem Papierkorb wiederherstellen."
   # Story 13-8 (#580) — ein Exemplar einem anderen Titel zuordnen.
@@ -1127,7 +1128,6 @@ admin:
     delete_modal_confirm: "In den Papierkorb"
     delete_modal_cancel: "Abbrechen"
     feedback_created: "Skill %{name} erstellt."
-    feedback_reactivated: "Der Skill %{name} lag im Papierkorb: Er ist zurück, mit dem Text, den Sie gerade eingegeben haben."
     feedback_updated: "Skill %{name} gespeichert."
     feedback_activated: "Der Skill %{name} ist aktiv: Der Agent kann ihn lesen."
     feedback_deactivated: "Der Skill %{name} ist inaktiv: Der Agent sieht ihn nicht mehr."

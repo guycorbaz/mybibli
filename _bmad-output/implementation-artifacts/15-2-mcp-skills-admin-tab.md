@@ -47,19 +47,20 @@ Admin-only editing through a web tab; the agent can only read skills (story 15-3
 **AC1 — table.** `mcp_skills` (`id`, `name` VARCHAR(64), `description`
 VARCHAR(200), `body` MEDIUMTEXT, `active` BOOLEAN default TRUE,
 `updated_by` → `users(id)` ON DELETE SET NULL, `version`, `created_at`,
-`updated_at`, `deleted_at`). **Name reuse — chosen: reactivate.** `name`
-is UNIQUE across all rows (so unique among live rows too); creating a
-skill whose name belongs to a trashed row reactivates that row with the
-text just typed (`CreateOutcome::Reactivated`, feedback says so), which
-means a Trash restore can never collide with a live namesake. Renaming a
-skill onto a trashed name is refused (`name_in_trash`: restore or purge
-it first). No charset/collation pinned: the Trash UNIONs every trashable
+`updated_at`, `deleted_at`). **Name reuse — chosen: neither reactivate nor free: refuse** (review M1).
+`name` is UNIQUE across all rows (so unique among live rows too).
+Creating a skill, or renaming one, onto a name held by a trashed skill is
+refused (`NameInTrash`; create copy `name_in_trash_on_create`: "restore it
+from the Trash, or choose a different name"). The trashed text is never
+overwritten, and a Trash restore can never collide with a live namesake.
+No charset/collation pinned: the Trash UNIONs every trashable
 table's name column, a different collation would break it.
 
 **AC2 — model / service.** `McpSkillModel::{list_all, find_by_id,
 list_active, find_active_by_name, create, update, set_active,
 soft_delete}`; every write is version-guarded and returns
-`SkillWriteError::{NameTaken, NameInTrash, Stale, Gone, Db}`.
+`SkillWriteError::{NameTaken, NameInTrash, Stale, Gone, Db}`; `create`
+returns the new id.
 `list_active` / `find_active_by_name` return `ActiveSkill {name,
 description, body}`, live and active only — the two reads story 15-3
 needs. `services::mcp_skills::validate` (Rule #20, refuse never rewrite):
@@ -101,7 +102,8 @@ descriptions, bodies, byte limit, translations), `routes::admin_skills`
 (escaping in list and textarea, instance-zone date, error copy),
 `routes::admin` (tab resolution). DB integration `tests/mcp_skills.rs`
 (9): CRUD + active reads, uniqueness, version conflicts, soft delete +
-Trash restore, name reuse by reactivation, 64 KiB body, auto-purge, role
+Trash restore, a trashed name refused on create and rename with the trashed
+skill intact and restorable, 64 KiB body, auto-purge, role
 gating, full route round trip. E2E `admin-skills.spec.ts` (specId SK,
 names `sk-<random>`): create/edit/deactivate/delete/restore journey from
 a blank browser with axe on the tab and the edit form, refused name, and
@@ -145,3 +147,35 @@ Librarian refused.
 - `locales/{en,fr,de,it}.yml`
 - `tests/mcp_skills.rs` (new), `tests/e2e/specs/journeys/admin-skills.spec.ts` (new)
 - `CLAUDE.md`
+
+### Review Findings
+
+Independent review (2026-11-04): one Medium, no High.
+
+- [x] **M1 (Medium) — creating a trashed name overwrote the trashed skill.**
+  Fixed: the reactivation branch of `McpSkillModel::create` is removed;
+  a create onto a trashed name returns `NameInTrash` like a rename, with
+  creation copy in four locales (`error.mcp_skills.name_in_trash_on_create`);
+  `admin.skills.feedback_reactivated` removed. Test
+  `a_trashed_name_is_refused_and_the_trashed_skill_is_kept` replaces the
+  reactivation test (create and rename refused, trashed body intact,
+  restore works). Migration comment, CLAUDE.md entry and AC1 note updated.
+  The E2E did not rely on reactivation.
+- [x] **L1 (Low) — author-join exception undocumented in CLAUDE.md.** Fixed:
+  the skills entry now states the `LEFT JOIN users` without
+  `deleted_at IS NULL` (like `decided_by_name`).
+- [x] **L2, L3 (Low)** — accepted as is, no change (coordinator decision).
+
+Gates after the fixes are listed below under "Gates after review".
+
+### Gates after review (2026-11-04)
+
+- `cargo check`: clean; `mem-guard cargo clippy -j 2 --all-targets -- -D warnings`: clean.
+- `cargo sqlx prepare --check --workspace -- --all-targets`: clean.
+- `cargo test --lib`: 1694 passed; `--test mcp_skills`: 9 passed;
+  `--test locale_parity`: 3 passed.
+- `tsc --noEmit`: clean; `waitForTimeout` grep: no hit.
+- `admin-skills.spec.ts` on a freshly reset stack (`CI=true --workers=2`):
+  3 passed (the journey now also checks that a trashed name is refused on
+  create and that the restored skill keeps its own text). Full Playwright
+  not re-run: no shared code changed in this round.
