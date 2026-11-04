@@ -107,11 +107,6 @@ pub fn field_label(field: &str, loc: &str) -> String {
     rust_i18n::t!(key, locale = loc).to_string()
 }
 
-/// A date-time as the page shows it (database sessions run in UTC).
-pub fn display_utc(at: NaiveDateTime) -> String {
-    at.format("%Y-%m-%d %H:%M UTC").to_string()
-}
-
 /// What a proposal is about, as the page names it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TargetLabel {
@@ -1614,14 +1609,5 @@ mod tests {
         assert_eq!(servable_staged_name(&other), None);
         let decided = detail_of(ProposalKind::Cover, ProposalStatus::Rejected);
         assert_eq!(servable_staged_name(&decided), None);
-    }
-
-    #[test]
-    fn display_utc_names_the_zone() {
-        let at = chrono::NaiveDate::from_ymd_opt(2026, 10, 29)
-            .unwrap()
-            .and_hms_opt(8, 5, 0)
-            .unwrap();
-        assert_eq!(display_utc(at), "2026-10-29 08:05 UTC");
     }
 }

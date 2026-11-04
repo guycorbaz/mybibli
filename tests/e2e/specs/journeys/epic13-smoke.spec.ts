@@ -60,10 +60,12 @@ const PROPOSAL_LINK = (id: number) =>
   new RegExp(`(proposal #|proposition n° |Vorschlag Nr\\. |proposta n\\. )${id}$`);
 
 /**
- * A UTC day, `offsetDays` from today: the server cuts "added since" days
- * in UTC (#602), like its timestamps. A run straddling midnight UTC
- * between the scan and the filter would fail the presence check — the
- * smoke runs in seconds, so that window is accepted.
+ * A UTC day, `offsetDays` from today. Since story 15-1 (#602) the web
+ * cuts "added since" days in the instance zone (Europe/Zurich by
+ * default, east of UTC), so the start of today's UTC date is never after
+ * a title created today — the presence check holds in either zone. A run
+ * straddling midnight UTC between the scan and the filter would still
+ * fail it — the smoke runs in seconds, so that window is accepted.
  */
 function utcDay(offsetDays: number): string {
   const d = new Date();

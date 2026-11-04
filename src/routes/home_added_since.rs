@@ -1,7 +1,8 @@
 //! Story 13-7 (#586) — the home browse "added since <date>" filter.
 //!
 //! The URL carries `added_since=YYYY-MM-DD`; the filter keeps the titles
-//! added on or after midnight UTC that day — the title itself or one of
+//! added on or after the start of that day in the instance time zone
+//! (story 15-1, #602; midnight UTC before) — the title itself or one of
 //! its live volumes (the shared rule of `models::date_added`). It
 //! composes with `q`, `filter` and `sort` / `dir`; under the indicator
 //! single-active-filter contract (stories 9-4..9-7) a parsed indicator
@@ -34,9 +35,10 @@ pub(crate) fn parse_param(raw: Option<&str>, indicator_active: bool) -> Option<N
     parsed
 }
 
-/// The UTC lower bound of the filter: midnight UTC on `date`.
-pub(crate) fn lower_bound(date: Option<NaiveDate>) -> Option<NaiveDateTime> {
-    date.and_then(|d| d.and_hms_opt(0, 0, 0))
+/// The UTC lower bound of the filter: the first instant of the local day
+/// `date` in the instance zone `tz` (story 15-1).
+pub(crate) fn lower_bound(date: Option<NaiveDate>, tz: chrono_tz::Tz) -> Option<NaiveDateTime> {
+    date.map(|d| crate::utils::local_time::day_start_utc(d, tz))
 }
 
 /// The `&added_since=…` suffix the browse links append so the filter
@@ -132,12 +134,17 @@ mod tests {
     }
 
     #[test]
-    fn lower_bound_is_midnight_utc() {
+    fn lower_bound_is_local_midnight_in_utc() {
+        // 31 Oct 2026 is in winter time in Zurich (UTC+1).
         assert_eq!(
-            lower_bound(Some(d(2026, 10, 31))),
+            lower_bound(Some(d(2026, 10, 31)), chrono_tz::Europe::Zurich),
+            d(2026, 10, 30).and_hms_opt(23, 0, 0)
+        );
+        assert_eq!(
+            lower_bound(Some(d(2026, 10, 31)), chrono_tz::UTC),
             d(2026, 10, 31).and_hms_opt(0, 0, 0)
         );
-        assert_eq!(lower_bound(None), None);
+        assert_eq!(lower_bound(None, chrono_tz::Europe::Zurich), None);
     }
 
     #[test]

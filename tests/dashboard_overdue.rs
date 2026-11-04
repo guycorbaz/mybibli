@@ -17,8 +17,19 @@
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test dashboard_overdue
 
+use chrono::NaiveDateTime;
 use mybibli::models::loan::LoanModel;
+use mybibli::utils::local_time::LocalClock;
 use sqlx::MySqlPool;
+
+/// The pre-15-1 tests count days like `DATEDIFF(NOW(), …)` did: in UTC.
+fn utc_clock() -> LocalClock {
+    LocalClock::now(chrono_tz::UTC)
+}
+
+fn utc(s: &str) -> NaiveDateTime {
+    NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap()
+}
 
 // ─── Fixture helpers ────────────────────────────────────────────────
 
@@ -93,6 +104,17 @@ async fn insert_loan(pool: &MySqlPool, volume_id: u64, borrower_id: u64, days_ag
     r.last_insert_id()
 }
 
+/// Story 15-1 — an active loan at an exact UTC instant.
+async fn insert_loan_at(pool: &MySqlPool, volume_id: u64, borrower_id: u64, at: NaiveDateTime) {
+    sqlx::query("INSERT INTO loans (volume_id, borrower_id, loaned_at) VALUES (?, ?, ?)")
+        .bind(volume_id)
+        .bind(borrower_id)
+        .bind(at)
+        .execute(pool)
+        .await
+        .expect("insert loan");
+}
+
 async fn mark_loan_returned(pool: &MySqlPool, loan_id: u64) {
     sqlx::query("UPDATE loans SET returned_at = NOW() WHERE id = ?")
         .bind(loan_id)
@@ -129,7 +151,7 @@ async fn make_loan_fixture(pool: &MySqlPool, seq: u32) -> (u64, u64) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn count_overdue_on_empty_db_returns_zero(pool: MySqlPool) {
-    let n = LoanModel::count_overdue(&pool, 30)
+    let n = LoanModel::count_overdue(&pool, 30, &utc_clock())
         .await
         .expect("query ok");
     assert_eq!(n, 0, "fresh DB must have zero overdue loans");
@@ -158,7 +180,7 @@ async fn count_overdue_excludes_returned_and_soft_deleted(pool: MySqlPool) {
     let dead = insert_loan(&pool, v6, b6, 40).await;
     soft_delete_loan(&pool, dead).await;
 
-    let n = LoanModel::count_overdue(&pool, 30)
+    let n = LoanModel::count_overdue(&pool, 30, &utc_clock())
         .await
         .expect("query ok");
     assert_eq!(n, 3, "only the 3 active non-returned loans are overdue");
@@ -178,7 +200,7 @@ async fn count_overdue_threshold_boundary(pool: MySqlPool) {
     let (v_31, b_31) = make_loan_fixture(&pool, 31).await;
     insert_loan(&pool, v_31, b_31, 31).await;
 
-    let n = LoanModel::count_overdue(&pool, 30)
+    let n = LoanModel::count_overdue(&pool, 30, &utc_clock())
         .await
         .expect("query ok");
     assert_eq!(
@@ -194,12 +216,12 @@ async fn count_overdue_threshold_change_reflected(pool: MySqlPool) {
     let (v, b) = make_loan_fixture(&pool, 100).await;
     insert_loan(&pool, v, b, 15).await;
 
-    let at_30 = LoanModel::count_overdue(&pool, 30)
+    let at_30 = LoanModel::count_overdue(&pool, 30, &utc_clock())
         .await
         .expect("query ok");
     assert_eq!(at_30, 0, "15-day loan is NOT overdue at threshold=30");
 
-    let at_7 = LoanModel::count_overdue(&pool, 7)
+    let at_7 = LoanModel::count_overdue(&pool, 7, &utc_clock())
         .await
         .expect("query ok");
     assert_eq!(at_7, 1, "15-day loan IS overdue at threshold=7");
@@ -224,7 +246,7 @@ async fn list_overdue_returns_in_loaned_at_asc_order_with_limit(pool: MySqlPool)
     let (v36, b36) = make_loan_fixture(&pool, 36).await;
     insert_loan(&pool, v36, b36, 36).await;
 
-    let rows = LoanModel::list_overdue(&pool, 30, 3)
+    let rows = LoanModel::list_overdue(&pool, 30, 3, &utc_clock())
         .await
         .expect("query ok");
     assert_eq!(rows.len(), 3, "LIMIT 3 must cap the result");
@@ -263,7 +285,7 @@ async fn list_overdue_excludes_returned_and_soft_deleted(pool: MySqlPool) {
     let dead = insert_loan(&pool, v5, b5, 40).await;
     soft_delete_loan(&pool, dead).await;
 
-    let rows = LoanModel::list_overdue(&pool, 30, 100)
+    let rows = LoanModel::list_overdue(&pool, 30, 100, &utc_clock())
         .await
         .expect("query ok");
     assert_eq!(
@@ -271,4 +293,50 @@ async fn list_overdue_excludes_returned_and_soft_deleted(pool: MySqlPool) {
         3,
         "returned + soft-deleted loans must be excluded"
     );
+}
+
+// ─── Story 15-1 (#602) — days cut in the instance zone ──────────────
+
+/// Now: 10 Dec 2026, 00:30 in Zurich (23:30 UTC on 9 Dec). A loan made at
+/// 23:30 Zurich on 9 Nov (22:30 UTC) is 31 local days old — overdue at
+/// 30 — although it is only 30 UTC days old. One made at 00:30 Zurich on
+/// 10 Nov (23:30 UTC on 9 Nov) is 30 local days old: not overdue.
+#[sqlx::test(migrations = "./migrations")]
+async fn overdue_counts_local_days_in_the_instance_zone(pool: MySqlPool) {
+    let (v1, b1) = make_loan_fixture(&pool, 301).await;
+    insert_loan_at(&pool, v1, b1, utc("2026-11-09 22:30:00")).await;
+    let (v2, b2) = make_loan_fixture(&pool, 302).await;
+    insert_loan_at(&pool, v2, b2, utc("2026-11-09 23:30:00")).await;
+
+    let now = utc("2026-12-09 23:30:00");
+    let zurich = LocalClock::at(chrono_tz::Europe::Zurich, now);
+    let in_utc = LocalClock::at(chrono_tz::UTC, now);
+
+    assert_eq!(LoanModel::count_overdue(&pool, 30, &zurich).await.unwrap(), 1);
+    assert_eq!(LoanModel::count_overdue(&pool, 30, &in_utc).await.unwrap(), 0);
+
+    let rows = LoanModel::list_overdue(&pool, 30, 100, &zurich).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].volume_label, "V0301");
+    assert_eq!(rows[0].duration_days, 31);
+    assert_eq!(rows[0].loaned_on.to_string(), "2026-11-09");
+
+    // The active-loans list shows the local day and the local age.
+    let list = LoanModel::list_active(&pool, 1, &None, &None, &zurich).await.unwrap();
+    let late = list.items.iter().find(|l| l.volume_label == "V0302").unwrap();
+    assert_eq!(late.loaned_on.to_string(), "2026-11-10");
+    assert_eq!(late.duration_days, 30);
+
+    // The duration sort runs on `loaned_at`, reversed: shortest first.
+    let by_duration = LoanModel::list_active(
+        &pool,
+        1,
+        &Some("duration".to_string()),
+        &Some("asc".to_string()),
+        &zurich,
+    )
+    .await
+    .unwrap();
+    let days: Vec<i64> = by_duration.items.iter().map(|l| l.duration_days).collect();
+    assert_eq!(days, [30, 31]);
 }

@@ -298,13 +298,16 @@ export async function returnLoanFromBorrowerDetail(
  * @param opts.borrowerName  exact name that was passed to `createBorrower`
  * @param opts.daysOverdue   `loaned_at = NOW() - INTERVAL ? DAY`; pick > the
  *                           default 30-day overdue threshold (e.g. 60)
+ * @param opts.loanedAt      story 15-1 — instead of `daysOverdue`, an exact
+ *                           UTC instant `YYYY-MM-DD HH:MM:SS`
  */
 export async function seedOverdueLoan(
   baseURL: string,
   opts: {
     volumeLabel: string;
     borrowerName: string;
-    daysOverdue: number;
+    daysOverdue?: number;
+    loanedAt?: string;
   },
 ): Promise<void> {
   const ctx = await request.newContext({ baseURL });
@@ -340,7 +343,8 @@ export async function seedOverdueLoan(
         _csrf_token: csrf2,
         volume_label: opts.volumeLabel,
         borrower_name: opts.borrowerName,
-        days_overdue: String(opts.daysOverdue),
+        days_overdue: String(opts.daysOverdue ?? 0),
+        loaned_at: opts.loanedAt ?? "",
       },
     });
     if (!res.ok()) {

@@ -25,6 +25,14 @@ pub struct WishlistItem {
     pub version: i32,
 }
 
+impl WishlistItem {
+    /// Story 15-1 (#602) — the day the item was added, in the instance
+    /// zone (the "Added" column and the detail page).
+    pub fn created_on(&self, tz: &chrono_tz::Tz) -> chrono::NaiveDate {
+        crate::utils::local_time::local_date(self.created_at.naive_utc(), *tz)
+    }
+}
+
 /// Input fields for creating a wishlist item. Two valid shapes:
 /// - free-form: just `title` (+ optional authors/publisher/notes)
 /// - by-ISBN: title + isbn + everything the provider chain resolved

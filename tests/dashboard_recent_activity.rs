@@ -407,7 +407,7 @@ async fn list_recent_returns_returns_in_returned_at_desc_order_with_limit(pool: 
     let r4 = insert_loan(&pool, v4, b4).await;
     mark_loan_returned_at(&pool, r4, 4).await;
 
-    let rows = LoanModel::list_recent_returns(&pool, 7, 3)
+    let rows = LoanModel::list_recent_returns(&pool, 7, 3, &mybibli::utils::local_time::LocalClock::now(chrono_tz::UTC))
         .await
         .expect("query ok");
     assert_eq!(rows.len(), 3, "LIMIT 3 truncates");

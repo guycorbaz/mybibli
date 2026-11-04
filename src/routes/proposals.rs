@@ -23,10 +23,11 @@ use crate::services::acceptance::{self, AcceptOutcome, CoverDirs};
 use crate::services::proposal_accept;
 use crate::services::proposal_edit;
 use crate::services::proposal_review::{
-    self, Change, LineView, ReviewDetail, ReviewError, display_utc, kind_filter_value, kind_label,
+    self, Change, LineView, ReviewDetail, ReviewError, kind_filter_value, kind_label,
     parse_kind_filter, parse_status_filter, status_filter_value, status_label,
 };
 use crate::services::proposals::MAX_REJECTION_REASON_CHARS;
+use crate::utils::local_time::format_local_date_time;
 
 /// Labels of the `proposals.*` locale section, read by the templates
 /// as `l.t("key")`. The router tests (`tests/proposals_page.rs`) check
@@ -170,6 +171,7 @@ pub async fn proposals_page(
         .unwrap_or(1)
         .clamp(1, 10_000);
     let list = proposal_review::list_page(&state.pool, status, kind, page).await?;
+    let tz = state.time_zone();
 
     let l = ProposalLabels { loc };
     let all = l.t("filter_all");
@@ -222,7 +224,7 @@ pub async fn proposals_page(
             id: e.summary.id,
             kind_label: kind_label(e.summary.kind, loc),
             target_text,
-            filed: display_utc(e.summary.created_at),
+            filed: format_local_date_time(e.summary.created_at, tz),
             key_label: e
                 .summary
                 .api_key_label
@@ -328,7 +330,7 @@ pub struct DetailBody {
 }
 
 impl DetailBody {
-    fn build(d: ReviewDetail, loc: &'static str) -> Self {
+    fn build(d: ReviewDetail, loc: &'static str, tz: chrono_tz::Tz) -> Self {
         let l = ProposalLabels { loc };
         let p = &d.proposal;
         let decided_by = match (p.status, &p.decided_by_username) {
@@ -397,7 +399,7 @@ impl DetailBody {
                     return String::new();
                 };
                 let by = e.by.clone().unwrap_or_else(|| l.t("editor_unknown"));
-                let at = e.at.map(display_utc).unwrap_or_default();
+                let at = e.at.map(|at| format_local_date_time(at, tz)).unwrap_or_default();
                 // Story 11-20 — a compared line shows the agent's original
                 // in its comparison: the note says who and when only.
                 if line.change != Change::None {
@@ -440,7 +442,7 @@ impl DetailBody {
                         r.by.clone()
                             .unwrap_or_else(|| l.t("editor_unknown"))
                             .as_str(),
-                    at = r.at.map(display_utc).unwrap_or_default().as_str()
+                    at = r.at.map(|at| format_local_date_time(at, tz)).unwrap_or_default().as_str()
                 )
                 .to_string()
             })
@@ -484,7 +486,7 @@ impl DetailBody {
             status: p.status.as_str(),
             status_label: status_label(p.status, loc),
             status_class: status_class(p.status),
-            filed: display_utc(p.created_at),
+            filed: format_local_date_time(p.created_at, tz),
             key_label: p
                 .api_key_label
                 .clone()
@@ -497,7 +499,7 @@ impl DetailBody {
             )
             .to_string(),
             target_text,
-            decided_at: p.decided_at.map(display_utc),
+            decided_at: p.decided_at.map(|at| format_local_date_time(at, tz)),
             decided_by,
             reason: p.rejection_reason.clone(),
             is_rejected: p.status == ProposalStatus::Rejected,
@@ -596,7 +598,7 @@ pub async fn proposal_detail_page(
         ),
         l: ProposalLabels { loc },
         heading: rust_i18n::t!("proposals.detail_title", locale = loc, id = id).to_string(),
-        body: DetailBody::build(detail, loc),
+        body: DetailBody::build(detail, loc, state.time_zone()),
     };
     render(&template, "proposal_detail")
 }
@@ -920,7 +922,7 @@ pub(crate) async fn body_response(
     let rendered = match load_detail(state, id, loc).await {
         Ok(detail) => ProposalDetailBodyTemplate {
             l: ProposalLabels { loc },
-            body: DetailBody::build(detail, loc),
+            body: DetailBody::build(detail, loc, state.time_zone()),
         }
         .render()
         .map_err(|e| e.to_string()),

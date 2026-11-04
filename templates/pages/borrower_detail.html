@@ -60,7 +60,7 @@
                     <dt class="text-stone-500 dark:text-stone-400">{{ col_title }}</dt>
                     <dd class="text-stone-900 dark:text-stone-100 text-right break-words">{{ loan.title_name }}</dd>
                     <dt class="text-stone-500 dark:text-stone-400">{{ col_date }}</dt>
-                    <dd class="text-stone-900 dark:text-stone-100 text-right">{{ loan.loaned_at.format("%Y-%m-%d") }}</dd>
+                    <dd class="text-stone-900 dark:text-stone-100 text-right">{{ loan.loaned_on }}</dd>
                     <dt class="text-stone-500 dark:text-stone-400">{{ col_duration }}</dt>
                     <dd class="text-right {% if loan.duration_days >= overdue_threshold %}text-red-600 dark:text-red-400 font-semibold{% elif loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% else %}text-stone-900 dark:text-stone-100{% endif %}">
                         {{ loan.duration_days }} {{ days_label }}
@@ -104,7 +104,7 @@
                     <tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50">
                         <td class="px-4 py-3">{{ loan.volume_label }}</td>
                         <td class="px-4 py-3">{{ loan.title_name }}</td>
-                        <td class="px-4 py-3">{{ loan.loaned_at.format("%Y-%m-%d") }}</td>
+                        <td class="px-4 py-3">{{ loan.loaned_on }}</td>
                         <td class="px-4 py-3 {% if loan.duration_days >= overdue_threshold %}text-red-600 dark:text-red-400 font-semibold{% elif loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% endif %}">
                             {{ loan.duration_days }} {{ days_label }}
                             {% if loan.duration_days >= overdue_threshold %}

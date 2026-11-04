@@ -12,6 +12,7 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
 tracing = "0.1"
 # CR #301 (v1.7.0) — `env-filter` enables the `MYBIBLI_LOG_LEVEL` /
 # `RUST_LOG` runtime control of which targets and levels are emitted.

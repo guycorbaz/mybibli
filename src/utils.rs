@@ -4,6 +4,7 @@ pub use plain_text::{decode_char_references, description_paragraphs, html_to_pla
 // Story 14-1 (#547) — the single source of the navigation entries.
 mod nav;
 pub use nav::{NavEntry, nav_groups};
+pub mod local_time;
 
 /// Generate a STANDARD-base64-encoded 32-byte session token (44 chars
 /// w/ padding). Canonical implementation for `sessions.token`. Earlier
@@ -388,9 +389,9 @@ pub fn parse_added_since(value: &str) -> Option<chrono::NaiveDateTime> {
 }
 
 /// Story 13-7 (#586) — the localized "Added on …" / "Modified on …" lines
-/// of the title and volume pages (`templates/components/record_dates.html`).
-/// Empty strings when the dates are unknown; the component then renders
-/// nothing.
+/// of the title and volume pages (`templates/components/record_dates.html`),
+/// as days of the instance zone `tz` (story 15-1). Empty strings when the
+/// dates are unknown; the component then renders nothing.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RecordDates {
     pub added_on: String,
@@ -401,6 +402,7 @@ impl RecordDates {
     pub fn new(
         timestamps: Option<crate::models::date_added::RecordTimestamps>,
         locale: &str,
+        tz: chrono_tz::Tz,
     ) -> Self {
         let Some(ts) = timestamps else {
             return Self::default();
@@ -409,13 +411,13 @@ impl RecordDates {
             added_on: rust_i18n::t!(
                 "record_dates.added_on",
                 locale = locale,
-                date = format_date_localized(ts.created_at.date(), locale)
+                date = format_date_localized(local_time::local_date(ts.created_at, tz), locale)
             )
             .to_string(),
             modified_on: rust_i18n::t!(
                 "record_dates.modified_on",
                 locale = locale,
-                date = format_date_localized(ts.updated_at.date(), locale)
+                date = format_date_localized(local_time::local_date(ts.updated_at, tz), locale)
             )
             .to_string(),
         }
@@ -1343,11 +1345,24 @@ mod tests {
                 .and_hms_opt(18, 30, 0)
                 .unwrap(),
         };
-        let en = RecordDates::new(Some(ts), "en");
+        let utc = chrono_tz::UTC;
+        let en = RecordDates::new(Some(ts), "en", utc);
         assert_eq!(en.added_on, "Added on 2026-10-31");
         assert_eq!(en.modified_on, "Modified on 2026-11-03");
-        let fr = RecordDates::new(Some(ts), "fr");
+        let fr = RecordDates::new(Some(ts), "fr", utc);
         assert_eq!(fr.added_on, "Ajouté le 31/10/2026");
-        assert_eq!(RecordDates::new(None, "en"), RecordDates::default());
+        assert_eq!(RecordDates::new(None, "en", utc), RecordDates::default());
+        // Story 15-1 — the day is the instance zone's: 23:30 UTC on
+        // 3 Nov is 00:30 on 4 Nov in Zurich.
+        let late = crate::models::date_added::RecordTimestamps {
+            updated_at: chrono::NaiveDate::from_ymd_opt(2026, 11, 3)
+                .unwrap()
+                .and_hms_opt(23, 30, 0)
+                .unwrap(),
+            ..ts
+        };
+        let zurich = RecordDates::new(Some(late), "en", chrono_tz::Europe::Zurich);
+        assert_eq!(zurich.added_on, "Added on 2026-10-31");
+        assert_eq!(zurich.modified_on, "Modified on 2026-11-04");
     }
 }

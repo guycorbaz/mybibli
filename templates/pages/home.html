@@ -453,7 +453,7 @@
                                 </thead>
                                 <tbody>
                                     {% for item in paginated.items %}
-                                    {% let row_lang = base.lang.as_str() %}{% include "components/browse_table_row.html" %}
+                                    {% let row_lang = base.lang.as_str() %}{% let row_tz = time_zone %}{% include "components/browse_table_row.html" %}
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -692,7 +692,7 @@
                             </thead>
                             <tbody>
                                 {% for item in recent_additions %}
-                                {% let row_lang = base.lang.as_str() %}{% include "components/browse_table_row.html" %}
+                                {% let row_lang = base.lang.as_str() %}{% let row_tz = time_zone %}{% include "components/browse_table_row.html" %}
                                 {% endfor %}
                             </tbody>
                         </table>

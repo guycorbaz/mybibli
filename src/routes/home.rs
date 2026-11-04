@@ -36,6 +36,8 @@ pub struct SearchParams {
 #[template(path = "pages/home.html")]
 pub struct HomeTemplate {
     pub base: crate::utils::BaseContextFields,
+    /// Story 15-1 (#602) — the instance zone of the browse "Added" dates.
+    pub time_zone: chrono_tz::Tz,
     pub subtitle: String,
     pub search_placeholder: String,
     pub searching_announcement: String,
@@ -405,7 +407,7 @@ pub async fn home(
             page,
             no_volumes_filter_active,
             no_cover_filter_active,
-            super::home_added_since::lower_bound(added_since_date),
+            super::home_added_since::lower_bound(added_since_date, state.time_zone()),
         )
         .await?;
 
@@ -472,6 +474,7 @@ pub async fn home(
             added_since_date,
             &session,
             loc,
+            state.time_zone(),
         );
         return Ok(Html(html).into_response());
     }
@@ -509,8 +512,11 @@ pub async fn home(
     // Story 9-5 — Overdue loans indicator. Threshold read once via the
     // AppState accessor (lock-and-clone, no guard held across .await).
     let overdue_threshold = state.overdue_threshold_days();
+    // Story 15-1 (#602): one "today" in the instance zone for every day
+    // count of the page.
+    let clock = state.local_clock();
     let overdue_count: i64 = if session.role >= Role::Librarian {
-        crate::models::loan::LoanModel::count_overdue(pool, overdue_threshold)
+        crate::models::loan::LoanModel::count_overdue(pool, overdue_threshold, &clock)
             .await
             .unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "count_overdue failed; rendering 0 (tag hidden)");
@@ -522,7 +528,7 @@ pub async fn home(
     let overdue_filter_active =
         session.role >= Role::Librarian && active_indicator_filter == Some(IndicatorFilter::Overdue);
     let overdue_loans: Vec<crate::models::loan::LoanWithDetails> = if overdue_filter_active {
-        crate::models::loan::LoanModel::list_overdue(pool, overdue_threshold, 100)
+        crate::models::loan::LoanModel::list_overdue(pool, overdue_threshold, 100, &clock)
             .await
             .unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "list_overdue failed; rendering empty list");
@@ -601,7 +607,7 @@ pub async fn home(
         && active_indicator_filter == Some(IndicatorFilter::RecentReturns);
     let recent_returns: Vec<crate::models::loan::LoanWithDetails> = if recent_returns_filter_active
     {
-        crate::models::loan::LoanModel::list_recent_returns(pool, recent_days, 100)
+        crate::models::loan::LoanModel::list_recent_returns(pool, recent_days, 100, &clock)
             .await
             .unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "list_recent_returns failed; rendering empty list");
@@ -807,6 +813,7 @@ pub async fn home(
     let base = base_context(&session, loc, "home", &uri, state.page_settings());
     let template = HomeTemplate {
         base,
+        time_zone: state.time_zone(),
         saved_searches_html,
         subtitle: rust_i18n::t!("home.subtitle", locale = loc).to_string(),
         search_placeholder: rust_i18n::t!("home.search_placeholder", locale = loc).to_string(),
@@ -1297,6 +1304,7 @@ pub(crate) mod tests {
         let active_loans_label = format!("{active_loans} active loans");
         HomeTemplate {
             base: crate::utils::test_base_context(role, "home", crate::config::AppSettings::default().session_timeout_secs),
+            time_zone: chrono_tz::UTC,
             saved_searches_html: String::new(),
             home_search_help: crate::utils::TooltipData::placeholder_only(
                 "tip-home-search-text",
@@ -1564,6 +1572,7 @@ pub(crate) mod tests {
             borrower_name: borrower_name.to_string(),
             volume_label: volume_label.to_string(),
             title_name: title_name.to_string(),
+            loaned_on: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
             loaned_at: chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
                 .unwrap()
                 .and_hms_opt(0, 0, 0)

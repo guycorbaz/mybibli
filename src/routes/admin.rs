@@ -212,7 +212,8 @@ struct TrashEntryDisplay {
     id: u64,
     table_name: String,
     item_name: String,
-    deleted_at: chrono::NaiveDateTime,
+    /// Story 15-1 (#602): `YYYY-MM-DD HH:MM` in the instance zone.
+    deleted_at: String,
     version: i32,
     days_remaining: i32,
 }
@@ -1330,6 +1331,7 @@ async fn render_trash_panel(
     // service's `NOW() - INTERVAL 30 DAY` semantics. (`session.rs` uses the
     // same convention.)
     let now = chrono::Utc::now().naive_utc();
+    let tz = state.time_zone();
 
     // Patch P21: ceiling-based days_remaining so a row deleted 29d23h ago is
     // shown as 0 days (about to be purged) rather than truncating to 1 and
@@ -1346,7 +1348,7 @@ async fn render_trash_panel(
                     id: e.id,
                     table_name: e.table_name,
                     item_name: e.item_name,
-                    deleted_at,
+                    deleted_at: crate::utils::local_time::format_local_date_time(deleted_at, tz),
                     version: e.version,
                     days_remaining,
                 }
@@ -1408,7 +1410,8 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
         None => rust_i18n::t!("admin.health.disk_usage_unknown", locale = loc).to_string(),
     };
 
-    let providers = build_provider_rows(&state.registry, &state.provider_health, loc);
+    let providers =
+        build_provider_rows(&state.registry, &state.provider_health, loc, state.time_zone());
 
     // #489 — label high-water marks (two MAX() lookups, no cache needed).
     let watermarks = admin_health::label_watermarks(pool).await?;
@@ -1544,6 +1547,7 @@ fn build_provider_rows(
     registry: &Arc<ProviderRegistry>,
     map: &ProviderHealthMap,
     loc: &'static str,
+    tz: chrono_tz::Tz,
 ) -> Vec<ProviderHealthRow> {
     let guard = map.read().ok();
     registry
@@ -1571,7 +1575,7 @@ fn build_provider_rows(
                             Some(ts) => rust_i18n::t!(
                                 "admin.health.last_checked",
                                 locale = loc,
-                                when = ts.format("%Y-%m-%d %H:%M UTC").to_string()
+                                when = crate::utils::local_time::format_local_date_time(ts.naive_utc(), tz)
                             )
                             .to_string(),
                             None => rust_i18n::t!(

@@ -8,6 +8,7 @@ pub mod entity_labels;
 pub mod admin_reference_data;
 pub mod admin_system;
 pub mod admin_system_proposals;
+pub mod admin_system_time_zone;
 pub mod admin_users;
 pub mod api_v1;
 pub mod auth;
@@ -763,6 +764,12 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .route(
             "/admin/system/proposals",
             axum::routing::post(admin_system_proposals::save_proposals_settings),
+        )
+        // Story 15-1 (#602) — instance time zone (IANA name). Hot-
+        // reloads through the AppSettings cache.
+        .route(
+            "/admin/system/time-zone",
+            axum::routing::post(admin_system_time_zone::save_time_zone_settings),
         )
         // CR #241 — Admin → API keys (v1.4.0). 4 routes: 1 GET panel +
         // 1 POST create + 1 GET revoke-modal + 1 POST revoke. All

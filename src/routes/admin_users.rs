@@ -109,6 +109,8 @@ struct AdminUsersPanel {
     btn_deactivate: String,
     btn_reactivate: String,
     users: Vec<crate::models::user::UserRow>,
+    /// Story 15-1 (#602) — the instance zone for the row dates.
+    time_zone: chrono_tz::Tz,
     filter_role: String,
     filter_status: String,
     page: u32,
@@ -133,6 +135,8 @@ struct AdminUsersFormCreate {
 #[template(path = "fragments/admin_users_row.html")]
 struct AdminUsersRow {
     user: crate::models::user::UserRow,
+    /// Story 15-1 (#602) — the instance zone for the row dates.
+    time_zone: chrono_tz::Tz,
     csrf_token: String,
     role_admin: String,
     role_librarian: String,
@@ -702,6 +706,7 @@ pub(crate) async fn render_users_panel(
         btn_deactivate: rust_i18n::t!("admin.users.btn_deactivate", locale = loc).to_string(),
         btn_reactivate: rust_i18n::t!("admin.users.btn_reactivate", locale = loc).to_string(),
         users,
+        time_zone: state.time_zone(),
         filter_role: filters.role.clone().unwrap_or_default(),
         filter_status: filters.status.clone().unwrap_or_else(|| "active".to_string()),
         page: current_page,
@@ -715,13 +720,14 @@ pub(crate) async fn render_users_panel(
 }
 
 async fn render_user_row(
-    _state: &AppState,
+    state: &AppState,
     loc: &'static str,
     session: &Session,
     user: &crate::models::user::UserRow,
 ) -> Result<String, AppError> {
     let row = AdminUsersRow {
         user: user.clone(),
+        time_zone: state.time_zone(),
         csrf_token: session.csrf_token.clone(),
         role_admin: rust_i18n::t!("admin.users.role_admin", locale = loc).to_string(),
         role_librarian: rust_i18n::t!("admin.users.role_librarian", locale = loc).to_string(),

@@ -30,6 +30,19 @@ pub struct UserRow {
     pub last_login: Option<DateTime<Utc>>,
 }
 
+impl UserRow {
+    /// Story 15-1 (#602) — the creation day in the instance zone.
+    pub fn created_on(&self, tz: &chrono_tz::Tz) -> chrono::NaiveDate {
+        crate::utils::local_time::local_date(self.created_at.naive_utc(), *tz)
+    }
+
+    /// Story 15-1 (#602) — the last login day in the instance zone.
+    pub fn last_login_on(&self, tz: &chrono_tz::Tz) -> Option<chrono::NaiveDate> {
+        self.last_login
+            .map(|at| crate::utils::local_time::local_date(at.naive_utc(), *tz))
+    }
+}
+
 fn row_to_user(row: sqlx::mysql::MySqlRow) -> Result<UserRow, sqlx::Error> {
     Ok(UserRow {
         id: row.try_get("id")?,

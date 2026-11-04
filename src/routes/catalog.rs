@@ -2473,10 +2473,11 @@ pub async fn volume_detail(
     // picks the right method based on role). Soft-degrade on DB
     // error: warn + render without the badge rather than 500 the
     // page. NEVER log borrower PII (AC15).
+    let tz = state.time_zone();
     let loan_status: Option<LoanStatusView> = if session.role >= Role::Librarian {
         match crate::models::loan::LoanModel::active_loan_with_borrower_for_volume(pool, id).await {
             Ok(Some(row)) => Some(LoanStatusView {
-                loaned_at_label: row.loaned_at.format("%Y-%m-%d").to_string(),
+                loaned_at_label: crate::utils::local_time::format_local_date(row.loaned_at, tz),
                 borrower_id: Some(row.borrower_id),
                 borrower_name: Some(row.borrower_name),
             }),
@@ -2489,7 +2490,7 @@ pub async fn volume_detail(
     } else {
         match crate::models::loan::LoanModel::active_loan_summary_for_volume(pool, id).await {
             Ok(Some(loaned_at)) => Some(LoanStatusView {
-                loaned_at_label: loaned_at.format("%Y-%m-%d").to_string(),
+                loaned_at_label: crate::utils::local_time::format_local_date(loaned_at, tz),
                 borrower_id: None,
                 borrower_name: None,
             }),
@@ -2552,6 +2553,7 @@ pub async fn volume_detail(
         )
         .await?,
         loc,
+        state.time_zone(),
     );
     let base = base_context(&session, loc, "catalog", &uri, state.page_settings());
     let template = VolumeDetailTemplate {
