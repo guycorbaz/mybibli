@@ -1,6 +1,6 @@
 # Story 14.2: Navigation drawer on small screens
 
-Status: review
+Status: done
 
 GitHub issue: #547 (type:change-request). Covers: UX-DR39. Epic 14; ships in v1.24.0.
 
