@@ -395,6 +395,22 @@ series:
   omnibus_help_text: "Aktivieren, wenn das Buch mehrere Bände der Serie bündelt (z. B. ein Sammelband mit den Bänden 1–3). Das Formular zeigt dann ein Feld \"Endposition\", damit der Titel einen Bereich von Serienpositionen abdeckt anstatt nur einer."
   select_series: "Eine Serie auswählen…"
 error:
+  # Story 15-2 (#614) — MCP skills validation and write errors.
+  mcp_skills:
+    name_required: "Name ist erforderlich"
+    name_too_long: "Name darf höchstens %{max_name} Zeichen lang sein"
+    name_shape: "Name darf nur Kleinbuchstaben, Ziffern und einzelne Bindestriche enthalten (zum Beispiel katalog-regeln)"
+    description_required: "Beschreibung ist erforderlich"
+    description_too_long: "Beschreibung darf höchstens %{max_description} Zeichen lang sein"
+    description_not_one_line: "Beschreibung muss in eine Zeile passen"
+    body_required: "Anweisungen sind erforderlich"
+    body_too_large: "Anweisungen dürfen höchstens %{max_kib} KiB groß sein"
+    body_control_character: "Anweisungen dürfen außer Zeilenumbrüchen und Tabulatoren keine Steuerzeichen enthalten"
+    name_taken: "Der Skill konnte nicht gespeichert werden. Ein anderer Skill heißt bereits %{name}. Wählen Sie einen anderen Namen oder bearbeiten Sie stattdessen diesen Skill."
+    name_in_trash: "Der Skill konnte nicht umbenannt werden. Ein Skill namens %{name} liegt im Papierkorb. Wählen Sie einen anderen Namen oder stellen Sie den Skill im Papierkorb zuerst wieder her bzw. löschen Sie ihn endgültig."
+    name_in_trash_on_create: "Der Skill konnte nicht erstellt werden. Ein Skill namens %{name} liegt im Papierkorb. Stellen Sie ihn aus dem Papierkorb wieder her, um ihn weiter zu nutzen, oder wählen Sie einen anderen Namen."
+    stale: "Ihre Änderung konnte nicht gespeichert werden. Jemand hat diesen Skill geändert, nachdem Sie ihn geöffnet haben. Laden Sie den Tab Skills neu, um die neueste Fassung zu sehen, und nehmen Sie Ihre Änderung dann erneut vor."
+    gone: "Dieser Skill wurde nicht gefunden. Er wurde inzwischen gelöscht. Laden Sie den Tab Skills neu; Sie können den Skill aus dem Papierkorb wiederherstellen."
   # Story 13-8 (#580) — ein Exemplar einem anderen Titel zuordnen.
   volume_move_no_target: "Das Exemplar wurde nicht verschoben, weil kein Titel gewählt wurde. Suchen Sie den Titel, wählen Sie ihn in der Liste und bestätigen Sie."
   volume_move_same_title: "Das Exemplar wurde nicht verschoben, weil es diesem Titel bereits zugeordnet ist. Wählen Sie einen anderen Titel in der Liste."
@@ -848,6 +864,7 @@ admin:
     trash: Papierkorb
     system: System
     api_keys: API-Schlüssel
+    skills: "Skills"
   trash:
     badge_aria: "Papierkorb, %{count} Einträge"
     heading: Papierkorb (gelöschte Einträge)
@@ -860,6 +877,7 @@ admin:
     filter_entity_borrowers: "Entleiher"
     filter_entity_series: "Serien"
     filter_entity_storage_locations: "Standorte"
+    filter_entity_mcp_skills: "Skills"
     search_placeholder: "Nach Namen suchen…"
     pagination_aria: "Seitennavigation Papierkorb"
     col_item_name: Eintrag
@@ -1068,6 +1086,52 @@ admin:
     # CR #396 — Zeitüberschreitungs-Überschreibungen pro Anbieter.
     provider_timeouts_help: "Überschreiben Sie die Metadaten-Zeitüberschreitung für einzelne Anbieter. Lassen Sie ein Feld leer, um den globalen Standard (%{default} s) zu verwenden. Grenzen 1–60. Beim nächsten Scan wirksam — kein Neustart."
     btn_save_provider_timeouts: "Zeitüberschreitungen pro Anbieter speichern"
+  # Story 15-2 (#614) — Admin → Skills (MCP skills).
+  skills:
+    panel_heading: "Skills für den Agenten"
+    intro: "Ein Skill ist eine Sammlung von Anweisungen, die Sie hier einmal in Markdown schreiben, statt sie in jede Sitzung mit dem über MCP verbundenen Agenten einzufügen. Der Agent kann nur aktive Skills lesen und sie nicht ändern. Nur Administratoren bearbeiten Skills."
+    safety_note: "Die Anweisungen werden als reiner Text gespeichert und angezeigt: Diese Seite macht nie eine Webseite daraus."
+    section_list: "Skills"
+    empty_state: "Noch kein Skill. Schreiben Sie oben den ersten."
+    heading_new: "Neuer Skill"
+    heading_edit: "Skill %{name} bearbeiten"
+    name_label: "Name"
+    name_help: "Kleinbuchstaben, Ziffern und einzelne Bindestriche, höchstens %{max} Zeichen — zum Beispiel katalog-regeln. Der Agent fragt einen Skill unter diesem Namen an."
+    description_label: "Beschreibung"
+    description_help: "Eine Zeile, höchstens %{max} Zeichen: wofür der Skill da ist. Der Agent sieht sie in der Liste der Skills."
+    body_label: "Anweisungen (Markdown)"
+    body_help: "Höchstens %{max} KiB."
+    active_label: "Aktiv — der Agent kann ihn lesen"
+    btn_create: "Skill erstellen"
+    btn_save: "Änderungen speichern"
+    btn_cancel_edit: "Bearbeitung abbrechen"
+    col_name: "Name"
+    col_description: "Beschreibung"
+    col_status: "Status"
+    col_last_change: "Letzte Änderung"
+    col_actions: "Aktionen"
+    status_active: "Aktiv"
+    status_inactive: "Inaktiv"
+    show_body: "Anweisungen anzeigen"
+    last_change_by: "von %{name}"
+    last_change_unknown_author: "Autor unbekannt"
+    btn_edit: "Bearbeiten"
+    edit_aria: "Skill %{name} bearbeiten"
+    btn_activate: "Aktivieren"
+    activate_aria: "Skill %{name} aktivieren"
+    btn_deactivate: "Deaktivieren"
+    deactivate_aria: "Skill %{name} deaktivieren"
+    btn_delete: "Löschen"
+    delete_aria: "Skill %{name} löschen"
+    delete_modal_title: "Diesen Skill löschen?"
+    delete_modal_body: "Der Skill %{name} kommt in den Papierkorb, und der Agent sieht ihn nicht mehr. Sie können ihn 30 Tage lang aus dem Papierkorb wiederherstellen."
+    delete_modal_confirm: "In den Papierkorb"
+    delete_modal_cancel: "Abbrechen"
+    feedback_created: "Skill %{name} erstellt."
+    feedback_updated: "Skill %{name} gespeichert."
+    feedback_activated: "Der Skill %{name} ist aktiv: Der Agent kann ihn lesen."
+    feedback_deactivated: "Der Skill %{name} ist inaktiv: Der Agent sieht ihn nicht mehr."
+    feedback_deleted: "Skill %{name} in den Papierkorb verschoben."
   api_keys:
     panel_heading: "API-Schlüssel"
     intro: "API-Schlüssel authentifizieren externe Aufrufer an der HTTP-JSON-API unter /api/v1/*. Lese-Schlüssel können Datensätze auflisten und abrufen; Schreib-Schlüssel können zusätzlich freigegebene Titelfelder per PATCH bearbeiten; Vorschlags-Schlüssel lesen wie Lese-Schlüssel und können Vorschläge einreichen, die eine Bibliothekarin oder ein Bibliothekar prüft — den Katalog ändern sie nie direkt. Jeder Schlüssel wird genau EINMAL beim Anlegen angezeigt — jetzt kopieren oder widerrufen und neu erstellen."

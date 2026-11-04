@@ -60,7 +60,10 @@
         // preserved alongside the OOB error FeedbackEntry. Without this
         // opt-in, HTMX 2.0's default responseHandling drops 4xx bodies
         // (`[45]..` → swap:false) and the user sees no inline error.
-        if (xhr.status === 400 && triggers.indexOf("validation-error") !== -1) {
+        // Story 15-2 — also 409: the Skills editor re-renders what the
+        // admin typed next to a conflict message (name taken, stale
+        // version) through the same opt-in.
+        if ((xhr.status === 400 || xhr.status === 409) && triggers.indexOf("validation-error") !== -1) {
             evt.detail.shouldSwap = true;
             evt.detail.isError = false;
         }

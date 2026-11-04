@@ -1,0 +1,72 @@
+{# Story 15-2 — skills list (inner HTML of #admin-skills-list).
+   The body is shown in a <pre>, escaped (AC4): never rendered as HTML,
+   no Markdown rendering. Row buttons carry per-row ids so HTMX restores
+   focus after the list swap (Foundation Rule #21). Delete opens the
+   UX-DR8 modal in #modal-slot (no `hx-confirm=`). The wrapper div carries
+   the styling because an out-of-band swap replaces #admin-skills-list
+   itself with a bare div. #}
+<div class="overflow-x-auto">
+{% if rows.is_empty() %}
+<p class="text-stone-500 dark:text-stone-400 py-4">{{ empty_state }}</p>
+{% else %}
+<table class="w-full text-sm border-collapse">
+    <thead class="bg-stone-100 dark:bg-stone-800">
+        <tr>
+            <th scope="col" class="px-3 py-2 text-left">{{ col_name }}</th>
+            <th scope="col" class="px-3 py-2 text-left">{{ col_description }}</th>
+            <th scope="col" class="px-3 py-2 text-left">{{ col_status }}</th>
+            <th scope="col" class="px-3 py-2 text-left">{{ col_last_change }}</th>
+            <th scope="col" class="px-3 py-2 text-right">{{ col_actions }}</th>
+        </tr>
+    </thead>
+    <tbody class="divide-y divide-stone-200 dark:divide-stone-700">
+        {% for s in rows %}
+        <tr id="admin-skill-row-{{ s.id }}" class="align-top">
+            <td class="px-3 py-2 font-mono">{{ s.name }}</td>
+            <td class="px-3 py-2">
+                <p>{{ s.description }}</p>
+                <details class="mt-1">
+                    <summary class="cursor-pointer text-xs text-indigo-700 dark:text-indigo-300">{{ show_body }}</summary>
+                    <pre class="mt-2 p-3 max-h-96 overflow-auto **:scroll-mt-0! whitespace-pre-wrap break-words rounded bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-700 font-mono text-xs">{{ s.body }}</pre>
+                </details>
+            </td>
+            <td class="px-3 py-2">
+                {% if s.active %}
+                <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800">{{ s.status_label }}</span>
+                {% else %}
+                <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-stone-300 text-stone-700">{{ s.status_label }}</span>
+                {% endif %}
+            </td>
+            <td class="px-3 py-2">
+                <span class="block">{{ s.last_change_date }}</span>
+                <span class="block text-xs text-stone-500 dark:text-stone-400">{{ s.last_change_author }}</span>
+            </td>
+            <td class="px-3 py-2 text-right">
+                <div class="flex flex-wrap justify-end gap-2">
+                    <button id="admin-skill-edit-{{ s.id }}" type="button"
+                            hx-get="/admin/skills/{{ s.id }}/edit"
+                            hx-target="#admin-skills-editor"
+                            hx-swap="outerHTML"
+                            aria-label="{{ s.edit_aria }}"
+                            class="px-3 py-1 bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 text-sm rounded">{{ btn_edit }}</button>
+                    <form method="POST" action="/admin/skills/{{ s.id }}/active" hx-post="/admin/skills/{{ s.id }}/active" hx-target="#admin-skills-list" hx-swap="innerHTML">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+                        <input type="hidden" name="version" value="{{ s.version }}">
+                        <input type="hidden" name="active" value="{% if s.active %}0{% else %}1{% endif %}">
+                        <button id="admin-skill-toggle-{{ s.id }}" type="submit" aria-label="{{ s.toggle_aria }}"
+                                class="px-3 py-1 bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 text-sm rounded">{{ s.toggle_label }}</button>
+                    </form>
+                    <button id="admin-skill-delete-{{ s.id }}" type="button" data-modal-trigger
+                            hx-get="/admin/skills/{{ s.id }}/delete-modal?version={{ s.version }}"
+                            hx-target="#modal-slot"
+                            hx-swap="innerHTML"
+                            aria-label="{{ s.delete_aria }}"
+                            class="px-3 py-1 bg-stone-200 dark:bg-stone-700 hover:bg-red-600 hover:text-white text-sm rounded">{{ btn_delete }}</button>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+</div>

@@ -1,0 +1,42 @@
+{# Story 15-2 — skill editor: a create form, or an edit form when
+   `is_edit`. Every value is auto-escaped by Askama, the body included
+   (AC4: the Markdown is never rendered as HTML). The submit button keeps
+   the same id in both modes so HTMX restores focus to it after a save
+   (Foundation Rule #21). #}
+<section id="admin-skills-editor" aria-labelledby="admin-skills-editor-heading" class="border border-stone-200 dark:border-stone-700 rounded-lg p-4 max-w-3xl">
+    <h3 id="admin-skills-editor-heading" class="text-lg font-semibold mb-3">{{ heading }}</h3>
+    <form id="admin-skills-form" method="POST" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#admin-skills-editor" hx-swap="outerHTML" class="space-y-4">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+        {% if is_edit %}<input type="hidden" name="version" value="{{ version }}">{% endif %}
+        <div>
+            <label for="admin-skills-name" class="block text-sm font-medium mb-1">{{ name_label }}</label>
+            <input id="admin-skills-name" name="name" type="text" required maxlength="{{ name_max }}" autocomplete="off" spellcheck="false" value="{{ name }}" aria-describedby="admin-skills-name-help"
+                   class="w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2 font-mono">
+            <p id="admin-skills-name-help" class="text-xs text-stone-500 dark:text-stone-400 mt-1">{{ name_help }}</p>
+        </div>
+        <div>
+            <label for="admin-skills-description" class="block text-sm font-medium mb-1">{{ description_label }}</label>
+            <input id="admin-skills-description" name="description" type="text" required maxlength="{{ description_max }}" autocomplete="off" value="{{ description }}" aria-describedby="admin-skills-description-help"
+                   class="w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2">
+            <p id="admin-skills-description-help" class="text-xs text-stone-500 dark:text-stone-400 mt-1">{{ description_help }}</p>
+        </div>
+        <div>
+            <label for="admin-skills-body" class="block text-sm font-medium mb-1">{{ body_label }}</label>
+            <textarea id="admin-skills-body" name="body" required rows="14" spellcheck="false" aria-describedby="admin-skills-body-help"
+                      class="w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2 font-mono text-sm">{{ body }}</textarea>
+            <p id="admin-skills-body-help" class="text-xs text-stone-500 dark:text-stone-400 mt-1">{{ body_help }}</p>
+        </div>
+        <div>
+            <label class="inline-flex items-center gap-2">
+                <input id="admin-skills-active" type="checkbox" name="active" value="1"{% if active %} checked{% endif %}>
+                <span>{{ active_label }}</span>
+            </label>
+        </div>
+        <div class="flex gap-2">
+            <button id="admin-skills-submit" type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-semibold">{{ submit_label }}</button>
+            {% if is_edit %}
+            <button id="admin-skills-cancel" type="button" hx-get="/admin/skills/new" hx-target="#admin-skills-editor" hx-swap="outerHTML" class="px-4 py-2 bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 rounded-md font-semibold">{{ cancel_label }}</button>
+            {% endif %}
+        </div>
+    </form>
+</section>

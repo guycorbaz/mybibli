@@ -50,6 +50,9 @@ pub(crate) const PURGE_DELETION_ORDER: &[&str] = &[
     "contributors",
     "genres",
     "labels", // CR #443
+    // Story 15-2 — MCP skills: no inbound FK, `updated_by` → users is
+    // SET NULL, so the position only has to precede nothing.
+    "mcp_skills",
     // Issue #69: deactivated users hard-deleted after 30 days.
     // `services::users::deactivate` (story 8-3) wipes the user's
     // sessions rows, but that invariant only holds for users

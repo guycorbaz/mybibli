@@ -11,6 +11,7 @@ pub mod label;
 pub mod loan;
 pub mod location;
 pub mod location_node_type;
+pub mod mcp_skill;
 pub mod media_type;
 pub mod metadata_cache;
 pub mod metadata_retry;
