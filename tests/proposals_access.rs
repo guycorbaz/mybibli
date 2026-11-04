@@ -44,7 +44,8 @@ async fn file_metadata(agent: &Agent, title_id: u64, subtitle: &str) -> u64 {
         .expect("proposal_id")
 }
 
-/// Story 14-1 — the texts of the nav badges (sidebar + panel).
+/// Story 14-1 — the texts of the nav badges (story 14-2: one, the
+/// sidebar's, which is also the small-screen drawer).
 fn badge_texts(html: &str) -> Vec<&str> {
     html.match_indices("<span data-proposals-badge")
         .map(|(i, _)| {
@@ -56,7 +57,7 @@ fn badge_texts(html: &str) -> Vec<&str> {
 }
 
 /// The sidebar entry's opening tag (the first `/proposals` link: the
-/// sidebar comes before the small-screen panel — story 14-1).
+/// sidebar comes before the dashboard's indicator — story 14-1).
 fn entry_tag(html: &str) -> &str {
     let start = html
         .find("<a href=\"/proposals\"")
@@ -73,8 +74,8 @@ async fn no_badge_and_no_indicator_without_pending_proposals(pool: DbPool) {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         html.matches("<a href=\"/proposals\"").count(),
-        2,
-        "sidebar + panel"
+        1,
+        "one entry (sidebar = drawer, story 14-2)"
     );
     assert!(html.contains(">Propositions</span>"));
     assert!(!entry_tag(&html).contains("aria-label="));
@@ -99,10 +100,10 @@ async fn a_pending_proposal_shows_the_badge_and_the_indicator(pool: DbPool) {
     );
     assert_eq!(
         html.matches("data-proposals-badge").count(),
-        2,
-        "sidebar + panel badge"
+        1,
+        "one badge (sidebar = drawer, story 14-2)"
     );
-    assert_eq!(badge_texts(&html), ["2", "2"]);
+    assert_eq!(badge_texts(&html), ["2"]);
     assert!(html.contains("<a href=\"/proposals\" id=\"filter-tag-pending-proposals\""));
     assert!(html.contains("aria-label=\"Propositions en attente: 2\""));
 
@@ -215,7 +216,7 @@ async fn the_badge_caps_at_99_plus_and_the_name_keeps_the_count(pool: DbPool) {
     let lib = librarian(&pool, &agent).await;
     let (_, html) = lib.get(&agent.app, "/").await;
     assert!(entry_tag(&html).contains("Propositions, 105 en attente"));
-    assert_eq!(badge_texts(&html), ["99+", "99+"]);
+    assert_eq!(badge_texts(&html), ["99+"]);
     // The dashboard pill shows the exact number.
     assert!(html.contains("aria-label=\"Propositions en attente: 105\""));
 }

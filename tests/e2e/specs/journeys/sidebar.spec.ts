@@ -72,7 +72,8 @@ function withLang(path: string, lang: string): string {
 /** Tab from the logo through the sidebar; returns what took focus, in
  *  order, until focus leaves it. */
 async function tabThroughSidebar(page: Page): Promise<string[]> {
-  await page.locator(`${SIDEBAR} > a[href="/"]`).focus();
+  // Story 14-2 — the logo link sits in the head row, beside the drawer's close button.
+  await page.locator(`${SIDEBAR} a[href="/"]`).first().focus();
   const seen: string[] = [];
   for (let i = 0; i < 30; i++) {
     await page.keyboard.press("Tab");

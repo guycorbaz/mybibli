@@ -180,6 +180,10 @@ nav:
   collapse_menu: "Menü einklappen"
   expand_menu: "Menü ausklappen"
   language_label: "Sprache"
+  # Story 14-2 (#547, UX-DR39) — the small-screen drawer: close button
+  # name and the dialog's accessible name.
+  menu_close: "Menü schließen"
+  menu_dialog: "Menü"
 title:
   # #202 — Metadaten-Herkunft auf /title/:id. Der Anbietername wird NICHT
   # übersetzt (NFR41) — er ist ein Eigenname. Nur das Label wird übersetzt.

@@ -1,6 +1,6 @@
 # Story 14.2: Navigation drawer on small screens
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #547 (type:change-request). Covers: UX-DR39. Epic 14; ships in v1.24.0.
 
@@ -33,14 +33,40 @@ Mock-up `_bmad-output/planning-artifacts/ux-sidebar-mockup.html`, states "Mobile
 
 ## Tasks / Subtasks
 
-- [ ] T1 — drawer markup from the single source; slim bar (AC1, AC2)
-- [ ] T2 — drawer JS: open/close, focus trap / inert, scroll lock, reduced motion (AC3)
-- [ ] T3 — scanner-guard + stacking (AC4)
-- [ ] T4 — remove old panel; landmarks; comments (AC5)
-- [ ] T5 — tests; gates; full suites once before the single push (AC6, AC7)
+- [x] T1 — drawer markup from the single source; slim bar (AC1, AC2)
+- [x] T2 — drawer JS: open/close, focus trap / inert, scroll lock, reduced motion (AC3)
+- [x] T3 — scanner-guard + stacking (AC4)
+- [x] T4 — remove old panel; landmarks; comments (AC5)
+- [x] T5 — tests; gates; full suites once before the single push (AC6, AC7)
 
 ## Dev Notes
 
 - Reuse, do not fork: the sidebar and the drawer may even be the same `<nav>` element restyled per breakpoint (sidebar ≥ `lg`, off-canvas drawer < `lg`) — evaluate this first; it removes the second landmark and keeps one DOM.
 - CSP: no inline script/style; animations via classes. i18n: four locales, `locale_parity`.
 - Rule #12: files < 2000 lines.
+
+## Completion Notes (2026-11-04)
+
+**Design choice — one `<nav>` for the sidebar and the drawer (Dev Notes idea adopted).** `components/sidebar.html`'s `<nav id="sidebar" aria-label="Main navigation">` is the sidebar at ≥ `lg` and the off-canvas drawer below. Classes are mobile-first: base utilities describe the drawer (`fixed inset-y-0 left-0 z-50 w-70 max-w-[85vw] invisible -translate-x-full shadow-xl`), the `lg:` ones restore the 14-1 sidebar (`lg:visible lg:translate-none lg:sticky lg:top-0 lg:bottom-auto lg:left-auto lg:self-start lg:h-screen lg:w-56 lg:z-40 …`; `lg:translate-none` matters: a transform would trap the collapsed tooltips, `fixed` boxes, inside the nav). A new custom variant `nav-open:` (`static/css/input.css`, below 1024 px while `<html>` carries `nav-drawer-open`) slides it in. Why this rather than a second drawer element: one DOM, one landmark, one language form, one theme toggle, unique ids (`#lang-select`, `#theme-toggle`), no "one per breakpoint" exception, nothing to keep in sync; the costs are modest — a wrapper `#nav-drawer` (`lg:contents`, so the nav stays the flex item of the 14-1 row) carrying the scrim and the dialog semantics, and a few `lg:` resets. Dialog semantics cannot sit on the `<nav>` itself (they would replace the landmark), and must not be in the server markup (at ≥ `lg` scanner-guard would treat the sidebar as an always-open modal), so `static/js/nav.js` adds `role="dialog"`, `aria-modal="true"` and `aria-label` (from `data-dialog-label`, `nav.menu_dialog`) to the wrapper while open only.
+
+**AC1 — top bar.** `components/nav_bar.html` is now a slim sticky `<header class="sticky top-0 z-40 print:static lg:hidden h-12 md:h-14 …">` with `#mobile-menu-toggle` (Heroicons bars-3, `aria-label` = `nav.menu_open`, `aria-expanded`, `aria-controls="sidebar"`) then the logo link home. No `<nav>`, no form, no Log in in the bar (moved to the drawer foot), so 360 px cannot overflow in any locale. Bar heights unchanged (11-4 scroll margins below `lg` unchanged).
+
+**AC2 — drawer.** Same single source (`nav_entries.html` included once, macros reused): head = logo + close button `#nav-drawer-close` (`lg:hidden`, x-mark icon, `nav.menu_close`); entries (own vertical scroller); foot = language form, theme toggle, Log out (POST + CSRF) or Log in. The collapse toggle is wrapped in `hidden lg:block` and `sb-collapsed:` only matches from `lg`, so the drawer is always expanded, with no tooltips. `aria-current`, Proposals badge + `aria-label` exactly as in the sidebar (same markup). 280 px, at most 85 vw; scrim `#nav-scrim` (`fixed inset-0 z-50 bg-black/50`, `aria-hidden`).
+
+**AC3 — dismissal and focus.** `static/js/nav.js` rewritten for the drawer: closes on Escape, scrim click, close button, any link click in the drawer (no focus return), and when the viewport grows to `lg` (matchMedia). On open focus goes to the close button; `#page-column` (bar, `<main>`, footer — new id in `layouts/base.html`) gets `inert`, and Tab / Shift+Tab cycle inside the drawer; on close focus returns to the menu button. `html.nav-drawer-open { overflow: hidden }` below `lg` stops the background scroll. Slide and fade are `motion-safe:` only; `visibility` is transitioned on closing only (the open state's transition list omits it — otherwise a discrete visibility transition keeps the drawer hidden at the start and `focus()` misses; found by E2E).
+
+**AC4 — scanner.** While open the wrapper matches scanner-guard's `[aria-modal="true"]`: a burst reaches neither `#scan-field` nor a drawer control (E2E: bursts with the close button and with an entry focused; URL, scan field and feedback list unchanged). Because the guard also blocks a *human* Enter on a link / Space on a button (WCAG 2.1.1 for keyboard users of a narrow window), nav.js adds a window-capture listener that activates the focused drawer link (Enter) or button (Enter / Space) itself when the key comes at least the burst threshold (`#search-field[data-scanner-threshold]`, else 50 ms, floor 10) after the previous keydown — a scanner's terminating Enter follows its last character within a few ms and stays blocked. Stacking: drawer and scrim are `fixed z-50` (audit rule kept, its doc updated): above the `z-40` bar and the content; earlier in the DOM than the connection-lost overlay and JS toasts (same z-50, so they paint above); modals are in the top layer. E2E pins drawer over bar, scrim over content, overlay over drawer.
+
+**AC5 — removal.** `#mobile-nav`, its unnamed language form, the bar's language form / theme toggle / login link, the icon-only `theme_toggle` branch of the macro, and the 9-17 panel logic + stand-alone burst detector of nav.js are gone. Exactly one "Main navigation" landmark in the DOM at every width (14-1's two-landmark exception removed from `tests/navbar_role_visibility.rs` and documented in the templates). No `xl` stopgap note left in templates (also removed the `xl` mention on `PROPOSALS_BADGE_CAP`).
+
+**AC6 — no overflow.** New `responsive-layouts.spec.ts` matrix: anonymous / librarian / admin × fr / en / de / it × 360 / 390 / 768 / 1023 px, drawer closed and open: no page overflow, bar content on screen, drawer at x 0 and 280 px wide, no row (entry, language, theme, Log in / Log out) overflowing it. The admin 360 / 1023 / 1024 / 1920 matrix kept (adapted).
+
+**AC7 — tests.** Unit (`src/routes/nav_sticky_tests.rs`, 24 tests): sidebar ≥ lg classes, drawer classes + scrim + no dialog semantics at load + `nav-open` variant + scroll lock CSS, close button / collapse toggle wide-only, one landmark, entries rendered once, slim bar contents, one logout / login / language form / theme toggle, nav.js ↔ scanner-guard contract; `utils.rs` base-context test covers the two new keys; `templates_audit.rs` docs and the inner-scroller exemption updated. Integration: `navbar_hamburger.rs` (drawer slice, `aria-controls="sidebar"`, `lg:hidden` bar), `navbar_role_visibility.rs` (panel assertions removed, one landmark, one logout, one aria-current in the nav), `proposals_access.rs` (one badge). E2E: `navbar-hamburger.spec.ts` rewritten (10 tests: breakpoint + resize-to-lg closes, close/scrim/Escape with focus return and dialog role+name, link closes without focus return, focus into drawer + Tab trap + inert + no background scroll, scanner bursts on /catalog, human Enter follows a link + next page closed + aria-current, tap navigation, logout from the drawer, stacking, reduced motion, axe open/closed × light/dark); `responsive-layouts.spec.ts` (drawer instead of panel, AC6 matrix); `navbar-role-visibility`, `proposals-access`, `borrowers`, `login-smoke`, `language-toggle` (comments), `sidebar.spec.ts` (logo selector) adapted; new helper `tests/e2e/helpers/drawer.ts`. i18n: `nav.menu_close`, `nav.menu_dialog` in en/fr/de/it.
+
+**Deviations / notes.**
+- Focus on open goes to the close button (AC allows "first entry or close button").
+- The human-paced Enter/Space activation in the drawer is an addition not named in the ACs (needed so the drawer stays keyboard-operable under scanner-guard). UX-DR8 modals keep the guard's stricter behaviour.
+- The drawer does not forward a scanner burst to `#scan-field` (the 9-17 panel did); the burst is dropped, as for every modal (AC4).
+- The reduced-motion E2E compares durations numerically: a global reduced-motion rule leaves `1e-05s`, not `0s`.
+
+**Gates.** `cargo check` ✓; `cargo clippy --all-targets -- -D warnings` ✓; `cargo test --test locale_parity` ✓ (3); full Rust suite with DB: 2445 passed, 1 failed (`navbar_role_visibility::aria_current_renders_on_matching_page` — my over-strict whole-body count, the admin tabs carry their own `aria-current`; fixed, re-run 7/7); `tsc --noEmit` ✓; `waitForTimeout` gate ✓; full Playwright `CI=true --workers=2` on a freshly reset stack: 439 passed, 2 skipped, 0 flaky, 0 failed.

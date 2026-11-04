@@ -2,9 +2,9 @@
    entries. The list itself (href, label, role gate, current page, the
    Proposals badge and accessible name) is built once in Rust by
    `utils::nav_groups` and handed in as `base.nav_groups`; this include is
-   the only markup for it. Included by the sidebar (≥ `lg`) and the
-   small-screen panel (below `lg`); Story 14-2's drawer includes it too.
-   Before this story nav_bar.html carried two hand-copied lists.
+   the only markup for it, included once: by `components/sidebar.html`,
+   whose `<nav>` is the sidebar at ≥ `lg` and the drawer below (story
+   14-2). Before story 14-1 nav_bar.html carried two hand-copied lists.
 
    Groups are separated by a presentational rule (`aria-hidden`), never an
    empty landmark. Story 11-21 (FR143, UX-DR32) — the Proposals badge is

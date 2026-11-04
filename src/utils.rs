@@ -569,11 +569,15 @@ pub struct BaseContextFields {
     /// Story 14-1 (#547) — the navigation entries of the session's role,
     /// grouped (Home · browsing · Librarian+ management · Admin), built
     /// once by [`nav_groups`] and rendered by `components/nav_entries.html`
-    /// in the sidebar and the small-screen panel.
+    /// in the sidebar, which is also the small-screen drawer (story 14-2).
     pub nav_groups: Vec<Vec<NavEntry>>,
     pub nav_login: String,
     pub nav_logout: String,
     pub nav_menu_open: String,
+    /// Story 14-2 (#547, UX-DR39) — the drawer's close button name and the
+    /// accessible name of the drawer while it is open (a modal dialog).
+    pub nav_menu_close: String,
+    pub nav_menu_dialog: String,
     /// Story 14-1 — the sidebar collapse toggle's two names.
     pub nav_collapse: String,
     pub nav_expand: String,
@@ -633,8 +637,9 @@ pub fn build_js_i18n_bundle(locale: &str) -> String {
 }
 
 /// Story 11-21 — above this many pending proposals the nav badge reads
-/// `99+`, so the widest badge is known and fits the bar at `xl` in every
-/// locale (D-11-21-1). The accessible name keeps the exact count.
+/// `99+`, so the widest badge is known and fits the navigation row in
+/// every locale (sidebar, drawer). The accessible name keeps the exact
+/// count.
 pub const PROPOSALS_BADGE_CAP: u64 = 99;
 
 /// The nav badge text for `count` pending proposals: `None` at zero or
@@ -689,6 +694,8 @@ pub fn base_context(
         nav_login: rust_i18n::t!("nav.login", locale = locale).to_string(),
         nav_logout: rust_i18n::t!("nav.logout", locale = locale).to_string(),
         nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
+        nav_menu_close: rust_i18n::t!("nav.menu_close", locale = locale).to_string(),
+        nav_menu_dialog: rust_i18n::t!("nav.menu_dialog", locale = locale).to_string(),
         nav_collapse: rust_i18n::t!("nav.collapse_menu", locale = locale).to_string(),
         nav_expand: rust_i18n::t!("nav.expand_menu", locale = locale).to_string(),
         nav_theme_toggle: rust_i18n::t!("nav.theme_toggle", locale = locale).to_string(),
@@ -727,6 +734,8 @@ pub(crate) fn test_base_context(
         nav_login: rust_i18n::t!("nav.login", locale = locale).to_string(),
         nav_logout: rust_i18n::t!("nav.logout", locale = locale).to_string(),
         nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
+        nav_menu_close: rust_i18n::t!("nav.menu_close", locale = locale).to_string(),
+        nav_menu_dialog: rust_i18n::t!("nav.menu_dialog", locale = locale).to_string(),
         nav_collapse: rust_i18n::t!("nav.collapse_menu", locale = locale).to_string(),
         nav_expand: rust_i18n::t!("nav.expand_menu", locale = locale).to_string(),
         nav_theme_toggle: rust_i18n::t!("nav.theme_toggle", locale = locale).to_string(),
@@ -1120,6 +1129,8 @@ mod tests {
             ("nav_login", &ctx.nav_login),
             ("nav_logout", &ctx.nav_logout),
             ("nav_menu_open", &ctx.nav_menu_open),
+            ("nav_menu_close", &ctx.nav_menu_close),
+            ("nav_menu_dialog", &ctx.nav_menu_dialog),
             ("nav_collapse", &ctx.nav_collapse),
             ("nav_expand", &ctx.nav_expand),
             ("nav_theme_toggle", &ctx.nav_theme_toggle),

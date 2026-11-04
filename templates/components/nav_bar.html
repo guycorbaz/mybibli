@@ -1,93 +1,30 @@
-{# The small-screen bar (below `lg`). Story 14-1 (#547) — at ≥ `lg` the
-   navigation is the sidebar (`components/sidebar.html`) and this header
-   is `lg:hidden`; Story 14-2 replaces it with the drawer.
+{# The small-screen top bar (below `lg`). Story 14-2 (#547, UX-DR39, AC1):
+   a slim bar with the menu button and the logo, as in the approved mock-up
+   (`_bmad-output/planning-artifacts/ux-sidebar-mockup.html`, "Mobile").
+   The navigation itself — entries, language, theme, Log in / Log out —
+   is the drawer, which is the sidebar's `<nav id="sidebar">` restyled
+   below `lg` (`components/sidebar.html`); this bar carries no `<nav>`, so
+   "Main navigation" is one landmark at every width. At ≥ `lg` the bar is
+   `lg:hidden` (the sidebar sits beside the content).
 
    Story 11-4 (#496) — the header sticks to the top of the viewport so the
-   menu stays reachable on long pages. It wraps both the bar and the mobile
-   panel, so the open panel travels with it. `z-40`: above in-content
+   menu button stays reachable on long pages. `z-40`: above in-content
    popovers (saved searches z-30, tooltips z-20, autocompletes z-10) and
-   below every `fixed` surface (modals, connection-lost overlay, JS toasts:
-   z-50 or the top layer — pinned by
+   below every `fixed` surface — the open drawer and its scrim included —
+   (z-50 or the top layer — pinned by
    templates_audit::fixed_surfaces_stack_above_sticky_nav for templates/
-   and static/js; HTML built in Rust is not scanned).
+   and static/js; HTML built in Rust is not scanned). Its height (h-12 /
+   md:h-14) is the scroll margin of <main> below `lg` (layouts/base.html).
    `print:static`: a printed page shows the bar once, never per sheet.
-   The bar is NOT compacted (epic 11): labels, gaps and heights stay.
-   Story 11-21 (D-11-21-1) moved the strip/menu switch from `lg` to `xl`;
-   story 14-1 moves it back to `lg` (UX-DR38 supersedes the `xl` stopgap):
-   the bar carries no link strip any more — the sidebar holds the entries
-   from `lg`, the panel below. #}
+
+   The menu button opens the drawer (`static/js/nav.js`): `aria-expanded`
+   follows the drawer, `aria-controls` names the `<nav>`. When the drawer
+   closes without navigating, focus comes back here. #}
 {%- import "components/nav_macros.html" as nav -%}
-<header class="sticky top-0 z-40 print:static lg:hidden">
-<nav aria-label="Main navigation" class="bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 h-12 md:h-14 flex items-center px-4 relative">
-    <a href="/" class="flex items-center gap-2 mr-4" aria-label="mybibli — home">
+<header class="sticky top-0 z-40 print:static lg:hidden h-12 md:h-14 flex items-center gap-1 px-1 bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700">
+    <button id="mobile-menu-toggle" type="button" data-nav-drawer-open aria-label="{{ base.nav_menu_open }}" aria-expanded="false" aria-controls="sidebar" class="p-2.5 rounded-md text-stone-600 dark:text-stone-400 hover:bg-stone-100 hover:text-stone-900 dark:hover:bg-stone-700 dark:hover:text-stone-100 focus-visible:outline-2 focus-visible:outline-indigo-500 print:hidden">{% call nav::icon("menu") %}{% endcall %}</button>
+    <a href="/" class="flex items-center gap-2 px-1 rounded-md focus-visible:outline-2 focus-visible:outline-indigo-500" aria-label="mybibli — home">
         <img src="/logo/svg/mybibli-icon.svg" alt="" aria-hidden="true" class="w-8 h-8">
         <span class="font-bold text-indigo-600 dark:text-indigo-400 text-lg">mybibli</span>
     </a>
-
-    <div class="flex items-center gap-4 ml-auto">
-        {# CR #275 / #276 (v1.7.0) — the language toggle is a <select>
-           dropdown to scale beyond the original FR/EN pair to FR/EN/DE/IT
-           (and future locales) without nav-bar layout churn. Submission is
-           wired by `static/js/mybibli.js` via the `data-auto-submit`
-           attribute (delegated `change` listener — CSP-clean, no inline
-           handler). Browsers without JS get a noscript fallback Submit
-           button. Story 14-1 — ids suffixed `-bar`: the sidebar holds the
-           canonical `#lang-select` / `#theme-toggle` (the wide-screen
-           surface every desktop test drives). #}
-        <form action="/language" method="post" class="flex items-center gap-1" aria-label="{{ base.lang_toggle_aria }}">
-            <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
-            <input type="hidden" name="next" value="{{ base.current_url }}">
-            {% call nav::lang_select("lang-select-bar", base.lang, base.lang_toggle_aria, "px-2 py-1") %}{% endcall %}
-        </form>
-        {% call nav::theme_toggle("theme-toggle-bar", base.nav_theme_toggle, false) %}{% endcall %}
-        {% if base.role == "anonymous" %}
-        {# Story 11-21 (#545, D-11-21-4) — the visitor's main action stays in
-           the bar down to `sm`; on a phone ("Connexion" overflowed 360 px
-           by 2 px) it is in the panel (#150). #}
-        <a href="/login" class="hidden sm:inline text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">{{ base.nav_login }}</a>
-        {% endif %}
-        {# Story 11-21 (#545) — the bar keeps only the language select, the
-           theme toggle and the menu button: logout lives in the panel
-           (#150), so a 360 px bar does not overflow. #}
-
-        <!-- Mobile hamburger -->
-        <button id="mobile-menu-toggle" type="button" class="lg:hidden p-2 text-stone-600 dark:text-stone-400" aria-label="{{ base.nav_menu_open }}" aria-expanded="false" aria-controls="mobile-nav">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-        </button>
-    </div>
-</nav>
-
-<!-- Mobile nav menu -->
-{# Story 11-4 (#496) — once the header sticks, a panel taller than the
-   viewport (admin menu on a landscape phone) can no longer be scrolled
-   into reach: bound it to the viewport minus the bar (h-12 / md:h-14 =
-   48 / 56 px, px like --spacing so a non-16px root font cannot drift)
-   and let it scroll on its own. `vh` first, `dvh` where supported (the
-   dynamic toolbar of mobile browsers); older engines keep the vh bound.
-   Story 14-1 (AC1) — the entries come from the single source
-   `components/nav_entries.html` (same include as the sidebar). #}
-<div id="mobile-nav" class="hidden lg:hidden max-h-[calc(100vh-48px)] md:max-h-[calc(100vh-56px)] supports-[height:100dvh]:max-h-[calc(100dvh-48px)] md:supports-[height:100dvh]:max-h-[calc(100dvh-56px)] overflow-y-auto overscroll-contain bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 px-4 py-2">
-    {% include "components/nav_entries.html" %}
-    {# CR #275 / #276 (v1.7.0) — mobile-nav copy of the language dropdown.
-       Same wiring as the bar's.
-       Story 11-4 — no aria-label on this copy: the bar's form stays
-       visible at every width below `lg`, so two forms named alike were two
-       identical landmarks while the menu is open (axe landmark-unique).
-       The <select> keeps its own sr-only label. #}
-    <form action="/language" method="post" class="mt-2 flex items-center gap-2 py-2">
-        <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
-        <input type="hidden" name="next" value="{{ base.current_url }}">
-        {% call nav::lang_select("lang-select-mobile", base.lang, base.lang_toggle_aria, "px-2 py-1") %}{% endcall %}
-    </form>
-    {# Issue #150 — login/logout in the panel: the bar has no logout (story
-       11-21) and hides its login below `sm`. #}
-    {% if base.role == "anonymous" %}
-    <a href="/login" class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">{{ base.nav_login }}</a>
-    {% else %}
-    <form method="POST" action="/logout" class="py-2">
-        <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
-        <button type="submit" class="block w-full text-left text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 bg-transparent border-none p-0 cursor-pointer">{{ base.nav_logout }}</button>
-    </form>
-    {% endif %}
-</div>
 </header>
