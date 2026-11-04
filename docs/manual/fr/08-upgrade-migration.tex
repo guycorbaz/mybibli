@@ -148,6 +148,59 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.24.0}\label{sec:whats-new-1.24.0}
+
+La version 1.24.0 clôt l'epic 14, « la barre latérale »
+(\href{https://github.com/guycorbaz/mybibli/issues/547}{\#547}) : la
+barre de navigation du haut, où les entrées d'un admin ne tenaient plus
+en français ni en allemand, cède la place à une barre latérale
+repliable sur les grands écrans et à un tiroir sur les petits.
+\emph{Aucune migration}, aucun réglage modifié --- récupérez l'image,
+recréez le conteneur (\texttt{docker compose up -d}), c'est tout.
+
+\begin{itemize}
+  \item \textbf{Barre latérale à partir de 1024\,px.} Chaque entrée
+        avec son icône et son nom, en groupes (Accueil ·
+        Catalogue, Emplacements, Séries · Emprunteurs, Prêts,
+        Wish list, Étiquettes, Propositions · Admin, selon le
+        rôle), la page courante mise en évidence. La langue, le bouton
+        de thème, Déconnexion et un bouton \textbf{Réduire le menu}
+        occupent son pied. Réduite, elle devient une colonne d'icônes de
+        64\,px avec infobulles, qui rend la largeur aux tableaux ; le
+        badge des propositions devient une pastille sur son icône. Le
+        navigateur retient ce choix (section~\ref{sec:navbar}).
+  \item \textbf{Tiroir en dessous de 1024\,px} (téléphones et
+        tablettes). Une fine barre en haut, avec le bouton de menu,
+        ouvre la même navigation depuis la gauche, par-dessus la page
+        assombrie ; Échap, la page assombrie, le bouton de fermeture ou
+        un lien le referment. Tant qu'il est ouvert, la page derrière ne
+        défile pas et une lecture de la douchette est ignorée.
+  \item \textbf{Nouvelle entrée Accueil} en tête de la navigation (le
+        logo mène toujours aussi à l'accueil).
+  \item \textbf{Le bouton de thème bascule vraiment entre clair et
+        sombre.} Jusqu'ici, toute l'interface suivait le système
+        d'exploitation et le bouton ne changeait que les cartes de la
+        page d'accueil. Le navigateur retient ce choix ; sans choix,
+        mybibli suit le système. L'impression est toujours claire.
+\end{itemize}
+
+\paragraph{Corrections.}
+\begin{itemize}
+  \item Quand le stockage du navigateur est bloqué (réglages de
+        confidentialité stricts), le bouton de thème, le son de scan et
+        le choix Liste/Grille ne cassent plus la page : ils reprennent
+        leur valeur par défaut.
+  \item Les avis d'expiration de session et de connexion perdue
+        s'affichent de nouveau en bas à droite de l'écran.
+  \item La page d'erreur suit le thème choisi.
+\end{itemize}
+
+\paragraph{Après la mise à jour.} Rien à faire sur le serveur. Chaque
+navigateur démarre avec la barre latérale déployée et le thème de son
+système. Si vous aviez déjà choisi un thème, ce choix s'applique
+désormais à toute l'interface, et plus seulement aux cartes de
+l'accueil.
+
 \section{Nouveautés de la 1.23.0}\label{sec:whats-new-1.23.0}
 
 La version 1.23.0 clôt l'epic 13, « cataloguer pour de vrai »,

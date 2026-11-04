@@ -36,6 +36,7 @@ mybibli is designed for one household on one LAN. Login attempts are not rate-li
 - **Admin panel.** Health dashboard (entity counts, MariaDB version, disk usage, provider reachability), user management with last-active-admin guard, editable reference data (genres, volume states, contributor roles, location node types), system settings (loans / providers / language / valuation / **logging level**), trash view + restore + permanent delete, configurable auto-purge after 30 days.
 - **Production observability** (v1.7.0+, completed in v1.7.1). Persistent daily-rotating log files with 30-day in-process purge. Admin-controlled log level (`trace` / `debug` / `info` / `warn` / `error` or full `tracing-subscriber` `EnvFilter` directives) flippable from `/admin > System` without a redeploy. To monitor the container from Prometheus/blackbox or any uptime checker, probe `/health` — not `/`, where every cookieless request creates an anonymous session.
 - **First-launch setup wizard.** Fresh installs walk through Admin → Providers → Preferences → Done.
+- **Sidebar navigation, light or dark.** A sidebar on screens from 1024 px — every entry with its icon, grouped by role — that collapses to a column of icons (the browser remembers the choice), and a drawer on phones and tablets that ignores a barcode scanner's read while it is open. The theme toggle switches the whole interface between light and dark; without a choice mybibli follows the system, and printing is always light.
 - **Mobile-aware + WCAG 2.2 AA accessible.** Dual-surface mobile UX (desktop tables collapse into cards, admin tabs into `<select>`), full keyboard navigation with shortcuts cheat-sheet (`?`), contextual help-icon tooltips, and an axe-core CI gate over the main surfaces (thirteen of them, listed in [`docs/accessibility-audit.md`](https://github.com/guycorbaz/mybibli/blob/main/docs/accessibility-audit.md) — the newer pages are not in the set yet).
 
 ## Quick start
@@ -126,7 +127,7 @@ Both `mybibli-covers` and `mybibli-logs` can be swapped from Docker-named volume
 ## Tags
 
 - `:latest` — tracks the highest semver release tag.
-- `:1.23.0` (current), `:1.22.0`, `:1.21.0`, `:1.20.1` and every prior release tag back to `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; tracking `:latest` is reasonable for homelab. The full tag list is on the [Tags tab](https://hub.docker.com/r/gcorbaz/mybibli/tags).
+- `:1.24.0` (current), `:1.23.0`, `:1.22.0`, `:1.21.0`, `:1.20.1` and every prior release tag back to `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; tracking `:latest` is reasonable for homelab. The full tag list is on the [Tags tab](https://hub.docker.com/r/gcorbaz/mybibli/tags).
 - **No `:dev`, no `:main`, no `:beta` published** — tagged releases only.
 
 ## Docs

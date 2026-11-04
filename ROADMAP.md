@@ -32,36 +32,75 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.23.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.23.0)**
-(2026-11-04) — cataloguing for real: a pile can be scanned without
-surprises, throttled lookups are retried, ISBN-10s stored as UPC and
-HTML descriptions are repaired, a volume can be moved to another
-title, dates added are shown and filterable, tome numbers are shown and
-edited in place, and an agent can propose a management label on a
-doubtful record. **Five additive migrations.** The section below has
-the detail; every release before it has its own section further down,
-and this is the file that carries them — the README quotes only the
-current release, and the website tells the same story for a different
-audience.
+**Current stable: [`v1.24.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.24.0)**
+(2026-11-04) — the sidebar: the top navigation bar gives way to a
+collapsible sidebar on wide screens and a drawer on small ones, a Home
+entry heads the navigation, and the theme toggle really switches the
+whole interface between light and dark. **No migration.** The section
+below has the detail; every release before it has its own section
+further down, and this is the file that carries them — the README
+quotes only the current release, and the website tells the same story
+for a different audience.
 
-**Next:** epic 14 — a collapsible left sidebar in place of the top
-navigation bar ([#547](https://github.com/guycorbaz/mybibli/issues/547)),
-UX mock-up first, unless a bug comes first; then epic 15 — agent
-proposals of a volume's purchase price and current value, to estimate
-what a collection is worth
-([#564](https://github.com/guycorbaz/mybibli/issues/564)). Later
-candidates, awaiting prioritisation: the agent requests filed during
-epic 13 — a cover sent without base64 transcription
-([#587](https://github.com/guycorbaz/mybibli/issues/587)), more
-proposable fields ([#589](https://github.com/guycorbaz/mybibli/issues/589)),
-proposals that modify a series
-([#590](https://github.com/guycorbaz/mybibli/issues/590)), merging
-duplicates ([#591](https://github.com/guycorbaz/mybibli/issues/591)) —
-and an instance time zone for day boundaries
-([#602](https://github.com/guycorbaz/mybibli/issues/602)). The
-base-path setting for reverse proxies
+**Next:** epic 15 — the agent proposes more: a volume's purchase price
+and current value, to estimate what a collection is worth
+([#564](https://github.com/guycorbaz/mybibli/issues/564)); proposals
+that modify a series — open / closed, total, name, removal of an
+expected tome ([#590](https://github.com/guycorbaz/mybibli/issues/590));
+and *skills*, instructions written by an admin that the agent can use
+([#614](https://github.com/guycorbaz/mybibli/issues/614)) — plus a
+small story for an instance time zone, so day boundaries and dates
+follow local time rather than UTC
+([#602](https://github.com/guycorbaz/mybibli/issues/602)). Later
+candidates, awaiting prioritisation: a cover sent without base64
+transcription ([#587](https://github.com/guycorbaz/mybibli/issues/587)),
+more proposable fields
+([#589](https://github.com/guycorbaz/mybibli/issues/589)) and merging
+duplicates ([#591](https://github.com/guycorbaz/mybibli/issues/591)).
+The base-path setting for reverse proxies
 ([#492](https://github.com/guycorbaz/mybibli/issues/492)) comes later.
 Everything else open lives in the issue tracker.
+
+## v1.24.0 — the sidebar *(shipped)*
+
+Shipped 2026-11-04. The closing release of epic 14
+([#547](https://github.com/guycorbaz/mybibli/issues/547)): the top
+navigation bar no longer fitted an admin's entries in French or German.
+**No migration, no setting changed** — pull the image and recreate the
+container (`docker compose up -d`).
+
+- **Sidebar from 1024 px.** Every entry with its icon and label,
+  grouped (Home · Catalog, Locations, Series · Borrowers, Loans, Wish
+  list, Labels, Proposals · Admin, per role), the current page marked.
+  Language, theme, log out and a **Collapse menu** button sit at its
+  foot. Collapsed, it shrinks to a 64 px column of icons with tooltips,
+  giving the width back to the tables; the Proposals badge becomes a
+  pill on its icon. The browser remembers the choice.
+- **Drawer below 1024 px** (phones and tablets). A slim top bar with
+  the menu button opens the same navigation from the left, over a
+  dimmed page; Escape, the dimmed page, the close button or a link
+  close it. While it is open, the page behind does not scroll and a
+  barcode scanner's read is ignored.
+- **Home entry** at the top of the navigation (the logo still links
+  home too).
+- **The theme toggle really switches light / dark** — before, the
+  whole interface followed the operating system and the toggle only
+  changed the home-page cards. The browser remembers the choice;
+  without one, mybibli follows the system. Printing is always light.
+- **Fixes.** With browser storage blocked, the theme toggle, the scan
+  sound and the list / grid toggle fall back to their defaults instead
+  of breaking the page; the session-timeout and connection-lost notices
+  sit at the bottom right again; the error page follows the chosen
+  theme.
+- **Under the hood.** One navigation source for the sidebar and the
+  drawer; dark mode is class-based and screen-only; Tailwind now scans
+  `static/js` (vendor files excluded). Playwright: 443 passed
+  (2 skipped) at `--workers=2`, with new sidebar, drawer, responsive
+  (360 → 1023 px × four locales × three roles) and blank-browser epic
+  smoke tests.
+- **Manual** (EN + FR): *What's new in 1.24.0* in chapter 8; chapter 3
+  (the sidebar, the drawer, the theme) and chapters 2, 9, 11, 13 with
+  new screenshots in each language.
 
 ## v1.23.0 — cataloguing for real *(shipped)*
 

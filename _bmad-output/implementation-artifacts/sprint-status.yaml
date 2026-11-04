@@ -293,9 +293,9 @@ development_status:
   # Release: v1.24.0 at epic close.
   # Sequencing: 14-1 (wide screens) -> 14-2 (drawer) -> 14-3 (epic smoke, Rule #7) -> 14-4 -> retrospective -> release.
   # Next: Epic 15 = agent price / value (#564); #602 time zone as a small story at the next planning.
-  epic-14: in-progress
+  epic-14: done
   14-1-sidebar-wide-screens: done
   14-2-navigation-drawer-small-screens: done
   14-3-epic-14-smoke-test: done
   14-4-epic-14-documentation: done
-  epic-14-retrospective: optional
+  epic-14-retrospective: done
