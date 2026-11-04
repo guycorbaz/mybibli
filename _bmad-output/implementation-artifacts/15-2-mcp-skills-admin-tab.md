@@ -164,7 +164,8 @@ Independent review (2026-11-04): one Medium, no High.
 - [x] **L1 (Low) — author-join exception undocumented in CLAUDE.md.** Fixed:
   the skills entry now states the `LEFT JOIN users` without
   `deleted_at IS NULL` (like `decided_by_name`).
-- [x] **L2, L3 (Low)** — accepted as is, no change (coordinator decision).
+- [x] **L2 (Low)** — `src/routes/admin.rs` at 1 838 lines, under the Rule #12 limit; accepted — the next admin tab should move Health or Trash out of it.
+- [x] **L3 (Low)** — toggling a skill bumps its `version`, so an editor open on the same skill gets a stale-version error on save; correct optimistic-locking behaviour, accepted.
 
 Gates after the fixes are listed below under "Gates after review".
 
