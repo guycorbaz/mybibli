@@ -104,6 +104,19 @@ doc state that a bare date is the UTC day and an offset is accepted
 - Display formats unchanged (ISO `YYYY-MM-DD` / `YYYY-MM-DD HH:MM`, localized dates where they already were); only the zone changed. Times no longer carry a "UTC" suffix.
 - E2E specs `date-added` and `epic13-smoke` keep UTC days for the web filter (valid in Zurich and in UTC while the new spec runs); comments updated.
 
+### Review Findings
+
+Independent review of 875ace4 (one Medium, five Lows).
+
+- **M1 [Medium] — fixed.** `epic13-smoke.spec.ts` checked absence with `added_since = utcDay(1)`, which is already today in Zurich from 23:00 UTC (22:00 in summer). It now uses `utcDay(2)` (in the future under both Zurich and UTC), keeps `utcDay(0)` for presence, and the comment explains why. No other spec combines the web date filter with an absence check on a near day: `date-added.spec.ts` checks absence through MCP, which stays UTC.
+- **L1 — fixed.** `instance-time-zone.spec.ts` now asserts that `#time-zone` reads `Europe/Zurich` at the start. The restore moved to an `afterAll` that opens a fresh admin browser context, so it runs even if the test page died on a timeout.
+- **L2 — fixed.** The V-code and ISBN sequence is derived from the clock, and the test returns the loan at the end (`returnLoanFromBorrowerDetail`), so a rerun does not collide on an active loan.
+- **L3 — fixed (pre-existing).** `loans.html`, `borrower_detail.html` and `home.html` marked a loan overdue from `duration_days >= threshold`, while the overdue count and list use `>` (FR48 "exceeds"). All three now use `>`. New unit test `routes::loans::tests::loans_template_marks_overdue_strictly_above_the_threshold`: at 30 days the "Overdue" label is absent, at 31 it appears in both the card and the row.
+- **L4 — fixed.** Positive shapes (Rule #20): `local_time::parse_time_zone`, used for validation and load, and `time_zone_names`, used for the datalist, accept only `UTC` or `Area/Location[/…]` with `Area` in `ZONE_AREAS` (Africa, America, Antarctica, Arctic, Asia, Atlantic, Australia, Europe, Indian, Pacific). `Etc/GMT±N`, `US/*`, `EST5EDT`, `CET`, `Zulu`, `GMT` and `Etc/UTC` are refused, and a unit test covers them. Limitation: backward links inside the areas (e.g. `Asia/Calcutta`) are still accepted, because chrono-tz does not expose which names are links.
+- **L5 — deferred to the release notes** (no change).
+- **L6** — none.
+- CLAUDE.md Key Patterns entry: not written by the dev agent (CLAUDE.md is not edited on an agent's instruction). The proposed text is in the hand-off report, for the project lead.
+
 ### Gate results
 
 - `cargo check` — clean.
@@ -113,6 +126,7 @@ doc state that a bare date is the UTC day and an offset is accepted
 - Full Rust suite with the DB (`mem-guard cargo test --no-fail-fast`) — 2462 passed, 0 failed, 0 ignored (89 test binaries).
 - `npx tsc --noEmit` — clean; `waitForTimeout(` grep — no hit.
 - Full Playwright suite on a freshly reset stack (`CI=true --workers=2`) — 444 passed, 2 skipped, 0 failed (3.1 min).
+- After the review fixes: `cargo check` clean; clippy `--all-targets -D warnings` clean; lib tests with the DB 1682 passed / 0 failed; `dashboard_overdue` 7, `date_added` 9, `locale_parity` 3 passed; tsc clean, no `waitForTimeout`; full Playwright suite on a fresh stack 444 passed, 2 skipped, 0 failed (3.2 min).
 - `chrono-tz 0.10` (`default-features = false, features = ["std"]`): first build of the crate ≈ 20 s (bundled tzdb, no build-time download); `cargo check` of the workspace unaffected afterwards.
 
 ### File List

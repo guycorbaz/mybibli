@@ -771,6 +771,32 @@ mod tests {
         }
     }
 
+    /// Story 15-1 review (L3): a loan of exactly `overdue_threshold` days is
+    /// not overdue (FR48 "exceeds"), like `LoanModel::count_overdue`; one
+    /// day more is.
+    #[test]
+    fn loans_template_marks_overdue_strictly_above_the_threshold() {
+        let loan = |days: i64| LoanWithDetails {
+            id: 8,
+            volume_id: 100,
+            borrower_id: 200,
+            borrower_name: "Boundary-User".to_string(),
+            volume_label: "V0008".to_string(),
+            title_name: "Boundary Title".to_string(),
+            loaned_on: chrono::NaiveDate::from_ymd_opt(2026, 5, 14).unwrap(),
+            loaned_at: chrono::NaiveDate::from_ymd_opt(2026, 5, 14)
+                .unwrap()
+                .and_hms_opt(9, 0, 0)
+                .unwrap(),
+            duration_days: days,
+        };
+        let at = build_loans_template_for_test(loan(30)).render().unwrap();
+        assert!(!at.contains(">Overdue<"), "30 days at threshold 30 is not overdue");
+        assert!(!at.contains("text-red-600"));
+        let above = build_loans_template_for_test(loan(31)).render().unwrap();
+        assert_eq!(above.matches(">Overdue<").count(), 2, "card and row");
+    }
+
     /// Story 10-3: the loans page must render BOTH the mobile-card list
     /// (md:hidden) AND the desktop table (hidden md:block), each carrying
     /// the same loan data, so the layout switches purely via the Tailwind

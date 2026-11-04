@@ -62,10 +62,12 @@ const PROPOSAL_LINK = (id: number) =>
 /**
  * A UTC day, `offsetDays` from today. Since story 15-1 (#602) the web
  * cuts "added since" days in the instance zone (Europe/Zurich by
- * default, east of UTC), so the start of today's UTC date is never after
- * a title created today — the presence check holds in either zone. A run
- * straddling midnight UTC between the scan and the filter would still
- * fail it — the smoke runs in seconds, so that window is accepted.
+ * default, UTC while instance-time-zone.spec runs). Presence uses today's
+ * UTC date: its start, in either zone, is never after a title created
+ * today. Absence uses `utcDay(2)`: `utcDay(1)` is already today in Zurich
+ * from 23:00 UTC (22:00 in summer). A run straddling midnight UTC between
+ * the scan and the filter would still fail the presence check — the smoke
+ * runs in seconds, so that window is accepted.
  */
 function utcDay(offsetDays: number): string {
   const d = new Date();
@@ -194,19 +196,23 @@ test.describe("Epic 13 smoke — catalogue corrections, end to end", () => {
     await expect(volumeRows.first()).toContainText(`(${shelfCode})`);
 
     // 13-7 — the home "added since" filter, on a full-text search for the
-    // title: today keeps it, tomorrow leaves it out. Not on the ISBN: on
+    // title: today keeps it, the day after tomorrow leaves it out. Not on the ISBN: on
     // the web an exact ISBN/V-code hit means "show me this book" and
     // bypasses the browse filters by design (13-7 review, L5; the MCP
     // applies added_since). Sorted by date added, newest first, so the
     // title sits on the first page whatever earlier runs left; the
-    // tomorrow check proves the filter, not the sort.
+    // future-date check proves the filter, not the sort.
     await page.goto(`/?q=${encodeURIComponent(CLEAN_TITLE)}&sort=date_added&dir=desc`);
     const titleLink = page.locator(`#browse-results a[href="/title/${titleId}"]`);
     await applyAddedSince(page, utcDay(0));
     await expect(page).toHaveURL(/sort=date_added/);
     await expect(titleLink.first()).toBeAttached();
-    await applyAddedSince(page, utcDay(1));
-    await expect(page.locator("#browse-added-since")).toHaveValue(utcDay(1));
+    // The day after tomorrow (UTC): the web cuts days in the instance
+    // zone (Europe/Zurich, or UTC while instance-time-zone.spec runs), so
+    // "tomorrow" in UTC can already be today in Zurich after 22:00/23:00
+    // UTC; two days ahead is in the future in both zones.
+    await applyAddedSince(page, utcDay(2));
+    await expect(page.locator("#browse-added-since")).toHaveValue(utcDay(2));
     await expect(titleLink).toHaveCount(0);
 
     // 13-8 — a second title; the volume moves to it through the modal.

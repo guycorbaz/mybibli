@@ -17,15 +17,50 @@ pub const DEFAULT_TIME_ZONE: Tz = chrono_tz::Europe::Zurich;
 /// `YYYY-MM-DD HH:MM`, the date-time shape of the admin and review pages.
 pub const DATE_TIME_FORMAT: &str = "%Y-%m-%d %H:%M";
 
-/// An IANA zone name (`Europe/Zurich`, `America/New_York`, `UTC`), exact
-/// spelling. `None` for anything else, the empty string included.
+/// The geographic areas of canonical IANA zone names (`Area/Location`).
+/// Story 15-1 review (L4, Rule #20 positive shapes): only these, plus
+/// `UTC`, are offered and accepted — never the `Etc/GMT±N` fixed offsets
+/// (their sign is inverted: `Etc/GMT-1` is UTC+1) nor the legacy aliases
+/// outside the areas (`US/Eastern`, `EST5EDT`, `CET`, `Zulu`…).
+pub const ZONE_AREAS: &[&str] = &[
+    "Africa",
+    "America",
+    "Antarctica",
+    "Arctic",
+    "Asia",
+    "Atlantic",
+    "Australia",
+    "Europe",
+    "Indian",
+    "Pacific",
+];
+
+/// Whether `name` has an accepted shape: `UTC`, or `Area/Location[/…]`
+/// with `Area` in [`ZONE_AREAS`].
+fn is_accepted_name(name: &str) -> bool {
+    name == "UTC"
+        || name
+            .split_once('/')
+            .is_some_and(|(area, rest)| ZONE_AREAS.contains(&area) && !rest.is_empty())
+}
+
+/// An IANA zone name of an accepted shape (`Europe/Zurich`,
+/// `America/New_York`, `UTC`), exact spelling. `None` for anything else,
+/// the empty string included.
 pub fn parse_time_zone(name: &str) -> Option<Tz> {
-    name.trim().parse::<Tz>().ok()
+    let name = name.trim();
+    if !is_accepted_name(name) {
+        return None;
+    }
+    name.parse::<Tz>().ok()
 }
 
 /// Every zone name the instance accepts, for the Admin → System picker.
 pub fn time_zone_names() -> impl Iterator<Item = &'static str> {
-    chrono_tz::TZ_VARIANTS.iter().map(|tz| tz.name())
+    chrono_tz::TZ_VARIANTS
+        .iter()
+        .map(|tz| tz.name())
+        .filter(|name| is_accepted_name(name))
 }
 
 /// A stored UTC instant as wall-clock time in `tz`.
@@ -161,12 +196,32 @@ mod tests {
         assert_eq!(parse_time_zone("Europe/Zürich"), None);
         assert_eq!(parse_time_zone("Mars/Olympus_Mons"), None);
         assert_eq!(parse_time_zone("+01:00"), None);
+        // Valid IANA names outside the accepted shapes (review L4).
+        for alias in [
+            "Etc/GMT-1",
+            "Etc/UTC",
+            "US/Eastern",
+            "EST5EDT",
+            "CET",
+            "Zulu",
+            "GMT",
+        ] {
+            assert!(alias.parse::<Tz>().is_ok(), "{alias} is IANA");
+            assert_eq!(parse_time_zone(alias), None, "{alias}");
+        }
+        assert_eq!(
+            parse_time_zone("America/Argentina/Buenos_Aires"),
+            Some(chrono_tz::America::Argentina::Buenos_Aires)
+        );
     }
 
     #[test]
     fn names_list_contains_the_default() {
         assert!(time_zone_names().any(|n| n == "Europe/Zurich"));
         assert!(time_zone_names().count() > 300);
+        assert!(time_zone_names().any(|n| n == "UTC"));
+        assert!(time_zone_names().all(|n| parse_time_zone(n).is_some()));
+        assert!(!time_zone_names().any(|n| n.starts_with("Etc/") || n.starts_with("US/")));
     }
 
     #[test]
