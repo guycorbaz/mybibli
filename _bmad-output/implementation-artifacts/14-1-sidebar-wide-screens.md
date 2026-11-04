@@ -1,6 +1,6 @@
 # Story 14.1: Sidebar on wide screens
 
-Status: review
+Status: done
 
 GitHub issue: #547 (type:change-request). Covers: UX-DR38. Epic 14; ships in v1.24.0.
 
@@ -107,3 +107,7 @@ Gates after the fix round: `cargo check` ✓; `cargo clippy --all-targets -- -D 
 4. **[Low] Printing in the dark theme** — the `dark` variant is now `@custom-variant dark { @media screen { &:where(.dark, .dark *) { @slot; } } }` (verified: Tailwind v4.2 compiles it), and the `.dark` rules of `browse.css` are wrapped in `@media screen`. The theme E2E checks that `print` media shows the light body background while the dark theme is on, and dark is back on screen.
 
 Gates after round 2: `cargo check` ✓; `cargo clippy --all-targets -- -D warnings` ✓; `cargo test --lib` 1664 passed; `tsc --noEmit` ✓; targeted Playwright on a fresh stack (sidebar, catalog-title, catalog-contributor, cross-cutting, navbar-hamburger, scanner-guard): 58 passed; full Playwright `CI=true --workers=2` on a fresh stack: 423 passed, 2 skipped, 0 flaky, 0 failed.
+
+#### Round 3 (3bd2d08)
+
+No Medium+ finding in the delta nor in the full pass. One Low accepted as is: with real Tab navigation the keyboard path back to `#scan-field` cannot trigger (focus passes other sidebar controls first), so the safe fallback — focus stays on the toggle — is what users get; the scan-field return only applies to a direct jump.
