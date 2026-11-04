@@ -326,8 +326,9 @@ test.describe("Story 14-1 — the sidebar on wide screens", () => {
     await loginAs(page, "librarian");
     await page.goto("/catalog");
     const scan = page.locator("#scan-field");
-    // AC8 (review) — after any toggle the scan page gives the focus back
-    // to the scan field, mouse or keyboard.
+    // AC8 (review, round 2) — a mouse click never takes the focus; from
+    // the keyboard it returns to the scan field only if the scan field
+    // held it right before the toggle.
     await simulateScan(page, "#scan-field", specIsbn("SD", 1));
     // The first answer is a skeleton, replaced in place once the metadata
     // arrive: count both.
@@ -354,14 +355,39 @@ test.describe("Story 14-1 — the sidebar on wide screens", () => {
     await expectWidth(page, EXPANDED_PX);
     await expect(scan).toBeFocused();
 
-    // From the keyboard too: Enter on the toggle, focus back in the field,
-    // and the Enter does not reach it as a scan.
+    // From the keyboard too: scan field → toggle, Enter, focus back in the
+    // field, and the Enter does not reach it as a scan.
     const afterScans = await feedback.count();
+    await scan.focus();
     await page.locator(TOGGLE).focus();
     await page.keyboard.press("Enter");
     await expectWidth(page, COLLAPSED_PX);
     await expect(scan).toBeFocused();
     await expect(feedback).toHaveCount(afterScans);
+  });
+
+  test("on /catalog, a form input keeps the focus across a toggle", async ({ page }) => {
+    await loginAs(page, "librarian");
+    await page.goto("/catalog");
+    await page.locator("#new-title-btn").click();
+    const title = page.locator("#title-form-container #title-field");
+    await expect(title).toBeVisible({ timeout: 10000 });
+    await title.focus();
+    await title.fill("Sidebar focus");
+
+    // Mouse: the input keeps the focus, typing continues in it.
+    await page.locator(TOGGLE).click();
+    await expectWidth(page, COLLAPSED_PX);
+    await expect(title).toBeFocused();
+    await page.keyboard.type(" kept");
+    await expect(title).toHaveValue("Sidebar focus kept");
+    await expect(page.locator("#scan-field")).toHaveValue("");
+
+    // Keyboard, arriving from the form: focus stays on the toggle.
+    await page.locator(TOGGLE).focus();
+    await page.keyboard.press("Enter");
+    await expectWidth(page, EXPANDED_PX);
+    await expect(page.locator(TOGGLE)).toBeFocused();
   });
 
   test("the theme toggle switches the page to dark and back, remembered across a reload", async ({
@@ -383,6 +409,15 @@ test.describe("Story 14-1 — the sidebar on wide screens", () => {
     await expect.poll(bg).not.toBe(lightBody);
     await expect.poll(sidebarBg).not.toBe(lightSidebar);
     const darkBody = await bg();
+    // Native controls follow (round 2).
+    expect(
+      await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme),
+    ).toBe("dark");
+    // Printing in the dark theme keeps the light palette (round 2).
+    await page.emulateMedia({ media: "print" });
+    await expect.poll(bg).toBe(lightBody);
+    await page.emulateMedia({ media: "screen" });
+    await expect.poll(bg).toBe(darkBody);
     await page.reload();
     await expect.poll(bg).toBe(darkBody);
     // And back to light, still under a light OS preference.

@@ -20,7 +20,22 @@
  * Without this, Tailwind's default `prefers-color-scheme` media variant
  * ignored the toggle (only browse.css read the class).
  */
-@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant dark {
+    /* Screen only: a page printed while in the dark theme keeps the light
+       palette (dark text on white paper) — story 14-1 review, round 2. */
+    @media screen {
+        &:where(.dark, .dark *) {
+            @slot;
+        }
+    }
+}
+
+/* Native controls (selects, scrollbars, date pickers) follow the theme. */
+@media screen {
+    .dark {
+        color-scheme: dark;
+    }
+}
 
 /*
  * Story 14-1 (#547, UX-DR38) — `sb-collapsed:` applies from `lg` (1024 px)

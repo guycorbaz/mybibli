@@ -15,12 +15,13 @@
 // The toggle (`[data-sidebar-toggle]`, components/sidebar.html):
 //   - flips the class and stores the new state;
 //   - keeps `aria-expanded` in sync (its accessible name is fixed);
-//   - AC8 (story 14-1 review) — on a page with a scan field (/catalog)
-//     focus goes back to `#scan-field` after every toggle, mouse or
-//     keyboard, so the next scan lands in it (and a scanner's Enter can
-//     never re-toggle the sidebar); elsewhere focus stays on the toggle
-//     from the keyboard, and a mouse click does not take focus at all
-//     (mousedown default prevented). No feedback entry is touched.
+//   - AC8 (story 14-1 review, round 2) — a mouse click never takes the
+//     focus (mousedown default prevented): whatever held it — the scan
+//     field, a title or contributor form input — keeps it. From the
+//     keyboard, focus goes back to `#scan-field` only if the scan field
+//     held it right before the toggle (so the next scan lands there and a
+//     scanner's Enter cannot re-toggle the sidebar); otherwise it stays on
+//     the toggle. No feedback entry is touched.
 //
 // CSP-clean: no inline handlers, no eval, listeners via addEventListener.
 (function () {
@@ -63,6 +64,18 @@
     // once the document is parsed.
     apply(readCollapsed());
 
+    // The element focused before the toggle took the focus (keyboard path).
+    var lastFocused = null;
+    var focusedBeforeToggle = null;
+    document.addEventListener("focusin", function (e) {
+        var t = e.target;
+        if (t && t.matches && t.matches(TOGGLE_SELECTOR)) {
+            focusedBeforeToggle = lastFocused;
+        } else {
+            lastFocused = t;
+        }
+    });
+
     function wire() {
         apply(isCollapsed());
         var toggles = document.querySelectorAll(TOGGLE_SELECTOR);
@@ -78,8 +91,8 @@
                 apply(next);
                 writeCollapsed(next);
                 var scan = document.getElementById(SCAN_FIELD_ID);
-                if (scan) {
-                    try { scan.focus(); } catch (_) { /* ignore */ }
+                if (scan && document.activeElement === this && focusedBeforeToggle === scan) {
+                    try { scan.focus({ preventScroll: true }); } catch (_) { /* ignore */ }
                 }
             });
         }
