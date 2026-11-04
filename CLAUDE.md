@@ -101,6 +101,8 @@ These apply to ALL sessions without exception.
 
     A version bump that leaves any of these showing the previous version is a broken release. The recurring failure mode is forgetting `ROADMAP.md` / `dockerhub-overview.md` / `website/` because the release-cut PR focused on the manual + README — those three are the load-bearing follow-up checklist.
 
+20. **Data-Rewriting Heuristics Accept Positive Shapes Only** — Any code that automatically rewrites data already stored or about to be stored over a provider's value (a title's tome marker, a description's markup, an ISBN-10 kept as UPC, a future duplicate merge or agent cleanup…) acts only on input that matches an explicitly listed, known-good shape, and leaves everything else untouched. Never write it as "rewrite everything except these bad cases". Before review, run it over a large corpus of real titles (production export or a realistic sample) and read what it would change. A miss leaves a value for a hand edit; a false positive silently damages correct data. Lesson from story 13-10 (epic 13 retro A1, adopted 2026-11-04): the tome-marker parser written as exclusions took four review rounds, each finding new correct titles it truncated ("Symphonie n° 9", "Kill Bill Vol. 1", omnibus ranges); the positive-shape rewrite converged at once.
+
 ## Architecture
 
 **Stack:** Rust 2024 + Axum 0.8 + SQLx 0.8 (MariaDB) + Askama 0.15 + HTMX 2.0 + Tailwind CSS v4
