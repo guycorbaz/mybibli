@@ -20,7 +20,8 @@
 use askama::Template;
 use axum::Extension;
 use axum::extract::{Form, OriginalUri, Path, Query, State};
-use axum::response::{Html, Response};
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Response};
 use serde::Deserialize;
 
 use crate::AppState;
@@ -32,7 +33,7 @@ use crate::models::CreateOutcome;
 use crate::models::mcp_skill::{McpSkill, McpSkillModel, SkillWriteError};
 use crate::routes::admin::{AdminTab, render_admin};
 use crate::services::mcp_skills::{
-    BODY_MAX_BYTES, DESCRIPTION_MAX_CHARS, NAME_MAX_CHARS, ValidSkill, validate,
+    BODY_MAX_BYTES, DESCRIPTION_MAX_CHARS, NAME_MAX_CHARS, validate,
 };
 use crate::utils::feedback_html;
 use crate::utils::local_time::format_local_date_time;
@@ -338,29 +339,61 @@ fn list_oob(list_html: String) -> OobUpdate {
 }
 
 /// A refused write, as the localized operation error the admin reads
-/// (tripartite copy, `docs/error-message-style.md` § 2).
-fn write_error(err: SkillWriteError, loc: &str, name: &str) -> AppError {
+/// (tripartite copy, `docs/error-message-style.md` § 2). A database
+/// failure stays an `AppError`.
+fn write_error(err: SkillWriteError, loc: &str, name: &str) -> Result<String, AppError> {
     match err {
-        SkillWriteError::NameTaken => {
-            AppError::Conflict(t_name("error.mcp_skills.name_taken", loc, name))
-        }
-        SkillWriteError::NameInTrash => {
-            AppError::Conflict(t_name("error.mcp_skills.name_in_trash", loc, name))
-        }
-        SkillWriteError::Stale => AppError::Conflict(t("error.mcp_skills.stale", loc)),
-        SkillWriteError::Gone => AppError::NotFound(t("error.mcp_skills.gone", loc)),
-        SkillWriteError::Db(err) => err,
+        SkillWriteError::NameTaken => Ok(t_name("error.mcp_skills.name_taken", loc, name)),
+        SkillWriteError::NameInTrash => Ok(t_name("error.mcp_skills.name_in_trash", loc, name)),
+        SkillWriteError::Stale => Ok(t("error.mcp_skills.stale", loc)),
+        SkillWriteError::Gone => Ok(t("error.mcp_skills.gone", loc)),
+        SkillWriteError::Db(err) => Err(err),
     }
 }
 
-fn validated(form: &SkillForm, loc: &str) -> Result<ValidSkill, AppError> {
-    validate(
-        &form.name,
-        &form.description,
-        &form.body,
-        is_ticked(form.active.as_deref()),
+/// A refused request whose swap target is re-rendered: `main` (the editor
+/// with what the admin typed, or the fresh list) plus an error
+/// FeedbackEntry out of band. HTMX 2 drops 4xx bodies by default; the
+/// `HX-Trigger: validation-error` header makes `static/js/csrf.js` opt the
+/// swap in (#91 pattern, `admin_system::validation_error_response`, here
+/// for 409 too), so nothing typed is lost and the message is the real one.
+fn refused(status: StatusCode, main: String, message: &str) -> Response {
+    (
+        status,
+        [(
+            axum::http::header::HeaderName::from_static("hx-trigger"),
+            "validation-error",
+        )],
+        HtmxResponse {
+            main,
+            oob: vec![OobUpdate {
+                swap_mode: Default::default(),
+                target: "feedback-list".to_string(),
+                content: feedback_html("error", message, ""),
+            }],
+        },
     )
-    .map_err(|e| AppError::BadRequest(e.message(loc)))
+        .into_response()
+}
+
+/// The editor re-rendered with the submitted values (create or edit).
+fn editor_with_form(
+    loc: &str,
+    csrf: &str,
+    edit: Option<(u64, i32)>,
+    form: &SkillForm,
+) -> Result<String, AppError> {
+    render_editor(
+        loc,
+        csrf,
+        &EditorValues {
+            edit,
+            name: &form.name,
+            description: &form.description,
+            body: &form.body,
+            active: is_ticked(form.active.as_deref()),
+        },
+    )
 }
 
 async fn find_live(state: &AppState, id: u64, loc: &str) -> Result<McpSkill, AppError> {
@@ -421,13 +454,30 @@ pub async fn admin_skills_create(
     session: Session,
     Extension(locale): Extension<Locale>,
     Form(form): Form<SkillForm>,
-) -> Result<HtmxResponse, AppError> {
+) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, RETURN_TO, locale.0)?;
     let loc = locale.0;
-    let skill = validated(&form, loc)?;
-    let outcome = McpSkillModel::create(&state.pool, &skill, session.user_id)
-        .await
-        .map_err(|e| write_error(e, loc, &skill.name))?;
+    let csrf = &session.csrf_token;
+    let skill = match validate(
+        &form.name,
+        &form.description,
+        &form.body,
+        is_ticked(form.active.as_deref()),
+    ) {
+        Ok(skill) => skill,
+        Err(e) => {
+            let editor = editor_with_form(loc, csrf, None, &form)?;
+            return Ok(refused(StatusCode::BAD_REQUEST, editor, &e.message(loc)));
+        }
+    };
+    let outcome = match McpSkillModel::create(&state.pool, &skill, session.user_id).await {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            let message = write_error(e, loc, &skill.name)?;
+            let editor = editor_with_form(loc, csrf, None, &form)?;
+            return Ok(refused(StatusCode::CONFLICT, editor, &message));
+        }
+    };
     let key = match outcome {
         CreateOutcome::Created(_) => "admin.skills.feedback_created",
         CreateOutcome::Reactivated(_) => "admin.skills.feedback_reactivated",
@@ -444,7 +494,8 @@ pub async fn admin_skills_create(
             list_oob(current_list(&state, loc, &session.csrf_token).await?),
             feedback(t_name(key, loc, &skill.name)),
         ],
-    })
+    }
+    .into_response())
 }
 
 /// `POST /admin/skills/{id}` — save an edit, guarded by `version`.
@@ -454,16 +505,33 @@ pub async fn admin_skills_update(
     Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
     Form(form): Form<SkillForm>,
-) -> Result<HtmxResponse, AppError> {
+) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, RETURN_TO, locale.0)?;
     let loc = locale.0;
+    let csrf = &session.csrf_token;
     let version = form
         .version
         .ok_or_else(|| AppError::BadRequest(t("error.mcp_skills.stale", loc)))?;
-    let skill = validated(&form, loc)?;
-    McpSkillModel::update(&state.pool, id, version, &skill, session.user_id)
-        .await
-        .map_err(|e| write_error(e, loc, &skill.name))?;
+    let edit = Some((id, version));
+    let skill = match validate(
+        &form.name,
+        &form.description,
+        &form.body,
+        is_ticked(form.active.as_deref()),
+    ) {
+        Ok(skill) => skill,
+        Err(e) => {
+            let editor = editor_with_form(loc, csrf, edit, &form)?;
+            return Ok(refused(StatusCode::BAD_REQUEST, editor, &e.message(loc)));
+        }
+    };
+    if let Err(e) =
+        McpSkillModel::update(&state.pool, id, version, &skill, session.user_id).await
+    {
+        let message = write_error(e, loc, &skill.name)?;
+        let editor = editor_with_form(loc, csrf, edit, &form)?;
+        return Ok(refused(StatusCode::CONFLICT, editor, &message));
+    }
     tracing::info!(
         admin_id = session.user_id.unwrap_or(0),
         skill_id = id,
@@ -476,7 +544,8 @@ pub async fn admin_skills_update(
             list_oob(current_list(&state, loc, &session.csrf_token).await?),
             feedback(t_name("admin.skills.feedback_updated", loc, &skill.name)),
         ],
-    })
+    }
+    .into_response())
 }
 
 /// `POST /admin/skills/{id}/active` — activate or deactivate.
@@ -486,23 +555,38 @@ pub async fn admin_skills_set_active(
     Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
     Form(form): Form<ToggleForm>,
-) -> Result<HtmxResponse, AppError> {
+) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, RETURN_TO, locale.0)?;
     let loc = locale.0;
-    let skill = find_live(&state, id, loc).await?;
     let active = is_ticked(Some(form.active.as_str()));
-    McpSkillModel::set_active(&state.pool, id, form.version, active, session.user_id)
-        .await
-        .map_err(|e| write_error(e, loc, &skill.name))?;
+    let outcome = match McpSkillModel::find_by_id(&state.pool, id).await? {
+        Some(skill) => {
+            match McpSkillModel::set_active(&state.pool, id, form.version, active, session.user_id)
+                .await
+            {
+                Ok(()) => Ok(skill.name),
+                Err(e) => Err(write_error(e, loc, &skill.name)?),
+            }
+        }
+        None => Err(t("error.mcp_skills.gone", loc)),
+    };
+    // Either way the list is re-rendered from the database, so a refused
+    // toggle shows the row's current state next to the message.
+    let list = current_list(&state, loc, &session.csrf_token).await?;
+    let name = match outcome {
+        Ok(name) => name,
+        Err(message) => return Ok(refused(StatusCode::CONFLICT, list, &message)),
+    };
     let key = if active {
         "admin.skills.feedback_activated"
     } else {
         "admin.skills.feedback_deactivated"
     };
     Ok(HtmxResponse {
-        main: current_list(&state, loc, &session.csrf_token).await?,
-        oob: vec![feedback(t_name(key, loc, &skill.name))],
-    })
+        main: list,
+        oob: vec![feedback(t_name(key, loc, &name))],
+    }
+    .into_response())
 }
 
 /// `GET /admin/skills/{id}/delete-modal?version=N` — UX-DR8 confirm.
@@ -548,9 +632,12 @@ pub async fn admin_skills_delete(
     session.require_role_with_return(Role::Admin, RETURN_TO, locale.0)?;
     let loc = locale.0;
     let skill = find_live(&state, id, loc).await?;
-    McpSkillModel::soft_delete(&state.pool, id, form.version)
-        .await
-        .map_err(|e| write_error(e, loc, &skill.name))?;
+    // Inside the UX-DR8 modal: a plain `AppError` lands in the modal's
+    // error region (polish-1 retarget guard), which is where the admin
+    // is looking.
+    if let Err(e) = McpSkillModel::soft_delete(&state.pool, id, form.version).await {
+        return Err(AppError::Conflict(write_error(e, loc, &skill.name)?));
+    }
     tracing::info!(
         admin_id = session.user_id.unwrap_or(0),
         skill_id = id,
@@ -645,10 +732,7 @@ mod tests {
                 SkillWriteError::Stale,
                 SkillWriteError::Gone,
             ] {
-                let msg = match write_error(err, loc, "x") {
-                    AppError::Conflict(m) | AppError::NotFound(m) => m,
-                    other => panic!("unexpected {other:?}"),
-                };
+                let msg = write_error(err, loc, "x").unwrap();
                 assert!(!msg.contains("error.mcp_skills"), "{loc}: {msg}");
             }
         }

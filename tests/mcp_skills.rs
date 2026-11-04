@@ -268,6 +268,9 @@ async fn admin_creates_edits_toggles_and_deletes_through_the_routes(pool: DbPool
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(!body.contains("error.mcp_skills"), "{body}");
+    // The editor comes back with what was typed, next to the hint.
+    assert!(body.contains("value=\"Bad Name\""), "{body}");
+    assert!(body.contains("id=\"feedback-list\""), "{body}");
 
     // Create, with HTML in the body: shown escaped, never rendered.
     let (status, body) = admin
@@ -303,6 +306,7 @@ async fn admin_creates_edits_toggles_and_deletes_through_the_routes(pool: DbPool
     assert_eq!(status, StatusCode::OK);
     let (status, body) = admin.post_form(&app, &format!("/admin/skills/{}", s.id), &save).await;
     assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("How to catalog, v2"), "the typed text survives: {body}");
 
     // Deactivate (no "active" on an edit → unticked is honoured too).
     let (status, _) = admin
