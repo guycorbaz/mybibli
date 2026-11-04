@@ -5,6 +5,9 @@
 blank_issues_enabled: false
 
 contact_links:
+  - name: 💬 Questions, ideas, show your library
+    url: https://github.com/guycorbaz/mybibli/discussions
+    about: Not sure it is a bug? Want a feature, or to tell how you catalog? Start a discussion.
   - name: 📚 Project documentation
     url: https://github.com/guycorbaz/mybibli/blob/main/CLAUDE.md
     about: Coding standards, architecture overview, project conventions, and known app quirks.

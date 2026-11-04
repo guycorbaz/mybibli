@@ -17,7 +17,7 @@ None of that is a reason to stay away. It is a reason to talk before you build.
 1. **Tell us it broke.** A bug report with a version number and a way to reproduce is worth more than a patch that guesses. → [Bug Report](https://github.com/guycorbaz/mybibli/issues/new?template=bug_report.yml)
 2. **Report a security defect — privately.** See [SECURITY.md](SECURITY.md). Never in a public issue.
 3. **Tell us what you catalog.** mybibli was shaped by one collection. Media types, series conventions, and cataloging habits it has never met are genuinely interesting. → [Change Request](https://github.com/guycorbaz/mybibli/issues/new?template=change_request.yml)
-4. **Improve the translations.** The UI is French and English. Wrong, awkward, or missing strings are easy to fix and immediately visible.
+4. **Improve the translations.** The UI is in French, English, German and Italian (`locales/*.yml`). Wrong, awkward, or missing strings are easy to fix and immediately visible — German and Italian especially welcome a native reader.
 5. **Send code** — after an issue exists and has been discussed.
 
 Questions that are not defects belong in
@@ -67,7 +67,7 @@ Checks, in the order CI runs them:
 ```bash
 cargo check                          # fast type-check
 cargo clippy -- -D warnings          # zero-warnings policy — CI fails on any warning
-SQLX_OFFLINE=true cargo test --lib   # ~525 unit tests, a few seconds
+SQLX_OFFLINE=true cargo test --lib   # ~1,650 unit tests, a few seconds
 cargo sqlx prepare --check --workspace -- --all-targets   # offline query cache in sync
 ```
 
@@ -81,8 +81,8 @@ touching anything structural.
 
 ## House rules for a patch
 
-- **English everywhere in the source** — code, comments, commit messages, test names. The *user interface* is bilingual; the repository is not.
-- **No hard-coded user-facing strings.** Every label goes through `rust-i18n`, with both the French and the English translation supplied. A patch that adds an English string only is incomplete.
+- **English everywhere in the source** — code, comments, commit messages, test names. The *user interface* speaks four languages; the repository is English only.
+- **No hard-coded user-facing strings.** Every label goes through `rust-i18n`, with the French, English, German and Italian translations supplied (`tests/locale_parity.rs` fails the build on a missing key). A patch that adds an English string only is incomplete.
 - **No inline scripts or styles.** The CSP is `script-src 'self'` / `style-src 'self'` with no `unsafe-inline` and no `unsafe-eval`. Behaviour goes in `static/js/`, styling in Tailwind classes.
 - **Run `cargo sqlx prepare` after any query change** and commit the resulting `.sqlx/`.
 - **Tests come with the change.** A bug fix carries the test that fails without it. A feature carries unit tests, and an E2E spec if it has a reachable surface.
@@ -108,7 +108,7 @@ Before you open the PR:
 - [ ] `cargo clippy -- -D warnings` is clean
 - [ ] `SQLX_OFFLINE=true cargo test --lib` passes
 - [ ] `.sqlx/` is regenerated if you touched a query
-- [ ] both `en` and `fr` translations exist for any new string
+- [ ] `en`, `fr`, `de` and `it` translations exist for any new string (`cargo test --test locale_parity`)
 - [ ] the PR body names the issue it closes and says what you tested
 
 CI must be green before a merge, and it is not bypassed. Expect review comments — the
