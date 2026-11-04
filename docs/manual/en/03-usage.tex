@@ -6,26 +6,57 @@ times once the library is live: cataloging a new volume, searching
 your collection, moving a volume, lending it out, taking it back,
 and auditing what is on the shelves.
 
-\section{The navigation bar}\label{sec:navbar}
+\section{The sidebar}\label{sec:navbar}
 
-The navigation bar\index{navigation bar} stays at the top of the page
-while you scroll. On a window at least 1280\,px wide it shows every
-entry in one row; below that width the entries move into a menu
-opened by the \emph{hamburger} button (three horizontal lines) at the
-right of the bar, which also holds the \emph{Log out} button --- and,
-on a phone, the \emph{Log in} link. Librarians and Admins find a
-\textbf{Proposals} entry there, with a badge counting the proposals
-waiting for a decision (chapter~\ref{ch:agents}).
+On a window at least 1024\,px wide, the navigation lives in a
+\emph{sidebar}\index{sidebar} on the left of the page; it stays in
+place while the page scrolls. Its entries come in groups separated by
+a thin line: \textbf{Home}; then \textbf{Catalog}, \textbf{Locations}
+and \textbf{Series}; then, for Librarians and Admins,
+\textbf{Borrowers}, \textbf{Loans}, \textbf{Wish list},
+\textbf{Labels} and \textbf{Proposals}; and, for Admins only,
+\textbf{Admin}. The page you are on is shown in bold, with a coloured
+bar on its left edge. The \textbf{Proposals} entry carries a badge
+counting the proposals waiting for a decision (\texttt{99+} above 99;
+chapter~\ref{ch:agents}).
+
+The foot of the sidebar holds the language selector, the theme toggle,
+and \textbf{Log out} (or \textbf{Log in} for an anonymous visitor).
+Below them, the \textbf{Collapse menu} button narrows the sidebar to a
+column of icons, which leaves more room for the page; hovering an icon,
+or reaching it with the Tab key, shows its name in a tooltip, and the
+Proposals badge becomes a small pill on the icon. The same button
+expands the sidebar again. The browser remembers the choice: the next
+page, and the next visit, open in the same state. The choice belongs to
+the browser, not to the account --- another computer keeps its own.
+
+\paragraph{On a phone or a narrow window.} Below 1024\,px the sidebar
+is hidden and a slim bar stays at the top of the page, with the
+\textbf{menu} button (three horizontal lines) and the mybibli logo.
+The menu button opens the same navigation as a drawer that slides in
+from the left over the dimmed page: same entries, same badge, and the
+language selector, theme toggle and Log out (or Log in) at its foot;
+it is never collapsed. Escape, a tap on the dimmed page, the close
+button at the top of the drawer, or following one of its links closes
+it. While the drawer is open, the page behind it neither scrolls nor
+receives the keyboard, and a barcode scanner read is ignored rather
+than typed into the scan field.
+
+\paragraph{Light and dark theme.} The theme toggle switches the whole
+interface between light and dark. The browser remembers the choice;
+until you make one, mybibli follows the system setting of the device.
+Printed pages are always light, whatever the theme on screen.
 
 \section{The home page}\label{sec:home}
 
 \begin{figure}[ht]
   \centering
-  \includegraphics[width=0.95\textwidth]{01-home-desktop.png}
-  \caption{The home page on a live install: search bar, genre
-    filter chips, ``À traiter'' counters, ``Aperçu de la
-    collection'' totals, and a recent-additions strip with cover
-    thumbnails fetched through the metadata-provider chain.}
+  \includegraphics[width=0.95\textwidth]{01-home-desktop-en.png}
+  \caption{The home page in a 1280\,px window, signed in as an Admin:
+    the expanded sidebar on the left (language, theme and Log out at
+    its foot, the collapse button below them), then the search bar,
+    genre filter chips, the ``What needs attention'' counters and
+    the ``Collection at a glance'' totals.}
   \label{fig:home}
 \end{figure}
 
@@ -561,8 +592,8 @@ created. If the window has passed, move the volume the usual way
 
 The \emph{wish list}\index{wish list} is a separate list of books
 you'd like to buy, kept distinct from the owned catalog. It lives
-under \texttt{/wishlist}\index{wishlist@/wishlist} (see the
-navigation bar) and is available to Librarians and Admins.
+under \texttt{/wishlist}\index{wishlist@/wishlist} (the \textbf{Wish list} entry
+of the sidebar) and is available to Librarians and Admins.
 A missing tome of a series can be sent to it in one click from the
 series page (section~\ref{sec:expected-tomes}).
 
