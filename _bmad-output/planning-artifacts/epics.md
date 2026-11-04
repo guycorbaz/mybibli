@@ -8,6 +8,7 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 
 ## Changelog
 
+- **2026-11-04** — Added **Epic 15: The agent's next tasks** (#564, #590, #614, #602), with new requirements FR161–FR166 and UX-DR40–UX-DR41. Decided by the project lead on 2026-11-04; ships as v1.25.0.
 - **2026-11-04** — Added **Epic 14: The sidebar** (#547), with new requirements UX-DR38–UX-DR39. Decided by the project lead on 2026-11-04 from the interactive mock-up `ux-sidebar-mockup.html`; ships as v1.24.0. Agent purchase price / value (#564) stays Epic 15; the instance time zone (#602) is a small story at the next planning.
 - **2026-11-03** — Added **Epic 13: Cataloguing for real** (#574, #576–#586, #588), with new requirements FR153–FR160 and UX-DR36–UX-DR37. Decided by the project lead on 2026-11-03, after the first mass entry session and the agent session that enriched the comics; ships as v1.23.0. The sidebar (#547) moves to Epic 14, agent purchase price / value (#564) to Epic 15.
 - **2026-10-30** — Added **Epic 12: Proposals, after a first real use** (#502, #542, #560, #561, #563), with new requirements FR148–FR152 (FR149 refines FR140, FR152 extends FR132) and UX-DR35. Decided by the project lead on 2026-10-30, after the first production agent session; ships as v1.22.0 together with the #558 fix already on `main`. The sidebar (#547) is planned as Epic 13; the base path (#492) comes later.
@@ -182,6 +183,12 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - FR158: A title not yet in a series keeps a detected tome number as a hint that pre-fills the position when a series is attached
 - FR159: The MCP agent can propose attaching an owned title at a position the series already expects; accepting it settles the expected tome
 - FR160: Every list of volumes shows each location as its full path
+- FR161: The instance has a time zone (Admin → System, default `Europe/Zurich`) used for every date shown in the web interface and for web date inputs (day bounds converted to UTC); the API and the MCP server keep UTC ISO 8601
+- FR162: An Admin can create, edit, deactivate and delete MCP skills — named Markdown instructions with a one-line description — from an Admin tab
+- FR163: An MCP agent reaches the active skills both as MCP prompts (listed and fetched by the client) and by itself (listed in the `initialize` instructions, body through a read-only `get_skill` tool)
+- FR164: An MCP agent can propose to modify an existing series — name, open/closed type, total number of tomes, removal of expected tomes — reviewed like the other proposals; a total lower than an owned or expected position is refused, naming the positions in the way
+- FR165: An MCP agent can propose a volume's current value (amount in the default currency, with its sources and date) and, when the purchase price is missing, the list price at publication as a stand-in clearly labelled as such; accepted amounts count as hand-set
+- FR166: The collection value statistics show how much of the collection the total covers (volumes valued, share) and how old its estimates are
 
 ### NonFunctional Requirements
 
@@ -311,6 +318,8 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR37: Anomaly mark: a visible badge with its reason on title and volume pages, a mark / clear action, and an anomalies list (titles and volumes, filterable by kind), mobile card mode included
 - UX-DR38: Navigation sidebar on wide screens (≥ `lg`, 1024 px): a full-height left bar, expanded (icon + label, 224 px) or collapsed (icons only, 64 px, a tooltip on hover and keyboard focus); entries grouped by thin separators (Home · Catalog, Locations, Series · Borrowers, Loans, Wish list, Labels, Proposals · Admin, per role); language, theme, logout and the collapse toggle at its foot; the Proposals badge stays a number in both states; the state is remembered per browser and starts expanded; replaces the top bar (supersedes the `xl` stopgap of UX-DR32)
 - UX-DR39: Navigation drawer below `lg`: a slim top bar with the menu button and the logo opens the same navigation as an off-canvas drawer from the left over a scrim, always expanded; Escape, the scrim and a close button dismiss it; focus moves into it and back to the menu button
+- UX-DR40: Admin → Skills tab (admin tab pattern): list (name, description, active, last change and author), create / edit form with a Markdown textarea, deactivate, delete through the Trash; skill text never rendered as unescaped HTML
+- UX-DR41: Proposal detail for a series modification (current vs proposed name / type / total, expected tomes removed) and for a volume value (current vs proposed amount, condition, edition note, sources, "list price" label); value coverage on the value statistics page
 
 ### FR Coverage Map
 
@@ -375,6 +384,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 | FR141-FR143 | 11 | Expected tomes, wishlist from series detail, access to the proposals page |
 | FR144-FR147 | 11 | Accepted fields protected from re-fetch, expected-tome auto-settle at scan, decision trail, manual expected-tome CRUD |
 | FR148-FR152 | 12 | ISBN with separators, per-field staleness, providers already searched, readable proposals list, title correction |
+| FR161-FR166 | 15 | Instance time zone, MCP skills, series modification proposals, volume value proposals, value coverage |
 | FR153-FR160 | 13 | Date added, move a volume, anomaly marks (by hand and proposed), tome number and hint, owned title fills an expected tome, full location paths |
 
 **NFR Distribution:**
@@ -406,8 +416,9 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR35 → Epic 12
 - UX-DR36, UX-DR37 → Epic 13
 - UX-DR38, UX-DR39 → Epic 14
+- UX-DR40, UX-DR41 → Epic 15
 
-**Coverage: 160/160 FRs, 48/48 NFRs, 31/31 ARs, 39/39 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04.)
+**Coverage: 166/166 FRs, 48/48 NFRs, 31/31 ARs, 41/41 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04; Epic 15 added 2026-11-04.)
 
 ## Epic List
 
@@ -2994,3 +3005,152 @@ So that it matches what users see.
 **And** the PDFs are rebuilt
 **And** `CLAUDE.md` describes the navigation shell (single navigation template, state script, stacking rule) and drops the `xl` stopgap notes
 **And** release documentation (Foundation Rule #19, v1.24.0) is done at release time, not in this story
+
+### Epic 15: The agent's next tasks
+
+After epics 13 and 14, the agent sessions keep asking for the same things: tell it once how this library works instead of pasting instructions every session, let it correct a series it knows is finished, and let it help estimate what the collection is worth. The epic also fixes the day boundaries, which are cut in UTC.
+
+**FRs:** FR161–FR166
+**NFRs:** none new (NFR3 CSP, NFR12 a11y, NFR42–NFR48 unchanged; an agent never writes the catalog, NFR44)
+**UX-DRs:** UX-DR40, UX-DR41
+**Issues:** #602, #614, #590, #564
+
+**Release.** v1.25.0 at the close of the epic, after its retrospective.
+
+**Key decisions (project lead, 2026-11-04).**
+- #614 (MCP skills): both access paths — MCP prompts the librarian triggers from the client, and consultation by the agent itself (`initialize` instructions list name + description, read-only `get_skill`); Admin-only editing through a web tab; no version history (current text, date and author of the last change); the agent cannot propose skills.
+- #590 (series modification): a total lower than an owned position or a live expected tome is **refused and explained** (at filing; stale at acceptance if the catalogue changed meanwhile), naming the positions in the way; the agent first proposes removing the surplus expected tomes. Series kinds keep `version`-based staleness.
+- #564 (value): purpose is the value of the **collection** as a whole. First version = current value proposals (amount in the default currency, sources, date) + the list price as a labelled stand-in when the purchase price is missing + coverage on the value statistics. Valuation history, low/high ranges, complete-series premium and a "collection" grouping are later candidates.
+- #602 (time zone): an Admin → System setting, default `Europe/Zurich` (`chrono-tz`), effective without restart.
+
+**Sequencing.** 15.1 (time zone, independent) → 15.2 → 15.3 (skills) → 15.4 (series modification) → 15.5 → 15.6 (value) → 15.7 (epic smoke, Foundation Rule #7) → 15.8 → retrospective → release v1.25.0.
+
+**Stories:**
+
+#### Story 15.1: Instance time zone (closes #602)
+
+As a librarian in Switzerland,
+I want dates shown and days cut in my local time,
+So that a book entered at half past midnight is dated that day.
+
+**Covers:** FR161
+
+**Acceptance Criteria:**
+
+**Given** the setting Admin → System → time zone (IANA name, validated, default `Europe/Zurich`, settings K/V row whitelisted in `admin_system::fetch_setting_rows`, cache reload without restart)
+**Then** every date and time shown in the web interface (title / volume added and modified, browse "Added" column, loans and due dates, overdue, wish list, proposals, admin audit and health, …) is rendered in that zone, and web date inputs (`added_since`, …) are converted to UTC bounds of the local day
+**And** storage, the HTTP API and the MCP server stay UTC ISO 8601 (MCP date inputs accept an offset)
+**And** overdue / day-count computations use the local day consistently; `Local::now()` (wish list) is replaced
+**And** unit tests (conversion around midnight and DST changes), DB integration and E2E (an entry seen on the right local day; setting change applies at once) cover it
+
+#### Story 15.2: MCP skills — admin tab (#614, part 1)
+
+As an administrator,
+I want to write the instructions my agent should follow, once, in mybibli,
+So that I stop pasting them into every session.
+
+**Covers:** FR162, UX-DR40
+
+**Acceptance Criteria:**
+
+**Given** a new table `mcp_skills` (name unique slug `[a-z0-9-]{1,64}`, description ≤ 200 chars, body Markdown ≤ 64 KiB, active flag, `version`, `created_at`, `updated_at`, `deleted_at`, last editor) and an Admin → Skills tab (`/admin?tab=skills`, story 8-1 pattern)
+**Then** an Admin can list, create, edit (optimistic locking), deactivate / reactivate and delete (soft delete, Trash restore) skills; Librarians and anonymous visitors cannot reach the tab
+**And** the body is shown as text (escaped) — no unescaped HTML rendering; a preview, if any, is sanitised
+**And** errors follow `docs/error-message-style.md`; i18n in four locales
+**And** unit, DB integration and E2E tests (CRUD, role gating, conflict, trash restore, axe) cover it
+
+#### Story 15.3: MCP skills — served to the agent (#614, part 2)
+
+As a librarian working with an agent,
+I want the agent to know the library's skills and me to trigger one from my client,
+So that the agent follows the house conventions.
+
+**Covers:** FR163
+
+**Acceptance Criteria:**
+
+**Given** active skills
+**Then** the MCP server declares the `prompts` capability: `prompts/list` returns name + description, `prompts/get` returns the body as a user message (unknown or inactive → error); rmcp stays confined to `src/mcp/transport.rs`
+**And** the `initialize` instructions (`src/mcp/instructions.rs`) list the active skills (name + description only, bounded size) and point to `get_skill`
+**And** a read-only tool `get_skill(name)` (closed schema, `read_only`) returns the body; inactive or deleted → NotFound; registry, `tests/common/mcp.rs` and `MCP_TOOLS` in `tests/e2e/helpers/mcp.ts` updated
+**And** the threat model (§ 5.8–5.10) records that skills are admin-trusted content read by a propose-scoped agent and grant nothing beyond its scope
+**And** unit, integration (prompts list/get, tool, instructions) and E2E (an MCP client lists and fetches a skill created in the Admin tab) cover it
+
+#### Story 15.4: Series modification proposals (closes #590)
+
+As a librarian,
+I want the agent to propose corrections to a series it knows,
+So that finished series are closed at the right total without me checking each one.
+
+**Covers:** FR164, UX-DR41 (series part)
+
+**Acceptance Criteria:**
+
+**Given** a new proposal kind (e.g. `series_update`) targeting an existing series, with lines for name, type (open / closed), total and expected-tome removals, filed through a `propose_series_update` tool (propose-tool rules: `sources`, "does not change the catalog")
+**Then** filing refuses an unknown series, no change, a duplicate pending proposal (target index), an equivalent rejection, and a total lower than an owned position or a live expected tome not removed by the same proposal — the refusal names the positions
+**And** acceptance locks series → tomes, is stale on a `version` change, re-checks the total rule against the live catalogue (stale with the reason), then applies the changes in one transaction; accepted fields count as hand-set
+**And** the review screen shows current vs proposed name / type / total and the expected tomes removed; lines are editable / removable like other kinds
+**And** lock-scope rule (epic 12 retro A1) with a regression test; unit, DB integration and E2E (agent proposal accepted, series closed at the new total) cover it
+
+#### Story 15.5: Volume value proposals (#564, part 1)
+
+As a librarian estimating my collection,
+I want the agent to propose what my volumes are worth, with its sources,
+So that the estimate covers the collection without typing each value.
+
+**Covers:** FR165, UX-DR41 (value part)
+
+**Acceptance Criteria:**
+
+**Given** a read path for the agent (a title's volumes with condition, edition comment, purchase price, current value and its date — via `get_title` or a dedicated read tool) and a tool `propose_volume_value` targeting a **volume** (`proposal_items.target_table = 'volumes'`, as in story 13-9)
+**Then** an item proposes `current_value` (amount > 0, currency = the default currency; another currency is refused — no FX conversion) and, only when the volume has no purchase price, `purchase_price` as **list price at publication** (the item carries that label)
+**And** filing requires `sources`, refuses an unknown volume, a duplicate pending proposal and an equivalent rejection
+**And** acceptance is stale per field (the amount changed since filing → stale), writes the amounts and `current_value_updated_at`, marks them hand-set; lock scope from the target index with a regression test
+**And** the review screen shows current vs proposed amounts, condition, edition note, sources and the "list price" label
+**And** unit, DB integration and E2E cover it
+
+#### Story 15.6: Value coverage (#564, part 2)
+
+As a librarian,
+I want to see how much of my collection the value total covers,
+So that I know how far to trust it.
+
+**Covers:** FR166
+
+**Acceptance Criteria:**
+
+**Given** the value statistics page (`/stats/value`)
+**Then** it shows the number and share of live volumes with a current value, the date range (oldest / newest estimate) and how many estimates are older than one year, overall and per existing breakdown
+**And** the agent can find the volumes never valued or valued longest ago (search filter or read tool), so it works through coverage first
+**And** unit, DB integration and E2E cover it; axe passes
+
+#### Story 15.7: Epic 15 smoke test (Foundation Rule #7)
+
+As the project,
+I want one end-to-end journey from a blank browser through the epic's core flow,
+So that the epic is proven done.
+
+**Covers:** Foundation Rule #7
+
+**Acceptance Criteria:**
+
+**Given** a blank browser with no injected cookie
+**When** the test runs
+**Then** it chains: admin login through `loginAs` → create a skill in Admin → Skills → an MCP client lists it as a prompt and reads it with `get_skill` → the agent files a series modification and a volume value proposal → the librarian accepts both → the series shows the new total and the value statistics show the coverage
+
+**And** no `waitForTimeout`; green under `CI=true npx playwright test --workers=2`; if this test fails, the epic is not done
+
+#### Story 15.8: Documentation
+
+As an operator,
+I want the manual to describe the new features,
+So that they are documented as they work.
+
+**Covers:** FR161–FR166 (documentation)
+
+**Acceptance Criteria:**
+
+**Given** the user manual (English and French)
+**Then** it describes the time zone setting, the Skills tab and how an agent uses skills, series modification and value proposals, and value coverage; the agent chapter lists the new tools and prompts
+**And** the PDFs are rebuilt; `CLAUDE.md` and the threat model reflect the new patterns
+**And** release documentation (Foundation Rule #19, v1.25.0) is done at release time, not in this story
