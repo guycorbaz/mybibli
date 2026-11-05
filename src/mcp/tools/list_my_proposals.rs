@@ -96,7 +96,7 @@ impl McpTool for ListMyProposals {
         "List the proposals filed with YOUR API key (never another key's), newest first, 25 \
          per page; pass `page` (1-based) until `page` equals `total_pages`. Filter with \
          `status` (`pending`, `accepted`, `rejected`, `stale`) and `kind` (`series_create`, \
-         `series_attach`, `metadata`, `cover`, `label_attach`, `series_update`). Each item gives `proposal_id`, `kind`, \
+         `series_attach`, `metadata`, `cover`, `label_attach`, `series_update`, `volume_value`). Each item gives `proposal_id`, `kind`, \
          `status`, `filed_at`, `decided_at` (null while pending; set when a librarian \
          accepted or rejected it, or when it went stale because its target changed or the \
          key was revoked), `rejection_reason` (the librarian's optional explanation, null \
@@ -104,7 +104,7 @@ impl McpTool for ListMyProposals {
          series creation, `{series_id}` for additions to a series or a series change, \
          `{title_id, fields}` for \
          metadata, `{title_id}` for a cover, `{title_id, label_id}` or `{volume_id, label_id}` \
-         for a label (as the proposal now stands; a librarian may have \
+         for a label, `{volume_id}` for a volume value (as the proposal now stands; a librarian may have \
          edited it). For a rejected proposal, `resubmittable_from` is the instant from which \
          an equivalent proposal is accepted again: the newest rejection of an equivalent \
          proposal (by any key) plus the library's resubmission delay, at most 3650 days; it \
@@ -113,7 +113,8 @@ impl McpTool for ListMyProposals {
          one shared field for metadata (a rejection blocks each of its fields), the same title \
          and the same image for a cover (another image is not blocked), the same label on the \
          same title or volume for a label, the same change to the same series (fields and \
-         removed tomes, as you filed it) for a series change. Before that instant an \
+         removed tomes, as you filed it) for a series change, the same amounts for the same \
+         volume for a volume value. Before that instant an \
          equivalent proposal is refused, whichever key files it — read the reason and propose \
          something else. Dates are RFC 3339 UTC. Read-only."
     }

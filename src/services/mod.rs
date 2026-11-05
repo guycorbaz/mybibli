@@ -48,4 +48,7 @@ pub mod trash;
 pub mod volume;
 pub mod volume_move;
 pub mod volume_audit;
+pub mod volume_value_acceptance;
+pub mod volume_value_proposals;
+pub mod volume_value_review;
 pub mod wishlist_pdf;

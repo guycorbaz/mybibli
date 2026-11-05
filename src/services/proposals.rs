@@ -634,7 +634,12 @@ pub fn version_counts(kind: ProposalKind) -> bool {
         }
         // Story 13-9 — a label proposal is judged by its acceptance: the
         // target and the label must be live, the label not yet attached.
-        ProposalKind::Metadata | ProposalKind::Cover | ProposalKind::LabelAttach => false,
+        // Story 15-5 (D7) — a value proposal is stale per field: the
+        // volume's current value or purchase price changed, not its version.
+        ProposalKind::Metadata
+        | ProposalKind::Cover
+        | ProposalKind::LabelAttach
+        | ProposalKind::VolumeValue => false,
     }
 }
 
@@ -987,7 +992,9 @@ impl ProposalService {
             let Some(kind) = ProposalModel::find(conn, id).await?.map(|p| p.kind) else {
                 return Err(ProposalError::NotFound { id });
             };
-            let lines = if kind == ProposalKind::Metadata {
+            // Story 15-5 (review round 1): a value proposal too — its
+            // removable list price leaves the fingerprint.
+            let lines = if matches!(kind, ProposalKind::Metadata | ProposalKind::VolumeValue) {
                 ProposalModel::subject_lines(conn, &[id]).await?
             } else {
                 Vec::new()

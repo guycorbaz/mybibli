@@ -198,6 +198,13 @@ pub enum ProposalSubject {
         series_id: u64,
         fingerprint: String,
     },
+    /// Story 15-5 — a volume's amounts; `fingerprint` is
+    /// `volume_value_proposals::value_fingerprint` of the amounts filed (a
+    /// rejection blocks only the same amounts, D5).
+    VolumeValue {
+        volume_id: u64,
+        fingerprint: String,
+    },
 }
 
 /// Story 15-4 (D4) — the SHA-256 (hex) of a series change in canonical
@@ -311,6 +318,15 @@ impl ProposalSubject {
                         fingerprint: l.fingerprint?.to_string(),
                     })
                 }),
+            ProposalKind::VolumeValue => lines
+                .iter()
+                .find(|l| l.line == Some("current_value"))
+                .and_then(|l| {
+                    Some(ProposalSubject::VolumeValue {
+                        volume_id: target_of(l, ProposalTargetTable::Volumes)?,
+                        fingerprint: l.fingerprint?.to_string(),
+                    })
+                }),
         }
     }
 
@@ -360,6 +376,10 @@ impl ProposalSubject {
                 series_id,
                 fingerprint,
             } => format!("series_update:series/{series_id}:{fingerprint}"),
+            ProposalSubject::VolumeValue {
+                volume_id,
+                fingerprint,
+            } => format!("volume_value:volumes/{volume_id}:{fingerprint}"),
         };
         key.chars().take(MAX_EQUIVALENCE_KEY_CHARS).collect()
     }
@@ -380,6 +400,7 @@ impl ProposalSubject {
                 _ => json!({ "title_id": target.id, "label_id": label_id }),
             },
             ProposalSubject::SeriesUpdate { series_id, .. } => json!({ "series_id": series_id }),
+            ProposalSubject::VolumeValue { volume_id, .. } => json!({ "volume_id": volume_id }),
         }
     }
 
@@ -408,6 +429,9 @@ impl ProposalSubject {
             }
             ProposalSubject::SeriesUpdate { series_id, .. } => {
                 format!("this change to series {series_id}")
+            }
+            ProposalSubject::VolumeValue { volume_id, .. } => {
+                format!("these amounts for volume {volume_id}")
             }
         }
     }
@@ -802,6 +826,39 @@ mod tests {
             ],
         );
         assert_eq!(key.as_deref(), Some("series_update:series/7:abc"));
+    }
+
+    #[test]
+    fn volume_value_key_is_the_volume_and_the_amounts() {
+        let volume = Some(ProposalTarget {
+            table: ProposalTargetTable::Volumes,
+            id: 9,
+        });
+        let key = key_of(
+            ProposalKind::VolumeValue,
+            vec![
+                item(
+                    volume,
+                    json!({"line": "current_value", "fingerprint": "1850CHF:list:2490CHF"}),
+                ),
+                item(volume, json!({"line": "list_price", "amount_cents": 2490})),
+            ],
+        );
+        assert_eq!(
+            key.as_deref(),
+            Some("volume_value:volumes/9:1850CHF:list:2490CHF")
+        );
+        let titled = key_of(
+            ProposalKind::VolumeValue,
+            vec![item(
+                Some(ProposalTarget {
+                    table: ProposalTargetTable::Titles,
+                    id: 9,
+                }),
+                json!({"line": "current_value", "fingerprint": "1850CHF"}),
+            )],
+        );
+        assert_eq!(titled, None);
     }
 
     #[test]

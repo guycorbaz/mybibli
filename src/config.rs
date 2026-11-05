@@ -465,6 +465,14 @@ impl Default for AppSettings {
     }
 }
 
+/// CR #243 — a `default_currency` value as stored: three ASCII letters,
+/// uppercased (`chf` → `CHF`); `None` otherwise. Shared by the settings
+/// load and the value proposals (story 15-5).
+pub fn normalize_currency_code(value: &str) -> Option<String> {
+    let up = value.trim().to_ascii_uppercase();
+    (up.len() == 3 && up.chars().all(|c| c.is_ascii_alphabetic())).then_some(up)
+}
+
 impl AppSettings {
     /// Load settings from the `settings` table, falling back to defaults for missing keys.
     pub async fn load_from_db(pool: &DbPool) -> Result<Self, sqlx::Error> {
@@ -620,8 +628,7 @@ impl AppSettings {
                 // and validate length so a typo'd `chf` still works
                 // but `XXXXX` falls back to the Default.
                 "default_currency" => {
-                    let up = value.trim().to_ascii_uppercase();
-                    if up.len() == 3 && up.chars().all(|c| c.is_ascii_alphabetic()) {
+                    if let Some(up) = normalize_currency_code(value) {
                         settings.default_currency = up;
                     } else {
                         tracing::warn!(

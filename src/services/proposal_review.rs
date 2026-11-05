@@ -78,6 +78,7 @@ pub fn kind_label(kind: ProposalKind, loc: &str) -> String {
         ProposalKind::Cover => "proposals.kind_cover",
         ProposalKind::LabelAttach => "proposals.kind_label_attach",
         ProposalKind::SeriesUpdate => "proposals.kind_series_update",
+        ProposalKind::VolumeValue => "proposals.kind_volume_value",
     };
     rust_i18n::t!(key, locale = loc).to_string()
 }
@@ -138,6 +139,10 @@ impl TargetLabel {
             | Some(ProposalSubject::Cover { title_id, .. }) => TargetLabel::Title {
                 id: *title_id,
                 name: names.titles.get(title_id).map(|t| t.title.clone()),
+            },
+            Some(ProposalSubject::VolumeValue { volume_id, .. }) => TargetLabel::Volume {
+                id: *volume_id,
+                name: names.volume_name(*volume_id),
             },
             Some(ProposalSubject::LabelAttach { target, .. }) => match target.table {
                 ProposalTargetTable::Volumes => TargetLabel::Volume {
@@ -393,6 +398,9 @@ pub struct LineView {
     // proposed; `name` / `series_type_raw` / `total` above hold the
     // series as it would be (the edit form's values).
     pub series_changes: Vec<SeriesChangeView>,
+    // current_value / list_price (story 15-5) — `current` / `proposed`
+    // above hold the amounts as text; the live volume beside them.
+    pub volume_facts: Option<crate::services::volume_value_review::VolumeFacts>,
     // unknown
     pub raw_json: String,
 }
@@ -648,6 +656,11 @@ pub fn parse_line(target: Option<ProposalTarget>, values: &Value, loc: &str) -> 
         // Story 15-4.
         Some("series_update") => target_of(ProposalTargetTable::Series)
             .and_then(|id| series_update_view(id, values, loc)),
+        // Story 15-5.
+        Some("current_value") => target_of(ProposalTargetTable::Volumes)
+            .and_then(|id| crate::services::volume_value_review::value_view(id, values, loc)),
+        Some("list_price") => target_of(ProposalTargetTable::Volumes)
+            .and_then(|id| crate::services::volume_value_review::list_price_view(id, values, loc)),
         Some("tome_removal") if target.is_none() => {
             crate::services::series_update_proposals::parse_removal_line(values).map(|r| LineView {
                 line: "tome_removal",
@@ -835,7 +848,7 @@ pub async fn review_detail(
                 "series_target" | "series_update" => {
                     line.target_name = names.series.get(&id).cloned()
                 }
-                "label" if line.on_volume => {
+                "label" | "current_value" | "list_price" if line.on_volume => {
                     line.target_name = names.volume_name(id);
                     line.target_href = line.target_name.as_ref().map(|_| format!("/volume/{id}"));
                 }

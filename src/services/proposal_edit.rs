@@ -392,6 +392,8 @@ pub fn keep_of(kind: ProposalKind, line: &LineView, live_lines: usize) -> Option
         "cover" => Some(Keep::Cover),
         _ if kind == ProposalKind::Cover => Some(Keep::Cover),
         _ if kind == ProposalKind::LabelAttach => Some(Keep::LastLine),
+        // Story 15-5 (D6) — the current value is what the proposal is for.
+        "current_value" => Some(Keep::LastLine),
         "field" | "contributors" if kind == ProposalKind::Metadata && live_lines <= 1 => {
             Some(Keep::LastLine)
         }
@@ -404,7 +406,7 @@ pub fn keep_of(kind: ProposalKind, line: &LineView, live_lines: usize) -> Option
 pub fn removable(kind: ProposalKind, line: &LineView, live_lines: usize) -> bool {
     matches!(
         line.line,
-        "title" | "tome" | "field" | "contributors" | "tome_removal"
+        "title" | "tome" | "field" | "contributors" | "tome_removal" | "list_price"
     ) && keep_of(kind, line, live_lines).is_none()
 }
 
@@ -416,6 +418,7 @@ fn keep_reason(kind: ProposalKind, values: &Value, live_lines: usize) -> Option<
         _ if kind == ProposalKind::Cover => Some(Keep::Cover),
         // Story 13-9 — a label proposal's single line.
         _ if kind == ProposalKind::LabelAttach => Some(Keep::LastLine),
+        Some("current_value") => Some(Keep::LastLine),
         _ if kind == ProposalKind::Metadata && live_lines <= 1 => Some(Keep::LastLine),
         _ => None,
     }
@@ -830,7 +833,11 @@ async fn edit_line_in(
 
     let new = match kind {
         // A label proposal is accepted or rejected as it is (story 13-9).
-        ProposalKind::Cover | ProposalKind::LabelAttach => return Err(EditError::NotEditable),
+        // Story 15-5 (D6) — amounts are accepted, rejected or (the list
+        // price) removed, never retyped here.
+        ProposalKind::Cover | ProposalKind::LabelAttach | ProposalKind::VolumeValue => {
+            return Err(EditError::NotEditable);
+        }
         ProposalKind::SeriesCreate | ProposalKind::SeriesAttach => {
             let raw = raw_series_values(&old, form)?;
             // An attach: its series as it is now (row lock, the order of
@@ -951,8 +958,26 @@ async fn remove_line_in(
     if kind == ProposalKind::SeriesUpdate {
         series_update_edit::check_removal_in(conn, &rows, item_id).await?;
     }
+    // Story 15-5 — without its list price, the value line's fingerprint
+    // drops it; an unchanged value alone is refused.
+    let value_line = if kind == ProposalKind::VolumeValue {
+        let row = rows
+            .iter()
+            .find(|r| r.id != item_id)
+            .ok_or(EditError::NotRemovable(Keep::LastLine))?;
+        let values: Value = serde_json::from_str(&row.proposed_values_json)
+            .map_err(|e| EditError::Invalid(e.to_string()))?;
+        let new = crate::services::volume_value_proposals::value_line_without_list_price(&values)
+            .ok_or(EditError::NotRemovable(Keep::LastLine))?;
+        Some((row.id, new))
+    } else {
+        None
+    };
     if ProposalModel::remove_item_in(conn, id, item_id, user_id).await? != 1 {
         return Err(EditError::LineNotFound);
+    }
+    if let Some((value_item, values)) = value_line {
+        ProposalModel::set_item_values_in(conn, value_item, &values).await?;
     }
     bump(conn, id, version).await
 }
@@ -965,7 +990,10 @@ pub fn has_lines_to_apply(kind: ProposalKind, lines: &[LineView]) -> bool {
     match kind {
         ProposalKind::SeriesAttach => lines.iter().any(|l| matches!(l.line, "title" | "tome")),
         ProposalKind::Metadata => !lines.is_empty(),
-        ProposalKind::SeriesCreate | ProposalKind::Cover | ProposalKind::LabelAttach => true,
+        ProposalKind::SeriesCreate
+        | ProposalKind::Cover
+        | ProposalKind::LabelAttach
+        | ProposalKind::VolumeValue => true,
         // Story 15-4 — a field change or a removal.
         ProposalKind::SeriesUpdate => lines
             .iter()
@@ -1070,6 +1098,19 @@ pub fn line_summary(line: &LineView, loc: &str) -> String {
             })
             .collect::<Vec<_>>()
             .join(" · "),
+        // Story 15-5.
+        "current_value" => t!(
+            "proposals.summary_current_value",
+            locale = loc,
+            amount = line.proposed.as_str()
+        )
+        .to_string(),
+        "list_price" => t!(
+            "proposals.summary_list_price",
+            locale = loc,
+            amount = line.proposed.as_str()
+        )
+        .to_string(),
         "tome_removal" => t!(
             "proposals.summary_tome_removal",
             locale = loc,

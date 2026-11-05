@@ -32,16 +32,20 @@ pub enum ProposalKind {
     /// Story 15-4 (#590) — modify an existing series (name, type, total,
     /// expected-tome removals).
     SeriesUpdate,
+    /// Story 15-5 (#564) — a volume's current value and, when it has no
+    /// purchase price, its list price at publication.
+    VolumeValue,
 }
 
 impl ProposalKind {
-    pub const ALL: [ProposalKind; 6] = [
+    pub const ALL: [ProposalKind; 7] = [
         ProposalKind::SeriesCreate,
         ProposalKind::SeriesAttach,
         ProposalKind::Metadata,
         ProposalKind::Cover,
         ProposalKind::LabelAttach,
         ProposalKind::SeriesUpdate,
+        ProposalKind::VolumeValue,
     ];
 
     pub fn as_str(&self) -> &'static str {
@@ -52,6 +56,7 @@ impl ProposalKind {
             ProposalKind::Cover => "cover",
             ProposalKind::LabelAttach => "label_attach",
             ProposalKind::SeriesUpdate => "series_update",
+            ProposalKind::VolumeValue => "volume_value",
         }
     }
 
@@ -1111,7 +1116,7 @@ impl ProposalModel {
     }
 
     /// The subject parts (target, `line`, `field`, `name`) of the live
-    /// series / field / cover / label / series-update lines of the given proposals, in filing
+    /// series / field / cover / label / series-update / current-value lines of the given proposals, in filing
     /// order. Title and expected-tome lines are skipped (a series
     /// proposal may carry up to 999 of them).
     pub async fn subject_lines(
@@ -1133,7 +1138,7 @@ impl ProposalModel {
                           CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.line')) AS CHAR) AS line \
                    FROM proposal_items \
                    WHERE proposal_id IN ({placeholders}) AND deleted_at IS NULL) i \
-             WHERE line IN ('series', 'field', 'cover', 'label', 'series_update') \
+             WHERE line IN ('series', 'field', 'cover', 'label', 'series_update', 'current_value') \
              ORDER BY proposal_id, id"
         );
         let mut q = sqlx::query(&sql);
@@ -1342,6 +1347,26 @@ impl ProposalModel {
         .bind(table.as_str())
         .bind(id)
         .bind(label_id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found)
+    }
+
+    /// Story 15-5 — the oldest live pending `volume_value` proposal on a
+    /// volume (D4: one at a time). Starts from the target index (lock
+    /// scope, epic 12 retro A1); plain read.
+    pub async fn pending_volume_value(
+        conn: &mut MySqlConnection,
+        volume_id: u64,
+    ) -> Result<Option<u64>, AppError> {
+        let found: Option<u64> = sqlx::query_scalar(
+            "SELECT p.id FROM proposal_items i FORCE INDEX (idx_proposal_items_target) \
+             STRAIGHT_JOIN proposals p ON p.id = i.proposal_id \
+             WHERE i.target_table = 'volumes' AND i.target_id = ? AND i.deleted_at IS NULL \
+               AND p.kind = 'volume_value' AND p.status = 'pending' AND p.deleted_at IS NULL \
+             ORDER BY p.id ASC LIMIT 1",
+        )
+        .bind(volume_id)
         .fetch_optional(&mut *conn)
         .await?;
         Ok(found)

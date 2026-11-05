@@ -18,6 +18,7 @@ mod propose_series_attach;
 mod propose_series_create;
 mod propose_series_update;
 mod propose_title_metadata;
+mod propose_volume_value;
 mod search_contributors;
 mod search_titles;
 mod series_proposal_args;
@@ -50,18 +51,20 @@ pub fn registry() -> ToolRegistry {
         .with(propose_cover::ProposeCover)
         .with(list_labels::ListLabels)
         .with(propose_label::ProposeLabel)
+        .with(propose_volume_value::ProposeVolumeValue)
         .with(get_skill::GetSkill)
 }
 
 /// The tools that file proposals (story 11-12 on); every other tool reads.
 #[cfg(test)]
-const PROPOSE_TOOLS: [&str; 6] = [
+const PROPOSE_TOOLS: [&str; 7] = [
     "propose_cover",
     "propose_label",
     "propose_series_attach",
     "propose_series_create",
     "propose_series_update",
     "propose_title_metadata",
+    "propose_volume_value",
 ];
 
 /// One page of a list tool's answer — the same shape for every list.
@@ -217,6 +220,7 @@ mod tests {
                 "propose_series_create",
                 "propose_series_update",
                 "propose_title_metadata",
+                "propose_volume_value",
                 "search_contributors",
                 "search_titles"
             ],

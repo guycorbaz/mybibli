@@ -208,6 +208,11 @@ sources, refused while another proposal for the same series is pending).
 closed) and total, and the removal of expected tomes; a closed total below an
 owned position or a live expected tome the proposal does not remove is
 refused, naming the positions.
+`propose_volume_value` (15-5) proposes a volume's current value and, when the
+volume has no purchase price, the list price at publication as a labelled
+stand-in; amounts in the default currency only (no conversion), at most two
+decimals, one pending value proposal per volume. `get_title` gives each
+volume's edition note and amounts and the document's `default_currency`.
 `propose_title_metadata` (11-13) proposes subtitle, description, publisher,
 publication year, Dewey code and contributors to add for one title; each
 field is stored next to the title's current value, unchanged fields are

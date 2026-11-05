@@ -49,7 +49,11 @@ impl McpTool for GetTitle {
          provider title (and removed from it) while the title was in no series — a hint, not \
          authoritative; the series positions are the title's tome numbers. `labels`: the \
          librarian's labels the title carries, and `volumes[].labels` those of each volume \
-         (`{id, name}`; the whole list with list_labels; propose one with propose_label). Find \
+         (`{id, name}`; the whole list with list_labels; propose one with propose_label). \
+         Each volume also gives `edition_comment`, `purchase_price` (`{amount, currency}` or \
+         null) and `current_value` (`{amount, currency, updated_at}` or null), and \
+         `default_currency` is the library's currency; propose a value with \
+         propose_volume_value. Find \
          ids with search_titles. Deleted titles are reported as not found. Read-only."
     }
 
