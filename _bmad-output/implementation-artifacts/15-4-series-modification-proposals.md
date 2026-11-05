@@ -1,6 +1,6 @@
 # Story 15.4: Series modification proposals
 
-Status: review
+Status: done
 
 GitHub issue: #590 (type:change-request). Covers: FR164, UX-DR41 (series part). Epic 15; ships in v1.25.0.
 
@@ -113,4 +113,8 @@ One Medium, fixed; five Low, fixed.
 - [x] [Review][Patch] (Low) The edit form's `max="10000"` blocked a rename of a series with a larger hand-set total in the browser — not set on the update line (the server validates a changed total).
 - [x] [Review][Patch] (Low) Doc comment of `lock_series_named` displaced by `other_series_named` — restored.
 - [x] [Review][Patch] (Low) The tool description did not list the owned-tome refusal — added.
+
+### Review pass 3 (2026-11-05)
+
+No Medium or High — story clean (Foundation Rule #6). Low: an open series' stray total (dismissed: `SeriesFields` maps an open series' total to none); a name with surrounding spaces read as a rename (dismissed: names are trimmed everywhere they are written); a creation not seeing a pending rename to its name, and a cleared total field in the edit falling back to the current total — deferred to #628.
 
