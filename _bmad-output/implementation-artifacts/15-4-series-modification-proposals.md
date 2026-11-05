@@ -104,3 +104,13 @@ Deviations recorded (Low, no change): acceptance order is series → staleness �
 
 Dismissed: omnibus positions diverging at filing (one `title_series` row per position, verified); `find_in` returning trashed tomes (it filters `deleted_at`); stale copy "title" wording (`stale_feedback_title` says "nothing was changed"); fingerprint including removals (D4: the exact change is blocked); a locking name read at acceptance (a `FOR UPDATE` through the collation function would scan and lock every series; window narrow, same as the edit path); E2E `getByText(CLOSED)` strictness (green; the series page shows it once).
 
+### Review pass 2 (2026-11-05)
+
+One Medium, fixed; five Low, fixed.
+
+- [x] [Review][Patch] (Medium) `ProposalModel::subject_lines` skipped the `series_update` line: no subject on `/proposals` and `subject: null` in `list_my_proposals` [src/models/proposal.rs] — line added; DB test `lists_show_the_series_of_a_change`.
+- [x] [Review][Patch] (Low) A type / total repeated as they are (or a closed series without total in the edit form) was still validated — `resolve_change` treats values equal to the current ones as left alone (the edit's special case removed).
+- [x] [Review][Patch] (Low) The edit form's `max="10000"` blocked a rename of a series with a larger hand-set total in the browser — not set on the update line (the server validates a changed total).
+- [x] [Review][Patch] (Low) Doc comment of `lock_series_named` displaced by `other_series_named` — restored.
+- [x] [Review][Patch] (Low) The tool description did not list the owned-tome refusal — added.
+

@@ -105,21 +105,14 @@ pub fn edited_update_line(old: &Value, form: &EditForm, removed: &[u64]) -> Resu
             (!raw.is_empty()).then(|| raw.parse::<i64>().unwrap_or(0))
         }
     };
-    // Type and total as filed: left alone (not re-validated, like a
-    // filing that does not touch them).
-    let total_i32 = total.and_then(|t| i32::try_from(t).ok());
-    let untouched = series_type == current.series_type
-        && (series_type == SeriesType::Open || (total.is_some() && total_i32 == current.total));
-    let change = if untouched {
-        resolve_change(&current, Some(form_str(form, "name")), None, None)?
-    } else {
-        resolve_change(
-            &current,
-            Some(form_str(form, "name")),
-            Some(series_type),
-            total,
-        )?
-    };
+    // Type and total as filed are left alone (not re-validated):
+    // `resolve_change` treats values equal to the current ones so.
+    let change = resolve_change(
+        &current,
+        Some(form_str(form, "name")),
+        Some(series_type),
+        total,
+    )?;
     let mut values = update_line(&current, &change, removed);
     values["fingerprint"] = old.get("fingerprint").cloned().unwrap_or(Value::Null);
     Ok(values)
@@ -261,6 +254,20 @@ mod tests {
         .unwrap();
         assert_eq!(v["name"], json!("Big?"));
         assert!(v.get("total_volume_count").is_none(), "{v}");
+    }
+
+    #[test]
+    fn a_closed_series_without_total_can_be_renamed() {
+        let old = json!({"line": "series_update",
+               "current": {"name": "Legacy", "series_type": "closed", "total_volume_count": null},
+               "name": "Legacy!", "fingerprint": "filed"});
+        let v = edited_update_line(
+            &old,
+            &form(&[("name", "Legacy?"), ("series_type", "closed"), ("total", "")]),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(v["name"], json!("Legacy?"));
     }
 
     #[test]

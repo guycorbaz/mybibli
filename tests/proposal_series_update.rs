@@ -656,3 +656,29 @@ async fn csrf_and_role_are_required(pool: DbPool) {
     assert_eq!(version_of(&pool, id).await, v);
     assert_eq!(series_row(&pool, series).await.1, "open");
 }
+
+// Second review: the lists show the subject of a series change.
+#[sqlx::test(migrations = "./migrations")]
+async fn lists_show_the_series_of_a_change(pool: DbPool) {
+    let f = fx(&pool).await;
+    let series = add_series(&pool, "Liste Série", "open", None).await;
+    let id = file(
+        &f,
+        json!({"series_id": series, "series_type": "closed", "total_volume_count": 7,
+               "sources": [SRC]}),
+    )
+    .await;
+    let page = f.agent.ok("list_my_proposals", json!({})).await;
+    let item = page["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["proposal_id"] == id)
+        .cloned()
+        .expect("listed");
+    assert_eq!(item["kind"], "series_update");
+    assert_eq!(item["subject"], json!({"series_id": series}));
+    let (status, list) = f.lib.get(&f.agent.app, "/proposals").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(text(list).contains("Liste Série"));
+}

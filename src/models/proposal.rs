@@ -782,13 +782,6 @@ impl ProposalModel {
         Ok(found)
     }
 
-    /// Story 11-17 — [`Self::active_series_named`] as a locking read
-    /// (`FOR UPDATE`), for accepting a `series_create`: no index serves
-    /// the comparison, so the scan locks the `series` rows and gaps it
-    /// reads, and a concurrent creation of the same name waits for this
-    /// transaction (then sees its series). Called before any title row is
-    /// locked (series before titles, like an attach). Returns the stored
-    /// name of the oldest match.
     /// Story 15-4 — a live series other than `except_id` with this name
     /// (case and accents ignored, like [`Self::active_series_named`]) —
     /// so a case-only rename still sees another series of that name. A
@@ -813,6 +806,13 @@ impl ProposalModel {
         Ok(found)
     }
 
+    /// Story 11-17 — [`Self::active_series_named`] as a locking read
+    /// (`FOR UPDATE`), for accepting a `series_create`: no index serves
+    /// the comparison, so the scan locks the `series` rows and gaps it
+    /// reads, and a concurrent creation of the same name waits for this
+    /// transaction (then sees its series). Called before any title row is
+    /// locked (series before titles, like an attach). Returns the stored
+    /// name of the oldest match.
     pub async fn lock_series_named(
         conn: &mut MySqlConnection,
         name: &str,
@@ -1111,7 +1111,7 @@ impl ProposalModel {
     }
 
     /// The subject parts (target, `line`, `field`, `name`) of the live
-    /// series / field / cover / label lines of the given proposals, in filing
+    /// series / field / cover / label / series-update lines of the given proposals, in filing
     /// order. Title and expected-tome lines are skipped (a series
     /// proposal may carry up to 999 of them).
     pub async fn subject_lines(
@@ -1133,7 +1133,7 @@ impl ProposalModel {
                           CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.line')) AS CHAR) AS line \
                    FROM proposal_items \
                    WHERE proposal_id IN ({placeholders}) AND deleted_at IS NULL) i \
-             WHERE line IN ('series', 'field', 'cover', 'label') \
+             WHERE line IN ('series', 'field', 'cover', 'label', 'series_update') \
              ORDER BY proposal_id, id"
         );
         let mut q = sqlx::query(&sql);

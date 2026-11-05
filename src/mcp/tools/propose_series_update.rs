@@ -86,8 +86,8 @@ impl McpTool for ProposeSeriesUpdate {
          name is empty, longer than 255 characters or another series' name; a total is given \
          for an open series without `series_type` \"closed\", or is below 1 or above 10000; \
          the total would leave owned positions or expected tomes outside the series (the \
-         message names them); an expected tome id is not one of this series or is listed \
-         twice; a proposal for this series is still pending (the message gives its id); the \
+         message names them); an expected tome id is not one of this series, is listed \
+         twice or is owned (a catalogued title holds its position); a proposal for this series is still pending (the message gives its id); the \
          same change was rejected recently; `series_version` no longer matches; a source is \
          not an http(s) URL. To add titles or expected tomes, use propose_series_attach."
     }

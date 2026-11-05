@@ -358,10 +358,13 @@ pub fn resolve_change(
     // A name equal to the current one — up to Unicode normalization — is
     // not a change.
     let name = name.filter(|n| !same_text(n, &current.name));
-    // Type and total left alone: neither is validated (a series already
-    // outside the rules — say a hand-set total above the proposal range —
-    // can still be renamed or lose tomes).
-    if series_type.is_none() && total.is_none() {
+    // Type and total left alone — absent or equal to the current ones:
+    // neither is validated (a series already outside the rules — a
+    // hand-set total above the proposal range, a closed series without
+    // total — can still be renamed or lose tomes).
+    let same_type = series_type.is_none_or(|t| t == current.series_type);
+    let same_total = total.is_none_or(|t| current.total.map(i64::from) == Some(t));
+    if same_type && same_total {
         return Ok(SeriesChange {
             name,
             ..SeriesChange::default()
@@ -877,6 +880,17 @@ mod tests {
             assert_eq!(change.name.as_deref(), Some("Renamed"));
             assert!(!change.touches_total());
             assert!(resolve_change(&current, None, None, None).unwrap().is_empty());
+            // Second review: a type (and total) repeated as they are is
+            // left alone too.
+            let repeated = resolve_change(
+                &current,
+                Some("Renamed"),
+                Some(SeriesType::Closed),
+                current.total.map(i64::from),
+            )
+            .unwrap();
+            assert_eq!(repeated.name.as_deref(), Some("Renamed"));
+            assert!(!repeated.touches_total());
         }
     }
 
