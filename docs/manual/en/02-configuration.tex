@@ -350,6 +350,15 @@ proposal equivalent to one a librarian rejected --- same kind and same
 subject, whichever key files it. Applied to the next proposal, no
 restart. See section~\ref{sec:agents-delay}.
 
+\subsection*{Time zone}
+
+Since 1.25.0 the \textbf{time zone} of the library (an IANA name such
+as \texttt{Europe/Zurich}, the default, \texttt{Europe/Paris} or
+\texttt{America/New\_York}) decides how pages show dates and where a
+day starts and ends --- for \emph{added since}, overdue loans and the
+dates of value estimates. Stored dates, the REST API and AI agents stay
+in UTC. Applied to the next page, no restart.
+
 \subsection*{Language}
 
 Sets the default UI language for \emph{anonymous} visitors.

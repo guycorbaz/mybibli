@@ -57,6 +57,16 @@ With a \emph{propose} key an agent can:
   \item propose a cover image;
   \item propose one of your management labels on a title or a volume
         it finds doubtful --- for example \emph{Code douteux};
+  \item propose a correction of an existing series: its name, open or
+        closed, its number of volumes, and the removal of expected
+        tomes that do not exist;
+  \item propose what a volume is worth today and, when you never
+        recorded what it cost, the publisher's list price at
+        publication --- and find first the volumes never valued or
+        valued longest ago;
+  \item read the \emph{skills} you write for it in
+        \emph{Administration \textrightarrow{} Skills}
+        (section~\ref{sec:agents-skills});
   \item read the history of its own proposals, with your decisions
         and your rejection reasons.
 \end{itemize}
@@ -371,7 +381,20 @@ not named. For reference:
   \item[\texttt{list\_labels}] Your management labels (at most the
         first 500 by name), with how many titles and volumes carry
         each. There is no tool to create one.
+  \item[\texttt{list\_volumes\_to\_value}] The volumes to value
+        first: never valued, then valued without a date, then the
+        oldest estimates; optionally those of one series or genre. Each
+        gives its condition, edition note, purchase price and current
+        value. A volume with a value proposal still waiting for you is
+        left out.
+  \item[\texttt{get\_skill}] One of your skills by name
+        (section~\ref{sec:agents-skills}).
 \end{description}
+
+Since 1.25.0 \texttt{get\_title} also gives, for each volume, its
+edition note, purchase price and current value with the date of the
+estimate, and the library's default currency --- the only currency a
+value proposal may use.
 
 \subsubsection*{Proposing}
 
@@ -392,6 +415,17 @@ not named. For reference:
   \item[\texttt{propose\_label}] One of your management labels (by id,
         or by its exact name) on one title or one volume, with an
         optional note of at most 500 characters explaining the doubt.
+  \item[\texttt{propose\_series\_update}] Changes to an existing
+        series: a corrected name, open or closed, the number of
+        volumes of a closed series, and expected tomes to remove. A
+        closed total may not be lower than a position you own, nor
+        than an expected tome the same proposal does not remove: the
+        refusal names those positions, and the agent proposes removing
+        the surplus tomes in the same call.
+  \item[\texttt{propose\_volume\_value}] A volume's current value,
+        in your default currency (no conversion), and --- only when the
+        volume has no purchase price --- the list price at publication,
+        with an optional note on the condition and edition.
 \end{description}
 
 A tool refuses, with an explanation the agent can act on, a proposal
@@ -400,6 +434,9 @@ taken, a value a librarian's form would refuse, a missing source, a
 second pending proposal for the same series, an owned title placed on
 an expected tome whose ISBN is another book's, an unknown label, a
 label the record already carries or that is already proposed for it,
+a series total below a position you hold, an amount in another
+currency than yours or with more than two decimals, a list price for a
+volume whose purchase price you recorded,
 or a proposal you rejected recently (section~\ref{sec:agents-delay}). Each agent may
 have at most 100 pending cover proposals at a time.
 
@@ -423,7 +460,8 @@ first, 25 per page. Two filters narrow it:
   \item \textbf{Status} --- \emph{Pending}, \emph{Accepted},
         \emph{Rejected}, \emph{Outdated}, or all;
   \item \textbf{Kind} --- \emph{New series}, \emph{Series additions},
-        \emph{Metadata}, \emph{Cover}, \emph{Label}, or all.
+        \emph{Metadata}, \emph{Cover}, \emph{Label},
+        \emph{Series changes}, \emph{Volume value}, or all.
 \end{itemize}
 
 Each row names the subject --- the proposed series name, or the
@@ -495,6 +533,30 @@ An edited line keeps the agent's value under it (\emph{The assistant
 proposed: \dots}) and says who edited it and when. The agent's own
 history still shows what it filed.
 
+\subsection{Series changes and volume values}
+\label{sec:proposals-series-value}
+
+A \emph{Series changes} proposal shows a table of each proposed field
+--- name, type, number of volumes --- with its current and proposed
+value, and lists the expected tomes it removes. You may edit the
+proposed name, type and total (the same rules as the agent's apply),
+and remove a tome removal line if what remains is still valid; the
+changes line itself cannot be removed --- reject the proposal instead.
+Accepting applies everything in one go.
+
+A \emph{Volume value} proposal shows the volume (its V-code and
+title), its condition and edition note, its purchase price, and a
+table with its current value --- as it was when the agent filed the
+proposal, with the date of that estimate --- next to the proposed
+one. When the value changed since, a warning says so: accepting will
+then only mark the proposal outdated. A \emph{list price at
+publication} line is labelled as standing in for the purchase price,
+which is unknown: what you actually paid may differ. Remove that line
+if you do not want it; the value line stays. Amounts are not edited
+here: type another amount on the volume's edit page instead. Accepting
+records the value with today's date, and the list price as the
+purchase price.
+
 \subsection{Accepting}
 
 \textbf{Accept} opens a confirmation that summarises what will be
@@ -547,6 +609,14 @@ type corrected; a title correction accepted from a proposal keeps the
 other proposals valid) or a proposed contributor role was deleted. Editing a field
 the proposal does not touch outdates nothing.
 
+A series change becomes outdated when the series was edited since it
+was filed, when an expected tome it removes was deleted, moved or
+edited, or when a title now holds a position above the proposed total.
+A value proposal becomes outdated when the volume (or its title) was
+deleted, when its current value changed in the meantime, when a
+purchase price was recorded while a list price was proposed, or when
+the library's default currency changed.
+
 A label proposal becomes outdated only when the title or volume it
 marks was deleted (a volume also when its title was), when the label
 was deleted, or when the label was put on the record in the meantime.
@@ -586,6 +656,31 @@ The delay is set in \textbf{Administration \(\rightarrow\) System
 (section~\ref{sec:system}): from 0 (no delay) to 3650 days, default
 \textbf{90 days}. A change applies to the next proposal, without a
 restart.
+
+\section{Skills: instructions for the agent}
+\label{sec:agents-skills}
+
+A \emph{skill} is a set of instructions you write once for your
+agents --- how you number omnibus editions, which sources you trust
+for values, what a doubtful record looks like. Admins manage them in
+\emph{Administration \textrightarrow{} Skills}: a name (lowercase
+letters, digits and hyphens, at most 64 characters), a one-line
+description (at most 200 characters) and a body in Markdown (at most
+64\,KiB). A skill can be deactivated without being deleted; a deleted
+skill goes to the Trash and its name stays reserved until it is purged
+or restored.
+
+Agents see the active skills three ways: listed by name and
+description in the instructions they receive when they connect (the
+first 20), as MCP \emph{prompts} their client can show, and through
+the \texttt{get\_skill} tool, which returns the body. An edit shows
+on the agent's next request.
+
+\begin{note}
+A skill is text for the agent to read: it grants no permission. An
+agent following a skill can still only read and propose, and every
+proposal still waits for you. The body is never rendered as HTML.
+\end{note}
 
 \section{Expected tomes and the wish list}
 \label{sec:expected-tomes}
