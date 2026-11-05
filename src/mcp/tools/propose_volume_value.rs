@@ -100,7 +100,8 @@ impl McpTool for ProposeVolumeValue {
         "Propose the current market value of one physical volume (`current_value`: amount and \
          currency) and, only when the volume has no purchase price, the publisher's list price \
          at publication (`list_price`) — the librarian sees it labelled as a stand-in for the \
-         purchase price, since what was actually paid is unknown. Read the title with \
+         purchase price, since what was actually paid is unknown. Find the volumes to value \
+         first with list_volumes_to_value. Read the title with \
          get_title first: each of its `volumes` gives its id, `condition_name`, \
          `edition_comment`, `purchase_price` and `current_value` (with `updated_at`), and the \
          document gives `default_currency`, the only currency accepted. Take the copy's \

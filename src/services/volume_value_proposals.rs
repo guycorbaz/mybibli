@@ -403,6 +403,30 @@ pub fn same_value(filed: Option<&Amount>, live: Option<&Amount>) -> bool {
     filed == live
 }
 
+/// Story 15-6 (D5) — one page of the volumes an agent should value first
+/// (the MCP `list_volumes_to_value` tool); `None` when the `series_id`
+/// filter names no live series (review: an empty page would read as
+/// "nothing to value").
+pub async fn volumes_to_value(
+    pool: &DbPool,
+    filter: crate::models::value_coverage::VolumesToValueFilter,
+    page: u32,
+) -> Result<
+    Option<crate::models::PaginatedList<crate::models::value_coverage::VolumeToValue>>,
+    AppError,
+> {
+    if let Some(id) = filter.series_id
+        && !ProposalModel::live_series_names(pool, &[id])
+            .await?
+            .contains_key(&id)
+    {
+        return Ok(None);
+    }
+    crate::models::value_coverage::ValueCoverageModel::volumes_to_value(pool, filter, page)
+        .await
+        .map(Some)
+}
+
 pub struct VolumeValueProposalService;
 
 impl VolumeValueProposalService {

@@ -11,6 +11,7 @@ mod list_my_proposals;
 mod list_series;
 mod list_titles_with_incomplete_metadata;
 mod list_titles_without_cover;
+mod list_volumes_to_value;
 mod proposal_args;
 mod propose_cover;
 mod propose_label;
@@ -52,6 +53,7 @@ pub fn registry() -> ToolRegistry {
         .with(list_labels::ListLabels)
         .with(propose_label::ProposeLabel)
         .with(propose_volume_value::ProposeVolumeValue)
+        .with(list_volumes_to_value::ListVolumesToValue)
         .with(get_skill::GetSkill)
 }
 
@@ -214,6 +216,7 @@ mod tests {
                 "list_series",
                 "list_titles_with_incomplete_metadata",
                 "list_titles_without_cover",
+                "list_volumes_to_value",
                 "propose_cover",
                 "propose_label",
                 "propose_series_attach",

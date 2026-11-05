@@ -210,7 +210,8 @@ owned position or a live expected tome the proposal does not remove is
 refused, naming the positions.
 `propose_volume_value` (15-5) proposes a volume's current value and, when the
 volume has no purchase price, the list price at publication as a labelled
-stand-in; amounts in the default currency only (no conversion), at most two
+stand-in (`list_volumes_to_value`, 15-6, lists the volumes to value first:
+never valued, then the oldest estimates); amounts in the default currency only (no conversion), at most two
 decimals, one pending value proposal per volume. `get_title` gives each
 volume's edition note and amounts and the document's `default_currency`.
 `propose_title_metadata` (11-13) proposes subtitle, description, publisher,

@@ -14,9 +14,11 @@ use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::locale::Locale;
+use crate::models::value_coverage::{Coverage, ValueCoverageModel, old_before};
 use crate::models::volume::{
     ValueByGenreRow, ValueBySeriesRow, ValueTotalRow, VolumeModel,
 };
+use crate::utils::local_time::format_local_date;
 
 #[derive(Template)]
 #[template(path = "pages/stats_value.html")]
@@ -41,6 +43,63 @@ struct StatsValueTemplate {
     by_genre: Vec<GenreRowDisplay>,
     by_series: Vec<SeriesRowDisplay>,
     has_any_data: bool,
+
+    // Story 15-6 — coverage.
+    has_volumes: bool,
+    coverage: CoverageLabels,
+    overall: CoverageDisplay,
+    coverage_by_genre: Vec<CoverageDisplay>,
+    coverage_by_series: Vec<CoverageDisplay>,
+}
+
+/// Story 15-6 — the coverage section's labels.
+struct CoverageLabels {
+    heading: String,
+    intro: String,
+    by_genre: String,
+    by_series: String,
+    col_volumes: String,
+    col_valued: String,
+    col_share: String,
+    col_oldest: String,
+    col_newest: String,
+    col_old: String,
+    caption_overall: String,
+}
+
+/// Story 15-6 — one coverage row as the page shows it.
+struct CoverageDisplay {
+    label: String,
+    href: Option<String>,
+    volumes: i64,
+    valued: i64,
+    share: String,
+    oldest: String,
+    newest: String,
+    old: i64,
+}
+
+fn coverage_display(
+    c: &Coverage,
+    label: String,
+    href: Option<String>,
+    tz: chrono_tz::Tz,
+    loc: &str,
+) -> CoverageDisplay {
+    let date = |d: Option<chrono::NaiveDateTime>| {
+        d.map(|d| format_local_date(d, tz)).unwrap_or_else(|| "—".to_string())
+    };
+    CoverageDisplay {
+        label,
+        href,
+        volumes: c.volumes,
+        valued: c.valued,
+        share: rust_i18n::t!("stats.value.share", locale = loc, percent = c.share_percent())
+            .to_string(),
+        oldest: date(c.oldest),
+        newest: date(c.newest),
+        old: c.old,
+    }
 }
 
 struct TotalRowDisplay {
@@ -136,6 +195,51 @@ pub async fn stats_value_page(
 
     let has_any_data = !totals.is_empty();
 
+    // Story 15-6 — coverage (D1–D4): computed against a UTC bound, dates
+    // shown in the instance zone.
+    let tz = state.time_zone();
+    let bound = old_before(chrono::Utc::now().naive_utc());
+    let overall_raw = ValueCoverageModel::overall(pool, bound).await?;
+    let t = |key: &str| rust_i18n::t!(key, locale = loc).to_string();
+    let overall = coverage_display(&overall_raw, t("stats.value.coverage_overall"), None, tz, loc);
+    let coverage_by_genre = ValueCoverageModel::by_genre(pool, bound)
+        .await?
+        .iter()
+        .map(|c| {
+            let label = match (c.id, c.name.as_ref()) {
+                (Some(_), Some(name)) if !name.is_empty() => name.clone(),
+                _ => deleted_genre_placeholder.clone(),
+            };
+            coverage_display(c, label, None, tz, loc)
+        })
+        .collect();
+    let coverage_by_series = ValueCoverageModel::by_series(pool, bound)
+        .await?
+        .iter()
+        .map(|c| {
+            coverage_display(
+                c,
+                c.name.clone().unwrap_or_default(),
+                c.id.map(|id| format!("/series/{id}")),
+                tz,
+                loc,
+            )
+        })
+        .collect();
+    let coverage = CoverageLabels {
+        heading: t("stats.value.coverage_heading"),
+        intro: t("stats.value.coverage_intro"),
+        by_genre: t("stats.value.coverage_by_genre"),
+        by_series: t("stats.value.coverage_by_series"),
+        col_volumes: t("stats.value.col_volumes"),
+        col_valued: t("stats.value.col_valued"),
+        col_share: t("stats.value.col_share"),
+        col_oldest: t("stats.value.col_oldest"),
+        col_newest: t("stats.value.col_newest"),
+        col_old: t("stats.value.col_old"),
+        caption_overall: t("stats.value.coverage_caption"),
+    };
+
     let base = crate::utils::base_context(&session, loc, "stats", &uri, state.page_settings());
     let template = StatsValueTemplate {
         base,
@@ -160,6 +264,12 @@ pub async fn stats_value_page(
         by_genre,
         by_series,
         has_any_data,
+
+        has_volumes: overall_raw.volumes > 0,
+        coverage,
+        overall,
+        coverage_by_genre,
+        coverage_by_series,
     };
 
     template

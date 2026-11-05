@@ -24,6 +24,7 @@ pub mod title_search;
 pub mod title_tome;
 pub mod trash;
 pub mod user;
+pub mod value_coverage;
 pub mod volume;
 pub mod volume_move;
 pub mod volume_state;
