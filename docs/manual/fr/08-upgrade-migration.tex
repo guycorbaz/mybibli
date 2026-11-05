@@ -148,6 +148,82 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.25.0}\label{sec:whats-new-1.25.0}
+
+La version 1.25.0 clôt l'epic 15, « les tâches suivantes de l'agent »
+(\href{https://github.com/guycorbaz/mybibli/issues/602}{\#602},
+\href{https://github.com/guycorbaz/mybibli/issues/614}{\#614},
+\href{https://github.com/guycorbaz/mybibli/issues/590}{\#590},
+\href{https://github.com/guycorbaz/mybibli/issues/564}{\#564}) : les
+dates suivent le fuseau horaire de la bibliothèque, un admin peut
+rédiger des compétences pour l'agent IA, et l'agent peut proposer la
+correction d'une série et la valeur d'un volume. \emph{Quatre migrations
+additives} (un réglage \texttt{time\_zone}, la table
+\texttt{mcp\_skills}, deux nouveaux types de propositions), aucune
+modification de configuration --- faites d'abord une sauvegarde,
+récupérez l'image, recréez le conteneur (\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{Fuseau horaire de l'instance.} \emph{Administration
+        \textrightarrow{} Système \textrightarrow{} Fuseau horaire}
+        attend un nom IANA (par défaut \texttt{Europe/Zurich}). Les pages
+        affichent les dates et découpent les jours --- \emph{Ajoutés
+        depuis le}, prêts en retard --- dans ce fuseau ; le stockage, l'API
+        REST et les agents MCP restent en UTC
+        (chapitre~\ref{ch:configuration}).
+  \item \textbf{Des compétences pour l'agent.} Un nouvel onglet
+        \emph{Compétences} dans l'administration, où un admin rédige des
+        instructions en Markdown : un nom (mots en minuscules reliés par
+        des traits d'union), une description d'une ligne, un texte de
+        64\,Kio au plus, un interrupteur d'activation ; une compétence
+        supprimée va à la corbeille. L'agent les reçoit comme
+        \emph{prompts} MCP, par l'outil en lecture seule
+        \texttt{get\_skill}, et listées dans ses instructions de connexion
+        (les 20 premières). Une compétence n'accorde aucun droit
+        (section~\ref{sec:agents-skills}).
+  \item \textbf{Corrections de séries.} Avec
+        \texttt{propose\_series\_update}, l'agent propose un nom corrigé,
+        série ouverte ou fermée, le total d'une série fermée, et le
+        retrait de tomes attendus qui n'existent pas. Un total inférieur
+        à une position possédée, ou à un tome attendu que la proposition
+        ne retire pas, est refusé en nommant les positions. La revue
+        montre côte à côte les valeurs actuelles et proposées ; accepter
+        applique le tout d'un coup
+        (section~\ref{sec:proposals-series-value}).
+  \item \textbf{Valeur des volumes.} Avec
+        \texttt{propose\_volume\_value}, l'agent propose la valeur
+        actuelle d'un volume dans la devise par défaut de la
+        bibliothèque (sans conversion, deux décimales au plus) et,
+        seulement si le volume n'a pas de prix d'achat, le prix
+        catalogue à la parution, signalé comme valeur de remplacement.
+  \item \textbf{Couverture des estimations.} \texttt{/stats/value}
+        s'ouvre sur la part de la collection qui fonde ses totaux :
+        volumes vivants, volumes estimés, proportion, estimation la plus
+        ancienne et la plus récente, estimations de plus d'un an ou sans
+        date --- pour l'ensemble, par genre et par série, les moins
+        couverts d'abord (chapitre~\ref{ch:usage}). L'outil
+        \texttt{list\_volumes\_to\_value} de l'agent liste d'abord les
+        volumes jamais estimés, puis les estimations les plus anciennes.
+\end{itemize}
+
+\paragraph{Corrections.}
+\begin{itemize}
+  \item Les totaux par devise ne comptent plus les volumes de titres
+        supprimés.
+  \item Les totaux par série comptent un omnibus une seule fois et
+        ignorent les rattachements à une série qui ont été retirés.
+\end{itemize}
+
+\paragraph{Après la mise à jour.} Vérifiez le fuseau horaire dans
+\emph{Administration \textrightarrow{} Système} si votre bibliothèque
+n'est pas en Europe centrale. Les clients MCP voient 18 outils ---
+nouveaux : \texttt{get\_skill}, \texttt{propose\_series\_update},
+\texttt{propose\_volume\_value}, \texttt{list\_volumes\_to\_value} ---
+et la capacité \emph{prompts} ; reconnectez l'agent pour qu'il les
+découvre. \texttt{get\_title} donne aussi, pour chaque volume, la note
+d'édition, le prix d'achat et la valeur actuelle avec sa date, ainsi
+que la devise par défaut.
+
 \section{Nouveautés de la 1.24.0}\label{sec:whats-new-1.24.0}
 
 La version 1.24.0 clôt l'epic 14, « la barre latérale »

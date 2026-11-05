@@ -25,7 +25,7 @@
     "applicationCategory": "BusinessApplication",
     "applicationSubCategory": "Library Management",
     "operatingSystem": "Docker (Linux, Windows, macOS, ARM64)",
-    "softwareVersion": "1.24.0",
+    "softwareVersion": "1.25.0",
     "license": "https://www.gnu.org/licenses/agpl-3.0.html",
     "downloadUrl": "https://github.com/guycorbaz/mybibli",
     "codeRepository": "https://github.com/guycorbaz/mybibli",
@@ -85,7 +85,7 @@
       <a href="./index.html" class="flex items-center gap-2 font-semibold text-stone-900 dark:text-stone-100">
         <img src="./logo/svg/mybibli-icon.svg" alt="" aria-hidden="true" class="w-7 h-7">
         <span>mybibli</span>
-        <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-200/60 dark:ring-emerald-800/50">v1.24.0</span>
+        <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-200/60 dark:ring-emerald-800/50">v1.25.0</span>
       </a>
 
       <nav aria-label="Primary" class="hidden md:flex items-center gap-1 text-sm">
@@ -132,7 +132,7 @@
         <div class="max-w-3xl">
           <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-600/10 dark:bg-indigo-400/10 ring-1 ring-indigo-600/20 dark:ring-indigo-400/30 text-indigo-700 dark:text-indigo-300 text-xs font-medium">
             <span class="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400"></span>
-            v1.24.0 · current
+            v1.25.0 · current
           </span>
           <h1 class="mt-5 text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-stone-900 dark:text-stone-50">
             Your home library,<br class="hidden sm:block" />
@@ -303,14 +303,14 @@
             </p>
           </article>
 
-          <!-- Card 7 — v1.21.0, in production since v1.22.0, labels since v1.23.0 -->
+          <!-- Card 7 — v1.21.0, in production since v1.22.0, labels since v1.23.0, skills / series / values since v1.25.0 -->
           <article class="feature-card reveal rounded-xl p-6 sm:col-span-2 lg:col-span-3 bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800 hover:ring-indigo-300 dark:hover:ring-indigo-700 hover:shadow-lg dark:hover:shadow-indigo-900/20">
             <div class="w-10 h-10 rounded-lg bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-300 flex items-center justify-center">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12l2 2 4-4M12 3l7 4v5c0 4.5-3 8-7 9-4-1-7-4.5-7-9V7l7-4z"/></svg>
             </div>
             <h3 class="mt-4 text-lg font-semibold text-stone-900 dark:text-stone-50">AI agents, under supervision</h3>
             <p class="mt-2 text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
-              A built-in MCP server lets an AI agent on your network — Claude Code or any MCP client — read the catalog and propose series, missing tomes, metadata and covers, citing its sources. It can also flag a doubtful title or copy with a management label. It never changes the catalog: a librarian compares, edits, accepts or rejects each proposal on the Proposals page.
+              A built-in MCP server lets an AI agent on your network — Claude Code or any MCP client — read the catalog and propose series, missing tomes, metadata and covers, citing its sources. It can also flag a doubtful title or copy with a management label, correct a series — its name, open or closed, its total — and estimate what a volume is worth, following the <em>skills</em> an admin writes for it. It never changes the catalog: a librarian compares, edits, accepts or rejects each proposal on the Proposals page.
             </p>
             <p class="mt-3 text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
               <strong class="text-stone-900 dark:text-stone-100">In production.</strong> mybibli's own catalog was the first to try it. One afternoon, an AI agent went through the household library looking for what was missing, and came back with 352 suggestions, each with its sources. Reviewing them over a cup of tea, the librarian accepted 245: 190 books gained a description, a publisher, a year, their authors and illustrators, or a cover. Most were titles the usual library catalogs had never heard of, the kind of gaps that would otherwise have waited years for someone to fill them by hand.
@@ -431,9 +431,9 @@
         <div class="reveal relative overflow-hidden rounded-2xl p-10 sm:p-14 bg-gradient-to-br from-indigo-600 via-indigo-700 to-pink-600 text-white shadow-xl">
           <div class="absolute inset-0 grid-pattern opacity-20" aria-hidden="true"></div>
           <div class="relative">
-            <h2 class="text-2xl sm:text-3xl font-bold">v1.24.0 is live.</h2>
+            <h2 class="text-2xl sm:text-3xl font-bold">v1.25.0 is live.</h2>
             <p class="mt-3 text-indigo-100 max-w-2xl">
-              <strong class="text-white">v1.24.0 — the sidebar</strong>: the top navigation bar gives way to a sidebar on wide screens — every entry with its icon, grouped by role, collapsible to a column of icons — and a drawer on phones and tablets that ignores a barcode scanner's read while it is open; a Home entry heads the navigation, and the theme toggle now really switches the whole interface between light and dark (<strong>#547</strong>). No migration. It follows <strong class="text-white">v1.23.0 — cataloguing for real</strong>, planned from a first mass entry session of some 260 volumes: a pile scans without surprises — double reads ignored, a label already in use names its title (<strong>#574</strong>, <strong>#585</strong>); lookups that met a busy provider are retried by themselves (<strong>#583</strong>); old ISBN-10 records and HTML-laden descriptions are repaired once (<strong>#584</strong>, <strong>#578</strong>); a volume can move to another title (<strong>#580</strong>); titles show when they were added, with an <em>Added since</em> filter (<strong>#586</strong>); tome numbers are shown and edited in place (<strong>#579</strong>); full shelf paths, every series in the selector, <em>Recent additions</em> as a table (<strong>#582</strong>, <strong>#576</strong>, <strong>#577</strong>); and an AI agent can now flag a doubtful record with a management label for the librarian to confirm (<strong>#581</strong>) — five additive migrations — and <strong class="text-white">v1.22.0 — proposals, after a first real use</strong>, no migration: proposals reviewed in any order, rejections by field or by image, the agent told where mybibli already searched, title corrections (<strong>#542</strong>, <strong>#535</strong>, <strong>#560</strong>, <strong>#563</strong>). Earlier releases — AI agents, under supervision (v1.21.0), three production fixes (v1.20.1), where the labels end (v1.20.0) — are on the roadmap page. Pre-built Docker images on Docker Hub.
+              <strong class="text-white">v1.25.0 — the agent's next tasks</strong>: dates and day boundaries follow the library's own time zone (<strong>#602</strong>); an admin writes <em>skills</em>, Markdown instructions the AI agent reads before it works (<strong>#614</strong>); the agent can propose a series correction — name, open or closed, total, expected tomes that do not exist (<strong>#590</strong>) — and a volume's current value, while the value page shows how much of the collection its totals rest on (<strong>#564</strong>). Four additive migrations — back up first. It follows <strong class="text-white">v1.24.0 — the sidebar</strong>: a sidebar on wide screens, collapsible to a column of icons, a drawer on phones and tablets, a Home entry, and a theme toggle that really switches light and dark (<strong>#547</strong>), no migration — and <strong class="text-white">v1.23.0 — cataloguing for real</strong>: a pile scans without surprises, throttled lookups retried, old records repaired, a volume moved to another title, dates added and tome numbers shown (<strong>#574</strong>, <strong>#583</strong>, <strong>#580</strong>, <strong>#586</strong>, <strong>#579</strong>), five additive migrations. Earlier releases — proposals after a first real use (v1.22.0), AI agents, under supervision (v1.21.0), three production fixes (v1.20.1) — are on the roadmap page. Pre-built Docker images on Docker Hub.
             </p>
             <div class="mt-6 flex flex-wrap gap-3">
               <a href="https://github.com/guycorbaz/mybibli" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-white text-indigo-700 font-medium hover:bg-indigo-50">
