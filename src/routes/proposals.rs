@@ -579,13 +579,13 @@ pub(crate) async fn load_detail(
         .await?
         .ok_or_else(|| ReviewError::NotFound.into_app_error(loc))?;
     // Story 15-5 — the live volume beside a value proposal.
-    Ok(crate::services::volume_value_review::with_volume_facts(
+    crate::services::volume_value_review::with_volume_facts(
         &state.pool,
         state.time_zone(),
         detail,
         loc,
     )
-    .await?)
+    .await
 }
 
 /// `GET /proposals/{id}`.

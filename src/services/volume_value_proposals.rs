@@ -347,13 +347,13 @@ pub fn parse_value_line(v: &Value) -> Option<ValueLine> {
     let cents = v.get("amount_cents")?.as_i64()?;
     let currency = v.get("currency")?.as_str()?.to_string();
     let cur = v.get("current")?;
-    let current = match cur.get("amount_cents").and_then(Value::as_i64) {
-        Some(c) => Some(Amount {
+    let current = cur
+        .get("amount_cents")
+        .and_then(Value::as_i64)
+        .map(|c| Amount {
             cents: c,
             currency: cur.get("currency").and_then(Value::as_str).map(str::to_string),
-        }),
-        None => None,
-    };
+        });
     Some(ValueLine {
         amount: Amount {
             cents,

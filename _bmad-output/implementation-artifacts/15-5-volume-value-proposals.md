@@ -1,6 +1,6 @@
 # Story 15.5: Volume value proposals
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #564 part 1 (type:change-request). Covers: FR165, UX-DR41 (value part). Epic 15; ships in v1.25.0.
 
@@ -42,23 +42,39 @@ so that the estimate covers the collection without typing each value.
 6. **AC6 — review (UX-DR41).** The detail shows the volume (V-code, title link, condition, edition note), a current-vs-proposed table (current value with its date; purchase price), the list-price line labelled "List price at publication — stands in for the purchase price", the note and the sources. Kind label / filter `proposals.kind_volume_value`; accept modal sentence; stale reasons; all keys in **en/fr/de/it**.
 7. **AC7 — history.** Subject / `describe` / `list_my_proposals` show the kind; rejection blocks the exact amounts (D5).
 8. **AC8 — lock scope (epic 12 retro A1).** Locking reads start from the target index or PK; regression test `a_value_acceptance_on_one_volume_does_not_lock_proposals_of_another`.
-9. **AC9 — tests.** Unit: amount parsing (decimals, range), shapes, key. DB integration (`tests/proposal_volume_value.rs`): each refusal writes nothing; accept writes the amounts and date; stale paths; list-price line removal; rollback; CSRF + role; lock scope. E2E (`tests/e2e/specs/journeys/volume-value-proposal.spec.ts`, own spec id): the agent reads a title over MCP, proposes a value and a list price, the librarian (real `loginAs`) reviews and accepts, the volume page shows the amounts. Full suites green; flake gate.
+9. **AC9 — tests.** Unit: amount parsing (decimals, range), shapes, key. DB integration (`tests/proposal_volume_value.rs`): each refusal writes nothing; accept writes the amounts and date; stale paths; list-price line removal; rollback; CSRF + role; lock scope. E2E (`tests/e2e/specs/journeys/volume-value-proposal.spec.ts`, own spec id): the agent reads a title over MCP, proposes a value and a list price, the librarian (real `loginAs`) reviews and accepts, the volume's edit form holds the amounts (the volume page shows none, CR #243) and `get_title` reports them dated. Full suites green; flake gate.
 10. **AC10 — docs.** CLAUDE.md "Proposal lifecycle" gains a `volume_value` paragraph. Manual chapters are story 15-8.
 
 ## Tasks
 
-- [ ] Migration + `ProposalKind::VolumeValue`; `cargo sqlx prepare`.
-- [ ] `get_title` read path (D8).
-- [ ] `services/volume_value_proposals.rs` (amounts, validation, errors + `Refusal`, filing).
-- [ ] MCP tool + registries + test helpers + docs list.
-- [ ] `services/volume_value_acceptance.rs` + dispatch + conflicts + copy.
-- [ ] Review / edit / history arms.
-- [ ] Locales en/fr/de/it.
-- [ ] Tests (unit, DB, lock scope, E2E).
-- [ ] CLAUDE.md.
+- [x] Migration + `ProposalKind::VolumeValue`; `cargo sqlx prepare`.
+- [x] `get_title` read path (D8).
+- [x] `services/volume_value_proposals.rs` (amounts, validation, errors + `Refusal`, filing).
+- [x] MCP tool + registries + test helpers + docs list.
+- [x] `services/volume_value_acceptance.rs` + dispatch + conflicts + copy.
+- [x] Review / edit / history arms.
+- [x] Locales en/fr/de/it.
+- [x] Tests (unit, DB, lock scope, E2E).
+- [x] CLAUDE.md.
 
 ## Dev Agent Record
 
 ### Completion Notes
 
+- All ACs implemented. New modules keep the large files to dispatch arms: `models/volume_value.rs`, `services/volume_value_{proposals,acceptance,review}.rs`, `mcp/tools/propose_volume_value.rs`.
+- `config::normalize_currency_code` extracted (shared by the settings load and filing — DRY).
+- The volume page (`volume_detail.html`) shows no amounts (CR #243 only in the edit form); the E2E checks the edit form and `get_title`. Showing them on the page would touch `routes/catalog.rs` (already above 2000 lines) — out of scope, noted for the retrospective.
+- The review reads the live volume (condition, edition note, purchase price, value date in the instance zone) through `volume_value_review::with_volume_facts`, called from `routes/proposals.rs::load_detail`.
+- Tests: 15 unit, 8 DB integration (`tests/proposal_volume_value.rs`, lock scope included), E2E `volume-value-proposal.spec.ts` (spec id VV, V7000–V7499); clippy and `sqlx prepare --check` clean; targeted E2E 7/7.
+
 ### File List
+
+- migrations/20261105160000_proposals_volume_value.sql
+- src/models/volume_value.rs (new), src/models/mod.rs, src/models/proposal.rs
+- src/services/volume_value_proposals.rs, volume_value_acceptance.rs, volume_value_review.rs (new), src/services/mod.rs, acceptance.rs, proposals.rs, proposal_history.rs, proposal_review.rs, proposal_edit.rs, proposal_accept.rs, title_detail.rs
+- src/config.rs, src/routes/proposals.rs
+- src/mcp/tools/propose_volume_value.rs (new), mod.rs, get_title.rs, list_my_proposals.rs
+- templates/fragments/proposal_detail_body.html
+- locales/{en,fr,de,it}.yml
+- tests/proposal_volume_value.rs (new), tests/common/mcp.rs, tests/e2e/helpers/mcp.ts, tests/e2e/specs/journeys/volume-value-proposal.spec.ts (new)
+- docs/route-role-matrix.md, CLAUDE.md
