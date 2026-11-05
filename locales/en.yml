@@ -748,6 +748,18 @@ stats:
     col_volumes: "Volumes"
     empty_state: "No volume has a value recorded yet. Edit a volume to enter a purchase price or estimated value."
     deleted_genre: "(Deleted genre)"
+    coverage_heading: "Coverage"
+    coverage_intro: "How much of the collection the totals cover: the volumes with a current value, the dates of the oldest and newest estimates, and how many estimates are more than a year old (or undated) and worth reviewing."
+    coverage_caption: "Coverage of the whole collection"
+    coverage_overall: "Whole collection"
+    coverage_by_genre: "Coverage by genre"
+    coverage_by_series: "Coverage by series"
+    col_valued: "Valued"
+    col_share: "Share"
+    col_oldest: "Oldest estimate"
+    col_newest: "Newest estimate"
+    col_old: "Older than a year"
+    share: "%{percent}%"
 dashboard:
   metadata_errors: "%{count} title(s) with metadata errors"
   glance:

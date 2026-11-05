@@ -729,6 +729,18 @@ stats:
     col_volumes: "Esemplari"
     empty_state: "Nessun esemplare ha ancora un valore registrato. Modifica un esemplare per inserire un prezzo d'acquisto o un valore stimato."
     deleted_genre: "(Genere eliminato)"
+    coverage_heading: "Copertura"
+    coverage_intro: "Quanta parte della collezione coprono i totali: i volumi con un valore attuale, le date della stima più vecchia e della più recente, e quante stime hanno più di un anno (o sono senza data) e vanno riviste."
+    coverage_caption: "Copertura dell'intera collezione"
+    coverage_overall: "Intera collezione"
+    coverage_by_genre: "Copertura per genere"
+    coverage_by_series: "Copertura per serie"
+    col_valued: "Stimati"
+    col_share: "Quota"
+    col_oldest: "Stima più vecchia"
+    col_newest: "Stima più recente"
+    col_old: "Più di un anno"
+    share: "%{percent}%"
 dashboard:
   metadata_errors: "%{count} titolo(i) con errori nei metadati"
   glance:

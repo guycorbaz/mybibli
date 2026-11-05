@@ -739,6 +739,18 @@ stats:
     col_volumes: "Exemplare"
     empty_state: "Noch kein Exemplar hat einen erfassten Wert. Bearbeiten Sie ein Exemplar, um einen Kaufpreis oder einen geschätzten Wert einzutragen."
     deleted_genre: "(Gelöschtes Genre)"
+    coverage_heading: "Abdeckung"
+    coverage_intro: "Welchen Teil der Sammlung die Summen abdecken: die Exemplare mit aktuellem Wert, das Datum der ältesten und der neuesten Schätzung und wie viele Schätzungen älter als ein Jahr (oder undatiert) sind und überprüft werden sollten."
+    coverage_caption: "Abdeckung der ganzen Sammlung"
+    coverage_overall: "Ganze Sammlung"
+    coverage_by_genre: "Abdeckung nach Genre"
+    coverage_by_series: "Abdeckung nach Reihe"
+    col_valued: "Bewertet"
+    col_share: "Anteil"
+    col_oldest: "Älteste Schätzung"
+    col_newest: "Neueste Schätzung"
+    col_old: "Älter als ein Jahr"
+    share: "%{percent} %"
 dashboard:
   metadata_errors: "%{count} Titel mit Metadatenfehlern"
   glance:

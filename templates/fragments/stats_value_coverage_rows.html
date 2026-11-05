@@ -1,0 +1,26 @@
+{# Story 15-6 — coverage rows; the caller binds `rows` (CoverageDisplay refs)
+   and `first_col` (the label column header; empty for the overall row). #}
+<thead class="bg-stone-100 dark:bg-stone-800">
+    <tr>
+        <th scope="col" class="px-3 py-2 text-left">{{ first_col }}</th>
+        <th scope="col" class="px-3 py-2 text-right">{{ coverage.col_volumes }}</th>
+        <th scope="col" class="px-3 py-2 text-right">{{ coverage.col_valued }}</th>
+        <th scope="col" class="px-3 py-2 text-right">{{ coverage.col_share }}</th>
+        <th scope="col" class="px-3 py-2 text-right">{{ coverage.col_oldest }}</th>
+        <th scope="col" class="px-3 py-2 text-right">{{ coverage.col_newest }}</th>
+        <th scope="col" class="px-3 py-2 text-right">{{ coverage.col_old }}</th>
+    </tr>
+</thead>
+<tbody class="divide-y divide-stone-200 dark:divide-stone-700">
+    {% for row in rows %}
+    <tr data-coverage-row="{{ row.label }}">
+        <th scope="row" class="px-3 py-2 text-left font-normal text-stone-900 dark:text-stone-100">{% if let Some(href) = row.href %}<a href="{{ href }}" class="hover:underline">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}</th>
+        <td data-coverage-volumes class="px-3 py-2 text-right tabular-nums">{{ row.volumes }}</td>
+        <td data-coverage-valued class="px-3 py-2 text-right tabular-nums">{{ row.valued }}</td>
+        <td data-coverage-share class="px-3 py-2 text-right tabular-nums font-semibold">{{ row.share }}</td>
+        <td data-coverage-oldest class="px-3 py-2 text-right tabular-nums text-stone-600 dark:text-stone-300">{{ row.oldest }}</td>
+        <td data-coverage-newest class="px-3 py-2 text-right tabular-nums text-stone-600 dark:text-stone-300">{{ row.newest }}</td>
+        <td data-coverage-old class="px-3 py-2 text-right tabular-nums">{{ row.old }}</td>
+    </tr>
+    {% endfor %}
+</tbody>

@@ -20,6 +20,7 @@ export const MCP_TOOLS = [
   "list_series",
   "list_titles_with_incomplete_metadata",
   "list_titles_without_cover",
+  "list_volumes_to_value",
   "propose_cover",
   "propose_label",
   "propose_series_attach",

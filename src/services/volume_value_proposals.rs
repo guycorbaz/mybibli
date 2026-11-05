@@ -403,6 +403,19 @@ pub fn same_value(filed: Option<&Amount>, live: Option<&Amount>) -> bool {
     filed == live
 }
 
+/// Story 15-6 (D5) — one page of the volumes an agent should value first
+/// (the MCP `list_volumes_to_value` tool).
+pub async fn volumes_to_value(
+    pool: &DbPool,
+    filter: crate::models::value_coverage::VolumesToValueFilter,
+    page: u32,
+) -> Result<
+    crate::models::PaginatedList<crate::models::value_coverage::VolumeToValue>,
+    AppError,
+> {
+    crate::models::value_coverage::ValueCoverageModel::volumes_to_value(pool, filter, page).await
+}
+
 pub struct VolumeValueProposalService;
 
 impl VolumeValueProposalService {

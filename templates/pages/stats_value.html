@@ -7,9 +7,42 @@
     <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ page_heading }}</h1>
     <p class="mt-2 text-sm text-stone-600 dark:text-stone-400 max-w-3xl">{{ page_intro }}</p>
 
-    {% if !has_any_data %}
+    {% if !has_volumes %}
     <p class="mt-10 text-center text-stone-500 dark:text-stone-400">{{ empty_state }}</p>
     {% else %}
+    {# ── Story 15-6: coverage (how far the totals can be trusted) ── #}
+    <section id="stats-value-coverage" class="mt-8" aria-labelledby="stats-value-coverage-heading">
+        <h2 id="stats-value-coverage-heading" class="text-sm font-medium uppercase tracking-wide text-stone-600 dark:text-stone-400">{{ coverage.heading }}</h2>
+        <p class="mt-1 text-sm text-stone-600 dark:text-stone-400 max-w-3xl">{{ coverage.intro }}</p>
+        <div class="mt-3 overflow-x-auto">
+            <table id="stats-value-coverage-overall" class="w-full text-sm">
+                <caption class="sr-only">{{ coverage.caption_overall }}</caption>
+                {% let rows = [&overall] %}{% let first_col = "" %}
+                {% include "fragments/stats_value_coverage_rows.html" %}
+            </table>
+        </div>
+        {% if !coverage_by_genre.is_empty() %}
+        <h3 class="mt-6 text-sm font-medium text-stone-700 dark:text-stone-300">{{ coverage.by_genre }}</h3>
+        <div class="mt-2 overflow-x-auto">
+            <table id="stats-value-coverage-genre" class="w-full text-sm">
+                <caption class="sr-only">{{ coverage.by_genre }}</caption>
+                {% let rows = coverage_by_genre.iter().collect::<Vec<_>>() %}{% let first_col = col_genre.as_str() %}
+                {% include "fragments/stats_value_coverage_rows.html" %}
+            </table>
+        </div>
+        {% endif %}
+        {% if !coverage_by_series.is_empty() %}
+        <h3 class="mt-6 text-sm font-medium text-stone-700 dark:text-stone-300">{{ coverage.by_series }}</h3>
+        <div class="mt-2 overflow-x-auto">
+            <table id="stats-value-coverage-series" class="w-full text-sm">
+                <caption class="sr-only">{{ coverage.by_series }}</caption>
+                {% let rows = coverage_by_series.iter().collect::<Vec<_>>() %}{% let first_col = col_series.as_str() %}
+                {% include "fragments/stats_value_coverage_rows.html" %}
+            </table>
+        </div>
+        {% endif %}
+    </section>
+    {% if has_any_data %}
 
     {# ── Section 1: per-currency totals ────────────────────────── #}
     <section class="mt-8" aria-labelledby="stats-value-totals-heading">
@@ -98,6 +131,7 @@
     </section>
     {% endif %}
 
+    {% endif %}
     {% endif %}
 </div>
 {% endblock %}

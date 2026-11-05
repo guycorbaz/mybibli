@@ -746,6 +746,18 @@ stats:
     col_volumes: "Volumes"
     empty_state: "Aucun volume n'a encore de valeur enregistrée. Modifiez un volume pour saisir un prix d'achat ou une valeur estimée."
     deleted_genre: "(Genre supprimé)"
+    coverage_heading: "Couverture"
+    coverage_intro: "La part de la collection que couvrent les totaux : les volumes qui ont une valeur actuelle, les dates de l'estimation la plus ancienne et de la plus récente, et le nombre d'estimations de plus d'un an (ou non datées) à revoir."
+    coverage_caption: "Couverture de toute la collection"
+    coverage_overall: "Toute la collection"
+    coverage_by_genre: "Couverture par genre"
+    coverage_by_series: "Couverture par série"
+    col_valued: "Estimés"
+    col_share: "Part"
+    col_oldest: "Plus ancienne estimation"
+    col_newest: "Plus récente estimation"
+    col_old: "De plus d'un an"
+    share: "%{percent} %"
 dashboard:
   metadata_errors: "%{count} titre(s) avec erreurs de métadonnées"
   glance:

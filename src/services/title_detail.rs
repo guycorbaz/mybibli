@@ -112,7 +112,7 @@ pub struct AgentVolumeValue {
 }
 
 impl AgentVolumeValue {
-    fn of(state: &VolumeValueState, edition_comment: Option<String>) -> Self {
+    pub fn of(state: &VolumeValueState, edition_comment: Option<String>) -> Self {
         let amount = |cents: i64| cents as f64 / 100.0;
         AgentVolumeValue {
             edition_comment: edition_comment.filter(|c| !c.trim().is_empty()),

@@ -602,8 +602,9 @@ impl VolumeModel {
         let value_rows: Vec<(Option<String>, Option<f64>, i64)> = sqlx::query_as(
             "SELECT current_value_currency, CAST(SUM(current_value) AS DOUBLE), \
                     CAST(COUNT(*) AS SIGNED) \
-             FROM volumes \
-             WHERE deleted_at IS NULL AND current_value IS NOT NULL \
+             FROM volumes v \
+             JOIN titles t ON t.id = v.title_id AND t.deleted_at IS NULL \
+             WHERE v.deleted_at IS NULL AND v.current_value IS NOT NULL \
              GROUP BY current_value_currency",
         )
         .fetch_all(pool)
@@ -612,8 +613,9 @@ impl VolumeModel {
         let purchase_rows: Vec<(Option<String>, Option<f64>, i64)> = sqlx::query_as(
             "SELECT purchase_currency, CAST(SUM(purchase_price) AS DOUBLE), \
                     CAST(COUNT(*) AS SIGNED) \
-             FROM volumes \
-             WHERE deleted_at IS NULL AND purchase_price IS NOT NULL \
+             FROM volumes v \
+             JOIN titles t ON t.id = v.title_id AND t.deleted_at IS NULL \
+             WHERE v.deleted_at IS NULL AND v.purchase_price IS NOT NULL \
              GROUP BY purchase_currency",
         )
         .fetch_all(pool)
