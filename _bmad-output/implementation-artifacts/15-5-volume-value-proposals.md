@@ -1,6 +1,6 @@
 # Story 15.5: Volume value proposals
 
-Status: review
+Status: done
 
 GitHub issue: #564 part 1 (type:change-request). Covers: FR165, UX-DR41 (value part). Epic 15; ships in v1.25.0.
 
@@ -90,3 +90,9 @@ No High. Fixed (Medium):
 Fixed (Low): "Nothing was filed." on `NoChange`; stale message "the volume or its title was deleted"; exact status in the not-editable test; tests for each fix.
 
 Deferred (Low) → issue #630: concurrent filings by two keys, decimal comma in de/it, double read in the review, extra test gaps, E2E V-code band, audit `old.purchase_currency`, amounts on the volume page.
+
+### Review pass 2 (2026-11-05)
+
+No Medium+. Fixed (Low): the filed date is shown in the instance zone even when the volume is gone; no Remove button on a list price whose removal would leave an unchanged value. Deferred (Low) → #630 (comment): a false stale under a concurrent volume move; no pre-acceptance warning of a currency change.
+
+Final gates: clippy and `sqlx prepare --check` clean; cargo test 2558 passed, 0 failed; Playwright 450 passed (CI shape, 2 workers).

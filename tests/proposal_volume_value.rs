@@ -452,6 +452,9 @@ async fn a_rejection_blocks_what_the_librarian_rejected(pool: DbPool) {
     )
     .await;
     let list_item = items(&pool, id).await[1].0;
+    // Review pass 2: the page offers no Remove button for it.
+    let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    assert!(!page.contains(&format!("data-remove-line=\"{list_item}\"")));
     let v = version_of(&pool, id).await;
     let (status, _) = post(
         &f,

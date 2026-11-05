@@ -91,6 +91,28 @@ pub async fn with_volume_facts(
     else {
         return Ok(detail);
     };
+    // Review pass 2 — independent of the live volume: the filed date in
+    // the instance zone (L3), and no Remove button on a list price whose
+    // removal would leave an unchanged value (refused, L2).
+    let unchanged_value = detail
+        .lines
+        .iter()
+        .any(|l| l.line == "current_value" && l.current.as_ref() == Some(&l.proposed));
+    for line in detail.lines.iter_mut() {
+        match line.line {
+            "current_value" => {
+                line.current_date = line
+                    .current_date
+                    .as_deref()
+                    .and_then(|d| {
+                        chrono::NaiveDateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%SZ").ok()
+                    })
+                    .map(|at| format_local_date(at, tz));
+            }
+            "list_price" if unchanged_value => line.removable = false,
+            _ => {}
+        }
+    }
     let facts = {
         let mut conn = pool.acquire().await?;
         VolumeValueModel::review_facts_in(&mut conn, volume_id).await?
@@ -116,11 +138,6 @@ pub async fn with_volume_facts(
             .map(|at| format_local_date(at, tz)),
     };
     for line in detail.lines.iter_mut().filter(|l| l.line == "current_value") {
-        line.current_date = line
-            .current_date
-            .as_deref()
-            .and_then(|d| chrono::NaiveDateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%SZ").ok())
-            .map(|at| format_local_date(at, tz));
         line.volume_facts = Some(facts.clone());
     }
     Ok(detail)
