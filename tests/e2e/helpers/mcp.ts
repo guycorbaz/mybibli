@@ -10,7 +10,7 @@ export const MCP_HEADERS = {
   Accept: "application/json, text/event-stream",
 };
 
-/** Every tool `/api/mcp` serves, sorted by name (stories 11-6..11-8, 11-12..11-15, 13-9, 15-3). */
+/** Every tool `/api/mcp` serves, sorted by name (stories 11-6..11-8, 11-12..11-15, 13-9, 15-3, 15-4). */
 export const MCP_TOOLS = [
   "get_series",
   "get_skill",
@@ -24,6 +24,7 @@ export const MCP_TOOLS = [
   "propose_label",
   "propose_series_attach",
   "propose_series_create",
+  "propose_series_update",
   "propose_title_metadata",
   "search_contributors",
   "search_titles",

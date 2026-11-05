@@ -29,15 +29,19 @@ pub enum ProposalKind {
     /// Story 13-9 (#581) — attach one of the library's labels to a title
     /// or a volume.
     LabelAttach,
+    /// Story 15-4 (#590) — modify an existing series (name, type, total,
+    /// expected-tome removals).
+    SeriesUpdate,
 }
 
 impl ProposalKind {
-    pub const ALL: [ProposalKind; 5] = [
+    pub const ALL: [ProposalKind; 6] = [
         ProposalKind::SeriesCreate,
         ProposalKind::SeriesAttach,
         ProposalKind::Metadata,
         ProposalKind::Cover,
         ProposalKind::LabelAttach,
+        ProposalKind::SeriesUpdate,
     ];
 
     pub fn as_str(&self) -> &'static str {
@@ -47,6 +51,7 @@ impl ProposalKind {
             ProposalKind::Metadata => "metadata",
             ProposalKind::Cover => "cover",
             ProposalKind::LabelAttach => "label_attach",
+            ProposalKind::SeriesUpdate => "series_update",
         }
     }
 

@@ -265,6 +265,30 @@ impl SeriesModel {
             .ok_or_else(|| AppError::Internal("Failed to retrieve updated series".to_string()))
     }
 
+    /// Story 15-4 — set a live series' name, type and total inside the
+    /// caller's transaction (an accepted `series_update`; the caller holds
+    /// the series row lock). Bumps `version`; the description is kept.
+    pub async fn apply_update_in(
+        conn: &mut sqlx::MySqlConnection,
+        id: u64,
+        name: &str,
+        series_type: SeriesType,
+        total_volume_count: Option<i32>,
+    ) -> Result<(), AppError> {
+        let result = sqlx::query(
+            "UPDATE series SET name = ?, series_type = ?, total_volume_count = ?, \
+             version = version + 1, updated_at = NOW() \
+             WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(name)
+        .bind(series_type.to_string())
+        .bind(total_volume_count)
+        .bind(id)
+        .execute(&mut *conn)
+        .await?;
+        crate::services::locking::check_update_result(result.rows_affected(), "series")
+    }
+
     pub async fn soft_delete(pool: &DbPool, id: u64) -> Result<(), AppError> {
         let result =
             sqlx::query("UPDATE series SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL")

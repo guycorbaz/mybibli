@@ -114,7 +114,8 @@ async fn tools_are_listed_as_propose_tools(pool: DbPool) {
         assert_eq!(t["annotations"]["readOnlyHint"], false, "{t}");
         assert_eq!(t["annotations"]["destructiveHint"], false, "{t}");
         assert_eq!(t["annotations"]["idempotentHint"], false, "{t}");
-        if name.starts_with("propose_series_") {
+        // Story 15-4: propose_series_update takes no title lines.
+        if name.starts_with("propose_series_") && name != "propose_series_update" {
             let titles = &t["inputSchema"]["properties"]["titles"]["items"];
             assert_eq!(titles["additionalProperties"], false, "{t}");
         }

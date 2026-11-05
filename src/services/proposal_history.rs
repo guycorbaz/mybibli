@@ -191,6 +191,51 @@ pub enum ProposalSubject {
         target: ProposalTarget,
         label_id: u64,
     },
+    /// Story 15-4 — a modification of a series; `fingerprint` is
+    /// [`series_update_fingerprint`] of the change the agent filed (a
+    /// rejection blocks only the same change, D4).
+    SeriesUpdate {
+        series_id: u64,
+        fingerprint: String,
+    },
+}
+
+/// Story 15-4 (D4) — the SHA-256 (hex) of a series change in canonical
+/// form: the proposed fields in a fixed order (the name folded like a
+/// creation key), then the removed tome ids sorted. Changing it changes
+/// stored keys: the unit test `series_update_fingerprint_is_canonical`
+/// pins it.
+pub fn series_update_fingerprint(
+    name: Option<&str>,
+    series_type: Option<&str>,
+    total: Option<Option<i32>>,
+    removed_tome_ids: &[u64],
+) -> String {
+    use sha2::{Digest, Sha256};
+    let mut canonical = String::new();
+    if let Some(name) = name {
+        canonical.push_str(&format!("name={};", fold_key_name(name)));
+    }
+    if let Some(t) = series_type {
+        canonical.push_str(&format!("type={t};"));
+    }
+    if let Some(total) = total {
+        match total {
+            Some(n) => canonical.push_str(&format!("total={n};")),
+            None => canonical.push_str("total=-;"),
+        }
+    }
+    let mut ids = removed_tome_ids.to_vec();
+    ids.sort_unstable();
+    ids.dedup();
+    canonical.push_str("remove=");
+    canonical.push_str(
+        &ids.iter()
+            .map(u64::to_string)
+            .collect::<Vec<_>>()
+            .join(","),
+    );
+    format!("{:x}", Sha256::digest(canonical.as_bytes()))
 }
 
 fn target_of(line: &SubjectLine<'_>, table: ProposalTargetTable) -> Option<u64> {
@@ -257,6 +302,15 @@ impl ProposalSubject {
                         label_id: l.label_id?,
                     })
                 }),
+            ProposalKind::SeriesUpdate => lines
+                .iter()
+                .find(|l| l.line == Some("series_update"))
+                .and_then(|l| {
+                    Some(ProposalSubject::SeriesUpdate {
+                        series_id: target_of(l, ProposalTargetTable::Series)?,
+                        fingerprint: l.fingerprint?.to_string(),
+                    })
+                }),
         }
     }
 
@@ -302,6 +356,10 @@ impl ProposalSubject {
             ProposalSubject::LabelAttach { target, label_id } => {
                 format!("label:{}/{}:{label_id}", target.table.as_str(), target.id)
             }
+            ProposalSubject::SeriesUpdate {
+                series_id,
+                fingerprint,
+            } => format!("series_update:series/{series_id}:{fingerprint}"),
         };
         key.chars().take(MAX_EQUIVALENCE_KEY_CHARS).collect()
     }
@@ -321,6 +379,7 @@ impl ProposalSubject {
                 }
                 _ => json!({ "title_id": target.id, "label_id": label_id }),
             },
+            ProposalSubject::SeriesUpdate { series_id, .. } => json!({ "series_id": series_id }),
         }
     }
 
@@ -346,6 +405,9 @@ impl ProposalSubject {
             }
             ProposalSubject::LabelAttach { target, label_id } => {
                 format!("label {label_id} on {} {}", target.table.noun(), target.id)
+            }
+            ProposalSubject::SeriesUpdate { series_id, .. } => {
+                format!("this change to series {series_id}")
             }
         }
     }
@@ -703,6 +765,43 @@ mod tests {
         // A delay of 0 never blocks.
         assert_eq!(blocked_until(rejected, rejected, 0), None);
         assert_eq!(rfc3339_utc(open), "2026-10-31T10:00:00Z");
+    }
+
+    #[test]
+    fn series_update_fingerprint_is_canonical() {
+        let fp = series_update_fingerprint;
+        // Pinned: a change of this value changes stored keys.
+        assert_eq!(
+            fp(None, Some("closed"), Some(Some(24)), &[]),
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(b"type=closed;total=24;remove=")
+            )
+        );
+        // The name folds like a creation key; removals are a set.
+        assert_eq!(
+            fp(Some("  TINTIN "), None, None, &[5, 3, 5]),
+            fp(Some("tintin"), None, None, &[3, 5])
+        );
+        assert_ne!(
+            fp(None, Some("closed"), Some(Some(24)), &[]),
+            fp(None, Some("closed"), Some(Some(23)), &[])
+        );
+        assert_ne!(fp(None, Some("open"), Some(None), &[]), fp(None, None, None, &[]));
+        let key = key_of(
+            ProposalKind::SeriesUpdate,
+            vec![
+                item(
+                    Some(ProposalTarget {
+                        table: ProposalTargetTable::Series,
+                        id: 7,
+                    }),
+                    json!({"line": "series_update", "fingerprint": "abc"}),
+                ),
+                item(None, json!({"line": "tome_removal", "tome_id": 3})),
+            ],
+        );
+        assert_eq!(key.as_deref(), Some("series_update:series/7:abc"));
     }
 
     #[test]

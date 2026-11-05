@@ -141,7 +141,8 @@ impl McpTool for GetSeries {
          (the catalogued title holding its position, null while not settled — a position held by \
          another title also leaves it null). `version` changes when the series' own \
          fields (name, description, type, total) are edited — not when titles or expected \
-         tomes are added; pass it as `series_version` to propose_series_attach. Find ids with \
+         tomes are added; pass it as `series_version` to propose_series_attach or \
+         propose_series_update (which also takes expected tome ids to remove). Find ids with \
          list_series; read a title with get_title. Deleted series are reported as not found. Read-only."
     }
 
