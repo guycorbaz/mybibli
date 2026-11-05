@@ -3,8 +3,9 @@
 //!
 //! Admin side (this story): `list_all` (inactive included), `find_by_id`,
 //! `create`, `update`, `set_active`, `soft_delete`. Agent side (story
-//! 15-3): `list_active` and `find_active_by_name` — the only two reads an
-//! MCP tool needs, both limited to live **and** active rows.
+//! 15-3): `list_active`, `count_active` and `find_active_by_name` — the
+//! only reads the MCP layer needs (through `services::mcp_skills`), all
+//! limited to live **and** active rows.
 //!
 //! Every write takes already-validated input (`services::mcp_skills`).
 //! Name reuse: `name` is UNIQUE across all rows, trashed ones included. A
@@ -35,12 +36,22 @@ pub struct McpSkill {
     pub updated_by_name: Option<String>,
 }
 
-/// What the agent reads (story 15-3): live, active skills only.
+/// What the agent reads (story 15-3): one live, active skill.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveSkill {
     pub name: String,
     pub description: String,
     pub body: String,
+    /// UTC, as stored (`TIMESTAMP`).
+    pub updated_at: NaiveDateTime,
+}
+
+/// A live, active skill as listed to the agent (instructions, prompts):
+/// no body, so a list never carries up to 64 KiB per skill.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveSkillSummary {
+    pub name: String,
+    pub description: String,
 }
 
 /// Why a write was refused, beyond a database failure.
@@ -120,23 +131,38 @@ impl McpSkillModel {
         row.as_ref().map(Self::from_row).transpose()
     }
 
-    /// Story 15-3 — the skills the agent may read: live and active, by name.
-    pub async fn list_active(pool: &DbPool) -> Result<Vec<ActiveSkill>, AppError> {
+    /// Story 15-3 — the skills the agent may read: live and active, by
+    /// name, at most `limit` of them (name and description only).
+    pub async fn list_active(
+        pool: &DbPool,
+        limit: u32,
+    ) -> Result<Vec<ActiveSkillSummary>, AppError> {
         let rows = sqlx::query(
-            "SELECT name, description, body FROM mcp_skills \
-             WHERE deleted_at IS NULL AND active = TRUE ORDER BY name",
+            "SELECT name, description FROM mcp_skills \
+             WHERE deleted_at IS NULL AND active = TRUE ORDER BY name LIMIT ?",
         )
+        .bind(limit)
         .fetch_all(pool)
         .await?;
         rows.iter()
             .map(|r| {
-                Ok(ActiveSkill {
+                Ok(ActiveSkillSummary {
                     name: r.try_get("name")?,
                     description: r.try_get("description")?,
-                    body: r.try_get("body")?,
                 })
             })
             .collect()
+    }
+
+    /// Story 15-3 — how many live, active skills there are (the
+    /// instructions say how many a capped list left out).
+    pub async fn count_active(pool: &DbPool) -> Result<u64, AppError> {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM mcp_skills WHERE deleted_at IS NULL AND active = TRUE",
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(u64::try_from(n).unwrap_or(0))
     }
 
     /// Story 15-3 — one live, active skill by its exact name; `None` for an
@@ -146,8 +172,8 @@ impl McpSkillModel {
         name: &str,
     ) -> Result<Option<ActiveSkill>, AppError> {
         let row = sqlx::query(
-            "SELECT name, description, body FROM mcp_skills \
-             WHERE name = ? AND deleted_at IS NULL AND active = TRUE",
+            "SELECT name, description, body, CAST(updated_at AS DATETIME) AS updated_at \
+             FROM mcp_skills WHERE name = ? AND deleted_at IS NULL AND active = TRUE",
         )
         .bind(name)
         .fetch_optional(pool)
@@ -157,6 +183,7 @@ impl McpSkillModel {
                 name: r.try_get("name")?,
                 description: r.try_get("description")?,
                 body: r.try_get("body")?,
+                updated_at: r.try_get("updated_at")?,
             })
         })
         .transpose()

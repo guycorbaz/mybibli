@@ -1,5 +1,5 @@
 {
-  "_comment": "Story 11-22 — the served-method inventory of /api/mcp on rmcp =3.8.0, read by tests/mcp_interop.rs (wire outcomes per revision) and by src/mcp/transport.rs unit tests (params really parse as the method rmcp knows, unless rmcp_custom). outcome: \"result\" or a JSON-RPC error code; http: the status rmcp answers with. Change this file only when deciding a behaviour change (D-11-22-3).",
+  "_comment": "Story 11-22 — the served-method inventory of /api/mcp on rmcp =3.8.0, read by tests/mcp_interop.rs (wire outcomes per revision) and by src/mcp/transport.rs unit tests (params really parse as the method rmcp knows, unless rmcp_custom). outcome: \"result\" or a JSON-RPC error code; http: the status rmcp answers with. Change this file only when deciding a behaviour change (D-11-22-3). Story 15-3: prompts/get is served (skills); an unknown name is -32602.",
   "methods": [
     {
       "method": "initialize",
@@ -154,12 +154,12 @@
       "mcp_name": "x",
       "rmcp_custom": false,
       "legacy": {
-        "outcome": -32601,
+        "outcome": -32602,
         "http": 200
       },
       "modern": {
-        "outcome": -32601,
-        "http": 404
+        "outcome": -32602,
+        "http": 200
       }
     },
     {

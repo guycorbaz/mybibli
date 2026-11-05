@@ -19,8 +19,9 @@ pub const V_LEGACY: &str = "2025-11-25";
 pub const V_MODERN: &str = "2026-07-28";
 
 /// Every tool `/api/mcp` serves, sorted by name.
-pub const ALL_TOOLS: [&str; 14] = [
+pub const ALL_TOOLS: [&str; 15] = [
     "get_series",
+    "get_skill",
     "get_title",
     "list_labels",
     "list_my_proposals",

@@ -120,6 +120,8 @@ async fn served_method_inventory_on_2026_07_28(pool: DbPool) {
 
 /// The answers to methods whose capability is not declared carry no
 /// catalog data: empty lists, empty completion — on both revisions.
+/// Story 15-3 declares `prompts` (the library's skills): without any
+/// skill, its list is empty too.
 #[sqlx::test(migrations = "./migrations")]
 async fn undeclared_capabilities_answer_empty(pool: DbPool) {
     seed_title(&pool, "Not A Resource").await;
@@ -129,7 +131,7 @@ async fn undeclared_capabilities_answer_empty(pool: DbPool) {
     let init = send_json(&app, Call::new(&key, initialize(V_LEGACY))).await;
     let caps = init["result"]["capabilities"].as_object().unwrap().clone();
     let declared: Vec<&str> = caps.keys().map(String::as_str).collect();
-    assert_eq!(declared, vec!["tools"], "{init}");
+    assert_eq!(declared, vec!["prompts", "tools"], "{init}");
 
     let call = |method: &'static str, mut params: Value, modern: bool| {
         if modern {
@@ -199,7 +201,7 @@ async fn claude_code_session_less_sequence(pool: DbPool) {
         discover["result"]["supportedVersions"],
         json!([V_LEGACY, V_MODERN])
     );
-    assert_eq!(discover["result"]["capabilities"], json!({"tools": {}}));
+    assert_eq!(discover["result"]["capabilities"], json!({"prompts": {}, "tools": {}}));
 
     let list = send_json(
         &app,
@@ -245,7 +247,7 @@ async fn typescript_sdk_handshake(pool: DbPool) {
     assert_eq!(status, StatusCode::OK, "{body}");
     let init: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(init["result"]["protocolVersion"], V_LEGACY);
-    assert_eq!(init["result"]["capabilities"], json!({"tools": {}}));
+    assert_eq!(init["result"]["capabilities"], json!({"prompts": {}, "tools": {}}));
     assert!(init["result"]["instructions"].is_string(), "{init}");
 
     let (status, _) = send(

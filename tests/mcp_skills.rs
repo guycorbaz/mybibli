@@ -66,7 +66,7 @@ async fn create_list_and_find(pool: DbPool) {
     assert_eq!(zeta.updated_by_name.as_deref(), Some("skills_admin"));
 
     // Story 15-3 reads: live and active only.
-    let active = McpSkillModel::list_active(&pool).await.unwrap();
+    let active = McpSkillModel::list_active(&pool, 200).await.unwrap();
     assert_eq!(active.len(), 1);
     assert_eq!(active[0].name, "zeta");
     assert_eq!(active[0].description, "About zeta");
@@ -113,7 +113,7 @@ async fn update_and_set_active_are_guarded_by_version(pool: DbPool) {
     let s = McpSkillModel::find_by_id(&pool, id).await.unwrap().unwrap();
     assert!(!s.active);
     assert_eq!(s.version, 3);
-    assert!(McpSkillModel::list_active(&pool).await.unwrap().is_empty());
+    assert!(McpSkillModel::list_active(&pool, 200).await.unwrap().is_empty());
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -309,7 +309,7 @@ async fn admin_creates_edits_toggles_and_deletes_through_the_routes(pool: DbPool
         )
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(McpSkillModel::list_active(&pool).await.unwrap().is_empty());
+    assert!(McpSkillModel::list_active(&pool, 200).await.unwrap().is_empty());
 
     // Delete through the modal's endpoint → Trash.
     let (status, modal) = admin

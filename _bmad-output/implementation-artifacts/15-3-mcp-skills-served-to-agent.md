@@ -1,6 +1,6 @@
 # Story 15.3: MCP skills — served to the agent
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #614 (type:change-request), part 2 of 2. Covers: FR163. Epic 15; ships in v1.25.0.
 
@@ -33,3 +33,66 @@ Both access paths: MCP **prompts** (the librarian triggers a skill from the clie
 3. **AC3 — `get_skill` tool.** Read-only tool `get_skill { name }` (closed schema, name pattern = the 15-2 slug), returns `{ name, description, body, updated_at }` (UTC ISO 8601); unknown / inactive / deleted → `NotFound`. Registered in `registry()`, `tests/common/mcp.rs`, `MCP_TOOLS` (`tests/e2e/helpers/mcp.ts`); registry tests stay green (tool count updated wherever asserted).
 4. **AC4 — confinement & scope.** `rmcp` stays confined to `transport.rs`; no SQL under `src/mcp/`; a propose-scoped key can read skills, nothing more (skills grant no capability). Threat model § 5.8–5.10 gains a paragraph: skills are admin-trusted text delivered to the agent; they cannot widen the key's scope; an admin should treat them like any instruction given to the agent.
 5. **AC5 — tests.** Unit (instructions section bounds/absence, prompt/tool mapping), integration (MCP over HTTP: prompts/list, prompts/get, get_skill, inactive skill hidden, instructions reflect an admin edit immediately), E2E (an admin creates a skill in the tab; an MCP client lists it as a prompt, fetches it, and reads it with `get_skill`). Full suites green.
+
+## Dev Agent Record
+
+### Completion Notes
+
+**Design point — chosen: (b), the async rmcp hooks.** rmcp 3.8.0 lets the
+server override the async `initialize` (2025-11-25) and `discover`
+(2026-07-28). Both rebuild the instructions and append the "Library
+skills" section read from the database on each call; `get_info` (sync)
+keeps the instructions without skills — rmcp reads it elsewhere only for
+the capabilities and the server identity. No snapshot, nothing to
+invalidate: an admin edit shows on the agent's next request. A failed
+skills read is logged and the handshake is served without the section.
+
+**AC1 — prompts.** Capabilities `tools` + `prompts`. `list_prompts` →
+every served skill (name, description, no arguments), no `nextCursor`.
+`get_prompt` → one user text message (the body as typed) plus the
+description; unknown / inactive / trashed → -32602 without a body (the
+name is echoed only when it has the slug shape). Cap
+`services::mcp_skills::MAX_SERVED_SKILLS` = 200.
+
+**AC2 — instructions.** `mcp::instructions::skills_section(skills, total)`
+(pure): ≤ `SKILLS_LISTED_MAX` (20) entries and ≤
+`SKILLS_SECTION_MAX_CHARS` (4 000) characters of skill lines, then
+"… and K more" pointing to `get_skill`; no active skill → no section.
+
+**AC3 — `get_skill`.** `src/mcp/tools/get_skill.rs`, read-only, closed
+schema, `name` pattern = the 15-2 slug, answer `{name, description, body,
+updated_at}` (UTC, RFC 3339 `Z`); unknown → `NotFound` listing the active
+names. Registered in `registry()`, `tests/common/mcp.rs`, `MCP_TOOLS`.
+
+**AC4 — confinement.** rmcp stays in `transport.rs`; the reads go through
+`services::mcp_skills::{served_skills, served_skill}` →
+`McpSkillModel::{list_active(limit), count_active, find_active_by_name}`
+(list without bodies: `ActiveSkillSummary`). Threat model § 5.11 added;
+the § 5.x pointer list now reads § 5.8 – § 5.11.
+
+**AC5 — tests.** Unit: `instructions` (absence, listing, entry and
+character bounds), `transport::skills_map_to_prompts`, `get_skill`
+(arguments, schema pattern, answer, not-found list). Integration
+`tests/mcp_skills_served.rs` (5, over HTTP): prompts list/get with
+inactive and trashed hidden, `get_skill`, instructions with and without
+skills on both protocol revisions, an admin edit visible on the next
+request, only a propose key reads skills. `mcp_interop` capabilities
+updated; method inventory fixture updated. E2E `mcp-skills.spec.ts`: an
+admin writes a skill in the tab from a blank browser; an MCP client
+lists it as a prompt, gets it, reads it with `get_skill`.
+
+### Gates (2026-11-05)
+
+- `cargo check --all-targets`, `cargo clippy --all-targets -D warnings`: clean.
+- `cargo sqlx prepare --check --workspace -- --all-targets`: clean.
+- `cargo test --lib mcp`: 81 passed. `--test mcp_skills_served --test mcp_skills --test mcp_interop`: 5 + 9 + 5 passed.
+- E2E (stack on 18080, `CI=true --workers=2`): the 13 MCP and skills specs passed.
+- Full suites: run once on the final code, before the push.
+
+### File List
+
+- `src/mcp/transport.rs`, `src/mcp/instructions.rs`, `src/mcp/tools/mod.rs`, `src/mcp/tools/get_skill.rs` (new)
+- `src/services/mcp_skills.rs`, `src/models/mcp_skill.rs`
+- `docs/auth-threat-model.md`, `CLAUDE.md`
+- `tests/mcp_skills_served.rs` (new), `tests/mcp_skills.rs`, `tests/mcp_interop.rs`, `tests/common/mcp.rs`, `tests/fixtures/mcp_method_inventory.json`
+- `tests/e2e/helpers/mcp.ts`, `tests/e2e/specs/journeys/mcp-skills.spec.ts` (new)
