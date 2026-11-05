@@ -63,6 +63,16 @@ Avec une clé \emph{propositions}, un agent peut :
   \item proposer une image de couverture ;
   \item proposer l'une de vos étiquettes de gestion sur un titre ou un
         volume qu'il juge douteux --- par exemple \emph{Code douteux} ;
+  \item proposer une correction d'une série existante : son nom, ouverte
+        ou fermée, son nombre de volumes, et le retrait de tomes
+        attendus qui n'existent pas ;
+  \item proposer ce que vaut un volume aujourd'hui et, si vous n'avez
+        jamais noté ce qu'il vous a coûté, le prix catalogue de
+        l'éditeur à la parution --- en trouvant d'abord les volumes
+        jamais estimés ou estimés il y a le plus longtemps ;
+  \item lire les \emph{compétences} que vous écrivez pour lui dans
+        \emph{Administration \textrightarrow{} Compétences}
+        (section~\ref{sec:agents-skills}) ;
   \item consulter l'historique de ses propres propositions, avec vos
         décisions et les motifs de vos refus.
 \end{itemize}
@@ -401,7 +411,21 @@ n'est pas configurée n'est pas cité. Pour mémoire :
   \item[\texttt{list\_labels}] Vos étiquettes de gestion (au plus les
         500 premières par nom), avec le nombre de titres et de volumes
         qui portent chacune. Aucun outil ne permet d'en créer.
+  \item[\texttt{list\_volumes\_to\_value}] Les volumes à estimer en
+        premier : jamais estimés, puis estimés sans date, puis les
+        estimations les plus anciennes ; au besoin ceux d'une série ou
+        d'un genre. Chacun donne son état, sa note d'édition, son prix
+        d'achat et sa valeur actuelle. Un volume dont une proposition
+        de valeur vous attend encore est laissé de côté.
+  \item[\texttt{get\_skill}] L'une de vos compétences, par son nom
+        (section~\ref{sec:agents-skills}).
 \end{description}
+
+Depuis la version 1.25.0, \texttt{get\_title} donne aussi, pour chaque
+volume, sa note d'édition, son prix d'achat et sa valeur actuelle avec
+la date de l'estimation, ainsi que la devise par défaut de la
+bibliothèque --- la seule qu'une proposition de valeur puisse
+employer.
 
 \subsubsection*{Propositions}
 
@@ -425,6 +449,19 @@ n'est pas configurée n'est pas cité. Pour mémoire :
         (par son identifiant ou son nom exact) sur un titre ou un
         volume, avec une note facultative de 500 caractères au plus qui
         explique le doute.
+  \item[\texttt{propose\_series\_update}] Des changements à une série
+        existante : un nom corrigé, ouverte ou fermée, le nombre de
+        volumes d'une série fermée, et des tomes attendus à retirer. Le
+        total d'une série fermée ne peut pas être inférieur à une
+        position que vous possédez, ni à un tome attendu que la même
+        proposition ne retire pas : le refus nomme ces positions, et
+        l'agent propose de retirer les tomes en trop dans le même
+        appel.
+  \item[\texttt{propose\_volume\_value}] La valeur actuelle d'un
+        volume, dans votre devise par défaut (sans conversion), et ---
+        seulement si le volume n'a pas de prix d'achat --- le prix
+        catalogue à la parution, avec une note facultative sur l'état
+        et l'édition.
 \end{description}
 
 Un outil refuse, avec une explication sur laquelle l'agent peut agir,
@@ -434,7 +471,11 @@ bibliothécaire refuserait, une source manquante, une seconde
 proposition en attente pour la même série, un titre possédé placé sur
 un tome attendu dont l'ISBN est celui d'un autre livre, une étiquette
 inconnue, une étiquette que la notice porte déjà ou qui lui est déjà
-proposée, ou une proposition que vous avez refusée récemment (section~\ref{sec:agents-delay}). Chaque
+proposée, un total de série inférieur à une position que vous
+possédez, un montant dans une autre devise que la vôtre ou à plus de
+deux décimales, un prix catalogue pour un volume dont vous avez noté
+le prix d'achat, ou une proposition que vous avez refusée récemment
+(section~\ref{sec:agents-delay}). Chaque
 agent peut avoir au plus 100 propositions de couverture en attente à
 la fois.
 
@@ -462,7 +503,8 @@ les plus récentes d'abord, 25 par page. Deux filtres la restreignent :
         \emph{Refusée}, \emph{Périmée}, ou tous ;
   \item \textbf{Type} --- \emph{Nouvelle série}, \emph{Ajouts à une
         série}, \emph{Métadonnées}, \emph{Couverture},
-        \emph{Étiquette}, ou tous.
+        \emph{Étiquette}, \emph{Modification de série},
+        \emph{Valeur d'un volume}, ou tous.
 \end{itemize}
 
 Chaque ligne nomme l'objet --- le nom de série proposé, ou la série
@@ -544,6 +586,32 @@ Une ligne modifiée garde sous elle la valeur de l'agent
 (\emph{L'assistant proposait : \dots}) et indique qui l'a modifiée et
 quand. L'historique de l'agent montre toujours ce qu'il a déposé.
 
+\subsection{Modifications de série et valeurs des volumes}
+\label{sec:proposals-series-value}
+
+Une proposition \emph{Modification de série} présente un tableau de
+chaque champ proposé --- nom, type, nombre de volumes --- avec sa valeur
+actuelle et sa valeur proposée, et liste les tomes attendus qu'elle
+retire. Vous pouvez modifier le nom, le type et le total proposés (les
+règles de l'agent s'appliquent), et retirer une ligne de retrait de tome
+si ce qui reste est encore valable ; la ligne des changements elle-même
+ne se retire pas --- refusez plutôt la proposition. L'acceptation
+applique le tout d'un coup.
+
+Une proposition \emph{Valeur d'un volume} présente le volume (son code V
+et son titre), son état et sa note d'édition, son prix d'achat, et un
+tableau qui met sa valeur actuelle --- telle qu'elle était au dépôt,
+avec la date de cette estimation --- à côté de la valeur proposée. Si
+la valeur a changé depuis, un avertissement le signale : accepter ne
+fera alors que marquer la proposition comme périmée. Une ligne
+\emph{prix catalogue à la parution} est signalée comme tenant lieu de
+prix d'achat, qui n'est pas connu : la somme réellement payée peut
+différer. Retirez cette ligne si vous n'en voulez pas ; la ligne de la
+valeur reste. Les montants ne se modifient pas ici : saisissez un autre
+montant sur la page de modification du volume. L'acceptation enregistre
+la valeur avec la date du jour, et le prix catalogue comme prix
+d'achat.
+
 \subsection{Accepter}
 
 \textbf{Accepter} ouvre une confirmation qui résume ce qui sera
@@ -601,6 +669,14 @@ depuis une proposition laisse les autres propositions valables) ou qu'un rôle d
 supprimé. Modifier un champ que la proposition ne touche pas ne rend
 rien périmé.
 
+Une modification de série devient périmée si la série a été modifiée
+depuis son dépôt, si un tome attendu qu'elle retire a été supprimé,
+déplacé ou modifié, ou si un titre occupe désormais une position
+au-delà du total proposé. Une proposition de valeur devient périmée si
+le volume (ou son titre) a été supprimé, si sa valeur actuelle a changé
+entre-temps, si un prix d'achat a été saisi alors qu'un prix catalogue
+était proposé, ou si la devise par défaut de la bibliothèque a changé.
+
 Une proposition d'étiquette ne devient périmée que si le titre ou le
 volume qu'elle marque a été supprimé (un volume aussi quand son titre
 l'a été), si l'étiquette a été supprimée, ou si l'étiquette a été posée
@@ -642,6 +718,33 @@ Le délai se règle dans \textbf{Administration \(\rightarrow\) Système
 (section~\ref{sec:system}) : de 0 (aucun délai) à 3650 jours,
 \textbf{90 jours} par défaut. Un changement s'applique à la
 proposition suivante, sans redémarrage.
+
+\section{Compétences : des instructions pour l'agent}
+\label{sec:agents-skills}
+
+Une \emph{compétence} est un ensemble d'instructions que vous écrivez
+une fois pour vos agents --- comment vous numérotez les intégrales,
+quelles sources vous jugez fiables pour les valeurs, à quoi ressemble
+une fiche douteuse. Les administrateurs les gèrent dans
+\emph{Administration \textrightarrow{} Compétences} : un nom (lettres
+minuscules, chiffres et tirets, 64 caractères au plus), une description
+d'une ligne (200 caractères au plus) et un corps en Markdown (64\,Kio
+au plus). Une compétence peut être désactivée sans être supprimée ; une
+compétence supprimée va dans la corbeille, et son nom reste réservé
+jusqu'à sa purge ou sa restauration.
+
+Les agents voient les compétences actives de trois façons : par leur nom
+et leur description dans les instructions reçues à la connexion (les 20
+premières), comme \emph{prompts} MCP que leur client peut afficher, et
+par l'outil \texttt{get\_skill}, qui en renvoie le corps. Une
+modification se voit dès la requête suivante de l'agent.
+
+\begin{note}
+Une compétence est un texte que l'agent lit : elle ne donne aucun droit.
+Un agent qui suit une compétence ne peut toujours que lire et proposer,
+et chaque proposition vous attend toujours. Le corps n'est jamais
+affiché comme du HTML.
+\end{note}
 
 \section{Tomes attendus et wish list}
 \label{sec:expected-tomes}

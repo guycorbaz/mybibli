@@ -383,6 +383,16 @@ qu'un bibliothécaire a refusée --- même type et même objet, quelle que
 soit la clé qui la dépose. Appliqué à la proposition suivante, sans
 redémarrage. Voir section~\ref{sec:agents-delay}.
 
+\subsection*{Fuseau horaire}
+
+Depuis la version 1.25.0, le \textbf{fuseau horaire} de la bibliothèque
+(un nom IANA comme \texttt{Europe/Zurich}, la valeur par défaut,
+\texttt{Europe/Paris} ou \texttt{America/New\_York}) détermine comment
+les pages affichent les dates et où commence et finit une journée ---
+pour \emph{ajouté depuis}, les prêts en retard et les dates des
+estimations de valeur. Les dates enregistrées, l'API REST et les agents
+IA restent en UTC. Appliqué à la page suivante, sans redémarrage.
+
 \subsection*{Langue}
 
 Fixe la langue d'interface par défaut pour les visiteurs
