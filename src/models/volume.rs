@@ -710,7 +710,8 @@ impl VolumeModel {
                     CAST(COUNT(v.id) AS SIGNED) AS volume_count \
              FROM volumes v \
              JOIN titles t ON t.id = v.title_id AND t.deleted_at IS NULL \
-             JOIN title_series ts ON ts.title_id = t.id \
+             JOIN (SELECT DISTINCT title_id, series_id FROM title_series \
+                   WHERE deleted_at IS NULL) ts ON ts.title_id = t.id \
              JOIN series s ON s.id = ts.series_id AND s.deleted_at IS NULL \
              WHERE v.deleted_at IS NULL AND v.current_value IS NOT NULL \
              GROUP BY s.id, s.name, v.current_value_currency \

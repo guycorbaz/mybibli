@@ -80,7 +80,8 @@ impl McpTool for ListVolumesToValue {
          Each item gives `volume_id`, `label` (V-code), `title_id`, `title`, \
          `condition_name`, `edition_comment`, `purchase_price` (`{amount, currency}` or \
          null) and `current_value` (`{amount, currency, updated_at}` or null, ISO 8601 \
-         UTC). Volumes with a value proposal still waiting for a librarian are left out. \
+         UTC). Volumes with a value proposal still waiting for a librarian are left out. An \
+         unknown or deleted `series_id` is refused. \
          Deleted volumes and titles never appear. Propose a value with \
          propose_volume_value (get_title gives the library's `default_currency`). Read-only."
     }
@@ -108,7 +109,7 @@ impl McpTool for ListVolumesToValue {
         Box::pin(async move {
             let (series_id, genre, page) = parse_args(args)?;
             let genre_id = resolve_genre(ctx, genre.as_deref()).await?;
-            let list = volumes_to_value(
+            let Some(list) = volumes_to_value(
                 &ctx.state.pool,
                 VolumesToValueFilter {
                     series_id,
@@ -116,7 +117,14 @@ impl McpTool for ListVolumesToValue {
                 },
                 page,
             )
-            .await?;
+            .await?
+            else {
+                return Err(ToolError::NotFound(format!(
+                    "No series with id {} exists in the catalog (or it was deleted). Find \
+                     series ids with list_series.",
+                    series_id.unwrap_or_default()
+                )));
+            };
             to_json(ListPage::<Item>::from(list), TOOL)
         })
     }

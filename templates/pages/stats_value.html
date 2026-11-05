@@ -42,7 +42,9 @@
         </div>
         {% endif %}
     </section>
-    {% if has_any_data %}
+    {% if !has_any_data %}
+    <p id="stats-value-no-values" class="mt-8 text-sm text-stone-500 dark:text-stone-400">{{ empty_state }}</p>
+    {% else %}
 
     {# ── Section 1: per-currency totals ────────────────────────── #}
     <section class="mt-8" aria-labelledby="stats-value-totals-heading">

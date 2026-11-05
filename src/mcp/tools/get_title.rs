@@ -53,7 +53,7 @@ impl McpTool for GetTitle {
          Each volume also gives `edition_comment`, `purchase_price` (`{amount, currency}` or \
          null) and `current_value` (`{amount, currency, updated_at}` or null), and \
          `default_currency` is the library's currency; propose a value with \
-         propose_volume_value. Find \
+         propose_volume_value (list_volumes_to_value lists the volumes to value first). Find \
          ids with search_titles. Deleted titles are reported as not found. Read-only."
     }
 

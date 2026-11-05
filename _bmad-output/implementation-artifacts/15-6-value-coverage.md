@@ -64,3 +64,15 @@ Coverage on `/stats/value` is part of the base (with 15-5); estimate history, ra
 - locales/{en,fr,de,it}.yml
 - tests/value_coverage.rs (new), tests/common/mcp.rs, tests/e2e/helpers/mcp.ts, tests/e2e/specs/journeys/value-coverage.spec.ts (new)
 - docs/route-role-matrix.md, CLAUDE.md
+
+### Review Findings (2026-11-05 — Blind Hunter; Edge Case Hunter + Acceptance Auditor)
+
+No High. Fixed (Medium):
+- [x] An omnibus title counted once per held position in the per-series coverage (and in the existing CR #243 per-series totals, which also ignored detached `title_series` rows) — both join the distinct (title, series) pairs of live rows; DB test with an omnibus.
+- [x] `get_title` did not mention `list_volumes_to_value` (AC4).
+- [x] The E2E walked the whole shared list and compared library-wide counts (flaky under parallel specs) — it now creates its own series (agent proposal accepted by the librarian) and asserts only on that series' coverage row and the filtered tool.
+- [x] An unknown or deleted `series_id` answered an empty page — refused (`NotFound`).
+
+Fixed (Low): never-valued volumes ignore a leftover timestamp in the order; the explanation shows when volumes exist but none is valued; `oldest.is_some()` asserted; the key is revoked in `finally`.
+
+Deferred (Low) → issue (see PR): rounding of small shares, purchase-only totals, SQL-level 365-day test, random V-code band, genre-less titles.

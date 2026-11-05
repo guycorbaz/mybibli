@@ -112,7 +112,7 @@ async fn coverage_counts_live_volumes_and_old_estimates(pool: DbPool) {
     let all = ValueCoverageModel::overall(&pool, bound).await.unwrap();
     assert_eq!((all.volumes, all.valued, all.old), (5, 3, 2), "{all:?}");
     assert_eq!(all.share_percent(), 60);
-    assert!(all.oldest < all.newest, "{all:?}");
+    assert!(all.oldest.is_some() && all.oldest < all.newest, "{all:?}");
 
     let genres = ValueCoverageModel::by_genre(&pool, bound).await.unwrap();
     let row = |name: &str| genres.iter().find(|g| g.name.as_deref() == Some(name)).unwrap();
@@ -125,6 +125,18 @@ async fn coverage_counts_live_volumes_and_old_estimates(pool: DbPool) {
     assert_eq!(series.len(), 1);
     assert_eq!(series[0].id, Some(c.series));
     assert_eq!((series[0].volumes, series[0].valued), (3, 2));
+
+    // Review round 1: an omnibus holding positions 3–5 counts once.
+    let omnibus = add_title(&pool, "Astérix intégrale", "bd", "BD", None).await;
+    for p in 3..=5 {
+        assign(&pool, omnibus, c.series, p).await;
+    }
+    let vol = add_volume(&pool, omnibus, "V0608", None).await;
+    value(&pool, vol, "60", Some(5)).await;
+    let series = ValueCoverageModel::by_series(&pool, bound).await.unwrap();
+    assert_eq!((series[0].volumes, series[0].valued), (4, 3), "{series:?}");
+    let totals = mybibli::models::volume::VolumeModel::value_by_series(&pool).await.unwrap();
+    assert_eq!(totals[0].volume_count, 3, "{totals:?}");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -183,6 +195,10 @@ async fn the_agent_lists_volumes_never_valued_then_the_oldest(pool: DbPool) {
     assert_eq!(roman["total_items"], 2);
     let msg = agent.err("list_volumes_to_value", json!({"genre": "Opéra"})).await;
     assert!(msg.contains("unknown `genre`"), "{msg}");
+    let msg = agent
+        .err("list_volumes_to_value", json!({"series_id": 999_999}))
+        .await;
+    assert!(msg.contains("No series with id 999999"), "{msg}");
 
     // A volume with a pending value proposal is left out.
     agent

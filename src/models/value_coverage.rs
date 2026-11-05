@@ -143,7 +143,8 @@ impl ValueCoverageModel {
     }
 
     /// The coverage per live series (a volume whose title is in N series
-    /// counts in each, as CR #243), least covered first.
+    /// counts in each, as CR #243 — once per series, even for an omnibus
+    /// holding several positions: review round 1), least covered first.
     pub async fn by_series(
         pool: &DbPool,
         old_before: NaiveDateTime,
@@ -152,7 +153,8 @@ impl ValueCoverageModel {
             "SELECT CAST(s.id AS SIGNED) AS id, CAST(s.name AS CHAR) AS name, {COVERAGE_COLUMNS} \
              FROM volumes v \
              JOIN titles t ON t.id = v.title_id AND t.deleted_at IS NULL \
-             JOIN title_series ts ON ts.title_id = t.id AND ts.deleted_at IS NULL \
+             JOIN (SELECT DISTINCT title_id, series_id FROM title_series \
+                   WHERE deleted_at IS NULL) ts ON ts.title_id = t.id \
              JOIN series s ON s.id = ts.series_id AND s.deleted_at IS NULL \
              WHERE v.deleted_at IS NULL \
              GROUP BY s.id, s.name"
@@ -218,8 +220,10 @@ impl ValueCoverageModel {
              {from} \
              LEFT JOIN volume_states vs ON vs.id = v.condition_state_id AND vs.deleted_at IS NULL \
              WHERE {where_sql} \
-             ORDER BY v.current_value IS NOT NULL, v.current_value_updated_at IS NOT NULL, \
-                      v.current_value_updated_at, t.title, v.label \
+             ORDER BY v.current_value IS NOT NULL, \
+                      (v.current_value IS NOT NULL AND v.current_value_updated_at IS NOT NULL), \
+                      CASE WHEN v.current_value IS NOT NULL THEN v.current_value_updated_at END, \
+                      t.title, v.label \
              LIMIT ? OFFSET ?"
         );
         let mut q = sqlx::query(&list_sql);
