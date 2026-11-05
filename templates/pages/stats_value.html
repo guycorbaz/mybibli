@@ -17,7 +17,7 @@
         <div class="mt-3 overflow-x-auto">
             <table id="stats-value-coverage-overall" class="w-full text-sm">
                 <caption class="sr-only">{{ coverage.caption_overall }}</caption>
-                {% let rows = [&overall] %}{% let first_col = "" %}
+                {% let rows = [&overall] %}{% let first_col = coverage.heading.as_str() %}
                 {% include "fragments/stats_value_coverage_rows.html" %}
             </table>
         </div>

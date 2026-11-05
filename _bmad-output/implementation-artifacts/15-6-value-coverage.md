@@ -1,6 +1,6 @@
 # Story 15.6: Value coverage
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #564 part 2 (type:change-request). Covers: FR166. Epic 15; ships in v1.25.0.
 
@@ -40,14 +40,27 @@ Coverage on `/stats/value` is part of the base (with 15-5); estimate history, ra
 
 ## Tasks
 
-- [ ] `models/value_coverage.rs`: overall, per genre, per series coverage; volumes to value (page).
-- [ ] `/stats/value` coverage section + template + locales.
-- [ ] MCP tool `list_volumes_to_value` + registries + docs.
-- [ ] Tests (unit, DB, E2E with axe).
-- [ ] CLAUDE.md.
+- [x] `models/value_coverage.rs`: overall, per genre, per series coverage; volumes to value (page).
+- [x] `/stats/value` coverage section + template + locales.
+- [x] MCP tool `list_volumes_to_value` + registries + docs.
+- [x] Tests (unit, DB, E2E with axe).
+- [x] CLAUDE.md.
 
 ## Dev Agent Record
 
 ### Completion Notes
 
+- All ACs implemented; coverage queries in the new `models/value_coverage.rs`; the agent tool reaches it through `services::volume_value_proposals::volumes_to_value` (no SQL under `src/mcp/`).
+- Bug found by the DB test and fixed: `VolumeModel::value_totals_by_currency` counted volumes of soft-deleted titles (the page intro says they are excluded) — both sums now join live titles.
+- axe caught an empty header on the overall coverage table (fixed: the column is labelled).
+- Tests: 3 unit (share, old bound, order) + 1 tool unit, 3 DB integration (`tests/value_coverage.rs`), E2E `value-coverage.spec.ts` (spec id VC, V7500–V7999) with axe; targeted E2E 4/4.
+
 ### File List
+
+- src/models/value_coverage.rs (new), src/models/mod.rs, src/models/volume.rs
+- src/routes/stats.rs, templates/pages/stats_value.html, templates/fragments/stats_value_coverage_rows.html (new)
+- src/mcp/tools/list_volumes_to_value.rs (new), mod.rs, propose_volume_value.rs
+- src/services/volume_value_proposals.rs, src/services/title_detail.rs
+- locales/{en,fr,de,it}.yml
+- tests/value_coverage.rs (new), tests/common/mcp.rs, tests/e2e/helpers/mcp.ts, tests/e2e/specs/journeys/value-coverage.spec.ts (new)
+- docs/route-role-matrix.md, CLAUDE.md
