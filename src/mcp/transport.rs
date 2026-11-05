@@ -18,14 +18,25 @@
 //!
 //! The server is stateless: no `Mcp-Session-Id`, one fresh handler per
 //! request, plain JSON responses.
+//!
+//! Story 15-3 (#614): the library's active skills are served as MCP
+//! **prompts** (`prompts/list`, `prompts/get`) and listed in the
+//! instructions. `get_info` is synchronous, so the instructions with the
+//! skills are built in the async `initialize` (2025-11-25) and
+//! `server/discover` (2026-07-28) handlers, from a database read on each
+//! call — no cache to invalidate, an admin edit shows on the next one.
+//! `get_info` keeps the instructions without skills; rmcp reads it
+//! elsewhere only for the capabilities and the server identity.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
 use axum::http::request::Parts;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
-    JsonObject, ListToolsResult, PaginatedRequestParams, ProtocolVersion, ServerCapabilities,
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, DiscoverResult,
+    GetPromptRequestParams, GetPromptResponse, GetPromptResult, Implementation,
+    InitializeRequestParams, InitializeResult, JsonObject, ListPromptsResult, ListToolsResult,
+    PaginatedRequestParams, Prompt, PromptMessage, ProtocolVersion, Role, ServerCapabilities,
     ServerConfig, Tool, ToolAnnotations,
 };
 use rmcp::service::RequestContext;
@@ -37,6 +48,8 @@ use super::config::McpConfig;
 use super::tool::{McpTool, ToolContext, ToolError, ToolRegistry};
 use crate::AppState;
 use crate::middleware::api_key::ApiKeyContext;
+use crate::models::mcp_skill::{ActiveSkill, ActiveSkillSummary};
+use crate::services::mcp_skills::{ServedSkills, is_served_name, served_skill, served_skills};
 
 /// The two revisions the endpoint serves (NFR42).
 pub(super) const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] =
@@ -82,6 +95,44 @@ fn instructions(state: &AppState) -> String {
         &chains,
         &crate::services::cover::COVER_FALLBACK_SOURCES,
     )
+}
+
+/// Story 15-3 — the instructions with the "Library skills" section, read
+/// from the database now. A failed read is logged and served without the
+/// section: the handshake does not fail because of the skills.
+async fn instructions_with_skills(state: &AppState) -> String {
+    let mut text = instructions(state);
+    match served_skills(&state.pool).await {
+        Ok(served) => {
+            if let Some(section) = super::instructions::skills_section(&served.listed, served.total)
+            {
+                text.push_str(&section);
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, "MCP instructions served without the skills"),
+    }
+    text
+}
+
+/// A skill as an MCP prompt: its name and description, no arguments.
+fn to_prompt(skill: &ActiveSkillSummary) -> Prompt {
+    Prompt::new(&skill.name, Some(&skill.description), None)
+}
+
+/// A skill's body as the one user message of a prompt.
+fn to_prompt_result(skill: ActiveSkill) -> GetPromptResult {
+    GetPromptResult::new(vec![PromptMessage::new_text(Role::User, skill.body)])
+        .with_description(skill.description)
+}
+
+/// The prompt list (every served skill; under the cap, no pagination).
+fn prompts_result(served: &ServedSkills) -> ListPromptsResult {
+    ListPromptsResult::with_all_items(served.listed.iter().map(to_prompt).collect())
+}
+
+fn internal(e: crate::error::AppError) -> ErrorData {
+    tracing::error!(error = %e, "MCP prompt request failed");
+    ErrorData::internal_error("server error", None)
 }
 
 /// One handler per request (stateless).
@@ -132,13 +183,80 @@ fn api_key_id(context: &RequestContext<RoleServer>) -> Option<u64> {
 
 impl ServerHandler for MybibliMcpServer {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("mybibli", env!("CARGO_PKG_VERSION")))
-            .with_instructions(instructions(&self.state))
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_prompts()
+                .build(),
+        )
+        .with_server_info(Implementation::new("mybibli", env!("CARGO_PKG_VERSION")))
+        .with_instructions(instructions(&self.state))
     }
 
     fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
         Cow::Borrowed(SUPPORTED_PROTOCOL_VERSIONS)
+    }
+
+    /// The default `initialize`, with the skills in the instructions.
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, ErrorData> {
+        context.peer.set_peer_info(request.clone());
+        let mut result = self.negotiate_initialize(&request)?;
+        result.instructions = Some(instructions_with_skills(&self.state).await);
+        Ok(result)
+    }
+
+    /// The default `server/discover`, with the skills in the instructions.
+    async fn discover(
+        &self,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<DiscoverResult, ErrorData> {
+        let mut info = self.get_info();
+        info.instructions = Some(instructions_with_skills(&self.state).await);
+        Ok(DiscoverResult::from_server_info(
+            self.supported_protocol_versions().into_owned(),
+            info,
+        ))
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, ErrorData> {
+        ensure_supported_version(&context)?;
+        let served = served_skills(&self.state.pool).await.map_err(internal)?;
+        Ok(prompts_result(&served))
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResponse, ErrorData> {
+        ensure_supported_version(&context)?;
+        match served_skill(&self.state.pool, &request.name)
+            .await
+            .map_err(internal)?
+        {
+            Some(skill) => {
+                tracing::info!(prompt = %skill.name, api_key_id = ?api_key_id(&context), "MCP prompt read");
+                Ok(to_prompt_result(skill).into())
+            }
+            // Unknown, inactive or trashed: never a body (-32602). Only a
+            // name of the skill shape is echoed back.
+            None => Err(ErrorData::invalid_params(
+                if is_served_name(&request.name) {
+                    format!("unknown prompt: {}", request.name)
+                } else {
+                    "unknown prompt".to_string()
+                },
+                None,
+            )),
+        }
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
@@ -284,6 +402,46 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Story 15-3 — a skill is a prompt without arguments; its body is
+    /// the one user message, as text.
+    #[test]
+    fn skills_map_to_prompts() {
+        let summary = ActiveSkillSummary {
+            name: "covers".into(),
+            description: "Which cover to propose".into(),
+        };
+        let served = ServedSkills {
+            listed: vec![summary.clone()],
+            total: 1,
+        };
+        let list = serde_json::to_value(prompts_result(&served)).unwrap();
+        assert_eq!(
+            list["prompts"],
+            serde_json::json!([{"name": "covers", "description": "Which cover to propose"}])
+        );
+        assert!(list.get("nextCursor").is_none(), "{list}");
+
+        let at = chrono::NaiveDate::from_ymd_opt(2026, 11, 4)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        let result = serde_json::to_value(to_prompt_result(ActiveSkill {
+            name: "covers".into(),
+            description: "Which cover to propose".into(),
+            body: "# Covers\n\n<b>as typed</b>".into(),
+            updated_at: at,
+        }))
+        .unwrap();
+        assert_eq!(result["description"], "Which cover to propose");
+        assert_eq!(
+            result["messages"],
+            serde_json::json!([{
+                "role": "user",
+                "content": {"type": "text", "text": "# Covers\n\n<b>as typed</b>"}
+            }])
+        );
     }
 
     #[test]

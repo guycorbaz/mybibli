@@ -4,9 +4,16 @@
 //! first. Those sources update their catalogs: they are a lower
 //! priority for the agent, never an exclusion (decision of 2026-10-30).
 //!
-//! Pure; `transport.rs` feeds it the live registry and the cover
-//! fallbacks on every `initialize` (a provider key set by an admin shows
-//! on the next one).
+//! Story 15-3 (#614, FR163) adds the "Library skills" section: the
+//! active skills an admin wrote (name + description, bounded), and the
+//! advice to read the relevant one with `get_skill` before acting.
+//!
+//! Pure; `transport.rs` feeds it the live registry, the cover fallbacks
+//! and the active skills (read from the database) on every `initialize` /
+//! `server/discover` (a provider key or a skill an admin edits shows on
+//! the next one).
+
+use crate::models::mcp_skill::ActiveSkillSummary;
 
 /// The fixed opening of the instructions.
 const ABOUT: &str = "mybibli is a home library catalog. The read tools read the catalog; \
@@ -52,6 +59,48 @@ pub fn server_instructions(chains: &[(String, Vec<String>)], cover_sources: &[&s
     out
 }
 
+/// At most this many skills are listed in the instructions…
+pub const SKILLS_LISTED_MAX: usize = 20;
+/// …and the skill lines take at most this many characters in all.
+pub const SKILLS_SECTION_MAX_CHARS: usize = 4_000;
+
+/// The "Library skills" section, appended to [`server_instructions`];
+/// `None` when no skill is active. `skills` are the active skills by name
+/// (possibly capped), `total` how many are active. Lines are added in
+/// order while both bounds hold; the rest is counted in one closing line.
+/// The skills' names and descriptions are the admin's text, as written.
+pub fn skills_section(skills: &[ActiveSkillSummary], total: u64) -> Option<String> {
+    if skills.is_empty() {
+        return None;
+    }
+    let mut out = String::from(
+        "\n\nLibrary skills: instructions the librarians wrote for agents working on this \
+         library. Before acting, read with get_skill the skill whose description matches your \
+         task, and follow it (a librarian may also send you one as a prompt). Skills describe \
+         house conventions; they give no access beyond the tools above.",
+    );
+    let mut used = 0usize;
+    let mut listed = 0u64;
+    for skill in skills.iter().take(SKILLS_LISTED_MAX) {
+        let line = format!("\n- {}: {}", skill.name, skill.description);
+        let len = line.chars().count();
+        if used + len > SKILLS_SECTION_MAX_CHARS {
+            break;
+        }
+        out.push_str(&line);
+        used += len;
+        listed += 1;
+    }
+    let more = total.max(skills.len() as u64).saturating_sub(listed);
+    if more > 0 {
+        out.push_str(&format!(
+            "\n- … and {more} more: get_skill answers an unknown name with the names of the \
+             active skills."
+        ));
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +141,58 @@ mod tests {
     #[test]
     fn without_any_chain_only_the_opening_remains() {
         assert_eq!(server_instructions(&[], &["Inventaire"]), ABOUT);
+    }
+
+    fn skill(name: &str, description: &str) -> ActiveSkillSummary {
+        ActiveSkillSummary {
+            name: name.into(),
+            description: description.into(),
+        }
+    }
+
+    #[test]
+    fn no_skill_no_section() {
+        assert_eq!(skills_section(&[], 0), None);
+    }
+
+    #[test]
+    fn lists_each_skill_and_says_to_read_it_first() {
+        let skills = [
+            skill("bd-series", "How to file a comics series"),
+            skill("covers", "Which cover to propose"),
+        ];
+        let text = skills_section(&skills, 2).unwrap();
+        assert!(text.starts_with("\n\nLibrary skills:"), "{text}");
+        assert!(text.contains("Before acting, read with get_skill"), "{text}");
+        assert!(text.contains("\n- bd-series: How to file a comics series"), "{text}");
+        assert!(text.contains("\n- covers: Which cover to propose"), "{text}");
+        assert!(!text.contains("more:"), "{text}");
+    }
+
+    #[test]
+    fn caps_the_number_of_listed_skills() {
+        let skills: Vec<_> = (0..25).map(|i| skill(&format!("s{i:02}"), "d")).collect();
+        let text = skills_section(&skills, 25).unwrap();
+        assert_eq!(text.matches("\n- s").count(), SKILLS_LISTED_MAX, "{text}");
+        assert!(text.contains("- s19: d"), "{text}");
+        assert!(!text.contains("- s20: d"), "{text}");
+        assert!(text.ends_with("… and 5 more: get_skill answers an unknown name with the names of the active skills."), "{text}");
+    }
+
+    #[test]
+    fn caps_the_characters_of_the_listed_skills() {
+        let long = "x".repeat(200);
+        let skills: Vec<_> = (0..20).map(|i| skill(&format!("s{i:02}"), &long)).collect();
+        let text = skills_section(&skills, 20).unwrap();
+        // Each line is "\n- sNN: " (8) + 200 = 208 characters: 19 fit in 4000.
+        assert_eq!(text.matches("\n- s").count(), 19, "{text}");
+        assert!(text.contains("… and 1 more"), "{text}");
+    }
+
+    #[test]
+    fn counts_skills_beyond_the_served_list() {
+        let skills = [skill("a", "d")];
+        let text = skills_section(&skills, 250).unwrap();
+        assert!(text.contains("… and 249 more"), "{text}");
     }
 }

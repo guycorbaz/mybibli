@@ -12,6 +12,10 @@
 //! name and the description is trimmed (a form-input convention); the body
 //! is stored exactly as typed.
 
+use crate::db::DbPool;
+use crate::error::AppError;
+use crate::models::mcp_skill::{ActiveSkill, ActiveSkillSummary, McpSkillModel};
+
 /// Longest accepted name, in characters (the slug is ASCII, so bytes too).
 pub const NAME_MAX_CHARS: usize = 64;
 /// Longest accepted description, in characters (`VARCHAR(200)`).
@@ -108,7 +112,12 @@ pub fn validate_description(raw: &str) -> Result<String, SkillFieldError> {
     if description.is_empty() {
         return Err(SkillFieldError::DescriptionRequired);
     }
-    if description.chars().any(char::is_control) {
+    // One line: no control character, and no Unicode line or paragraph
+    // separator (U+2028, U+2029 are not `Cc` but break a line too).
+    if description
+        .chars()
+        .any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}'))
+    {
         return Err(SkillFieldError::DescriptionNotOneLine);
     }
     if description.chars().count() > DESCRIPTION_MAX_CHARS {
@@ -149,6 +158,52 @@ pub fn validate(
         body: validate_body(body)?,
         active,
     })
+}
+
+// ─── Serving skills to the agent (story 15-3) ──────────────────────
+
+/// At most this many skills are served to the agent (`prompts/list`, the
+/// names `get_skill` lists): a household library writes a handful, so the
+/// lists are not paginated below this cap.
+pub const MAX_SERVED_SKILLS: u32 = 200;
+
+/// The active skills as the agent sees them listed.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ServedSkills {
+    /// The first [`MAX_SERVED_SKILLS`] active skills, by name.
+    pub listed: Vec<ActiveSkillSummary>,
+    /// How many active skills exist (≥ `listed.len()`).
+    pub total: u64,
+}
+
+/// The active skills (live **and** active), by name, capped.
+pub async fn served_skills(pool: &DbPool) -> Result<ServedSkills, AppError> {
+    let listed = McpSkillModel::list_active(pool, MAX_SERVED_SKILLS).await?;
+    let total = if listed.len() < MAX_SERVED_SKILLS as usize {
+        listed.len() as u64
+    } else {
+        // Two reads, no snapshot: a skill deactivated in between must not
+        // make `total` smaller than the list.
+        McpSkillModel::count_active(pool)
+            .await?
+            .max(listed.len() as u64)
+    };
+    Ok(ServedSkills { listed, total })
+}
+
+/// One active skill by its exact name; `None` for an unknown, inactive or
+/// trashed name — and, without a query, for a name that is not a slug
+/// (no stored skill can have it).
+pub async fn served_skill(pool: &DbPool, name: &str) -> Result<Option<ActiveSkill>, AppError> {
+    if !is_served_name(name) {
+        return Ok(None);
+    }
+    McpSkillModel::find_active_by_name(pool, name).await
+}
+
+/// `true` when `name` has the shape of a stored skill name (slug, ≤ 64).
+pub fn is_served_name(name: &str) -> bool {
+    name.len() <= NAME_MAX_CHARS && is_slug(name)
 }
 
 #[cfg(test)]
@@ -220,7 +275,14 @@ mod tests {
             validate_description(&"a".repeat(DESCRIPTION_MAX_CHARS + 1)),
             Err(SkillFieldError::DescriptionTooLong)
         );
-        for bad in ["line one\nline two", "a\rb", "a\tb", "a\u{0}b"] {
+        for bad in [
+            "line one\nline two",
+            "a\rb",
+            "a\tb",
+            "a\u{0}b",
+            "a\u{2028}b",
+            "a\u{2029}b",
+        ] {
             assert_eq!(
                 validate_description(bad),
                 Err(SkillFieldError::DescriptionNotOneLine),

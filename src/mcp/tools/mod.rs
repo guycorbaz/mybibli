@@ -1,9 +1,10 @@
-//! The MCP tools (stories 11-6..11-8 and 11-15 read, 11-12..11-14 propose). Each one is a thin adapter over
+//! The MCP tools (stories 11-6..11-8, 11-15 and 15-3 read, 11-12..11-14 propose). Each one is a thin adapter over
 //! `services/`, implementing [`super::tool::McpTool`]: it validates its
 //! arguments, calls one service and maps the result to JSON.
 
 mod args;
 mod get_series;
+mod get_skill;
 mod get_title;
 mod list_labels;
 mod list_my_proposals;
@@ -47,6 +48,7 @@ pub fn registry() -> ToolRegistry {
         .with(propose_cover::ProposeCover)
         .with(list_labels::ListLabels)
         .with(propose_label::ProposeLabel)
+        .with(get_skill::GetSkill)
 }
 
 /// The tools that file proposals (story 11-12 on); every other tool reads.
@@ -199,6 +201,7 @@ mod tests {
             names,
             [
                 "get_series",
+                "get_skill",
                 "get_title",
                 "list_labels",
                 "list_my_proposals",

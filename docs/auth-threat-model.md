@@ -169,7 +169,15 @@ Everything an agent sends — series and title names, descriptions, contributor 
 - **Accepted values are owned by the librarian.** Fields written by an acceptance are marked hand-edited (`manually_edited_fields`), so a later automatic metadata or cover download never overwrites what a person approved — and an agent cannot use the automatic pipeline to undo a decision.
 - **Bounded volume.** The resubmission delay blocks equivalent re-filings library-wide after a rejection (default 90 days), a key holds at most 100 pending cover proposals, and revoking the key marks all its pending proposals stale and deletes their staged images.
 
-Accepted residual risk: a librarian can still accept a plausible but wrong value (the sources are shown so it can be checked), and a pending proposal's text is visible to every Librarian+ account. Agent-facing messages (MCP) are English and never echo database text.
+Accepted residual risk: a librarian can still accept a plausible but wrong value (the sources are shown so it can be checked), and a pending proposal's text is visible to every Librarian+ account. Agent-facing messages (MCP) are English and never echo database text — except the skills of § 5.11, whose whole point is to be read by the agent.
+
+### 5.11 Skills are admin-trusted text served to the agent (stories 15-2, 15-3)
+
+Skills are Markdown instructions an Admin writes in Admin → Skills (story 15-2). Story 15-3 serves the live, active ones to the agent three ways: the `initialize` / `server/discover` instructions list their names and one-line descriptions (at most 20 entries, whose lines take at most 4 000 characters, then a "… and K more" line), `prompts/list` / `prompts/get` let the librarian send one from the client, and the read-only tool `get_skill` returns a body. They flow the other way from § 5.10: **admin text delivered to the agent**, not agent text delivered to the app. Consequences:
+
+- **No capability.** A skill is text in the model's context, nothing more. Reading it goes through the same chain as any MCP request (§ 5.8: `propose` key, version header, Host / Origin) — a `read` or `write` key is refused before the skills are read — and it widens nothing: the tools a `propose` key reaches, and NFR44 (the catalog is never written through `/api/mcp`), stay exactly as they are whatever a skill says. A skill that tells the agent to "accept" or "write" can only make it file proposals a person reviews.
+- **Treat a skill like any instruction given to the agent.** An Admin who pastes text from elsewhere into a skill hands it to the agent as house rules: prompt injection written into a skill is injection by the Admin's hand. Every Admin can edit every skill (§ 5.3). The agent receives the body exactly as typed (no Markdown rendering, no rewrite); the web never renders it as HTML (escaped `<textarea>` / `<pre>`, story 15-2).
+- **Inactive and trashed skills are never served.** Every read filters `deleted_at IS NULL AND active = TRUE`, on each request: a deactivation or a deletion takes effect on the agent's next request (no cache). An unknown name answers a protocol error (`prompts/get`, -32602) or a tool error (`get_skill`) without any body; `get_skill`'s error lists the active skills' names.
 
 ---
 
@@ -193,7 +201,7 @@ A PR that touches any of the following must:
 - The `CSRF_EXEMPT_ROUTES` constant — update § 5.6 with the new entry's rationale
 - The cookie attribute set in `auth.rs` or `csrf.rs` — update § 5.1 / § 5.2 if the default changes
 - The CSP header in `csrf.rs::csp` — update § 4 "Strict CSP" row
-- `src/mcp/` (a new tool, a change to the guard, the Host / Origin / body / timeout settings) or `src/middleware/api_key.rs` — re-read § 5.8 – § 5.10; a new tool states in its description whether it changes the catalog, and a tool that would write catalog data or fetch a URL needs a section here first
+- `src/mcp/` (a new tool, a change to the guard, the Host / Origin / body / timeout settings) or `src/middleware/api_key.rs` — re-read § 5.8 – § 5.11; a new tool states in its description whether it changes the catalog, and a tool that would write catalog data or fetch a URL needs a section here first
 - The proposal pages or acceptance (`src/routes/proposals.rs`, `proposal_edit.rs`, `src/services/*_acceptance.rs`, the `proposal_*` templates) — keep § 5.10 true: escaped rendering only (`html_escape` before any modal `body_html`), Librarian+ and CSRF on every route, re-validation under locks before anything is applied
 
 If a PR is adding a brand-new authentication factor (TOTP, WebAuthn, OIDC), this document needs a new section 3.x covering the new attacker surface that factor opens. Don't ship the feature without the doc update.
