@@ -80,3 +80,27 @@ Cases from the agent session (#590): Tintin, Cubitus, Bernard Prince, Survivants
 - `locales/{en,fr,de,it}.yml`
 - `tests/proposal_series_update.rs` (new), `tests/mcp_series_proposals.rs`, `tests/common/mcp.rs`, `tests/e2e/helpers/mcp.ts`, `tests/e2e/specs/journeys/series-update-proposal.spec.ts` (new)
 - `docs/route-role-matrix.md`, `CLAUDE.md`
+
+### Review Findings (2026-11-05 — Blind Hunter, Edge Case Hunter, Acceptance Auditor)
+
+No High; three Medium, fixed in this story.
+
+- [x] [Review][Patch] (Medium) `resolve_change` re-validated the current total when the agent touched neither type nor total: a closed series with a hand-set total above 10 000 (or none) could not be renamed or lose tomes — at filing, at the acceptance re-validation and in the line edit [series_update_proposals.rs, series_update_acceptance.rs, series_update_edit.rs] — type/total left alone are no longer validated (unit tests).
+- [x] [Review][Patch] (Medium) AC8 tests missing: rollback on a failed apply, CSRF + role (accept and line edit), review line parsing, success / stale messages, `positions_text` [tests/proposal_series_update.rs, proposal_review.rs, proposal_accept.rs].
+- [x] [Review][Patch] (Medium) Lock-scope wording overstated ("never waits") and no issue for the neighbour wait (Rule 11) — wording corrected; #627 filed (affects series_attach too).
+- [x] [Review][Patch] (Low) A case-only rename missed another series of that name (`active_series_named` returned the series itself) — `ProposalModel::other_series_named` (except self) at filing, edit, acceptance.
+- [x] [Review][Patch] (Low) A rename to the name of a pending creation was filed — refused (`PendingDuplicate`, series name).
+- [x] [Review][Patch] (Low) A name equal up to Unicode normalization counted as a change — NFC comparison.
+- [x] [Review][Patch] (Low) A settled (owned) tome could be listed for removal — refused (`TomeOwned`).
+- [x] [Review][Patch] (Low) Dead-end Remove button on the single removal of a removals-only proposal — not offered; empty trail summary of such an update line — "Name, type and total stay as they are."
+- [x] [Review][Patch] (Low) Position lists uncapped — at most 20 named, then "… (+N)".
+- [x] [Review][Patch] (Low) The applied feedback did not say the series was renamed (`renamed` unused) — "Series renamed to …"; `type_total` reduced to the total.
+- [x] [Review][Patch] (Low) Soft-delete row count ignored at apply — anything but 1 row rolls back.
+- [x] [Review][Patch] (Low) `list_my_proposals` description ignored the new kind (subject, equivalence) — updated; CLAUDE.md "recomputed at rejection" now says metadata only.
+- [x] [Review][Patch] (Low) Misleading comment on the unreachable "series gone" branch; wrong hint key for `TotalNeedsClosed`; duplicated open/closed total mapping (`SeriesFields::from_shape`) and position join (`positions_list`).
+- [x] [Review][Patch] (Low) Weak test assertions on bare numbers — full localized phrases.
+
+Deviations recorded (Low, no change): acceptance order is series → staleness → removed tomes (the series → tomes lock order holds); tests live in one file `tests/proposal_series_update.rs`; `SeriesModel::apply_update_in` relies on the row lock (no version filter); removed tomes are locked one `find_in` per id; removed tomes render one line each with the heading as prefix. **Total rule exception** (rename / removals only skip it) — to confirm by the project lead.
+
+Dismissed: omnibus positions diverging at filing (one `title_series` row per position, verified); `find_in` returning trashed tomes (it filters `deleted_at`); stale copy "title" wording (`stale_feedback_title` says "nothing was changed"); fingerprint including removals (D4: the exact change is blocked); a locking name read at acceptance (a `FOR UPDATE` through the collation function would scan and lock every series; window narrow, same as the edit path); E2E `getByText(CLOSED)` strictness (green; the series page shows it once).
+

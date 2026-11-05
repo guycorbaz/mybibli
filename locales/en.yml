@@ -1575,6 +1575,7 @@ proposals:
   accept_modal_tomes_removed: "Expected tomes removed: %{count}."
   accept_modal_note_series_update: "If the series or one of these expected tomes changed since the proposal was filed, nothing is changed and the proposal is marked outdated."
   applied_series_update: "Series “%{name}” updated."
+  applied_series_renamed: "Series renamed to “%{name}”."
   applied_series_closed: "It is now closed at %{total} tomes."
   applied_series_open: "It is now open."
   applied_tomes_removed: "Expected tomes removed: %{count}."

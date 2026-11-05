@@ -1571,6 +1571,7 @@ proposals:
   accept_modal_tomes_removed: "Tomes attendus retirés : %{count}."
   accept_modal_note_series_update: "Si la série ou l'un de ces tomes attendus a changé depuis le dépôt de la proposition, rien n'est modifié et la proposition est marquée comme périmée."
   applied_series_update: "Série « %{name} » mise à jour."
+  applied_series_renamed: "Série renommée en « %{name} »."
   applied_series_closed: "Elle est désormais terminée, en %{total} tomes."
   applied_series_open: "Elle est désormais ouverte."
   applied_tomes_removed: "Tomes attendus retirés : %{count}."

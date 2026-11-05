@@ -166,17 +166,21 @@ pub fn series_update_message(id: u64, applied: &AppliedSeriesUpdate, loc: &str) 
     let mut parts = vec![
         t!("proposals.accepted_feedback", locale = loc, id = id).to_string(),
         t!(
-            "proposals.applied_series_update",
+            if applied.renamed {
+                "proposals.applied_series_renamed"
+            } else {
+                "proposals.applied_series_update"
+            },
             locale = loc,
             name = applied.series_name.as_str()
         )
         .to_string(),
     ];
     match applied.type_total {
-        Some((_, Some(total))) => parts.push(
+        Some(Some(total)) => parts.push(
             t!("proposals.applied_series_closed", locale = loc, total = total).to_string(),
         ),
-        Some((_, None)) => parts.push(t!("proposals.applied_series_open", locale = loc).to_string()),
+        Some(None) => parts.push(t!("proposals.applied_series_open", locale = loc).to_string()),
         None => {}
     }
     if applied.removed > 0 {
@@ -663,6 +667,68 @@ mod tests {
     use crate::services::series_acceptance::SkippedTome;
 
     const LOCALES: [&str; 4] = ["en", "fr", "de", "it"];
+
+    #[test]
+    fn series_update_messages_name_what_changed() {
+        use crate::services::series_update_acceptance::AppliedSeriesUpdate;
+        let applied = AppliedSeriesUpdate {
+            series_id: 4,
+            series_name: "Cubitus (Dupa)".into(),
+            renamed: true,
+            type_total: Some(Some(39)),
+            removed: 2,
+        };
+        assert_eq!(
+            series_update_message(7, &applied, "en"),
+            "Proposal #7 accepted. Series renamed to “Cubitus (Dupa)”. It is now closed at 39 \
+             tomes. Expected tomes removed: 2."
+        );
+        let opened = AppliedSeriesUpdate {
+            renamed: false,
+            type_total: Some(None),
+            removed: 0,
+            ..applied
+        };
+        assert_eq!(
+            series_update_message(7, &opened, "en"),
+            "Proposal #7 accepted. Series “Cubitus (Dupa)” updated. It is now open."
+        );
+        for loc in LOCALES {
+            no_raw_key(&series_update_message(7, &opened, loc));
+        }
+    }
+
+    #[test]
+    fn series_update_stale_reasons_name_the_positions() {
+        let below = StaleCause::Conflict(AcceptConflict::BelowPosition {
+            total: 18,
+            owned: vec![19],
+            expected: vec![20, 21],
+        });
+        assert_eq!(
+            stale_why_of(ProposalKind::SeriesUpdate, &below, "en"),
+            "the series now has owned positions 19; expected tomes at positions 20, 21, above \
+             the proposed total of 18."
+        );
+        let tome = StaleCause::Conflict(AcceptConflict::TomeChanged {
+            position: 15,
+            tome_title: "WS 15".into(),
+        });
+        assert!(stale_why_of(ProposalKind::SeriesUpdate, &tome, "en").contains("“WS 15”"));
+        let targets = StaleCause::Targets(Vec::new());
+        assert_eq!(
+            stale_why_of(ProposalKind::SeriesUpdate, &targets, "en"),
+            "the series was changed or deleted after the proposal was filed."
+        );
+        // "nothing was changed", not "nothing was added".
+        let (message, _) = stale_messages_of(3, ProposalKind::SeriesUpdate, &targets, "en");
+        assert!(message.contains("nothing was changed"), "{message}");
+        for loc in LOCALES {
+            for cause in [&below, &tome, &targets] {
+                no_raw_key(&stale_why_of(ProposalKind::SeriesUpdate, cause, loc));
+            }
+        }
+    }
 
     fn no_raw_key(s: &str) {
         let raw = s

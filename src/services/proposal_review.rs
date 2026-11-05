@@ -885,6 +885,7 @@ pub async fn review_detail(
         })
         .collect();
     let lines = with_fills(pool, &detail.proposal, lines).await?;
+    let lines = without_dead_removal(kind, lines);
     let removed = trail
         .iter()
         .filter(|t| t.removed)
@@ -930,6 +931,25 @@ pub async fn review_detail(
         roles,
         has_staged_cover,
     }))
+}
+
+/// Story 15-4 (review) — the single removal line of a `series_update`
+/// that changes no field cannot be removed (nothing would remain to
+/// apply; rejecting is the way): no Remove button for it.
+fn without_dead_removal(kind: ProposalKind, mut lines: Vec<LineView>) -> Vec<LineView> {
+    if kind != ProposalKind::SeriesUpdate {
+        return lines;
+    }
+    let no_field = lines
+        .iter()
+        .any(|l| l.line == "series_update" && l.series_changes.is_empty());
+    let removals = lines.iter().filter(|l| l.line == "tome_removal").count();
+    if no_field && removals == 1 {
+        for l in lines.iter_mut().filter(|l| l.line == "tome_removal") {
+            l.removable = false;
+        }
+    }
+    lines
 }
 
 /// Story 13-11 (review round 1) — on a pending `series_attach`, name
@@ -1217,6 +1237,63 @@ mod tests {
             table: ProposalTargetTable::Series,
             id,
         })
+    }
+
+    #[test]
+    fn series_update_lines_show_current_vs_proposed() {
+        let v = json!({"line": "series_update",
+            "current": {"name": "Tintin", "series_type": "open", "total_volume_count": null},
+            "series_type": "closed", "total_volume_count": 24, "fingerprint": "x"});
+        let line = parse_line(series(3), &v, "en");
+        assert_eq!(line.line, "series_update");
+        assert_eq!(line.target_id, Some(3));
+        let rows: Vec<(&str, &str, &str)> = line
+            .series_changes
+            .iter()
+            .map(|c| (c.label.as_str(), c.current.as_str(), c.proposed.as_str()))
+            .collect();
+        assert_eq!(
+            rows,
+            [("Type", "Open", "Closed"), ("Number of volumes", "open series", "24")]
+        );
+        // The edit form's values: the series as it would be.
+        assert_eq!(
+            (line.name.as_str(), line.series_type_raw.as_str(), line.total.as_deref()),
+            ("Tintin", "closed", Some("24"))
+        );
+        // Untargeted or malformed: not a series_update line.
+        assert_eq!(parse_line(None, &v, "en").line, "unknown");
+        let removal = json!({"line": "tome_removal", "tome_id": 9, "tome_version": 1,
+            "position": 25, "title": "Tome 25"});
+        let line = parse_line(None, &removal, "en");
+        assert_eq!(
+            (line.line, line.position.as_str(), line.tome_title.as_str()),
+            ("tome_removal", "25", "Tome 25")
+        );
+        assert_eq!(parse_line(series(3), &removal, "en").line, "unknown");
+    }
+
+    #[test]
+    fn the_only_removal_of_a_removals_only_update_is_not_removable() {
+        let update = LineView {
+            line: "series_update",
+            ..LineView::default()
+        };
+        let removal = || LineView {
+            line: "tome_removal",
+            removable: true,
+            ..LineView::default()
+        };
+        let lines = without_dead_removal(
+            ProposalKind::SeriesUpdate,
+            vec![update.clone(), removal()],
+        );
+        assert!(!lines[1].removable);
+        let lines = without_dead_removal(
+            ProposalKind::SeriesUpdate,
+            vec![update, removal(), removal()],
+        );
+        assert!(lines[1].removable && lines[2].removable);
     }
 
     #[test]

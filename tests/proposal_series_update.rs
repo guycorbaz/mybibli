@@ -215,6 +215,28 @@ async fn refusals_write_nothing_and_name_the_positions(pool: DbPool) {
     }
     let t3 = add_tome(&pool, series, 3, "Neptune 3").await;
     let foreign = add_tome(&pool, other, 1, "Gaston 1").await;
+    // A tome settled by an owned title (position 1).
+    let settled = add_tome(&pool, series, 1, "Neptune 1").await;
+    let t1: u64 = sqlx::query_scalar(
+        "SELECT title_id FROM title_series WHERE series_id = ? AND position_number = 1",
+    )
+    .bind(series)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE series_expected_tomes SET settled_title_id = ? WHERE id = ?")
+        .bind(t1)
+        .bind(settled)
+        .execute(&pool)
+        .await
+        .unwrap();
+    // A pending creation of "Pending Name" (filed by the agent).
+    f.agent
+        .ok(
+            "propose_series_create",
+            json!({"name": "Pending Name", "series_type": "open", "sources": [SRC]}),
+        )
+        .await;
     let cases: Vec<(Value, &str)> = vec![
         (json!({"series_id": 999_999}), "999999"),
         (json!({"series_id": series}), "Nothing to change"),
@@ -241,13 +263,17 @@ async fn refusals_write_nothing_and_name_the_positions(pool: DbPool) {
             "listed twice",
         ),
         (json!({"series_id": series, "series_version": 99, "total_volume_count": 5}), "version"),
+        // Review: a case-only rename still sees another series of that name.
+        (json!({"series_id": series, "name": "GASTON"}), "Another series"),
+        (json!({"series_id": series, "remove_expected_tomes": [settled]}), "is owned"),
+        (json!({"series_id": series, "name": "Pending Name"}), "to create the series"),
     ];
     for (mut args, expected) in cases {
         args["sources"] = json!([SRC]);
         let msg = f.agent.err("propose_series_update", args.clone()).await;
         assert!(msg.contains(expected), "{args}: {msg}");
     }
-    assert_eq!(proposal_count(&pool).await, 0);
+    assert_eq!(proposal_count(&pool).await, 1, "the pending creation only");
     // The rule is met by removing the tome in the same proposal.
     file(
         &f,
@@ -255,7 +281,7 @@ async fn refusals_write_nothing_and_name_the_positions(pool: DbPool) {
                "remove_expected_tomes": [t3], "sources": [SRC]}),
     )
     .await;
-    assert_eq!(proposal_count(&pool).await, 1);
+    assert_eq!(proposal_count(&pool).await, 2);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -396,7 +422,10 @@ async fn acceptance_goes_stale_when_the_catalog_changed(pool: DbPool) {
         .await
         .unwrap();
     let (_, body) = accept(&f, &pool, id).await;
-    assert!(body.contains("WS 15"), "{body}");
+    assert!(
+        body.contains("« WS 15 » (position 15)") || body.contains("“WS 15” (position 15)"),
+        "{body}"
+    );
     assert_eq!(status_of(&pool, id).await, "stale");
     assert_eq!(live_tome_positions(&pool, b).await, vec![15]);
 
@@ -410,7 +439,10 @@ async fn acceptance_goes_stale_when_the_catalog_changed(pool: DbPool) {
     let t = seed_title(&pool, "Bernard Prince 19").await;
     assign(&pool, t, c, 19).await;
     let (_, body) = accept(&f, &pool, id).await;
-    assert!(body.contains("19"), "{body}");
+    assert!(
+        body.contains("positions possédées 19") || body.contains("owned positions 19"),
+        "{body}"
+    );
     assert_eq!(status_of(&pool, id).await, "stale");
     assert_eq!(series_row(&pool, c).await.1, "open");
 }
@@ -444,7 +476,11 @@ async fn lines_are_edited_and_removed_under_the_filing_rules(pool: DbPool) {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert!(text(body).contains("17"));
+    let body = text(body);
+    assert!(
+        body.contains("positions possédées 17") || body.contains("owned positions 17"),
+        "{body}"
+    );
     // A valid edit is saved.
     let (status, _) = post(
         format!("/proposals/{id}/items/{update_item}"),
@@ -461,7 +497,12 @@ async fn lines_are_edited_and_removed_under_the_filing_rules(pool: DbPool) {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert!(text(body).contains("20"));
+    let body = text(body);
+    assert!(
+        body.contains("tomes attendus aux positions 20")
+            || body.contains("expected tomes at positions 20"),
+        "{body}"
+    );
     // The update line itself is never removable.
     let (status, _) = post(
         format!("/proposals/{id}/items/{update_item}/remove"),
@@ -546,4 +587,72 @@ async fn an_update_acceptance_on_one_series_does_not_lock_proposals_of_another(p
     assert!(live_tome_positions(&pool, a).await.is_empty());
     assert_eq!(live_tome_positions(&pool, b).await, vec![5]);
     assert_eq!(series_row(&pool, b).await.2, Some(8));
+}
+
+// ─── Failures and access ────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_failure_while_applying_rolls_everything_back(pool: DbPool) {
+    let f = fx(&pool).await;
+    let series = add_series(&pool, "Annulée", "open", None).await;
+    let ghost = add_tome(&pool, series, 4, "Annulée 4").await;
+    let id = file(
+        &f,
+        json!({"series_id": series, "series_type": "closed", "total_volume_count": 3,
+               "remove_expected_tomes": [ghost], "sources": [SRC]}),
+    )
+    .await;
+    // The tome removal — the last write — fails.
+    sqlx::query(
+        "CREATE TRIGGER fail_tome_update BEFORE UPDATE ON series_expected_tomes \
+         FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'injected failure'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (status, body) = accept(&f, &pool, id).await;
+    sqlx::query("DROP TRIGGER fail_tome_update")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(!body.contains("injected"), "no database text");
+    assert_eq!(status_of(&pool, id).await, "pending");
+    let (_, series_type, total, _) = series_row(&pool, series).await;
+    assert_eq!((series_type.as_str(), total), ("open", None));
+    assert_eq!(live_tome_positions(&pool, series).await, vec![4]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn csrf_and_role_are_required(pool: DbPool) {
+    let f = fx(&pool).await;
+    let series = add_series(&pool, "Gardée", "open", None).await;
+    let id = file(
+        &f,
+        json!({"series_id": series, "series_type": "closed", "total_volume_count": 3,
+               "sources": [SRC]}),
+    )
+    .await;
+    let item = items(&pool, id).await[0].0;
+    let v = version_of(&pool, id).await;
+    let forged = Browser {
+        cookie: f.lib.cookie.clone(),
+        csrf: "forged".into(),
+    };
+    let anon = Browser::anonymous(&f.agent.app).await;
+    for (path, body) in [
+        (format!("/proposals/{id}/accept"), format!("version={v}")),
+        (
+            format!("/proposals/{id}/items/{item}"),
+            format!("version={v}&name=G&series_type=closed&total=2"),
+        ),
+    ] {
+        let (status, _) = forged.post_form(&f.agent.app, &path, &body).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{path}");
+        let res = anon.send(&f.agent.app, "POST", &path, &body, true).await;
+        assert_eq!(res.status(), StatusCode::SEE_OTHER, "{path}");
+    }
+    assert_eq!(status_of(&pool, id).await, "pending");
+    assert_eq!(version_of(&pool, id).await, v);
+    assert_eq!(series_row(&pool, series).await.1, "open");
 }

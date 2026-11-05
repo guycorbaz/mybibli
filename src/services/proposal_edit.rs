@@ -1053,6 +1053,9 @@ pub fn line_summary(line: &LineView, loc: &str) -> String {
         )
         .to_string(),
         // Story 15-4.
+        "series_update" if line.series_changes.is_empty() => {
+            t!("proposals.series_update_tomes_only", locale = loc).to_string()
+        }
         "series_update" => line
             .series_changes
             .iter()

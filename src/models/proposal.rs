@@ -789,6 +789,30 @@ impl ProposalModel {
     /// transaction (then sees its series). Called before any title row is
     /// locked (series before titles, like an attach). Returns the stored
     /// name of the oldest match.
+    /// Story 15-4 — a live series other than `except_id` with this name
+    /// (case and accents ignored, like [`Self::active_series_named`]) —
+    /// so a case-only rename still sees another series of that name. A
+    /// plain read: a locking read through the collation function would
+    /// scan, and lock, every series.
+    pub async fn other_series_named(
+        conn: &mut MySqlConnection,
+        name: &str,
+        except_id: u64,
+    ) -> Result<Option<(u64, String)>, AppError> {
+        let found: Option<(u64, String)> = sqlx::query_as(
+            "SELECT id, CAST(name AS CHAR) FROM series \
+             WHERE deleted_at IS NULL AND id <> ? \
+               AND CONVERT(name USING utf8mb4) COLLATE utf8mb4_unicode_ci \
+                   = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci \
+             ORDER BY id ASC LIMIT 1",
+        )
+        .bind(except_id)
+        .bind(name)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found)
+    }
+
     pub async fn lock_series_named(
         conn: &mut MySqlConnection,
         name: &str,

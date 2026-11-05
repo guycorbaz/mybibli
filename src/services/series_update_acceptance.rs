@@ -22,13 +22,13 @@
 //!
 //! Locking reads on proposals start from PK lists or the target index
 //! (`check_staleness_in`), the series and removed tomes are locked by id:
-//! a decision on a proposal about another series never waits (epic 12
-//! retro A1; lock-scope test in `tests/proposal_series_update.rs`). The
+//! no proposal row and no other series row is locked (epic 12 retro A1;
+//! lock-scope test in `tests/proposal_series_update.rs`). The
 //! live re-check reads the series' held positions and tomes with share
 //! locks (as the series_attach acceptance): in REPEATABLE READ that range
 //! also next-key locks the first tome entry of the next series in
 //! `uq_expected_tomes_position`, so a tome write on that neighbour waits
-//! for this short transaction to commit — a wait, never a cycle. Nothing is marked hand-set
+//! for this short transaction to commit — a wait, never a cycle (#627). Nothing is marked hand-set
 //! (D2, module doc of `series_update_proposals`).
 
 use serde_json::Value;
@@ -39,7 +39,7 @@ use crate::models::expected_tome::ExpectedTomeModel;
 use crate::models::proposal::{
     ProposalItemRow, ProposalKind, ProposalModel, ProposalStatus, ProposalTargetTable,
 };
-use crate::models::series::{SeriesModel, SeriesType, TitleSeriesModel};
+use crate::models::series::{SeriesModel, TitleSeriesModel};
 use crate::services::acceptance::{
     AcceptConflict, AcceptError, AcceptOutcome, StaleCause, in_retried_transaction,
     lock_pending_in, mark_stale_in,
@@ -104,8 +104,9 @@ pub struct AppliedSeriesUpdate {
     /// The series' name after the change.
     pub series_name: String,
     pub renamed: bool,
-    /// The type and total after the change, when either changed.
-    pub type_total: Option<(SeriesType, Option<i32>)>,
+    /// The total after the change (`None` = open), when type or total
+    /// changed.
+    pub type_total: Option<Option<i32>>,
     pub removed: usize,
 }
 
@@ -141,11 +142,12 @@ pub async fn accept_in(
     // edited by hand went through the same rules, a corrupt one is
     // refused (still pending).
     let target = stored.change.apply(&stored.filed);
+    let touches = stored.change.touches_total();
     let revalidated = resolve_change(
         &stored.filed,
         stored.change.name.as_deref(),
-        Some(target.series_type),
-        target.total.map(i64::from),
+        touches.then_some(target.series_type),
+        target.total.filter(|_| touches).map(i64::from),
     )
     .map_err(|e: SeriesUpdateError| AcceptError::Invalid(e.to_string()))?;
     if revalidated != stored.change {
@@ -162,7 +164,8 @@ pub async fn accept_in(
         return Ok(AcceptOutcome::Stale(StaleCause::Targets(check.stale_targets)));
     }
     let Some(shape) = shape else {
-        // Deleted series: check_staleness_in marked it stale already.
+        // Unreachable while the update line targets the series: a deleted
+        // series makes `check_staleness_in` mark the proposal stale above.
         return Err(AcceptError::Invalid("series not found".into()));
     };
 
@@ -186,18 +189,10 @@ pub async fn accept_in(
     }
 
     // Live re-checks.
-    let current = SeriesFields {
-        name: shape.name.clone(),
-        series_type: shape.series_type,
-        total: match shape.series_type {
-            SeriesType::Open => None,
-            SeriesType::Closed => shape.total_volume_count,
-        },
-    };
+    let current = SeriesFields::from_shape(&shape);
     if stored.change.name.is_some()
-        && let Some((other_id, other_name)) =
-            ProposalModel::active_series_named(conn, &target.name).await?
-        && other_id != stored.series_id
+        && let Some((_, other_name)) =
+            ProposalModel::other_series_named(conn, &target.name, stored.series_id).await?
     {
         return mark_stale_in(conn, id, AcceptConflict::SeriesExists { name: other_name }).await;
     }
@@ -248,16 +243,20 @@ pub async fn accept_in(
         .await?;
     }
     for r in &stored.removals {
-        ExpectedTomeModel::soft_delete_in(conn, r.tome_id, r.tome_version).await?;
+        // Locked and version-checked above: anything but one row is a bug,
+        // rolled back rather than half applied.
+        if ExpectedTomeModel::soft_delete_in(conn, r.tome_id, r.tome_version).await? != 1 {
+            return Err(AcceptError::Invalid(format!(
+                "expected tome {} could not be removed",
+                r.tome_id
+            )));
+        }
     }
     Ok(AcceptOutcome::Accepted(AppliedSeriesUpdate {
         series_id: stored.series_id,
         series_name: target.name,
         renamed: stored.change.name.is_some(),
-        type_total: stored
-            .change
-            .touches_total()
-            .then_some((target.series_type, target.total)),
+        type_total: stored.change.touches_total().then_some(target.total),
         removed: stored.removals.len(),
     }))
 }
@@ -266,6 +265,7 @@ pub async fn accept_in(
 mod tests {
     use super::*;
     use crate::models::proposal::ProposalTarget;
+    use crate::models::series::SeriesType;
     use serde_json::json;
 
     fn row(id: u64, target: Option<ProposalTargetTable>, v: Value) -> ProposalItemRow {

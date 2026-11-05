@@ -1559,6 +1559,7 @@ proposals:
   accept_modal_tomes_removed: "Entfernte erwartete Bände: %{count}."
   accept_modal_note_series_update: "Wenn sich die Serie oder einer dieser erwarteten Bände seit dem Einreichen geändert hat, wird nichts geändert und der Vorschlag als veraltet markiert."
   applied_series_update: "Serie „%{name}“ aktualisiert."
+  applied_series_renamed: "Serie umbenannt in „%{name}“."
   applied_series_closed: "Sie ist jetzt mit %{total} Bänden abgeschlossen."
   applied_series_open: "Sie ist jetzt offen."
   applied_tomes_removed: "Entfernte erwartete Bände: %{count}."

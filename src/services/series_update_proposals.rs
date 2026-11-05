@@ -60,7 +60,7 @@ use serde_json::{Value, json};
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::expected_tome::ExpectedTomeRow;
+use crate::models::expected_tome::{ExpectedTomeRow, SeriesShape};
 use crate::models::proposal::{ProposalKind, ProposalModel, ProposalTarget, ProposalTargetTable};
 use crate::models::series::{SeriesModel, SeriesType};
 pub use crate::services::proposal_history::series_update_fingerprint;
@@ -70,7 +70,8 @@ use crate::services::proposals::{
 };
 use crate::services::series::SeriesService;
 use crate::services::series_proposals::{
-    Duplicate, SeriesProposalError, SeriesProposalService, validate_series_name, validate_total,
+    Duplicate, PendingFor, SeriesProposalError, SeriesProposalService, validate_series_name,
+    validate_total,
 };
 
 /// At most this many removal lines: the proposal's item cap minus the
@@ -101,15 +102,24 @@ pub struct SeriesFields {
 }
 
 impl SeriesFields {
-    pub fn of(series: &SeriesModel) -> Self {
+    fn new(name: &str, series_type: SeriesType, total: Option<i32>) -> Self {
         SeriesFields {
-            name: series.name.clone(),
-            series_type: series.series_type,
-            total: match series.series_type {
+            name: name.to_string(),
+            series_type,
+            total: match series_type {
                 SeriesType::Open => None,
-                SeriesType::Closed => series.total_volume_count,
+                SeriesType::Closed => total,
             },
         }
+    }
+
+    pub fn of(series: &SeriesModel) -> Self {
+        Self::new(&series.name, series.series_type, series.total_volume_count)
+    }
+
+    /// The series as locked by `ExpectedTomeModel::lock_series_in`.
+    pub fn from_shape(shape: &SeriesShape) -> Self {
+        Self::new(&shape.name, shape.series_type, shape.total_volume_count)
     }
 }
 
@@ -187,6 +197,11 @@ pub enum SeriesUpdateError {
         tome_id: u64,
         series_id: u64,
     },
+    /// A tome the library owns now (settled by a live title): it exists.
+    TomeOwned {
+        tome_id: u64,
+        position: i32,
+    },
     /// The new name is another live series'.
     NameTaken {
         series_id: u64,
@@ -204,7 +219,9 @@ impl Refusal for SeriesUpdateError {
         match self {
             Series(e) => e.class(),
             TomeNotInSeries { .. } => RefusalClass::NotFound,
-            NameTaken { .. } | TotalBelowPositions { .. } => RefusalClass::Conflict,
+            NameTaken { .. } | TotalBelowPositions { .. } | TomeOwned { .. } => {
+                RefusalClass::Conflict
+            }
             NoChange | TotalNeedsClosed | TooManyRemovals { .. } | TomeTwice { .. } => {
                 RefusalClass::InvalidInput
             }
@@ -212,12 +229,23 @@ impl Refusal for SeriesUpdateError {
     }
 }
 
-fn join(positions: &[i32]) -> String {
-    positions
+/// At most this many positions are named in a message; the rest are
+/// counted.
+pub const POSITIONS_LISTED_MAX: usize = 20;
+
+/// "3, 4, 5" — or the first [`POSITIONS_LISTED_MAX`] then "… (+N)"
+/// (language-neutral; shared with the librarian's messages).
+pub fn positions_list(positions: &[i32]) -> String {
+    let mut out = positions
         .iter()
+        .take(POSITIONS_LISTED_MAX)
         .map(i32::to_string)
         .collect::<Vec<_>>()
-        .join(", ")
+        .join(", ");
+    if positions.len() > POSITIONS_LISTED_MAX {
+        out.push_str(&format!(", … (+{})", positions.len() - POSITIONS_LISTED_MAX));
+    }
+    out
 }
 
 impl fmt::Display for SeriesUpdateError {
@@ -249,6 +277,11 @@ impl fmt::Display for SeriesUpdateError {
                 "Expected tome {tome_id} is not a live expected tome of series {series_id}. \
                  Call get_series to read its expected tomes and their ids."
             ),
+            TomeOwned { tome_id, position } => write!(
+                f,
+                "Expected tome {tome_id} (position {position}) is owned: a catalogued title \
+                 holds its position, so it exists. Remove it from `remove_expected_tomes`."
+            ),
             NameTaken { series_id, name } => write!(
                 f,
                 "Another series is already named \"{name}\" (id {series_id}): choose another \
@@ -261,7 +294,7 @@ impl fmt::Display for SeriesUpdateError {
                         f,
                         " owned position(s) {} (the library has these tomes; the total cannot \
                          be lower)",
-                        join(&positions.owned)
+                        positions_list(&positions.owned)
                     )?;
                 }
                 if !positions.owned.is_empty() && !positions.expected.is_empty() {
@@ -272,7 +305,7 @@ impl fmt::Display for SeriesUpdateError {
                         f,
                         " expected tome(s) at position(s) {} — add their ids to \
                          `remove_expected_tomes` in the same proposal if they do not exist",
-                        join(&positions.expected)
+                        positions_list(&positions.expected)
                     )?;
                 }
                 write!(f, ".")
@@ -322,6 +355,18 @@ pub fn resolve_change(
     total: Option<i64>,
 ) -> Result<SeriesChange, SeriesUpdateError> {
     let name = name.map(validate_series_name).transpose()?;
+    // A name equal to the current one — up to Unicode normalization — is
+    // not a change.
+    let name = name.filter(|n| !same_text(n, &current.name));
+    // Type and total left alone: neither is validated (a series already
+    // outside the rules — say a hand-set total above the proposal range —
+    // can still be renamed or lose tomes).
+    if series_type.is_none() && total.is_none() {
+        return Ok(SeriesChange {
+            name,
+            ..SeriesChange::default()
+        });
+    }
     if series_type.is_none() && total.is_some() && current.series_type == SeriesType::Open {
         return Err(SeriesUpdateError::TotalNeedsClosed);
     }
@@ -336,14 +381,21 @@ pub fn resolve_change(
         )?,
     };
     Ok(SeriesChange {
-        name: name.filter(|n| *n != current.name),
+        name,
         series_type: (new_type != current.series_type).then_some(new_type),
         total: (new_total != current.total).then_some(new_total),
     })
 }
 
+/// Equal once both are NFC-normalized.
+fn same_text(a: &str, b: &str) -> bool {
+    use unicode_normalization::UnicodeNormalization;
+    a.nfc().eq(b.nfc())
+}
+
 /// The tomes to remove, checked against the series' live expected tomes
-/// (pure): each id once, each a live tome of the series.
+/// (pure): each id once, each a live, unsettled tome of the series (a
+/// settled tome is owned: it exists).
 pub fn check_removals<'a>(
     series_id: u64,
     ids: &[u64],
@@ -358,10 +410,17 @@ pub fn check_removals<'a>(
             if !seen.insert(tome_id) {
                 return Err(SeriesUpdateError::TomeTwice { tome_id });
             }
-            tomes
+            let tome = tomes
                 .iter()
                 .find(|t| t.id == tome_id && t.series_id == series_id)
-                .ok_or(SeriesUpdateError::TomeNotInSeries { tome_id, series_id })
+                .ok_or(SeriesUpdateError::TomeNotInSeries { tome_id, series_id })?;
+            if tome.is_settled() {
+                return Err(SeriesUpdateError::TomeOwned {
+                    tome_id,
+                    position: tome.position,
+                });
+            }
+            Ok(tome)
         })
         .collect()
 }
@@ -558,13 +617,22 @@ impl SeriesUpdateProposalService {
         if let Some(name) = &change.name {
             let mut conn = pool.acquire().await.map_err(AppError::from)?;
             if let Some((other_id, other_name)) =
-                ProposalModel::active_series_named(&mut conn, name).await?
-                && other_id != series.id
+                ProposalModel::other_series_named(&mut conn, name, series.id).await?
             {
                 return Err(SeriesUpdateError::NameTaken {
                     series_id: other_id,
                     name: other_name,
                 });
+            }
+            // A pending creation of a series with that name.
+            if let Some(proposal_id) =
+                ProposalModel::pending_series_create_named(&mut conn, name).await?
+            {
+                return Err(SeriesProposalError::PendingDuplicate {
+                    proposal_id,
+                    series: PendingFor::SeriesName(name.clone()),
+                }
+                .into());
             }
         }
         let held: Vec<i32> = detail.positions.iter().map(|p| p.position_number).collect();
@@ -794,6 +862,52 @@ mod tests {
         assert!(msg.contains("expected tome(s) at position(s) 5, 6"), "{msg}");
         assert!(msg.contains("remove_expected_tomes"), "{msg}");
         assert!(!msg.contains("owned"), "{msg}");
+    }
+
+    #[test]
+    fn type_and_total_left_alone_are_not_validated() {
+        // A hand-set total outside the proposal range, or a closed series
+        // without total: a rename or removals stay possible (review).
+        for current in [closed("Big", 20_000), SeriesFields {
+            name: "Legacy".into(),
+            series_type: SeriesType::Closed,
+            total: None,
+        }] {
+            let change = resolve_change(&current, Some("Renamed"), None, None).unwrap();
+            assert_eq!(change.name.as_deref(), Some("Renamed"));
+            assert!(!change.touches_total());
+            assert!(resolve_change(&current, None, None, None).unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn a_name_equal_up_to_normalization_is_not_a_change() {
+        let nfc = open("Ast\u{e9}rix");
+        let nfd = resolve_change(&nfc, Some("Aste\u{301}rix"), None, None).unwrap();
+        assert!(nfd.is_empty(), "{nfd:?}");
+    }
+
+    #[test]
+    fn a_settled_tome_cannot_be_removed() {
+        let mut owned = tome(10, 1, 4);
+        owned.settled_title_id = Some(99);
+        let tomes = vec![owned];
+        assert!(matches!(
+            check_removals(1, &[10], &tomes),
+            Err(SeriesUpdateError::TomeOwned {
+                tome_id: 10,
+                position: 4
+            })
+        ));
+    }
+
+    #[test]
+    fn long_position_lists_are_cut() {
+        assert_eq!(positions_list(&[1, 2, 3]), "1, 2, 3");
+        let many: Vec<i32> = (1..=25).collect();
+        let text = positions_list(&many);
+        assert!(text.starts_with("1, 2, "), "{text}");
+        assert!(text.ends_with("20, … (+5)"), "{text}");
     }
 
     #[test]

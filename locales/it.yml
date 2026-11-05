@@ -1545,6 +1545,7 @@ proposals:
   accept_modal_tomes_removed: "Volumi attesi rimossi: %{count}."
   accept_modal_note_series_update: "Se la serie o uno di questi volumi attesi è cambiato dopo il deposito della proposta, non viene modificato nulla e la proposta è segnata come superata."
   applied_series_update: "Serie «%{name}» aggiornata."
+  applied_series_renamed: "Serie rinominata in «%{name}»."
   applied_series_closed: "Ora è conclusa con %{total} volumi."
   applied_series_open: "Ora è aperta."
   applied_tomes_removed: "Volumi attesi rimossi: %{count}."

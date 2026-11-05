@@ -24,7 +24,7 @@ use crate::models::series::{SeriesType, TitleSeriesModel};
 use crate::services::proposal_edit::{EditError, EditForm, form_str, series_hint};
 use crate::services::series_update_acceptance::{StoredSeriesUpdate, parse_items};
 use crate::services::series_update_proposals::{
-    PositionsInTheWay, SeriesUpdateError, check_total_rule, parse_update_line, resolve_change, update_line,
+    PositionsInTheWay, SeriesUpdateError, check_total_rule, positions_list, parse_update_line, resolve_change, update_line,
 };
 
 /// The librarian's hint for a refused edit or removal (terse; the
@@ -37,7 +37,7 @@ pub fn update_hint(e: &SeriesUpdateError, loc: &str) -> String {
             t!("proposals.edit_error_no_change", locale = loc).to_string()
         }
         SeriesUpdateError::TotalNeedsClosed => {
-            t!("proposals.edit_error_total_required", locale = loc).to_string()
+            t!("proposals.edit_error_invalid", locale = loc).to_string()
         }
         SeriesUpdateError::NameTaken { name, .. } => t!(
             "proposals.edit_error_series_exists",
@@ -55,7 +55,8 @@ pub fn update_hint(e: &SeriesUpdateError, loc: &str) -> String {
             positions = positions_text(owned, expected, loc).as_str()
         )
         .to_string(),
-        SeriesUpdateError::TooManyRemovals { .. }
+        SeriesUpdateError::TomeOwned { .. }
+        | SeriesUpdateError::TooManyRemovals { .. }
         | SeriesUpdateError::TomeTwice { .. }
         | SeriesUpdateError::TomeNotInSeries { .. } => {
             t!("proposals.edit_error_invalid", locale = loc).to_string()
@@ -67,7 +68,7 @@ pub fn update_hint(e: &SeriesUpdateError, loc: &str) -> String {
 /// positions in the way, localized (shared with the stale message).
 pub fn positions_text(owned: &[i32], expected: &[i32], loc: &str) -> String {
     use rust_i18n::t;
-    let join = |p: &[i32]| p.iter().map(i32::to_string).collect::<Vec<_>>().join(", ");
+    let join = positions_list;
     let mut parts = Vec::new();
     if !owned.is_empty() {
         parts.push(
@@ -104,12 +105,21 @@ pub fn edited_update_line(old: &Value, form: &EditForm, removed: &[u64]) -> Resu
             (!raw.is_empty()).then(|| raw.parse::<i64>().unwrap_or(0))
         }
     };
-    let change = resolve_change(
-        &current,
-        Some(form_str(form, "name")),
-        Some(series_type),
-        total,
-    )?;
+    // Type and total as filed: left alone (not re-validated, like a
+    // filing that does not touch them).
+    let total_i32 = total.and_then(|t| i32::try_from(t).ok());
+    let untouched = series_type == current.series_type
+        && (series_type == SeriesType::Open || (total.is_some() && total_i32 == current.total));
+    let change = if untouched {
+        resolve_change(&current, Some(form_str(form, "name")), None, None)?
+    } else {
+        resolve_change(
+            &current,
+            Some(form_str(form, "name")),
+            Some(series_type),
+            total,
+        )?
+    };
     let mut values = update_line(&current, &change, removed);
     values["fingerprint"] = old.get("fingerprint").cloned().unwrap_or(Value::Null);
     Ok(values)
@@ -151,8 +161,8 @@ async fn check_live(conn: &mut MySqlConnection, stored: &StoredSeriesUpdate) -> 
         return Err(EditError::SeriesGone);
     }
     if let Some(name) = &stored.change.name
-        && let Some((other_id, other_name)) = ProposalModel::active_series_named(conn, name).await?
-        && other_id != stored.series_id
+        && let Some((other_id, other_name)) =
+            ProposalModel::other_series_named(conn, name, stored.series_id).await?
     {
         return Err(SeriesUpdateError::NameTaken {
             series_id: other_id,
@@ -236,6 +246,21 @@ mod tests {
         assert!(v.get("name").is_none(), "{v}");
         assert_eq!(v["fingerprint"], json!("filed"));
         assert_eq!(v["current"], old()["current"]);
+    }
+
+    #[test]
+    fn a_rename_keeps_a_hand_set_total_outside_the_range() {
+        let old = json!({"line": "series_update",
+               "current": {"name": "Big", "series_type": "closed", "total_volume_count": 20000},
+               "name": "Big!", "fingerprint": "filed"});
+        let v = edited_update_line(
+            &old,
+            &form(&[("name", "Big?"), ("series_type", "closed"), ("total", "20000")]),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(v["name"], json!("Big?"));
+        assert!(v.get("total_volume_count").is_none(), "{v}");
     }
 
     #[test]
