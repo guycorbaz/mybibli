@@ -139,6 +139,75 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.25.0}\label{sec:whats-new-1.25.0}
+
+Version 1.25.0 closes epic 15, ``the agent's next tasks''
+(\href{https://github.com/guycorbaz/mybibli/issues/602}{\#602},
+\href{https://github.com/guycorbaz/mybibli/issues/614}{\#614},
+\href{https://github.com/guycorbaz/mybibli/issues/590}{\#590},
+\href{https://github.com/guycorbaz/mybibli/issues/564}{\#564}): dates
+follow the library's own time zone, an admin can write instructions for
+the AI agent, and the agent can propose a series correction and a
+volume's value. \emph{Four additive migrations} (a \texttt{time\_zone}
+setting, the \texttt{mcp\_skills} table, two new proposal kinds), no
+configuration change --- back up first, pull the image, recreate the
+container (\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{Instance time zone.} \emph{Administration
+        \textrightarrow{} System \textrightarrow{} Time zone} takes an
+        IANA name (default \texttt{Europe/Zurich}). Pages show dates and
+        cut days --- \emph{Added since}, overdue loans --- in that zone;
+        storage, the REST API and MCP agents stay in UTC
+        (chapter~\ref{ch:configuration}).
+  \item \textbf{Skills for the agent.} A new \emph{Skills} tab in
+        Administration, where an admin writes Markdown instructions: a
+        name (lowercase words joined by hyphens), a one-line
+        description, a body of up to 64\,KiB, an active flag; a deleted
+        skill goes to the Trash. The agent receives them as MCP prompts,
+        through the read-only \texttt{get\_skill} tool, and listed in its
+        connection instructions (the first 20). A skill grants no
+        capability (section~\ref{sec:agents-skills}).
+  \item \textbf{Series corrections.} With
+        \texttt{propose\_series\_update} the agent proposes a corrected
+        name, open or closed, the total of a closed series, and the
+        removal of expected tomes that do not exist. A total below an
+        owned position, or below an expected tome the proposal does not
+        remove, is refused with the positions named. The review shows
+        current and proposed values side by side; accepting applies
+        everything in one go (section~\ref{sec:proposals-series-value}).
+  \item \textbf{Volume values.} With \texttt{propose\_volume\_value}
+        the agent proposes a volume's current value in the library's
+        default currency (no conversion, two decimals at most) and,
+        only when the volume has no purchase price, the list price at
+        publication, labelled as a stand-in.
+  \item \textbf{Value coverage.} \texttt{/stats/value} opens with how
+        much of the collection its totals rest on: live volumes, valued,
+        share, oldest and newest estimate, estimates older than a year
+        or undated --- overall, per genre and per series, least covered
+        first (chapter~\ref{ch:usage}). The agent's
+        \texttt{list\_volumes\_to\_value} tool lists the volumes never
+        valued first, then the oldest estimates.
+\end{itemize}
+
+\paragraph{Fixes.}
+\begin{itemize}
+  \item The per-currency totals no longer count volumes of deleted
+        titles.
+  \item The per-series totals count an omnibus once and ignore series
+        assignments that were detached.
+\end{itemize}
+
+\paragraph{After the upgrade.} Check the time zone in
+\emph{Administration \textrightarrow{} System} if your library is not
+in Central Europe. MCP clients see 18 tools --- new:
+\texttt{get\_skill}, \texttt{propose\_series\_update},
+\texttt{propose\_volume\_value}, \texttt{list\_volumes\_to\_value}
+--- and the prompts capability; reconnect the agent to pick them up.
+\texttt{get\_title} now also gives each volume's edition note,
+purchase price and current value with its date, and the default
+currency.
+
 \section{What's new in 1.24.0}\label{sec:whats-new-1.24.0}
 
 Version 1.24.0 closes epic 14, ``the sidebar''

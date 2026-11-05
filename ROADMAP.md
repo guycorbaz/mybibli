@@ -32,26 +32,18 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.24.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.24.0)**
-(2026-11-04) — the sidebar: the top navigation bar gives way to a
-collapsible sidebar on wide screens and a drawer on small ones, a Home
-entry heads the navigation, and the theme toggle really switches the
-whole interface between light and dark. **No migration.** The section
+**Current stable: [`v1.25.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.25.0)**
+(2026-11-05) — the agent's next tasks: dates follow an instance time
+zone, an admin writes *skills* for the agent, and the agent can propose
+a series correction and a volume's value, with a coverage view of the
+estimates on the value page. **Four additive migrations.** The section
 below has the detail; every release before it has its own section
 further down, and this is the file that carries them — the README
 quotes only the current release, and the website tells the same story
 for a different audience.
 
-**Next:** epic 15 — the agent proposes more: a volume's purchase price
-and current value, to estimate what a collection is worth
-([#564](https://github.com/guycorbaz/mybibli/issues/564)); proposals
-that modify a series — open / closed, total, name, removal of an
-expected tome ([#590](https://github.com/guycorbaz/mybibli/issues/590));
-and *skills*, instructions written by an admin that the agent can use
-([#614](https://github.com/guycorbaz/mybibli/issues/614)) — plus a
-small story for an instance time zone, so day boundaries and dates
-follow local time rather than UTC
-([#602](https://github.com/guycorbaz/mybibli/issues/602)). Later
+**Next:** epic 16 — the corrections drawn from the project lead's own
+use of v1.24.0 and v1.25.0, unless a bug comes first. Later
 candidates, awaiting prioritisation: a cover sent without base64
 transcription ([#587](https://github.com/guycorbaz/mybibli/issues/587)),
 more proposable fields
@@ -60,6 +52,65 @@ duplicates ([#591](https://github.com/guycorbaz/mybibli/issues/591)).
 The base-path setting for reverse proxies
 ([#492](https://github.com/guycorbaz/mybibli/issues/492)) comes later.
 Everything else open lives in the issue tracker.
+
+## v1.25.0 — the agent's next tasks *(shipped)*
+
+Shipped 2026-11-05. The closing release of epic 15
+([#602](https://github.com/guycorbaz/mybibli/issues/602)), ([#614](https://github.com/guycorbaz/mybibli/issues/614)), ([#590](https://github.com/guycorbaz/mybibli/issues/590)), ([#564](https://github.com/guycorbaz/mybibli/issues/564)).
+**Four additive migrations** (a `time_zone` setting, the `mcp_skills`
+table, the proposal kinds `series_update` and `volume_value`), no
+configuration change — back up first, pull the image and recreate the
+container (`docker compose up -d`).
+
+- **Instance time zone** ([#602](https://github.com/guycorbaz/mybibli/issues/602)).
+  Admin → System → *Time zone* (an IANA name, default
+  `Europe/Zurich`). Pages show dates and cut days — *Added since*,
+  overdue loans — in that zone; storage, the REST API and MCP agents
+  stay UTC.
+- **Skills for the agent** ([#614](https://github.com/guycorbaz/mybibli/issues/614)).
+  A new Admin → *Skills* tab where an admin writes Markdown
+  instructions (a slug name, a one-line description, a body up to
+  64 KiB, an active flag, the trash). Agents receive them as MCP
+  prompts (`prompts/list`, `prompts/get`), through the read-only
+  `get_skill` tool, and listed in the connection instructions (the
+  first 20). A skill grants no capability.
+- **Series corrections** ([#590](https://github.com/guycorbaz/mybibli/issues/590)).
+  `propose_series_update`: a corrected name, open / closed, the total
+  of a closed series, and the removal of expected tomes that do not
+  exist. A total below an owned position, or below a live expected tome
+  the proposal does not remove, is refused with the positions named.
+  The review shows current and proposed values side by side; accepting
+  applies everything in one transaction.
+- **Volume values** ([#564](https://github.com/guycorbaz/mybibli/issues/564)).
+  `propose_volume_value`: a volume's current value in the library's
+  default currency (no conversion, two decimals at most) and, only when
+  the volume has no purchase price, the list price at publication,
+  labelled as a stand-in. `get_title` now gives each volume's edition
+  note, purchase price and current value with its date, and the default
+  currency.
+- **Value coverage** ([#564](https://github.com/guycorbaz/mybibli/issues/564)).
+  `/stats/value` opens with the coverage of the estimates — live
+  volumes, valued, share, oldest and newest estimate, estimates older
+  than a year or undated — overall, per genre and per series (least
+  covered first). The read tool `list_volumes_to_value` lists the
+  volumes never valued first, then the oldest estimates (filters
+  `series_id`, `genre`).
+- **Fixes.** The per-currency totals no longer count volumes of deleted
+  titles; the per-series totals count an omnibus once and ignore
+  detached series assignments.
+- **MCP.** 18 tools (new: `get_skill`, `propose_series_update`,
+  `propose_volume_value`, `list_volumes_to_value`) and the `prompts`
+  capability. Minor review findings deferred:
+  [#627](https://github.com/guycorbaz/mybibli/issues/627),
+  [#628](https://github.com/guycorbaz/mybibli/issues/628),
+  [#630](https://github.com/guycorbaz/mybibli/issues/630),
+  [#632](https://github.com/guycorbaz/mybibli/issues/632).
+- **Under the hood.** A blank-browser epic smoke test follows a skill
+  served to an agent, a series modification and a volume value from
+  filing to acceptance.
+- **Manual** (EN + FR): *What's new in 1.25.0* in chapter 8; chapters
+  2, 3 and 13 cover the time zone, the Skills tab, the new proposals
+  and the value coverage.
 
 ## v1.24.0 — the sidebar *(shipped)*
 
