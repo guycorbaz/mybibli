@@ -1,6 +1,6 @@
 # Story 15.3: MCP skills — served to the agent
 
-Status: review
+Status: done
 
 GitHub issue: #614 (type:change-request), part 2 of 2. Covers: FR163. Epic 15; ships in v1.25.0.
 
@@ -96,3 +96,18 @@ lists it as a prompt, gets it, reads it with `get_skill`.
 - `docs/auth-threat-model.md`, `CLAUDE.md`
 - `tests/mcp_skills_served.rs` (new), `tests/mcp_skills.rs`, `tests/mcp_interop.rs`, `tests/common/mcp.rs`, `tests/fixtures/mcp_method_inventory.json`
 - `tests/e2e/helpers/mcp.ts`, `tests/e2e/specs/journeys/mcp-skills.spec.ts` (new)
+
+### Review Findings (2026-11-05 — Blind Hunter, Edge Case Hunter, Acceptance Auditor)
+
+No High; one Medium; all fixed in this story.
+
+- [x] [Review][Patch] (Medium) The E2E spec left its `0ss-` skill active when it failed before the deactivation — later runs on the same database would fill the instructions' bounded list [tests/e2e/specs/journeys/mcp-skills.spec.ts] — `finally` now deactivates it if still active; status checks added on `tools/list` and the refused `prompts/get`.
+- [x] [Review][Patch] (Low) The "… and K more" line promised the names of *all* active skills, but `get_skill` lists at most 200 [src/mcp/instructions.rs]
+- [x] [Review][Patch] (Low) Threat model § 5.11 stated a 4 000-character bound on the whole section; it bounds the entry lines [docs/auth-threat-model.md]
+- [x] [Review][Patch] (Low) `ServedSkills.total` could fall below `listed.len()` (two reads, no snapshot) [src/services/mcp_skills.rs] — clamped.
+- [x] [Review][Patch] (Low) A description could contain U+2028 / U+2029 and break the one-line list [src/services/mcp_skills.rs] — refused like control characters (positive shape, Rule #20).
+- [x] [Review][Patch] (Low) `get_skill` on an unknown name turned a failed name-list read into an internal error [src/mcp/tools/get_skill.rs] — degrades to a plain `NotFound`.
+- [x] [Review][Patch] (Low) The schema-pattern test was tautological [src/mcp/tools/get_skill.rs] — now checks the regex against `validate_name` on sample names.
+- [x] [Review][Patch] (Low) `undeclared_capabilities_answer_empty` no longer described its test [tests/mcp_interop.rs] — renamed.
+
+Dismissed (6): `updated_at` time zone (the pool sets `time_zone = '+00:00'`, `src/db.rs`); `initialize` override (identical to rmcp 3.8.0's default, pinned); handshake stall on a saturated pool (same as every DB-backed request, 30 s endpoint timeout); `prompts/get` HTTP 200 in the fixture (the method is now served, the error is JSON-RPC -32602); `InvalidArguments` for a non-slug name (the schema already refuses it); § 5.11 rather than a paragraph in § 5.8–5.10 (content as asked).

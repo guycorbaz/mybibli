@@ -112,7 +112,12 @@ pub fn validate_description(raw: &str) -> Result<String, SkillFieldError> {
     if description.is_empty() {
         return Err(SkillFieldError::DescriptionRequired);
     }
-    if description.chars().any(char::is_control) {
+    // One line: no control character, and no Unicode line or paragraph
+    // separator (U+2028, U+2029 are not `Cc` but break a line too).
+    if description
+        .chars()
+        .any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}'))
+    {
         return Err(SkillFieldError::DescriptionNotOneLine);
     }
     if description.chars().count() > DESCRIPTION_MAX_CHARS {
@@ -177,7 +182,11 @@ pub async fn served_skills(pool: &DbPool) -> Result<ServedSkills, AppError> {
     let total = if listed.len() < MAX_SERVED_SKILLS as usize {
         listed.len() as u64
     } else {
-        McpSkillModel::count_active(pool).await?
+        // Two reads, no snapshot: a skill deactivated in between must not
+        // make `total` smaller than the list.
+        McpSkillModel::count_active(pool)
+            .await?
+            .max(listed.len() as u64)
     };
     Ok(ServedSkills { listed, total })
 }
@@ -266,7 +275,14 @@ mod tests {
             validate_description(&"a".repeat(DESCRIPTION_MAX_CHARS + 1)),
             Err(SkillFieldError::DescriptionTooLong)
         );
-        for bad in ["line one\nline two", "a\rb", "a\tb", "a\u{0}b"] {
+        for bad in [
+            "line one\nline two",
+            "a\rb",
+            "a\tb",
+            "a\u{0}b",
+            "a\u{2028}b",
+            "a\u{2029}b",
+        ] {
             assert_eq!(
                 validate_description(bad),
                 Err(SkillFieldError::DescriptionNotOneLine),

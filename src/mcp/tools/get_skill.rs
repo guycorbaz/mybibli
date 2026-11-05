@@ -117,7 +117,16 @@ impl McpTool for GetSkill {
             }
             match served_skill(&ctx.state.pool, &name).await? {
                 Some(skill) => to_json(Answer::from(skill), TOOL),
-                None => Err(not_found(&name, &served_skills(&ctx.state.pool).await?)),
+                // The name is wrong either way: a failed read of the names
+                // only drops the list from the answer, never turns it into
+                // a server error.
+                None => Err(match served_skills(&ctx.state.pool).await {
+                    Ok(served) => not_found(&name, &served),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "get_skill: active names not listed");
+                        ToolError::NotFound(format!("No active skill is named \"{name}\"."))
+                    }
+                }),
             }
         })
     }
@@ -152,6 +161,18 @@ mod tests {
     fn the_schema_pattern_is_the_15_2_slug() {
         let schema = GetSkill.input_schema();
         assert_eq!(schema["properties"]["name"]["pattern"], NAME_PATTERN);
+        // The schema pattern and the 15-2 validation accept the same names.
+        let pattern = regex::Regex::new(NAME_PATTERN).unwrap();
+        for name in [
+            "covers", "bd-series", "a1-b2-c3", "0ss-1", "Covers", "bd--series", "-bd", "bd-",
+            "bd_series", "bd series", "é", "",
+        ] {
+            assert_eq!(
+                pattern.is_match(name),
+                crate::services::mcp_skills::validate_name(name).is_ok(),
+                "{name:?}"
+            );
+        }
         assert_eq!(schema["properties"]["name"]["maxLength"], 64);
         assert!(GetSkill.description().contains("first 200"));
         assert_eq!(MAX_SERVED_SKILLS, 200);

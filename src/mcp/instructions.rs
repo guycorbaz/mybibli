@@ -94,7 +94,7 @@ pub fn skills_section(skills: &[ActiveSkillSummary], total: u64) -> Option<Strin
     let more = total.max(skills.len() as u64).saturating_sub(listed);
     if more > 0 {
         out.push_str(&format!(
-            "\n- … and {more} more: get_skill answers an unknown name with the names of all \
+            "\n- … and {more} more: get_skill answers an unknown name with the names of the \
              active skills."
         ));
     }
@@ -176,7 +176,7 @@ mod tests {
         assert_eq!(text.matches("\n- s").count(), SKILLS_LISTED_MAX, "{text}");
         assert!(text.contains("- s19: d"), "{text}");
         assert!(!text.contains("- s20: d"), "{text}");
-        assert!(text.ends_with("… and 5 more: get_skill answers an unknown name with the names of all active skills."), "{text}");
+        assert!(text.ends_with("… and 5 more: get_skill answers an unknown name with the names of the active skills."), "{text}");
     }
 
     #[test]

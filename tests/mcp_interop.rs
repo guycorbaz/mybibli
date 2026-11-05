@@ -123,7 +123,7 @@ async fn served_method_inventory_on_2026_07_28(pool: DbPool) {
 /// Story 15-3 declares `prompts` (the library's skills): without any
 /// skill, its list is empty too.
 #[sqlx::test(migrations = "./migrations")]
-async fn undeclared_capabilities_answer_empty(pool: DbPool) {
+async fn undeclared_and_skill_capabilities_answer_empty(pool: DbPool) {
     seed_title(&pool, "Not A Resource").await;
     let key = seed_key(&pool, ApiKeyScope::Propose).await;
     let app = router(&pool);

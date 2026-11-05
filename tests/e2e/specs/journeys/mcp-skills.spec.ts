@@ -108,6 +108,7 @@ test.describe("Story 15-3 — MCP skills served to the agent", () => {
         { jsonrpc: "2.0", id: 4, method: "tools/list" },
         LEGACY,
       );
+      expect(tools.status()).toBe(200);
       const names = (await tools.json()).result.tools.map((t: { name: string }) => t.name).sort();
       expect(names).toEqual(MCP_TOOLS);
       const read = await mcpCallTool(agent, key, "get_skill", { name });
@@ -129,11 +130,21 @@ test.describe("Story 15-3 — MCP skills served to the agent", () => {
         { jsonrpc: "2.0", id: 5, method: "prompts/get", params: { name } },
         LEGACY,
       );
+      expect(refused.status()).toBe(200);
       const refusedBody = await refused.json();
       expect(refusedBody.error.code).toBe(-32602);
       expect(JSON.stringify(refusedBody)).not.toContain("Attach tomes in order");
     } finally {
       await agent.dispose();
+      // A run that failed before the deactivation must not leave an
+      // active `0ss-` skill: it would take a slot of the instructions'
+      // bounded list in every later run on the same database.
+      await openSkillsTab(page);
+      const row = rowOf(page, name);
+      if ((await row.count()) > 0 && (await row.getByText(INACTIVE).count()) === 0) {
+        await row.locator('button[id^="admin-skill-toggle-"]').click();
+        await expect(row.getByText(INACTIVE)).toBeVisible({ timeout: 10000 });
+      }
       await page.goto("/admin?tab=api_keys");
       await revokeApiKey(page, propose.label);
     }
