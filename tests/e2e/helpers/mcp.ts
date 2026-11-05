@@ -26,6 +26,7 @@ export const MCP_TOOLS = [
   "propose_series_create",
   "propose_series_update",
   "propose_title_metadata",
+  "propose_volume_value",
   "search_contributors",
   "search_titles",
 ];

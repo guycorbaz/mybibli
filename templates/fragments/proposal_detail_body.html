@@ -204,6 +204,46 @@
                 {% if let Some((flag, text)) = body.cover_flags[loop.index0] %}
                 <p data-cover-flag="{{ flag }}" class="mt-2 font-medium {% if flag == &"replace" %}text-amber-800 dark:text-amber-300{% else %}text-stone-900 dark:text-stone-100{% endif %}">{{ text }}</p>
                 {% endif %}
+            {% else if line.line.eq("current_value") %}
+                {# Story 15-5 (UX-DR41) — the value as filed vs proposed; the live
+                   volume beside it. The note is agent text, escaped. #}
+                <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("value_volume") }}</dt>
+                    <dd data-value-target class="text-stone-900 dark:text-stone-100">{% if let Some(href) = line.target_href %}<a href="{{ href }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ body.target_texts[loop.index0] }}</a>{% else %}{{ body.target_texts[loop.index0] }}{% endif %}</dd>
+                    {% if let Some(f) = line.volume_facts %}
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("value_condition") }}</dt>
+                    <dd data-value-condition class="text-stone-900 dark:text-stone-100">{% if let Some(c) = f.condition %}{{ c }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}</dd>
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("value_edition_comment") }}</dt>
+                    <dd data-value-edition class="text-stone-900 dark:text-stone-100 whitespace-pre-line">{% if let Some(c) = f.edition_comment %}{{ c }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}</dd>
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("value_purchase_price") }}</dt>
+                    <dd data-value-purchase class="text-stone-900 dark:text-stone-100">{% if let Some(p) = f.purchase_price %}{{ p }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}</dd>
+                    {% endif %}
+                </dl>
+                <table data-compare data-volume-value class="mt-2 w-full table-fixed border-collapse">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="w-1/4 pr-3 pb-1 text-left text-xs font-medium text-stone-500 dark:text-stone-400">{{ l.t("col_field") }}</th>
+                            <th scope="col" class="pr-3 pb-1 text-left text-xs font-medium text-stone-500 dark:text-stone-400">{{ l.t("current") }}</th>
+                            <th scope="col" class="pl-3 pb-1 text-left text-xs font-medium text-stone-500 dark:text-stone-400">{{ l.t("proposed") }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th scope="row" class="pr-3 py-1 text-left align-top font-normal text-stone-500 dark:text-stone-400">{{ l.t("value_current_value") }}</th>
+                            <td data-current class="pr-3 py-1 align-top break-words text-stone-700 dark:text-stone-300">{% if let Some(cur) = line.current %}{{ cur }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}{% if let Some(f) = line.volume_facts %}{% if let Some(d) = f.current_value_date %}<div class="text-xs text-stone-500 dark:text-stone-400">{{ l.t("value_estimated_on") }} {{ d }}</div>{% endif %}{% endif %}</td>
+                            <td data-proposed class="pl-3 py-1 align-top break-words border-l-4 border-indigo-500 dark:border-indigo-400 font-medium text-stone-900 dark:text-stone-100">{{ line.proposed }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                {% if let Some(note) = line.note %}
+                <p class="mt-2 text-stone-500 dark:text-stone-400">{{ l.t("label_note") }}</p>
+                <p data-value-note class="text-stone-900 dark:text-stone-100 whitespace-pre-line">{{ note }}</p>
+                {% endif %}
+            {% else if line.line.eq("list_price") %}
+                {# Story 15-5 — the list price stands in for an unknown purchase price. #}
+                <span class="text-stone-500 dark:text-stone-400">{{ l.t("value_list_price") }} —</span>
+                <span data-list-price class="font-medium text-stone-900 dark:text-stone-100">{{ line.proposed }}</span>
+                <p data-list-price-note class="mt-1 text-xs text-stone-600 dark:text-stone-300">{{ l.t("value_list_price_note") }}</p>
             {% else if line.line.eq("label") %}
                 {# Story 13-9 — a label on a title or a volume; the note is agent text, escaped. #}
                 <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">

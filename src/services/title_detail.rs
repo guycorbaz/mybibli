@@ -20,7 +20,9 @@ use crate::models::genre::GenreModel;
 use crate::models::label::{LabelModel, LabelTarget};
 use crate::models::series::TitleSeriesModel;
 use crate::models::title::TitleModel;
+use crate::models::proposal::ProposalModel;
 use crate::models::volume::VolumeModel;
+use crate::models::volume_value::{VolumeValueModel, VolumeValueState};
 use crate::services::proposal_history::rfc3339_utc;
 
 #[derive(Debug, Serialize)]
@@ -79,6 +81,52 @@ pub struct TitleDetailVolume {
     /// MCP `get_title` only; absent from the `/api/v1` document.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub labels: Option<Vec<LabelRef>>,
+    /// Story 15-5 (D8) — the edition note and amounts. Filled for the MCP
+    /// `get_title` only; absent from the `/api/v1` document.
+    #[serde(flatten)]
+    pub value: Option<AgentVolumeValue>,
+}
+
+/// Story 15-5 — an amount as an agent reads it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AmountDoc {
+    pub amount: f64,
+    pub currency: Option<String>,
+}
+
+/// Story 15-5 — a current value with its date (ISO 8601 UTC).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ValueDoc {
+    pub amount: f64,
+    pub currency: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+/// Story 15-5 — what an agent estimating a volume reads besides its
+/// condition (`condition_name`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AgentVolumeValue {
+    pub edition_comment: Option<String>,
+    pub purchase_price: Option<AmountDoc>,
+    pub current_value: Option<ValueDoc>,
+}
+
+impl AgentVolumeValue {
+    fn of(state: &VolumeValueState, edition_comment: Option<String>) -> Self {
+        let amount = |cents: i64| cents as f64 / 100.0;
+        AgentVolumeValue {
+            edition_comment: edition_comment.filter(|c| !c.trim().is_empty()),
+            purchase_price: state.purchase_price.as_ref().map(|a| AmountDoc {
+                amount: amount(a.cents),
+                currency: a.currency.clone(),
+            }),
+            current_value: state.current_value.as_ref().map(|a| ValueDoc {
+                amount: amount(a.cents),
+                currency: a.currency.clone(),
+                updated_at: state.current_value_updated_at.map(rfc3339_utc),
+            }),
+        }
+    }
 }
 
 /// Story 13-9 — a label as an agent reads it.
@@ -146,6 +194,7 @@ pub async fn build_title_detail(
             condition_name: v.condition_name,
             created_at: v.created_at.map(rfc3339_utc),
             labels: None,
+            value: None,
         })
         .collect();
     let series: Vec<TitleDetailSeries> = series_raw
@@ -222,6 +271,9 @@ pub struct AgentTitleDetail {
     /// Story 13-9 (#581) — the labels the title carries (each volume
     /// lists its own in `volumes[].labels`).
     pub labels: Vec<LabelRef>,
+    /// Story 15-5 (D8) — the currency a value proposal must use (no
+    /// conversion).
+    pub default_currency: String,
 }
 
 /// Whether a stored cover URL denotes an actual cover.
@@ -241,7 +293,11 @@ pub async fn find_agent_title_detail(
     let mut detail = build_title_detail(pool, &title).await?;
     let volume_ids: Vec<u64> = detail.volumes.iter().map(|v| v.id).collect();
     let mut volume_labels = LabelModel::list_for_volumes(pool, &volume_ids).await?;
+    let mut values = VolumeValueModel::for_title(pool, id).await?;
     for v in &mut detail.volumes {
+        v.value = values
+            .remove(&v.id)
+            .map(|(state, comment)| AgentVolumeValue::of(&state, comment));
         v.labels = Some(
             volume_labels
                 .remove(&v.id)
@@ -256,8 +312,17 @@ pub async fn find_agent_title_detail(
         .into_iter()
         .map(LabelRef::from)
         .collect();
+    let default_currency = {
+        let mut conn = pool.acquire().await?;
+        crate::services::volume_value_proposals::parse_default_currency(
+            ProposalModel::setting_value(&mut conn, "default_currency")
+                .await?
+                .as_deref(),
+        )
+    };
     Ok(Some(AgentTitleDetail {
         labels,
+        default_currency,
         has_cover: has_cover(title.cover_image_url.as_deref()),
         manually_edited_fields: title.parsed_manually_edited_fields(),
         detected_tome: if detail.series.is_empty() {

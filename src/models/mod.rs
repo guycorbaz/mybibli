@@ -27,6 +27,7 @@ pub mod user;
 pub mod volume;
 pub mod volume_move;
 pub mod volume_state;
+pub mod volume_value;
 pub mod wishlist;
 
 /// Outcome of inserting a reference-data row (story 8-4). When the unique

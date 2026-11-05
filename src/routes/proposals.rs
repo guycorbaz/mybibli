@@ -97,6 +97,7 @@ pub fn row_extras(
             // Story 13-9 — a label marks a title or a volume.
             ProposalKind::LabelAttach if href.starts_with("/volume/") => "proposals.view_volume",
             ProposalKind::LabelAttach => "proposals.view_title",
+            ProposalKind::VolumeValue => "proposals.view_volume",
         };
         (href.to_string(), rust_i18n::t!(key, locale = loc).to_string())
     });
@@ -574,9 +575,17 @@ pub(crate) async fn load_detail(
     loc: &'static str,
 ) -> Result<ReviewDetail, AppError> {
     let dir = state.cover_staging_dir();
-    proposal_review::review_detail(&state.pool, dir.as_deref(), id, loc)
+    let detail = proposal_review::review_detail(&state.pool, dir.as_deref(), id, loc)
         .await?
-        .ok_or_else(|| ReviewError::NotFound.into_app_error(loc))
+        .ok_or_else(|| ReviewError::NotFound.into_app_error(loc))?;
+    // Story 15-5 — the live volume beside a value proposal.
+    Ok(crate::services::volume_value_review::with_volume_facts(
+        &state.pool,
+        state.time_zone(),
+        detail,
+        loc,
+    )
+    .await?)
 }
 
 /// `GET /proposals/{id}`.

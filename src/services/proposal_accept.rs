@@ -13,6 +13,7 @@ use crate::services::metadata_acceptance::AppliedMetadata;
 use crate::services::proposal_review::{ReviewDetail, ReviewError, TargetLabel, field_label};
 use crate::services::series_acceptance::AppliedSeries;
 use crate::services::series_update_acceptance::AppliedSeriesUpdate;
+use crate::services::volume_value_acceptance::AppliedVolumeValue;
 use crate::utils::{feedback_html, feedback_html_with_link};
 
 /// Whether the page offers "Accept" for a proposal: every pending one
@@ -40,6 +41,9 @@ pub fn modal_sentences(detail: &ReviewDetail, loc: &str) -> Vec<String> {
     }
     let title = detail.target.text(loc);
     let mut out = Vec::new();
+    if kind == ProposalKind::VolumeValue {
+        return volume_value_sentences(detail, loc);
+    }
     if kind == ProposalKind::LabelAttach {
         // Story 13-9.
         for line in detail.lines.iter().filter(|l| l.line == "label") {
@@ -158,6 +162,59 @@ fn series_update_sentences(detail: &ReviewDetail, loc: &str) -> Vec<String> {
     }
     out.push(t!("proposals.accept_modal_note_series_update", locale = loc).to_string());
     out
+}
+
+/// Story 15-5 — the modal body of a `volume_value`: the value, the list
+/// price written as the purchase price, then the note.
+fn volume_value_sentences(detail: &ReviewDetail, loc: &str) -> Vec<String> {
+    use rust_i18n::t;
+    let target = detail.target.text(loc);
+    let mut out = Vec::new();
+    for line in &detail.lines {
+        let key = match line.line {
+            "current_value" => "proposals.accept_modal_current_value",
+            "list_price" => "proposals.accept_modal_list_price",
+            _ => continue,
+        };
+        out.push(
+            t!(
+                key,
+                locale = loc,
+                amount = line.proposed.as_str(),
+                target = target.as_str()
+            )
+            .to_string(),
+        );
+    }
+    out.push(t!("proposals.accept_modal_note_volume_value", locale = loc).to_string());
+    out
+}
+
+/// Story 15-5 — the success message of a `volume_value` acceptance.
+pub fn volume_value_message(id: u64, applied: &AppliedVolumeValue, loc: &str) -> String {
+    use crate::services::volume_value_review::amount_text;
+    use rust_i18n::t;
+    let mut parts = vec![
+        t!("proposals.accepted_feedback", locale = loc, id = id).to_string(),
+        t!(
+            "proposals.applied_current_value",
+            locale = loc,
+            target = applied.volume_name.as_str(),
+            amount = amount_text(&applied.value, loc).as_str()
+        )
+        .to_string(),
+    ];
+    if let Some(p) = &applied.purchase_price {
+        parts.push(
+            t!(
+                "proposals.applied_list_price",
+                locale = loc,
+                amount = amount_text(p, loc).as_str()
+            )
+            .to_string(),
+        );
+    }
+    parts.join(" ")
 }
 
 /// Story 15-4 — the success message of a `series_update` acceptance.
@@ -441,6 +498,13 @@ pub fn applied_entry(id: u64, applied: &Applied, loc: &str) -> String {
             &a.href(),
             &t!("proposals.open_series", locale = loc),
         ),
+        Applied::VolumeValue(a) => feedback_html_with_link(
+            "success",
+            &volume_value_message(id, a, loc),
+            "",
+            &a.href(),
+            &t!("proposals.open_volume", locale = loc),
+        ),
     }
 }
 
@@ -477,6 +541,9 @@ pub fn stale_why_of(kind: ProposalKind, cause: &StaleCause, loc: &str) -> String
     match cause {
         StaleCause::Targets(_) if kind == ProposalKind::SeriesUpdate => {
             t!("proposals.stale_why_series_changed", locale = loc)
+        }
+        StaleCause::Targets(_) if kind == ProposalKind::VolumeValue => {
+            t!("proposals.stale_why_volume_gone", locale = loc)
         }
         StaleCause::Targets(_) if kind == ProposalKind::LabelAttach => {
             t!("proposals.stale_why_label_target_gone", locale = loc)
@@ -565,6 +632,10 @@ pub fn stale_why_of(kind: ProposalKind, cause: &StaleCause, loc: &str) -> String
                 position = position,
                 tome = tome_title.as_str()
             ),
+            AcceptConflict::ValueChanged => t!("proposals.stale_why_value_changed", locale = loc),
+            AcceptConflict::PurchasePriceSet => {
+                t!("proposals.stale_why_purchase_price_set", locale = loc)
+            }
             AcceptConflict::BelowPosition {
                 total,
                 owned,

@@ -18,7 +18,9 @@
 //! - `cover`: [`crate::services::cover_acceptance`] (11-18) — its staged
 //!   file is promoted **after** the commit (no file I/O inside a
 //!   decision transaction, D-11-9-12);
-//! - `label_attach`: [`crate::services::label_acceptance`] (13-9).
+//! - `label_attach`: [`crate::services::label_acceptance`] (13-9);
+//! - `series_update`: [`crate::services::series_update_acceptance`] (15-4);
+//! - `volume_value`: [`crate::services::volume_value_acceptance`] (15-5).
 //!
 //! [`accept`] dispatches on the proposal's kind.
 
@@ -41,6 +43,7 @@ use crate::services::proposals::{
 };
 use crate::services::series_acceptance::{self, AppliedSeries};
 use crate::services::series_update_acceptance::{self, AppliedSeriesUpdate};
+use crate::services::volume_value_acceptance::{self, AppliedVolumeValue};
 
 /// Why the catalog no longer admits a proposal (the proposal goes
 /// stale). Names come from the catalog, for the librarian's message.
@@ -88,6 +91,11 @@ pub enum AcceptConflict {
         owned: Vec<i32>,
         expected: Vec<i32>,
     },
+    /// Story 15-5 — the volume's current value changed since filing.
+    ValueChanged,
+    /// Story 15-5 — a purchase price was set since a list price was
+    /// proposed in its place.
+    PurchasePriceSet,
 }
 
 /// Why an accept went stale.
@@ -337,6 +345,7 @@ pub enum Applied {
     Cover(AppliedCover),
     Label(AppliedLabel),
     SeriesUpdate(AppliedSeriesUpdate),
+    VolumeValue(AppliedVolumeValue),
 }
 
 fn wrap<A>(outcome: AcceptOutcome<A>, f: impl FnOnce(A) -> Applied) -> AcceptOutcome<Applied> {
@@ -391,6 +400,10 @@ pub async fn accept(
         ProposalKind::SeriesUpdate => wrap(
             series_update_acceptance::accept(pool, id, user_id, version).await?,
             Applied::SeriesUpdate,
+        ),
+        ProposalKind::VolumeValue => wrap(
+            volume_value_acceptance::accept(pool, id, user_id, version).await?,
+            Applied::VolumeValue,
         ),
     };
     Ok((kind, outcome))
