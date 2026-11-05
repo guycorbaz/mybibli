@@ -1,6 +1,6 @@
 # Story 15.6: Value coverage
 
-Status: review
+Status: done
 
 GitHub issue: #564 part 2 (type:change-request). Covers: FR166. Epic 15; ships in v1.25.0.
 
@@ -76,3 +76,9 @@ No High. Fixed (Medium):
 Fixed (Low): never-valued volumes ignore a leftover timestamp in the order; the explanation shows when volumes exist but none is valued; `oldest.is_some()` asserted; the key is revoked in `finally`.
 
 Deferred (Low) → issue (see PR): rounding of small shares, purchase-only totals, SQL-level 365-day test, random V-code band, genre-less titles.
+
+### Review pass 2 (2026-11-05)
+
+No Medium+. Two Low added to #632 (test for the detached-assignment filter; reuse `scanSettledTitle`).
+
+Final gates: clippy and `sqlx prepare --check` clean; cargo test 2565 passed, 0 failed; Playwright 451 passed, 2 skipped (CI shape, 2 workers).
