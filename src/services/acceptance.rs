@@ -96,6 +96,9 @@ pub enum AcceptConflict {
     /// Story 15-5 — a purchase price was set since a list price was
     /// proposed in its place.
     PurchasePriceSet,
+    /// Story 15-5 (review round 1) — the library's default currency is no
+    /// longer the one the amounts were proposed in (no conversion).
+    CurrencyChanged { currency: String },
 }
 
 /// Why an accept went stale.

@@ -323,10 +323,13 @@ async fn acceptance_goes_stale_when_an_amount_changed(pool: DbPool) {
         .await
         .unwrap();
     soft_delete(&pool, "volumes", c).await;
+    // The review warns that the value changed since filing.
+    let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{on_a}")).await;
+    assert!(text(page).contains("data-value-changed"));
     for (id, needle_en, needle_fr) in [
         (on_a, "current value changed", "valeur actuelle du volume a changé"),
         (on_b, "purchase price was set", "prix d'achat a été saisi"),
-        (on_c, "volume was deleted", "volume a été supprimé"),
+        (on_c, "volume or its title was deleted", "volume ou son titre a été supprimé"),
     ] {
         let (status, body) = accept(&f, &pool, id).await;
         assert_eq!(status, StatusCode::OK, "{body}");
@@ -335,6 +338,19 @@ async fn acceptance_goes_stale_when_an_amount_changed(pool: DbPool) {
     }
     assert_eq!(amounts(&pool, a).await.0.as_deref(), Some("7.00"));
     assert_eq!(amounts(&pool, b).await.0, None);
+
+    // Review round 1: the library's currency changed since filing.
+    let (_, d) = volume(&pool, "Devise", "V0516").await;
+    let on_d = file(&f, json!({"volume_id": d, "current_value": value(json!(10)), "sources": [SRC]})).await;
+    sqlx::query("UPDATE settings SET setting_value = 'EUR' WHERE setting_key = 'default_currency'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = accept(&f, &pool, on_d).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("EUR"), "{body}");
+    assert_eq!(status_of(&pool, on_d).await, "stale");
+    assert_eq!(amounts(&pool, d).await.0, None);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -364,7 +380,7 @@ async fn the_list_price_line_is_removable_and_the_value_line_is_not(pool: DbPool
         format!("version={v}&amount=21"),
     )
     .await;
-    assert!(status.is_client_error(), "{status}");
+    assert_eq!(status, StatusCode::CONFLICT);
     let (status, body) = post(
         &f,
         format!("/proposals/{id}/items/{list_item}/remove"),
@@ -372,11 +388,79 @@ async fn the_list_price_line_is_removable_and_the_value_line_is_not(pool: DbPool
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(items(&pool, id).await.len(), 1);
+    let left = items(&pool, id).await;
+    assert_eq!(left.len(), 1);
+    // Review round 1: the fingerprint no longer names the list price.
+    assert_eq!(left[0].1["fingerprint"], "2000CHF");
     let (status, _) = accept(&f, &pool, id).await;
     assert_eq!(status, StatusCode::OK);
     let (cv, _, pp, _, dated) = amounts(&pool, vol).await;
     assert_eq!((cv.as_deref(), pp, dated), (Some("20.00"), None, true));
+}
+
+// Review round 1: a rejection after the list price was removed blocks the
+// value alone; removing the list price of an unchanged value is refused.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_rejection_blocks_what_the_librarian_rejected(pool: DbPool) {
+    let f = fx(&pool).await;
+    let (_, vol) = volume(&pool, "Rejet", "V0515").await;
+    let id = file(
+        &f,
+        json!({"volume_id": vol, "current_value": value(json!(20)),
+               "list_price": value(json!(8)), "sources": [SRC]}),
+    )
+    .await;
+    let list_item = items(&pool, id).await[1].0;
+    let v = version_of(&pool, id).await;
+    let (status, _) = post(
+        &f,
+        format!("/proposals/{id}/items/{list_item}/remove"),
+        format!("version={v}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    reject(&f, &pool, id).await;
+    let key: String =
+        sqlx::query_scalar("SELECT CAST(equivalence_key AS CHAR) FROM proposals WHERE id = ?")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(key, format!("volume_value:volumes/{vol}:2000CHF"));
+    let msg = f
+        .agent
+        .err(
+            "propose_volume_value",
+            json!({"volume_id": vol, "current_value": value(json!(20)), "sources": [SRC]}),
+        )
+        .await;
+    assert!(msg.contains("was rejected on"), "{msg}");
+
+    // The same value as the current one, with a list price: the list price
+    // cannot be removed (nothing would remain to apply).
+    sqlx::query(
+        "UPDATE volumes SET current_value = 30.00, current_value_currency = 'CHF' WHERE id = ?",
+    )
+    .bind(vol)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let id = file(
+        &f,
+        json!({"volume_id": vol, "current_value": value(json!(30)),
+               "list_price": value(json!(8)), "sources": [SRC]}),
+    )
+    .await;
+    let list_item = items(&pool, id).await[1].0;
+    let v = version_of(&pool, id).await;
+    let (status, _) = post(
+        &f,
+        format!("/proposals/{id}/items/{list_item}/remove"),
+        format!("version={v}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(items(&pool, id).await.len(), 2);
 }
 
 // ─── Lock scope (epic 12 retro A1) ──────────────────────────────────

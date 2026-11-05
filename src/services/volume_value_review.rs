@@ -25,9 +25,14 @@ pub struct VolumeFacts {
     pub edition_comment: Option<String>,
     /// The live purchase price ("24.90 CHF").
     pub purchase_price: Option<String>,
-    /// The live current value and its date, in the instance zone.
+    /// The live current value and its date (instance zone) — shown only
+    /// when they are no longer the ones filed (review round 1: the page
+    /// never pairs the filed value with a live date).
     pub current_value: Option<String>,
     pub current_value_date: Option<String>,
+    /// The live value differs from the one filed: accepting will only
+    /// mark the proposal outdated.
+    pub value_changed: bool,
 }
 
 /// An amount as the page shows it (pure): two decimals, a comma in
@@ -50,6 +55,9 @@ pub fn value_view(volume_id: u64, values: &Value, loc: &str) -> Option<LineView>
         on_volume: true,
         proposed: amount_text(&line.amount, loc),
         current: line.current.as_ref().map(|a| amount_text(a, loc)),
+        // The filed date (RFC 3339 UTC); `with_volume_facts` shows it in
+        // the instance zone.
+        current_date: line.current_updated_at.clone(),
         note: line.note.filter(|n| !n.trim().is_empty()),
         ..LineView::default()
     })
@@ -90,7 +98,15 @@ pub async fn with_volume_facts(
     let Some((state, condition, edition_comment)) = facts else {
         return Ok(detail);
     };
+    let filed_value = detail
+        .lines
+        .iter()
+        .find(|l| l.line == "current_value")
+        .map(|l| l.current.clone())
+        .unwrap_or_default();
+    let live_value = state.current_value.as_ref().map(|a| amount_text(a, loc));
     let facts = VolumeFacts {
+        value_changed: live_value != filed_value,
         condition,
         edition_comment: edition_comment.filter(|c| !c.trim().is_empty()),
         purchase_price: state.purchase_price.as_ref().map(|a| amount_text(a, loc)),
@@ -100,6 +116,11 @@ pub async fn with_volume_facts(
             .map(|at| format_local_date(at, tz)),
     };
     for line in detail.lines.iter_mut().filter(|l| l.line == "current_value") {
+        line.current_date = line
+            .current_date
+            .as_deref()
+            .and_then(|d| chrono::NaiveDateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%SZ").ok())
+            .map(|at| format_local_date(at, tz));
         line.volume_facts = Some(facts.clone());
     }
     Ok(detail)

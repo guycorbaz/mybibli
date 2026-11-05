@@ -992,7 +992,9 @@ impl ProposalService {
             let Some(kind) = ProposalModel::find(conn, id).await?.map(|p| p.kind) else {
                 return Err(ProposalError::NotFound { id });
             };
-            let lines = if kind == ProposalKind::Metadata {
+            // Story 15-5 (review round 1): a value proposal too — its
+            // removable list price leaves the fingerprint.
+            let lines = if matches!(kind, ProposalKind::Metadata | ProposalKind::VolumeValue) {
                 ProposalModel::subject_lines(conn, &[id]).await?
             } else {
                 Vec::new()

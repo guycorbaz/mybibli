@@ -958,8 +958,26 @@ async fn remove_line_in(
     if kind == ProposalKind::SeriesUpdate {
         series_update_edit::check_removal_in(conn, &rows, item_id).await?;
     }
+    // Story 15-5 — without its list price, the value line's fingerprint
+    // drops it; an unchanged value alone is refused.
+    let value_line = if kind == ProposalKind::VolumeValue {
+        let row = rows
+            .iter()
+            .find(|r| r.id != item_id)
+            .ok_or(EditError::NotRemovable(Keep::LastLine))?;
+        let values: Value = serde_json::from_str(&row.proposed_values_json)
+            .map_err(|e| EditError::Invalid(e.to_string()))?;
+        let new = crate::services::volume_value_proposals::value_line_without_list_price(&values)
+            .ok_or(EditError::NotRemovable(Keep::LastLine))?;
+        Some((row.id, new))
+    } else {
+        None
+    };
     if ProposalModel::remove_item_in(conn, id, item_id, user_id).await? != 1 {
         return Err(EditError::LineNotFound);
+    }
+    if let Some((value_item, values)) = value_line {
+        ProposalModel::set_item_values_in(conn, value_item, &values).await?;
     }
     bump(conn, id, version).await
 }

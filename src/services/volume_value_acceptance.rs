@@ -14,7 +14,10 @@
 //! 3. per field (D7): the live current value differs from the one filed →
 //!    stale ([`AcceptConflict::ValueChanged`]); a list-price line while a
 //!    purchase price was set meanwhile → stale
-//!    ([`AcceptConflict::PurchasePriceSet`]);
+//!    ([`AcceptConflict::PurchasePriceSet`]); the default currency changed
+//!    since filing → stale ([`AcceptConflict::CurrencyChanged`], D3 as
+//!    amended in review: amounts are only ever written in the library's
+//!    currency);
 //! 4. the decision is recorded and the amounts written
 //!    ([`VolumeValueModel::apply_in`]: `current_value_updated_at = NOW()`,
 //!    `version` bumped).
@@ -24,7 +27,8 @@
 //! records old and new amounts, like the hand edit (best effort).
 //!
 //! Lock scope (epic 12 retro A1): every lock is taken by primary key — the
-//! proposal, its items, one volume — never a status range, so an
+//! proposal, its items, one volume (its title is checked with a plain
+//! read) — never a status range, so an
 //! acceptance on one volume never blocks a decision on another.
 
 use serde_json::{Value, json};
@@ -41,7 +45,7 @@ use crate::services::acceptance::{
 };
 use crate::services::proposals::{Decision, ProposalService, StaleReason, StaleTarget, Transition};
 use crate::services::volume_value_proposals::{
-    ValueLine, parse_list_price_line, parse_value_line, same_value,
+    ValueLine, parse_default_currency, parse_list_price_line, parse_value_line, same_value,
 };
 
 /// A stored value proposal, parsed back.
@@ -215,6 +219,15 @@ pub async fn accept_in(
     }
     if stored.list_price.is_some() && live.purchase_price.is_some() {
         return mark_stale_in(conn, id, AcceptConflict::PurchasePriceSet).await;
+    }
+    let default = parse_default_currency(
+        ProposalModel::setting_value(conn, "default_currency")
+            .await?
+            .as_deref(),
+    );
+    if stored.value.amount.currency.as_deref() != Some(default.as_str()) {
+        return mark_stale_in(conn, id, AcceptConflict::CurrencyChanged { currency: default })
+            .await;
     }
     let volume_name = ProposalModel::live_volume_briefs_in(conn, &[live.id])
         .await?

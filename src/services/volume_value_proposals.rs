@@ -194,7 +194,7 @@ impl fmt::Display for VolumeValueError {
             NoChange { volume_id } => write!(
                 f,
                 "Volume {volume_id} already has this current value: there is nothing to \
-                 propose."
+                 propose. Nothing was filed."
             ),
             PendingDuplicate { proposal_id } => write!(
                 f,
@@ -377,6 +377,24 @@ pub fn parse_list_price_line(v: &Value) -> Option<Amount> {
         cents: v.get("amount_cents")?.as_i64()?,
         currency: Some(v.get("currency")?.as_str()?.to_string()),
     })
+}
+
+/// Story 15-5 (review round 1) — the current-value line once the
+/// list-price line is removed (pure): its fingerprint drops the list
+/// price, so a rejection then blocks the amounts the librarian rejected
+/// (the key is recomputed from the live lines at rejection). `None` when
+/// the line would then change nothing — the proposed value is the one
+/// filed as current: removing the list price is refused (reject
+/// instead), so an unchanged estimate is never re-dated.
+pub fn value_line_without_list_price(values: &Value) -> Option<Value> {
+    let line = parse_value_line(values)?;
+    if same_value(Some(&line.amount), line.current.as_ref()) {
+        return None;
+    }
+    let currency = line.amount.currency.as_deref().unwrap_or_default();
+    let mut out = values.clone();
+    out["fingerprint"] = json!(value_fingerprint(line.amount.cents, currency, None));
+    Some(out)
 }
 
 /// Whether the volume's live value is the one filed (pure): same cents,
@@ -592,6 +610,21 @@ mod tests {
         assert_eq!(list.cents, 2490);
         assert_eq!(parse_value_line(&json!({"line": "list_price"})), None);
         assert_eq!(parse_list_price_line(&json!({"line": "list_price"})), None);
+    }
+
+    #[test]
+    fn removing_the_list_price_drops_it_from_the_fingerprint() {
+        let v = value_line(&state(None), 1850, "CHF", Some(2490), None);
+        let out = value_line_without_list_price(&v).unwrap();
+        assert_eq!(out["fingerprint"], json!("1850CHF"));
+        assert_eq!(out["amount_cents"], json!(1850));
+        // The same value as the current one: nothing would remain.
+        let held = Amount {
+            cents: 1850,
+            currency: Some("CHF".into()),
+        };
+        let same = value_line(&state(Some(held)), 1850, "CHF", Some(2490), None);
+        assert_eq!(value_line_without_list_price(&same), None);
     }
 
     #[test]

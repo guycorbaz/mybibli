@@ -43,8 +43,10 @@ pub struct VolumeValueModel;
 
 impl VolumeValueModel {
     /// The volume's amounts; `None` when the volume or its title is
-    /// deleted. `for_update` locks the volume row (acceptance; lock order
-    /// proposal → items → volume).
+    /// deleted. `for_update` locks the volume row **alone**, by primary
+    /// key (acceptance; lock order proposal → items → volume — review
+    /// round 1: a locking read joined to `titles` also locked the title
+    /// row); the title's liveness is then a plain read.
     pub async fn find_in(
         conn: &mut MySqlConnection,
         id: u64,
@@ -57,13 +59,21 @@ impl VolumeValueModel {
                     CAST(ROUND(v.current_value * 100) AS SIGNED) AS value_cents, \
                     CAST(v.current_value_currency AS CHAR) AS value_currency, \
                     CAST(v.current_value_updated_at AS DATETIME) AS value_updated_at \
-             FROM volumes v JOIN titles t ON t.id = v.title_id AND t.deleted_at IS NULL \
-             WHERE v.id = ? AND v.deleted_at IS NULL{}",
+             FROM volumes v WHERE v.id = ? AND v.deleted_at IS NULL{}",
             if for_update { " FOR UPDATE" } else { "" }
         );
         let Some(r) = sqlx::query(&sql).bind(id).fetch_optional(&mut *conn).await? else {
             return Ok(None);
         };
+        let title_id: u64 = r.try_get("title_id")?;
+        let title_live: Option<i32> =
+            sqlx::query_scalar("SELECT 1 FROM titles WHERE id = ? AND deleted_at IS NULL")
+                .bind(title_id)
+                .fetch_optional(&mut *conn)
+                .await?;
+        if title_live.is_none() {
+            return Ok(None);
+        }
         Ok(Some(VolumeValueState {
             id: r.try_get("id")?,
             title_id: r.try_get("title_id")?,

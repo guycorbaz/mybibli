@@ -69,6 +69,7 @@ fn parse_args(args: Value, api_key_id: u64) -> Result<VolumeValueRequest, ToolEr
 fn amount_schema(what: &str) -> Value {
     json!({
         "type": "object",
+        "description": format!("{what}: an amount and its currency."),
         "properties": {
             "amount": {
                 "type": "number",

@@ -636,6 +636,11 @@ pub fn stale_why_of(kind: ProposalKind, cause: &StaleCause, loc: &str) -> String
             AcceptConflict::PurchasePriceSet => {
                 t!("proposals.stale_why_purchase_price_set", locale = loc)
             }
+            AcceptConflict::CurrencyChanged { currency } => t!(
+                "proposals.stale_why_currency_changed",
+                locale = loc,
+                currency = currency.as_str()
+            ),
             AcceptConflict::BelowPosition {
                 total,
                 owned,

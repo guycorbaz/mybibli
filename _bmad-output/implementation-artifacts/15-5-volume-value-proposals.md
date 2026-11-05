@@ -78,3 +78,15 @@ so that the estimate covers the collection without typing each value.
 - locales/{en,fr,de,it}.yml
 - tests/proposal_volume_value.rs (new), tests/common/mcp.rs, tests/e2e/helpers/mcp.ts, tests/e2e/specs/journeys/volume-value-proposal.spec.ts (new)
 - docs/route-role-matrix.md, CLAUDE.md
+
+### Review Findings (2026-11-05 — Blind Hunter, Edge Case Hunter, Acceptance Auditor)
+
+No High. Fixed (Medium):
+- [x] Acceptance locked the title row (`FOR UPDATE` on a join) — `VolumeValueModel::find_in` now locks the volume alone and checks the title with a plain read.
+- [x] The review paired the filed value with the live date — the filed date is shown under the filed value; a changed live value is announced ("accepting will only mark it outdated").
+- [x] Removing the list-price line left it in the equivalence key — the value line's fingerprint drops it, and a rejection recomputes the key from the live lines (as metadata); removing the list price of an unchanged value is refused (no re-dated estimate).
+- [x] A default currency changed since filing was not re-checked — stale `CurrencyChanged` (D3 amended: amounts are only written in the library's currency).
+
+Fixed (Low): "Nothing was filed." on `NoChange`; stale message "the volume or its title was deleted"; exact status in the not-editable test; tests for each fix.
+
+Deferred (Low) → issue #630: concurrent filings by two keys, decimal comma in de/it, double read in the review, extra test gaps, E2E V-code band, audit `old.purchase_currency`, amounts on the volume page.

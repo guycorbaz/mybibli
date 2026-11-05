@@ -230,11 +230,14 @@
                     <tbody>
                         <tr>
                             <th scope="row" class="pr-3 py-1 text-left align-top font-normal text-stone-500 dark:text-stone-400">{{ l.t("value_current_value") }}</th>
-                            <td data-current class="pr-3 py-1 align-top break-words text-stone-700 dark:text-stone-300">{% if let Some(cur) = line.current %}{{ cur }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}{% if let Some(f) = line.volume_facts %}{% if let Some(d) = f.current_value_date %}<div class="text-xs text-stone-500 dark:text-stone-400">{{ l.t("value_estimated_on") }} {{ d }}</div>{% endif %}{% endif %}</td>
+                            <td data-current class="pr-3 py-1 align-top break-words text-stone-700 dark:text-stone-300">{% if let Some(cur) = line.current %}{{ cur }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}{% if let Some(d) = line.current_date %}<div class="text-xs text-stone-500 dark:text-stone-400">{{ l.t("value_estimated_on") }} {{ d }}</div>{% endif %}</td>
                             <td data-proposed class="pl-3 py-1 align-top break-words border-l-4 border-indigo-500 dark:border-indigo-400 font-medium text-stone-900 dark:text-stone-100">{{ line.proposed }}</td>
                         </tr>
                     </tbody>
                 </table>
+                {% if let Some(f) = line.volume_facts %}{% if f.value_changed && body.can_reject %}
+                <p data-value-changed class="mt-2 font-medium text-amber-800 dark:text-amber-300">{{ l.t("value_changed_since") }} {% if let Some(v) = f.current_value %}{{ v }}{% else %}{{ l.t("empty_value") }}{% endif %}{% if let Some(d) = f.current_value_date %} ({{ l.t("value_estimated_on") }} {{ d }}){% endif %}</p>
+                {% endif %}{% endif %}
                 {% if let Some(note) = line.note %}
                 <p class="mt-2 text-stone-500 dark:text-stone-400">{{ l.t("label_note") }}</p>
                 <p data-value-note class="text-stone-900 dark:text-stone-100 whitespace-pre-line">{{ note }}</p>
