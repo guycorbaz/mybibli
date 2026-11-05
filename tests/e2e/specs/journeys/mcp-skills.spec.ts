@@ -50,12 +50,14 @@ test.describe("Story 15-3 — MCP skills served to the agent", () => {
     await editor.locator("#admin-skills-description").fill(description);
     await editor.locator("#admin-skills-body").fill(body);
     await editor.locator("#admin-skills-submit").click();
-    await expect(rowOf(page, name)).toBeVisible({ timeout: 10000 });
 
-    const propose = await createApiKey(page, "propose", "mcp-skills");
-    expect(baseURL, "baseURL must be configured").toBeTruthy();
-    const agent = await playwrightRequest.newContext({ baseURL: baseURL! });
+    let propose: Awaited<ReturnType<typeof createApiKey>> | undefined;
+    let agent: Awaited<ReturnType<typeof playwrightRequest.newContext>> | undefined;
     try {
+      await expect(rowOf(page, name)).toBeVisible({ timeout: 10000 });
+      propose = await createApiKey(page, "propose", "mcp-skills");
+      expect(baseURL, "baseURL must be configured").toBeTruthy();
+      agent = await playwrightRequest.newContext({ baseURL: baseURL! });
       const key = propose.plaintext;
 
       // initialize: the prompts capability and the "Library skills" section.
@@ -135,18 +137,34 @@ test.describe("Story 15-3 — MCP skills served to the agent", () => {
       expect(refusedBody.error.code).toBe(-32602);
       expect(JSON.stringify(refusedBody)).not.toContain("Attach tomes in order");
     } finally {
-      await agent.dispose();
-      // A run that failed before the deactivation must not leave an
-      // active `0ss-` skill: it would take a slot of the instructions'
-      // bounded list in every later run on the same database.
-      await openSkillsTab(page);
-      const row = rowOf(page, name);
-      if ((await row.count()) > 0 && (await row.getByText(INACTIVE).count()) === 0) {
-        await row.locator('button[id^="admin-skill-toggle-"]').click();
-        await expect(row.getByText(INACTIVE)).toBeVisible({ timeout: 10000 });
+      // Best-effort cleanup: each step is isolated so a failing step never
+      // masks the test's own failure nor skips the next one. A run that
+      // failed before the deactivation must not leave an active `0ss-`
+      // skill: it would take a slot of the instructions' bounded list in
+      // every later run on the same database.
+      const cleanup = async (step: () => Promise<unknown>) => {
+        try {
+          await step();
+        } catch (e) {
+          console.warn("mcp-skills cleanup step failed:", e);
+        }
+      };
+      await cleanup(async () => agent?.dispose());
+      if (propose) {
+        const label = propose.label;
+        await cleanup(async () => {
+          await page.goto("/admin?tab=api_keys");
+          await revokeApiKey(page, label);
+        });
       }
-      await page.goto("/admin?tab=api_keys");
-      await revokeApiKey(page, propose.label);
+      await cleanup(async () => {
+        await openSkillsTab(page);
+        const row = rowOf(page, name);
+        if ((await row.count()) > 0 && (await row.getByText(INACTIVE).count()) === 0) {
+          await row.locator('button[id^="admin-skill-toggle-"]').click();
+          await expect(row.getByText(INACTIVE)).toBeVisible({ timeout: 10000 });
+        }
+      });
     }
   });
 });

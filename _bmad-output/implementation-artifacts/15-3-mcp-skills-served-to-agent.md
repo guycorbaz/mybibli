@@ -111,3 +111,7 @@ No High; one Medium; all fixed in this story.
 - [x] [Review][Patch] (Low) `undeclared_capabilities_answer_empty` no longer described its test [tests/mcp_interop.rs] — renamed.
 
 Dismissed (6): `updated_at` time zone (the pool sets `time_zone = '+00:00'`, `src/db.rs`); `initialize` override (identical to rmcp 3.8.0's default, pinned); handshake stall on a saturated pool (same as every DB-backed request, 30 s endpoint timeout); `prompts/get` HTTP 200 in the fixture (the method is now served, the error is JSON-RPC -32602); `InvalidArguments` for a non-slug name (the schema already refuses it); § 5.11 rather than a paragraph in § 5.8–5.10 (content as asked).
+
+### Review pass 2 (2026-11-05, after the fixes)
+
+No Medium+. One hardening applied: the E2E `finally` isolates each cleanup step (agent dispose, key revocation, skill deactivation) so a failing step neither masks the test's failure nor skips the next one; the key is created inside `try` so a failure before it still deactivates the skill.
