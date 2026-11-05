@@ -57,6 +57,8 @@ use crate::services::metadata_proposals::{
 };
 use crate::services::proposal_review::{LineView, field_label, status_label};
 use crate::services::series_acceptance::{self, StoredSeries};
+use crate::services::series_update_edit;
+use crate::services::series_update_proposals::SeriesUpdateError;
 use crate::services::series_proposals::{
     LineRef, MAX_OMNIBUS_SPAN, MAX_POSITION, MAX_SERIES_NAME_CHARS, SeriesProposalError,
     ValidLines, ValidTitle, ValidTome, check_against_series, create_series_line, title_isbns_in,
@@ -90,6 +92,8 @@ pub enum EditError {
     NotRemovable(Keep),
     /// A series rule of filing refuses the edited values.
     Series(SeriesProposalError),
+    /// Story 15-4 — a `series_update` rule.
+    SeriesUpdate(SeriesUpdateError),
     /// A metadata rule of filing refuses the edited value; `field` is a
     /// proposable field name.
     Field {
@@ -123,6 +127,15 @@ impl From<sqlx::Error> for EditError {
 impl From<SeriesProposalError> for EditError {
     fn from(e: SeriesProposalError) -> Self {
         EditError::Series(e)
+    }
+}
+
+impl From<SeriesUpdateError> for EditError {
+    fn from(e: SeriesUpdateError) -> Self {
+        match e {
+            SeriesUpdateError::Series(e) => EditError::Series(e),
+            other => EditError::SeriesUpdate(other),
+        }
     }
 }
 
@@ -178,6 +191,7 @@ impl EditError {
                 t!("proposals.edit_error_keep_last", locale = loc).to_string()
             }
             EditError::Series(e) => series_hint(e, loc),
+            EditError::SeriesUpdate(e) => series_update_edit::update_hint(e, loc),
             EditError::Field { field, problem } => t!(
                 "proposals.edit_field_hint",
                 locale = loc,
@@ -207,6 +221,7 @@ impl EditError {
             EditError::Database(inner) => inner,
             EditError::NotFound | EditError::LineNotFound => AppError::NotFound(message),
             EditError::Series(_)
+            | EditError::SeriesUpdate(_)
             | EditError::Field { .. }
             | EditError::SameAsCurrent { .. }
             | EditError::Invalid(_) => AppError::BadRequest(message),
@@ -221,7 +236,7 @@ impl EditError {
 }
 
 /// The field hint of a series rule (terse).
-fn series_hint(e: &SeriesProposalError, loc: &str) -> String {
+pub(crate) fn series_hint(e: &SeriesProposalError, loc: &str) -> String {
     use SeriesProposalError as E;
     use rust_i18n::t;
     match e {
@@ -364,7 +379,7 @@ pub fn editable(kind: ProposalKind, line: &LineView) -> bool {
     kind != ProposalKind::Cover
         && matches!(
             line.line,
-            "series_new" | "title" | "tome" | "field" | "contributors"
+            "series_new" | "series_update" | "title" | "tome" | "field" | "contributors"
         )
 }
 
@@ -373,7 +388,7 @@ pub fn editable(kind: ProposalKind, line: &LineView) -> bool {
 /// and has no reason to give).
 pub fn keep_of(kind: ProposalKind, line: &LineView, live_lines: usize) -> Option<Keep> {
     match line.line {
-        "series_new" | "series_target" => Some(Keep::SeriesLine),
+        "series_new" | "series_target" | "series_update" => Some(Keep::SeriesLine),
         "cover" => Some(Keep::Cover),
         _ if kind == ProposalKind::Cover => Some(Keep::Cover),
         _ if kind == ProposalKind::LabelAttach => Some(Keep::LastLine),
@@ -387,14 +402,16 @@ pub fn keep_of(kind: ProposalKind, line: &LineView, live_lines: usize) -> Option
 /// Whether a display line of a `kind` proposal with `live_lines` lines
 /// can be removed.
 pub fn removable(kind: ProposalKind, line: &LineView, live_lines: usize) -> bool {
-    matches!(line.line, "title" | "tome" | "field" | "contributors")
-        && keep_of(kind, line, live_lines).is_none()
+    matches!(
+        line.line,
+        "title" | "tome" | "field" | "contributors" | "tome_removal"
+    ) && keep_of(kind, line, live_lines).is_none()
 }
 
 /// Why a stored line cannot be removed, read from its values.
 fn keep_reason(kind: ProposalKind, values: &Value, live_lines: usize) -> Option<Keep> {
     match line_of(values) {
-        Some("series") => Some(Keep::SeriesLine),
+        Some("series") | Some("series_update") => Some(Keep::SeriesLine),
         Some("cover") => Some(Keep::Cover),
         _ if kind == ProposalKind::Cover => Some(Keep::Cover),
         // Story 13-9 — a label proposal's single line.
@@ -413,7 +430,7 @@ fn line_of(values: &Value) -> Option<&str> {
 /// The edit form as posted: field name → value.
 pub type EditForm = HashMap<String, String>;
 
-fn form_str<'a>(form: &'a EditForm, key: &str) -> &'a str {
+pub(crate) fn form_str<'a>(form: &'a EditForm, key: &str) -> &'a str {
     form.get(key).map(String::as_str).unwrap_or("")
 }
 
@@ -860,6 +877,13 @@ async fn edit_line_in(
             }
             values
         }
+        // Story 15-4 — only the update line is editable.
+        ProposalKind::SeriesUpdate => {
+            if line_of(&old) != Some("series_update") {
+                return Err(EditError::NotEditable);
+            }
+            series_update_edit::edit_in(conn, &rows, item_id, &old, form).await?
+        }
         ProposalKind::Metadata => {
             if line_of(&old) != Some("field") {
                 return Err(EditError::NotEditable);
@@ -923,6 +947,10 @@ async fn remove_line_in(
     if let Some(keep) = keep_reason(kind, &values, rows.len()) {
         return Err(EditError::NotRemovable(keep));
     }
+    // Story 15-4 — what remains must still pass the filing rules.
+    if kind == ProposalKind::SeriesUpdate {
+        series_update_edit::check_removal_in(conn, &rows, item_id).await?;
+    }
     if ProposalModel::remove_item_in(conn, id, item_id, user_id).await? != 1 {
         return Err(EditError::LineNotFound);
     }
@@ -938,6 +966,10 @@ pub fn has_lines_to_apply(kind: ProposalKind, lines: &[LineView]) -> bool {
         ProposalKind::SeriesAttach => lines.iter().any(|l| matches!(l.line, "title" | "tome")),
         ProposalKind::Metadata => !lines.is_empty(),
         ProposalKind::SeriesCreate | ProposalKind::Cover | ProposalKind::LabelAttach => true,
+        // Story 15-4 — a field change or a removal.
+        ProposalKind::SeriesUpdate => lines
+            .iter()
+            .any(|l| l.line == "tome_removal" || !l.series_changes.is_empty()),
     }
 }
 
@@ -1018,6 +1050,31 @@ pub fn line_summary(line: &LineView, loc: &str) -> String {
             locale = loc,
             label = line.label_name.as_str(),
             target = target().as_str()
+        )
+        .to_string(),
+        // Story 15-4.
+        "series_update" if line.series_changes.is_empty() => {
+            t!("proposals.series_update_tomes_only", locale = loc).to_string()
+        }
+        "series_update" => line
+            .series_changes
+            .iter()
+            .map(|c| {
+                t!(
+                    "proposals.summary_field",
+                    locale = loc,
+                    field = c.label.as_str(),
+                    value = c.proposed.as_str()
+                )
+                .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join(" · "),
+        "tome_removal" => t!(
+            "proposals.summary_tome_removal",
+            locale = loc,
+            position = line.position.as_str(),
+            title = line.tome_title.as_str()
         )
         .to_string(),
         _ => line.raw_json.clone(),

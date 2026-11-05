@@ -40,6 +40,7 @@ use crate::services::proposals::{
     Decision, ProposalError, ProposalService, StaleTarget, Transition,
 };
 use crate::services::series_acceptance::{self, AppliedSeries};
+use crate::services::series_update_acceptance::{self, AppliedSeriesUpdate};
 
 /// Why the catalog no longer admits a proposal (the proposal goes
 /// stale). Names come from the catalog, for the librarian's message.
@@ -77,6 +78,16 @@ pub enum AcceptConflict {
     /// Story 13-9 — the label is already on the record (attached by hand
     /// since filing).
     LabelAttached { label: String },
+    /// Story 15-4 — an expected tome to remove was deleted, moved or
+    /// edited since filing.
+    TomeChanged { position: i32, tome_title: String },
+    /// Story 15-4 — the proposed closed total is now lower than owned
+    /// positions or live expected tomes the proposal does not remove.
+    BelowPosition {
+        total: i32,
+        owned: Vec<i32>,
+        expected: Vec<i32>,
+    },
 }
 
 /// Why an accept went stale.
@@ -325,6 +336,7 @@ pub enum Applied {
     Metadata(AppliedMetadata),
     Cover(AppliedCover),
     Label(AppliedLabel),
+    SeriesUpdate(AppliedSeriesUpdate),
 }
 
 fn wrap<A>(outcome: AcceptOutcome<A>, f: impl FnOnce(A) -> Applied) -> AcceptOutcome<Applied> {
@@ -375,6 +387,10 @@ pub async fn accept(
         ProposalKind::LabelAttach => wrap(
             label_acceptance::accept(pool, id, user_id, version).await?,
             Applied::Label,
+        ),
+        ProposalKind::SeriesUpdate => wrap(
+            series_update_acceptance::accept(pool, id, user_id, version).await?,
+            Applied::SeriesUpdate,
         ),
     };
     Ok((kind, outcome))

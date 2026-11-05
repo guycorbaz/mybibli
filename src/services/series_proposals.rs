@@ -1034,7 +1034,7 @@ impl SeriesProposalService {
     /// same key run one after the other and the second sees the first;
     /// the checks are plain reads taken after that lock (D-11-12-11,
     /// D-11-12-13); everything happens in one transaction.
-    async fn file_unique(
+    pub(crate) async fn file_unique(
         pool: &DbPool,
         proposal: &NewProposal,
         duplicate: Duplicate,
@@ -1086,7 +1086,7 @@ impl SeriesProposalService {
 }
 
 /// What makes a series proposal a duplicate.
-enum Duplicate {
+pub(crate) enum Duplicate {
     /// A create: an active series or a pending create with this name.
     Name(String),
     /// An attach: a pending proposal targeting this series.

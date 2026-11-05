@@ -29,15 +29,19 @@ pub enum ProposalKind {
     /// Story 13-9 (#581) — attach one of the library's labels to a title
     /// or a volume.
     LabelAttach,
+    /// Story 15-4 (#590) — modify an existing series (name, type, total,
+    /// expected-tome removals).
+    SeriesUpdate,
 }
 
 impl ProposalKind {
-    pub const ALL: [ProposalKind; 5] = [
+    pub const ALL: [ProposalKind; 6] = [
         ProposalKind::SeriesCreate,
         ProposalKind::SeriesAttach,
         ProposalKind::Metadata,
         ProposalKind::Cover,
         ProposalKind::LabelAttach,
+        ProposalKind::SeriesUpdate,
     ];
 
     pub fn as_str(&self) -> &'static str {
@@ -47,6 +51,7 @@ impl ProposalKind {
             ProposalKind::Metadata => "metadata",
             ProposalKind::Cover => "cover",
             ProposalKind::LabelAttach => "label_attach",
+            ProposalKind::SeriesUpdate => "series_update",
         }
     }
 
@@ -777,6 +782,30 @@ impl ProposalModel {
         Ok(found)
     }
 
+    /// Story 15-4 — a live series other than `except_id` with this name
+    /// (case and accents ignored, like [`Self::active_series_named`]) —
+    /// so a case-only rename still sees another series of that name. A
+    /// plain read: a locking read through the collation function would
+    /// scan, and lock, every series.
+    pub async fn other_series_named(
+        conn: &mut MySqlConnection,
+        name: &str,
+        except_id: u64,
+    ) -> Result<Option<(u64, String)>, AppError> {
+        let found: Option<(u64, String)> = sqlx::query_as(
+            "SELECT id, CAST(name AS CHAR) FROM series \
+             WHERE deleted_at IS NULL AND id <> ? \
+               AND CONVERT(name USING utf8mb4) COLLATE utf8mb4_unicode_ci \
+                   = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci \
+             ORDER BY id ASC LIMIT 1",
+        )
+        .bind(except_id)
+        .bind(name)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found)
+    }
+
     /// Story 11-17 — [`Self::active_series_named`] as a locking read
     /// (`FOR UPDATE`), for accepting a `series_create`: no index serves
     /// the comparison, so the scan locks the `series` rows and gaps it
@@ -1082,7 +1111,7 @@ impl ProposalModel {
     }
 
     /// The subject parts (target, `line`, `field`, `name`) of the live
-    /// series / field / cover / label lines of the given proposals, in filing
+    /// series / field / cover / label / series-update lines of the given proposals, in filing
     /// order. Title and expected-tome lines are skipped (a series
     /// proposal may carry up to 999 of them).
     pub async fn subject_lines(
@@ -1104,7 +1133,7 @@ impl ProposalModel {
                           CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.line')) AS CHAR) AS line \
                    FROM proposal_items \
                    WHERE proposal_id IN ({placeholders}) AND deleted_at IS NULL) i \
-             WHERE line IN ('series', 'field', 'cover', 'label') \
+             WHERE line IN ('series', 'field', 'cover', 'label', 'series_update') \
              ORDER BY proposal_id, id"
         );
         let mut q = sqlx::query(&sql);

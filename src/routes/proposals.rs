@@ -90,7 +90,9 @@ pub fn row_extras(
     use crate::services::proposal_history::ProposalSubject;
     let view = target_href.map(|href| {
         let key = match kind {
-            ProposalKind::SeriesCreate | ProposalKind::SeriesAttach => "proposals.view_series",
+            ProposalKind::SeriesCreate
+            | ProposalKind::SeriesAttach
+            | ProposalKind::SeriesUpdate => "proposals.view_series",
             ProposalKind::Metadata | ProposalKind::Cover => "proposals.view_title",
             // Story 13-9 — a label marks a title or a volume.
             ProposalKind::LabelAttach if href.starts_with("/volume/") => "proposals.view_volume",

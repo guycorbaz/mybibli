@@ -75,6 +75,38 @@
             {% else if line.line.eq("series_target") %}
                 <span class="text-stone-500 dark:text-stone-400">{{ l.t("series_target") }} —</span>
                 {% if line.target_name.is_some() %}<a href="/series/{{ line.target_id.unwrap_or_default() }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ body.target_texts[loop.index0] }}</a>{% else %}{{ body.target_texts[loop.index0] }}{% endif %}
+            {% else if line.line.eq("series_update") %}
+                {# Story 15-4 (UX-DR41) — current vs proposed name / type / total;
+                   the proposed cell is marked by a border and its column
+                   header, never by colour alone. #}
+                <span class="text-stone-500 dark:text-stone-400">{{ l.t("series_target") }} —</span>
+                {% if line.target_name.is_some() %}<a href="/series/{{ line.target_id.unwrap_or_default() }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ body.target_texts[loop.index0] }}</a>{% else %}{{ body.target_texts[loop.index0] }}{% endif %}
+                {% if line.series_changes.is_empty() %}
+                <p class="mt-2 text-stone-600 dark:text-stone-300">{{ l.t("series_update_tomes_only") }}</p>
+                {% else %}
+                <table data-compare data-series-update class="mt-2 w-full table-fixed border-collapse">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="w-1/4 pr-3 pb-1 text-left text-xs font-medium text-stone-500 dark:text-stone-400">{{ l.t("col_field") }}</th>
+                            <th scope="col" class="pr-3 pb-1 text-left text-xs font-medium text-stone-500 dark:text-stone-400">{{ l.t("current") }}</th>
+                            <th scope="col" class="pl-3 pb-1 text-left text-xs font-medium text-stone-500 dark:text-stone-400">{{ l.t("proposed") }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for c in line.series_changes %}
+                        <tr>
+                            <th scope="row" class="pr-3 py-1 text-left align-top font-normal text-stone-500 dark:text-stone-400">{{ c.label }}</th>
+                            <td data-current class="pr-3 py-1 align-top break-words text-stone-700 dark:text-stone-300">{{ c.current }}</td>
+                            <td data-proposed class="pl-3 py-1 align-top break-words border-l-4 border-indigo-500 dark:border-indigo-400 font-medium text-stone-900 dark:text-stone-100">{{ c.proposed }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+            {% else if line.line.eq("tome_removal") %}
+                <span class="text-stone-500 dark:text-stone-400">{{ l.t("tomes_removed_heading") }} —</span>
+                <span class="tabular-nums">{{ l.t("col_position") }} {{ line.position }}</span> —
+                <span data-removed-tome class="font-medium text-stone-900 dark:text-stone-100">{{ line.tome_title }}</span>
             {% else if line.line.eq("title") %}
                 <span class="tabular-nums text-stone-500 dark:text-stone-400">{{ l.t("col_position") }} {{ line.position }}</span> —
                 {% if line.target_name.is_some() %}<a href="/title/{{ line.target_id.unwrap_or_default() }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ body.target_texts[loop.index0] }}</a>{% else %}{{ body.target_texts[loop.index0] }}{% endif %}

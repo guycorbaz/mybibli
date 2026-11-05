@@ -8,7 +8,7 @@
 <div id="proposal-edit-{{ line.item_id }}" data-edit-slot class="hidden mt-3 p-3 rounded-md border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800/50">
 <form hx-post="/proposals/{{ body.id }}/items/{{ line.item_id }}" hx-target="#proposal-detail-body" hx-swap="outerHTML" class="space-y-2">
     <input type="hidden" name="version" value="{{ body.version }}">
-    {% if line.line.eq("series_new") %}
+    {% if line.line.eq("series_new") || line.line.eq("series_update") %}
     <div>
         <label for="proposal-edit-{{ line.item_id }}-name" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("series_name") }}</label>
         <input type="text" id="proposal-edit-{{ line.item_id }}-name" name="name" value="{{ line.name }}" maxlength="255" required class="w-full px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
@@ -23,7 +23,7 @@
         </div>
         <div>
             <label for="proposal-edit-{{ line.item_id }}-total" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("series_total") }}</label>
-            <input type="number" id="proposal-edit-{{ line.item_id }}-total" name="total" value="{% if let Some(total) = line.total %}{{ total }}{% endif %}" min="1" max="10000" aria-describedby="proposal-edit-{{ line.item_id }}-total-help" class="w-28 px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+            <input type="number" id="proposal-edit-{{ line.item_id }}-total" name="total" value="{% if let Some(total) = line.total %}{{ total }}{% endif %}" min="1"{% if !line.line.eq("series_update") %} max="10000"{% endif %} aria-describedby="proposal-edit-{{ line.item_id }}-total-help" class="w-28 px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
             <p id="proposal-edit-{{ line.item_id }}-total-help" class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ l.t("edit_total_help") }}</p>
         </div>
     </div>

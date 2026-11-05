@@ -629,7 +629,9 @@ pub fn title_moved(items: &[ProposalItemRow], title: &crate::models::title::Titl
 /// cover no longer outdates a metadata proposal on the same title.
 pub fn version_counts(kind: ProposalKind) -> bool {
     match kind {
-        ProposalKind::SeriesCreate | ProposalKind::SeriesAttach => true,
+        ProposalKind::SeriesCreate | ProposalKind::SeriesAttach | ProposalKind::SeriesUpdate => {
+            true
+        }
         // Story 13-9 — a label proposal is judged by its acceptance: the
         // target and the label must be live, the label not yet attached.
         ProposalKind::Metadata | ProposalKind::Cover | ProposalKind::LabelAttach => false,
@@ -1521,6 +1523,7 @@ mod tests {
     fn only_series_kinds_count_versions() {
         assert!(version_counts(ProposalKind::SeriesCreate));
         assert!(version_counts(ProposalKind::SeriesAttach));
+        assert!(version_counts(ProposalKind::SeriesUpdate));
         assert!(!version_counts(ProposalKind::Metadata));
         assert!(!version_counts(ProposalKind::Cover));
     }
