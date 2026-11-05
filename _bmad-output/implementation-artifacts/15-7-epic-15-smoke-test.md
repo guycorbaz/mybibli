@@ -1,6 +1,6 @@
 # Story 15.7: Epic 15 smoke test (Foundation Rule #7)
 
-Status: review
+Status: done
 
 Covers: Foundation Rule #7. Epic 15; ships in v1.25.0.
 
@@ -29,3 +29,7 @@ so that the epic is proven done.
 ### File List
 
 - tests/e2e/specs/journeys/epic15-smoke.spec.ts (new)
+
+### Completion Notes
+
+Local targeted run (CI shape, 2 workers) green; CI green on PR #633 (all four gates).
