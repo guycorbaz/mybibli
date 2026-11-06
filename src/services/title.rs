@@ -170,7 +170,7 @@ impl TitleService {
 
         // Validate UPC-A checksum for 12-digit codes (#384). `CodeType::Upc`
         // is a catch-all for 8–13 digit product barcodes (EAN-8, UPC-A,
-        // EAN-13 — see routes::catalog::detect_code_type), so the mod-10 guard
+        // EAN-13 — see routes::catalog_code::detect_code_type), so the mod-10 guard
         // is scoped to the 12-digit UPC-A case. Running the UPC-A algorithm on
         // a 13-digit EAN would reject valid product codes; those lengths keep
         // their pre-#384 (unvalidated) behaviour.

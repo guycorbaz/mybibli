@@ -15,6 +15,10 @@ pub mod api_v1;
 pub mod auth;
 pub mod borrowers;
 pub mod catalog;
+pub mod catalog_code;
+pub mod catalog_contributors;
+pub mod catalog_title_form;
+pub mod catalog_volumes;
 pub mod catalog_undo;
 pub mod catalog_existing_label;
 pub mod catalog_isbn_banners;
@@ -46,6 +50,9 @@ pub mod series;
 pub mod series_expected_tomes;
 pub mod setup;
 pub mod titles;
+pub mod title_cover_upload;
+pub mod title_metadata_confirm;
+pub mod title_series_assign;
 pub mod title_tome;
 pub mod volume_move;
 pub mod wishlist;
@@ -115,16 +122,16 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         )
         .route(
             "/catalog/title/new",
-            axum::routing::get(catalog::title_form_page),
+            axum::routing::get(catalog_title_form::title_form_page),
         )
-        .route("/catalog/title", axum::routing::post(catalog::create_title))
+        .route("/catalog/title", axum::routing::post(catalog_title_form::create_title))
         .route(
             "/catalog/title/fields/{media_type}",
-            axum::routing::get(catalog::type_specific_fields),
+            axum::routing::get(catalog_title_form::type_specific_fields),
         )
         .route(
             "/catalog/contributors/form",
-            axum::routing::get(catalog::contributor_form_page),
+            axum::routing::get(catalog_contributors::contributor_form_page),
         )
         // Fix #318 — title-detail-page entry point for the "Add
         // contributor" form. Same template as the catalog flow but
@@ -132,27 +139,27 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         // session's current_title_id.
         .route(
             "/title/{id}/contributor-form",
-            axum::routing::get(catalog::contributor_form_for_title),
+            axum::routing::get(catalog_contributors::contributor_form_for_title),
         )
         .route(
             "/catalog/contributors/search",
-            axum::routing::get(catalog::contributor_search),
+            axum::routing::get(catalog_contributors::contributor_search),
         )
         .route(
             "/catalog/contributors/add",
-            axum::routing::post(catalog::add_contributor),
+            axum::routing::post(catalog_contributors::add_contributor),
         )
         .route(
             "/catalog/contributors/remove",
-            axum::routing::post(catalog::remove_contributor),
+            axum::routing::post(catalog_contributors::remove_contributor),
         )
         .route(
             "/catalog/contributors/update",
-            axum::routing::post(catalog::update_contributor),
+            axum::routing::post(catalog_contributors::update_contributor),
         )
         .route(
             "/catalog/contributors/{id}",
-            axum::routing::delete(catalog::delete_contributor),
+            axum::routing::delete(catalog_contributors::delete_contributor),
         )
         .route(
             "/catalog/title/{id}",
@@ -160,7 +167,7 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         )
         .route(
             "/catalog/volume/{id}",
-            axum::routing::delete(catalog::delete_volume),
+            axum::routing::delete(catalog_volumes::delete_volume),
         )
         .layer(axum::Extension(pool))
         .layer(axum::middleware::from_fn(pending_updates_middleware));
@@ -216,31 +223,31 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         )
         .route(
             "/title/{id}/redownload",
-            axum::routing::post(titles::redownload_metadata),
+            axum::routing::post(title_metadata_confirm::redownload_metadata),
         )
         .route(
             "/title/{id}/cover/upload-modal",
-            axum::routing::get(titles::cover_upload_modal),
+            axum::routing::get(title_cover_upload::cover_upload_modal),
         )
         .route(
             "/title/{id}/cover",
-            axum::routing::post(titles::upload_cover),
+            axum::routing::post(title_cover_upload::upload_cover),
         )
         .route(
             "/title/{id}/confirm-metadata",
-            axum::routing::post(titles::confirm_metadata),
+            axum::routing::post(title_metadata_confirm::confirm_metadata),
         )
         .route(
             "/title/{id}/series",
-            axum::routing::post(titles::assign_to_series),
+            axum::routing::post(title_series_assign::assign_to_series),
         )
         .route(
             "/title/{id}/series/{assignment_id}/remove",
-            axum::routing::post(titles::unassign_from_series),
+            axum::routing::post(title_series_assign::unassign_from_series),
         )
         .route(
             "/title/{id}/series-remove",
-            axum::routing::post(titles::unassign_omnibus_from_series),
+            axum::routing::post(title_series_assign::unassign_omnibus_from_series),
         )
         .route(
             "/title/{id}/series/{assignment_id}/position",
@@ -256,15 +263,15 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         )
         .route(
             "/volume/{id}",
-            axum::routing::get(catalog::volume_detail).delete(catalog::delete_volume),
+            axum::routing::get(catalog_volumes::volume_detail).delete(catalog_volumes::delete_volume),
         )
         .route(
             "/volume/{id}/edit",
-            axum::routing::get(catalog::volume_edit_page),
+            axum::routing::get(catalog_volumes::volume_edit_page),
         )
         .route(
             "/volume/{id}/update",
-            axum::routing::post(catalog::update_volume),
+            axum::routing::post(catalog_volumes::update_volume),
         )
         // CR #209: per-volume table delete flow on /title/:id uses
         // /volume/{id}/delete-modal for the UX-DR8 confirmation
@@ -272,7 +279,7 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         // action (HX-Redirect to /title/:id on success).
         .route(
             "/volume/{id}/delete-modal",
-            axum::routing::get(catalog::delete_volume_modal),
+            axum::routing::get(catalog_volumes::delete_volume_modal),
         )
         // Story 13-8 (#580) — move a volume to another title (UX-DR8
         // Pattern A modal with a title picker, then the optimistic move).
