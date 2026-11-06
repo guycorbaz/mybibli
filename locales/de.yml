@@ -523,6 +523,7 @@ volume:
   valuation_section: "Bewertung (optional)"
   purchase_price: "Kaufpreis"
   current_value: "Geschätzter aktueller Wert"
+  current_value_dated: "Geschätzt am %{date}"
   currency_label: "Währung"
   valuation_help: "Optional — leer lassen zum Überspringen. Die Währung wird auf den vom Administrator konfigurierten Wert vorbelegt, kann aber pro Exemplar überschrieben werden."
   currently_on_loan: "Löschen nicht möglich: Dieses Exemplar ist aktuell ausgeliehen."

@@ -526,6 +526,7 @@ volume:
   valuation_section: "Valeur (optionnel)"
   purchase_price: "Prix d'achat"
   current_value: "Valeur actuelle estimée"
+  current_value_dated: "Estimée le %{date}"
   currency_label: "Devise"
   valuation_help: "Optionnel — laisser vide pour ignorer. La devise par défaut vient des paramètres administrateur mais peut être surchargée par volume."
   currently_on_loan: "Suppression impossible : ce volume est actuellement en prêt."
