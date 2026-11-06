@@ -148,6 +148,46 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.26.0}\label{sec:whats-new-1.26.0}
+
+La version 1.26.0 clôt l'epic 16, « ce que l'usage a montré »
+(\href{https://github.com/guycorbaz/mybibli/issues/597}{\#597},
+\href{https://github.com/guycorbaz/mybibli/issues/630}{\#630},
+\href{https://github.com/guycorbaz/mybibli/issues/639}{\#639},
+\href{https://github.com/guycorbaz/mybibli/issues/587}{\#587},
+\href{https://github.com/guycorbaz/mybibli/issues/638}{\#638},
+\href{https://github.com/guycorbaz/mybibli/issues/637}{\#637}). \emph{Deux migrations additives} (les
+seuils du prix d'achat, la table \texttt{cover\_uploads}), aucun
+changement de configuration --- sauvegardez d'abord, récupérez l'image,
+recréez le conteneur (\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{Les montants sur la page d'un volume.} Les bibliothécaires
+        voient le prix d'achat et la valeur actuelle estimée avec sa date
+        (section~\ref{sec:valuation}).
+  \item \textbf{Des prix d'achat proposés par l'agent.} Il peut proposer
+        le prix catalogue à la parution sans valeur actuelle, et proposer
+        de remplacer un prix d'achat qui semble faux. Vous décidez pour
+        chacun ; les seuils sont dans \emph{Administration
+        \textrightarrow{} Système \textrightarrow{} Propositions}
+        (chapitre~\ref{ch:agents}).
+  \item \textbf{Des couvertures en fichiers.} Un agent capable de faire
+        des requêtes HTTP envoie l'image à
+        \texttt{POST /api/v1/cover-uploads} et nomme le jeton reçu dans
+        \texttt{propose\_cover} (section~\ref{sec:agents-staging}). Le
+        base64 fonctionne toujours.
+  \item \textbf{Un avertissement sur un code irrégulier.} Un code scanné
+        qui n'a la forme d'aucun code-barres connu demande le type de média
+        en donnant la raison, même si votre dernier choix est retenu
+        (section~\ref{sec:catalog-scan}).
+  \item \textbf{Des nuits plus calmes.} La tâche de relance des métadonnées
+        journalise un avertissement, et non une erreur, quand une sauvegarde
+        rend la base injoignable.
+\end{itemize}
+
+Reconnectez l'agent après la mise à jour pour qu'il lise les nouvelles
+descriptions des outils.
+
 \section{Nouveautés de la 1.25.0}\label{sec:whats-new-1.25.0}
 
 La version 1.25.0 clôt l'epic 15, « les tâches suivantes de l'agent »

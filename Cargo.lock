@@ -1961,7 +1961,7 @@ dependencies = [
 
 [[package]]
 name = "mybibli"
-version = "1.25.0"
+version = "1.26.0"
 dependencies = [
  "argon2",
  "askama",

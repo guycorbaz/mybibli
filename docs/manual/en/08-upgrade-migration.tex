@@ -139,6 +139,44 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.26.0}\label{sec:whats-new-1.26.0}
+
+Version 1.26.0 closes epic 16, ``what real use showed''
+(\href{https://github.com/guycorbaz/mybibli/issues/597}{\#597},
+\href{https://github.com/guycorbaz/mybibli/issues/630}{\#630},
+\href{https://github.com/guycorbaz/mybibli/issues/639}{\#639},
+\href{https://github.com/guycorbaz/mybibli/issues/587}{\#587},
+\href{https://github.com/guycorbaz/mybibli/issues/638}{\#638},
+\href{https://github.com/guycorbaz/mybibli/issues/637}{\#637}). \emph{Two additive migrations} (the
+purchase price thresholds, the \texttt{cover\_uploads} table), no
+configuration change --- back up first, pull the image, recreate the
+container (\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{Amounts on the volume page.} Librarians see the purchase
+        price and the estimated current value with its date
+        (section~\ref{sec:valuation}).
+  \item \textbf{Purchase prices from the agent.} It can propose the list
+        price at publication without a current value, and propose
+        replacing a purchase price that looks wrong. You decide each
+        one; the thresholds are in \emph{Administration
+        \textrightarrow{} System \textrightarrow{} Proposals}
+        (chapter~\ref{ch:agents}).
+  \item \textbf{Covers as files.} An agent able to make HTTP requests
+        sends the image to \texttt{POST /api/v1/cover-uploads} and names
+        the returned token in \texttt{propose\_cover}
+        (section~\ref{sec:agents-staging}). Base64 still works.
+  \item \textbf{A warning on an irregular code.} A scanned code that is
+        no known barcode shape asks for the media type with the reason,
+        even when your last choice is remembered
+        (section~\ref{sec:catalog-scan}).
+  \item \textbf{Quieter nights.} The metadata retry task logs a warning,
+        not an error, when a backup makes the database unreachable.
+\end{itemize}
+
+Reconnect the agent after the upgrade so that it reads the new tool
+descriptions.
+
 \section{What's new in 1.25.0}\label{sec:whats-new-1.25.0}
 
 Version 1.25.0 closes epic 15, ``the agent's next tasks''
