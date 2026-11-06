@@ -681,6 +681,10 @@ media_type:
   report: Relazione
 scan:
   select_media_type: "Di che tipo di supporto si tratta?"
+  irregular_nine_digits: "Questo codice ha 9 cifre, cosa che nessun codice a barre ha: forse è un ISBN-10 che ha perso l'ultimo carattere, spesso una X. Controllalo e scansionalo di nuovo, oppure scegli un tipo per mantenerlo così."
+  irregular_ten_digits: "Questo codice ha 10 cifre, ma la cifra di controllo non corrisponde a un ISBN-10: forse è stato letto o digitato male. Controllalo e scansionalo di nuovo, oppure scegli un tipo per mantenerlo così."
+  irregular_length: "Questo codice ha %{len} cifre, mentre un codice a barre ne ha 8, 12 o 13: forse è stato letto o digitato male. Controllalo e scansionalo di nuovo, oppure scegli un tipo per mantenerlo così."
+  irregular_check_digit: "La cifra di controllo di questo codice è sbagliata: forse una cifra è stata letta o digitata male. Controllalo e scansionalo di nuovo, oppure scegli un tipo per mantenerlo così."
 cover:
   alt_text: "Copertina di %{title}"
   no_cover: "Copertina non disponibile"

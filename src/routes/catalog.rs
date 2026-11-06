@@ -1169,7 +1169,17 @@ pub async fn handle_scan(
                     .get("media_type_preference")
                     .and_then(|c| c.value().parse::<MediaType>().ok());
 
-                if let Some(media_type) = media_type_pref {
+                // Story 16-5 (#638) — an irregular code always goes through the
+                // choice, with its warning: nothing is created until the
+                // librarian decides, preference or not.
+                // A code the librarian already confirmed is known: rescanning
+                // it (a second copy) reaches its title without asking again.
+                let mut irregular = crate::routes::catalog_code::code_irregularity(&code);
+                if irregular.is_some() && TitleModel::find_by_upc(pool, &code).await?.is_some() {
+                    irregular = None;
+                }
+                let warning = irregular.map(|i| i.message(loc));
+                if let Some(media_type) = media_type_pref.filter(|_| irregular.is_none()) {
                     // Session has preference → create title immediately
                     match TitleService::create_from_code(
                         pool,
@@ -1248,7 +1258,7 @@ pub async fn handle_scan(
                     }
                 } else {
                     // No preference → return MediaTypeSelector disambiguation UI
-                    let html = media_type_selector_html(&code, None);
+                    let html = media_type_selector_html(&code, None, warning.as_deref(), loc);
                     Ok(Html(html).into_response())
                 }
             }
@@ -1285,38 +1295,43 @@ pub async fn handle_scan(
 }
 
 /// Generate MediaTypeSelector HTML for UPC disambiguation (UX-DR22).
-fn media_type_selector_html(code: &str, suggested: Option<&str>) -> String {
+fn media_type_selector_html(
+    code: &str,
+    suggested: Option<&str>,
+    warning: Option<&str>,
+    loc: &str,
+) -> String {
     let escaped_code = html_escape(code);
     // Media type options with distinct emoji indicators (SVG icons planned for story 3-3)
     let types = [
         (
             "book",
-            rust_i18n::t!("media_type.book").to_string(),
+            rust_i18n::t!("media_type.book", locale = loc).to_string(),
             "\u{1F4D6}",
         ), // 📖
         (
             "bd",
-            rust_i18n::t!("media_type.bd").to_string(),
+            rust_i18n::t!("media_type.bd", locale = loc).to_string(),
             "\u{1F4DA}",
         ), // 📚
         (
             "cd",
-            rust_i18n::t!("media_type.cd").to_string(),
+            rust_i18n::t!("media_type.cd", locale = loc).to_string(),
             "\u{1F4BF}",
         ), // 💿
         (
             "dvd",
-            rust_i18n::t!("media_type.dvd").to_string(),
+            rust_i18n::t!("media_type.dvd", locale = loc).to_string(),
             "\u{1F4C0}",
         ), // 📀
         (
             "magazine",
-            rust_i18n::t!("media_type.magazine").to_string(),
+            rust_i18n::t!("media_type.magazine", locale = loc).to_string(),
             "\u{1F4F0}",
         ), // 📰
         (
             "report",
-            rust_i18n::t!("media_type.report").to_string(),
+            rust_i18n::t!("media_type.report", locale = loc).to_string(),
             "\u{1F4C4}",
         ), // 📄
     ];
@@ -1351,10 +1366,18 @@ fn media_type_selector_html(code: &str, suggested: Option<&str>) -> String {
         buttons.push_str(&btn);
     }
 
-    let select_label = rust_i18n::t!("scan.select_media_type").to_string();
+    let select_label = rust_i18n::t!("scan.select_media_type", locale = loc).to_string();
+    let warning_html = warning
+        .map(|w| {
+            format!(
+                r#"<p data-code-warning class="mt-1 text-sm font-medium text-amber-800 dark:text-amber-300">{}</p>"#,
+                html_escape(w)
+            )
+        })
+        .unwrap_or_default();
     let question_icon = r#"<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>"#;
     format!(
-        r#"<div class="flex items-start gap-3 p-3 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950" role="status" aria-live="polite"><div class="flex-shrink-0 text-blue-500">{question_icon}</div><div class="flex-1"><p class="text-sm font-medium text-gray-800 dark:text-gray-200">UPC {escaped_code} — {select_label}</p><div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="{select_label}">{buttons}</div></div></div>"#
+        r#"<div class="flex items-start gap-3 p-3 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950" role="status" aria-live="polite"><div class="flex-shrink-0 text-blue-500">{question_icon}</div><div class="flex-1"><p class="text-sm font-medium text-gray-800 dark:text-gray-200">UPC {escaped_code} — {select_label}</p>{warning_html}<div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="{select_label}">{buttons}</div></div></div>"#
     )
 }
 

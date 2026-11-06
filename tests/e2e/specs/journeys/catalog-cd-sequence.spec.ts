@@ -22,8 +22,8 @@ import { waitForDuplicateScanWindow } from "../../helpers/scanner";
  * raw code as its name — which makes the assertions below unambiguous about
  * WHICH title a volume landed on.
  */
-const CD_FIRST = "0093624700011";
-const CD_SECOND = "0093624700028";
+const CD_FIRST = "0093624700012";
+const CD_SECOND = "0093624700029";
 const VOLUME_LABEL = "V0440";
 
 async function scan(page: import("@playwright/test").Page, code: string) {

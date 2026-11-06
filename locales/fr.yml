@@ -697,6 +697,10 @@ media_type:
   report: Rapport
 scan:
   select_media_type: "Quel type de média ?"
+  irregular_nine_digits: "Ce code a 9 chiffres, ce qu'aucun code-barres n'a : c'est peut-être un ISBN-10 qui a perdu son dernier caractère, souvent un X. Vérifiez-le et scannez-le à nouveau, ou choisissez un type pour le garder tel quel."
+  irregular_ten_digits: "Ce code a 10 chiffres, mais sa clé de contrôle ne correspond pas à un ISBN-10 : il est peut-être mal lu ou mal saisi. Vérifiez-le et scannez-le à nouveau, ou choisissez un type pour le garder tel quel."
+  irregular_length: "Ce code a %{len} chiffres, alors qu'un code-barres en a 8, 12 ou 13 : il est peut-être mal lu ou mal saisi. Vérifiez-le et scannez-le à nouveau, ou choisissez un type pour le garder tel quel."
+  irregular_check_digit: "La clé de contrôle de ce code est fausse : un chiffre est peut-être mal lu ou mal saisi. Vérifiez-le et scannez-le à nouveau, ou choisissez un type pour le garder tel quel."
 cover:
   alt_text: "Couverture de %{title}"
   no_cover: "Pas de couverture disponible"

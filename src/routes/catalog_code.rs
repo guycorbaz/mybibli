@@ -107,6 +107,69 @@ pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
     }
 }
 
+/// Story 16-5 (#638) — why an all-digit code classified `upc` looks wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodeIrregularity {
+    /// 9 digits: an ISBN-10 that may have lost its last character (often `X`).
+    NineDigits,
+    /// 10 digits: the check digit fails as an ISBN-10.
+    TenDigits,
+    /// Another length no barcode has.
+    Length(usize),
+    /// An EAN-8 or EAN-13 length with a wrong check digit.
+    CheckDigit,
+}
+
+/// EAN-8 check digit of the first 7 digits (pure; weights 3 and 1).
+fn ean8_check_digit(code: &str) -> Option<u32> {
+    let mut sum = 0;
+    for (i, c) in code.get(..7)?.chars().enumerate() {
+        let d = c.to_digit(10)?;
+        sum += if i % 2 == 0 { d * 3 } else { d };
+    }
+    Some((10 - (sum % 10)) % 10)
+}
+
+/// Story 16-5 (#638, Rule #20) — the irregularity of a code classified `upc`
+/// (pure): only EAN-8 and EAN-13 with a valid check digit and 12 digits pass
+/// silently. A 12-digit UPC-A with a wrong check digit is refused at creation
+/// (#384), so no warning is offered for it. The caller warns and lets the
+/// librarian decide: the code is never rewritten.
+pub fn code_irregularity(code: &str) -> Option<CodeIrregularity> {
+    let check = |expected: Option<u32>| {
+        let last = code.chars().last().and_then(|c| c.to_digit(10));
+        (expected != last).then_some(CodeIrregularity::CheckDigit)
+    };
+    match code.len() {
+        8 => check(ean8_check_digit(code)),
+        13 => check(crate::utils::ean13_check_digit(code)),
+        12 => None,
+        9 => Some(CodeIrregularity::NineDigits),
+        10 => Some(CodeIrregularity::TenDigits),
+        len => Some(CodeIrregularity::Length(len)),
+    }
+}
+
+impl CodeIrregularity {
+    /// The warning shown with the media-type choice (Rule #9).
+    pub fn message(self, loc: &str) -> String {
+        match self {
+            CodeIrregularity::NineDigits => {
+                rust_i18n::t!("scan.irregular_nine_digits", locale = loc).to_string()
+            }
+            CodeIrregularity::TenDigits => {
+                rust_i18n::t!("scan.irregular_ten_digits", locale = loc).to_string()
+            }
+            CodeIrregularity::Length(len) => {
+                rust_i18n::t!("scan.irregular_length", locale = loc, len = len).to_string()
+            }
+            CodeIrregularity::CheckDigit => {
+                rust_i18n::t!("scan.irregular_check_digit", locale = loc).to_string()
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +336,52 @@ mod tests {
     fn test_detect_code_type_isbn13_is_not_rewritten() {
         assert_eq!(detect_code_type("9782205001211").normalized_code, None);
         assert_eq!(detect_code_type("12345678").normalized_code, None);
+    }
+
+    // Story 16-5 (#638).
+    #[test]
+    fn valid_barcodes_are_regular() {
+        for code in ["96385074", "0093624738626", "5051889004578", "5410983227007", "036000291452"] {
+            assert_eq!(code_irregularity(code), None, "{code}");
+        }
+    }
+
+    #[test]
+    fn irregular_codes_say_why() {
+        use CodeIrregularity::*;
+        assert_eq!(code_irregularity("220500218"), Some(NineDigits));
+        assert_eq!(code_irregularity("2205025062"), Some(TenDigits));
+        assert_eq!(code_irregularity("12345678901"), Some(Length(11)));
+        assert_eq!(code_irregularity("12345678"), Some(CheckDigit));
+        assert_eq!(code_irregularity("0093624738627"), Some(CheckDigit));
+        // A 12-digit UPC-A is left to the #384 refusal at creation.
+        assert_eq!(code_irregularity("036000291453"), None);
+    }
+
+    #[test]
+    fn what_reaches_the_upc_arm_is_covered() {
+        // The two production codes that started #638 reach the arm.
+        for code in ["220500218", "2205025062"] {
+            assert_eq!(detect_code_type(code).code_type, "upc", "{code}");
+            assert!(code_irregularity(code).is_some(), "{code}");
+        }
+        // A valid ISBN-10 never does.
+        assert_eq!(detect_code_type("2205011502").code_type, "isbn");
+    }
+
+    #[test]
+    fn each_irregularity_has_a_message() {
+        for i in [
+            CodeIrregularity::NineDigits,
+            CodeIrregularity::TenDigits,
+            CodeIrregularity::Length(11),
+            CodeIrregularity::CheckDigit,
+        ] {
+            for loc in ["en", "fr", "de", "it"] {
+                let m = i.message(loc);
+                assert!(!m.is_empty() && !m.contains("scan."), "{loc}: {m}");
+            }
+        }
+        assert!(CodeIrregularity::Length(11).message("en").contains("11"));
     }
 }

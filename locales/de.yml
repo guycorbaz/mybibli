@@ -691,6 +691,10 @@ media_type:
   report: Bericht
 scan:
   select_media_type: "Um welchen Medientyp handelt es sich?"
+  irregular_nine_digits: "Dieser Code hat 9 Ziffern, was bei keinem Strichcode vorkommt: Vielleicht ist es eine ISBN-10 ohne ihr letztes Zeichen, oft ein X. Prüfen Sie ihn und scannen Sie erneut, oder wählen Sie einen Typ, um ihn unverändert zu behalten."
+  irregular_ten_digits: "Dieser Code hat 10 Ziffern, aber seine Prüfziffer passt nicht zu einer ISBN-10: Vielleicht wurde er falsch gelesen oder eingegeben. Prüfen Sie ihn und scannen Sie erneut, oder wählen Sie einen Typ, um ihn unverändert zu behalten."
+  irregular_length: "Dieser Code hat %{len} Ziffern, ein Strichcode aber 8, 12 oder 13: Vielleicht wurde er falsch gelesen oder eingegeben. Prüfen Sie ihn und scannen Sie erneut, oder wählen Sie einen Typ, um ihn unverändert zu behalten."
+  irregular_check_digit: "Die Prüfziffer dieses Codes ist falsch: Vielleicht wurde eine Ziffer falsch gelesen oder eingegeben. Prüfen Sie ihn und scannen Sie erneut, oder wählen Sie einen Typ, um ihn unverändert zu behalten."
 cover:
   alt_text: "Cover von %{title}"
   no_cover: "Kein Cover verfügbar"

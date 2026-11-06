@@ -699,6 +699,10 @@ media_type:
   report: Report
 scan:
   select_media_type: "What type of media is this?"
+  irregular_nine_digits: "This code has 9 digits, which no barcode has: it may be an ISBN-10 that lost its last character, often an X. Check it and scan it again, or choose a type to keep it as entered."
+  irregular_ten_digits: "This code has 10 digits, but its check digit is wrong for an ISBN-10: it may be misread or mistyped. Check it and scan it again, or choose a type to keep it as entered."
+  irregular_length: "This code has %{len} digits, while a barcode has 8, 12 or 13: it may be misread or mistyped. Check it and scan it again, or choose a type to keep it as entered."
+  irregular_check_digit: "The check digit of this code is wrong: a digit may be misread or mistyped. Check it and scan it again, or choose a type to keep it as entered."
 cover:
   alt_text: "Cover of %{title}"
   no_cover: "No cover available"
