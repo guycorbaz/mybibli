@@ -149,48 +149,39 @@ impl VolumeValueModel {
             .collect()
     }
 
-    /// Write an accepted value (and, when given, the list price as the
-    /// purchase price); stamps `current_value_updated_at` and bumps
-    /// `version`. Call with the row locked by [`Self::find_in`]; returns
-    /// the rows affected (1, or 0 when the volume is gone).
+    /// Write an accepted value, the list price as the purchase price, or
+    /// both (story 16-3); a value stamps `current_value_updated_at`. Bumps
+    /// `version`. Call with the row locked by [`Self::find_in`]; returns the
+    /// rows affected (1, or 0 when the volume is gone).
     pub async fn apply_in(
         conn: &mut MySqlConnection,
         id: u64,
-        value_cents: i64,
-        value_currency: &str,
+        value: Option<(i64, &str)>,
         purchase: Option<(i64, &str)>,
     ) -> Result<u64, AppError> {
-        let result = match purchase {
-            Some((cents, currency)) => {
-                sqlx::query(
-                    "UPDATE volumes SET current_value = CAST(? AS DECIMAL(10,2)), \
-                     current_value_currency = ?, current_value_updated_at = NOW(), \
-                     purchase_price = CAST(? AS DECIMAL(10,2)), purchase_currency = ?, \
-                     version = version + 1, updated_at = NOW() \
-                     WHERE id = ? AND deleted_at IS NULL",
-                )
-                .bind(cents_to_decimal(value_cents))
-                .bind(value_currency)
-                .bind(cents_to_decimal(cents))
-                .bind(currency)
-                .bind(id)
-                .execute(&mut *conn)
-                .await?
-            }
-            None => {
-                sqlx::query(
-                    "UPDATE volumes SET current_value = CAST(? AS DECIMAL(10,2)), \
-                     current_value_currency = ?, current_value_updated_at = NOW(), \
-                     version = version + 1, updated_at = NOW() \
-                     WHERE id = ? AND deleted_at IS NULL",
-                )
-                .bind(cents_to_decimal(value_cents))
-                .bind(value_currency)
-                .bind(id)
-                .execute(&mut *conn)
-                .await?
-            }
-        };
+        let mut sets = Vec::new();
+        if value.is_some() {
+            sets.push(
+                "current_value = CAST(? AS DECIMAL(10,2)), current_value_currency = ?, \
+                 current_value_updated_at = NOW()",
+            );
+        }
+        if purchase.is_some() {
+            sets.push("purchase_price = CAST(? AS DECIMAL(10,2)), purchase_currency = ?");
+        }
+        if sets.is_empty() {
+            return Ok(0);
+        }
+        let sql = format!(
+            "UPDATE volumes SET {}, version = version + 1, updated_at = NOW() \
+             WHERE id = ? AND deleted_at IS NULL",
+            sets.join(", ")
+        );
+        let mut query = sqlx::query(&sql);
+        for (cents, currency) in [value, purchase].into_iter().flatten() {
+            query = query.bind(cents_to_decimal(cents)).bind(currency);
+        }
+        let result = query.bind(id).execute(&mut *conn).await?;
         Ok(result.rows_affected())
     }
 }

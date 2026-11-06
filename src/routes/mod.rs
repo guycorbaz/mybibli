@@ -773,6 +773,10 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
             "/admin/system/proposals",
             axum::routing::post(admin_system_proposals::save_proposals_settings),
         )
+        .route(
+            "/admin/system/purchase-thresholds",
+            axum::routing::post(admin_system_proposals::save_purchase_thresholds),
+        )
         // Story 15-1 (#602) — instance time zone (IANA name). Hot-
         // reloads through the AppSettings cache.
         .route(

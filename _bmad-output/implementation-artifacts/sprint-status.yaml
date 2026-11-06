@@ -322,7 +322,7 @@ development_status:
   epic-16: in-progress
   16-1-split-catalog-and-titles-routes: done
   16-2-amounts-on-the-volume-page: done
-  16-3-purchase-price-proposals: backlog
+  16-3-purchase-price-proposals: done
   16-4-cover-upload: backlog
   16-5-irregular-code-warning: backlog
   16-6-retry-log-level: backlog

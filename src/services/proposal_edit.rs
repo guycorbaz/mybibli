@@ -394,6 +394,8 @@ pub fn keep_of(kind: ProposalKind, line: &LineView, live_lines: usize) -> Option
         _ if kind == ProposalKind::LabelAttach => Some(Keep::LastLine),
         // Story 15-5 (D6) — the current value is what the proposal is for.
         "current_value" => Some(Keep::LastLine),
+        // Story 16-3 — a list price filed without a current value.
+        "list_price" if live_lines <= 1 => Some(Keep::LastLine),
         "field" | "contributors" if kind == ProposalKind::Metadata && live_lines <= 1 => {
             Some(Keep::LastLine)
         }
@@ -419,6 +421,8 @@ fn keep_reason(kind: ProposalKind, values: &Value, live_lines: usize) -> Option<
         // Story 13-9 — a label proposal's single line.
         _ if kind == ProposalKind::LabelAttach => Some(Keep::LastLine),
         Some("current_value") => Some(Keep::LastLine),
+        // Story 16-3 — a list price filed without a current value.
+        Some("list_price") if live_lines <= 1 => Some(Keep::LastLine),
         _ if kind == ProposalKind::Metadata && live_lines <= 1 => Some(Keep::LastLine),
         _ => None,
     }

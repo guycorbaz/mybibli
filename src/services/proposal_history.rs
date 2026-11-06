@@ -318,9 +318,12 @@ impl ProposalSubject {
                         fingerprint: l.fingerprint?.to_string(),
                     })
                 }),
+            // Story 16-3 — a list price may be filed without a value, and
+            // then carries the fingerprint.
             ProposalKind::VolumeValue => lines
                 .iter()
                 .find(|l| l.line == Some("current_value"))
+                .or_else(|| lines.iter().find(|l| l.line == Some("list_price")))
                 .and_then(|l| {
                     Some(ProposalSubject::VolumeValue {
                         volume_id: target_of(l, ProposalTargetTable::Volumes)?,

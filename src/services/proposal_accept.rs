@@ -10,7 +10,7 @@ use crate::services::acceptance::{AcceptConflict, AcceptError, Applied, StaleCau
 use crate::services::cover_acceptance::AppliedCover;
 use crate::services::label_acceptance::AppliedLabel;
 use crate::services::metadata_acceptance::AppliedMetadata;
-use crate::services::proposal_review::{ReviewDetail, ReviewError, TargetLabel, field_label};
+use crate::services::proposal_review::{LineView, ReviewDetail, ReviewError, TargetLabel, field_label};
 use crate::services::series_acceptance::AppliedSeries;
 use crate::services::series_update_acceptance::AppliedSeriesUpdate;
 use crate::services::volume_value_acceptance::AppliedVolumeValue;
@@ -167,13 +167,34 @@ fn series_update_sentences(detail: &ReviewDetail, loc: &str) -> Vec<String> {
 /// Story 15-5 — the modal body of a `volume_value`: the value, the list
 /// price written as the purchase price, then the note.
 fn volume_value_sentences(detail: &ReviewDetail, loc: &str) -> Vec<String> {
+    value_sentences(&detail.lines, &detail.target.text(loc), loc)
+}
+
+/// [`volume_value_sentences`] on the lines (pure, apart from the locale
+/// tables).
+fn value_sentences(lines: &[LineView], target: &str, loc: &str) -> Vec<String> {
     use rust_i18n::t;
-    let target = detail.target.text(loc);
+    let has_value = lines.iter().any(|l| l.line == "current_value");
     let mut out = Vec::new();
-    for line in &detail.lines {
-        let key = match line.line {
-            "current_value" => "proposals.accept_modal_current_value",
-            "list_price" => "proposals.accept_modal_list_price",
+    for line in lines {
+        let key = match (line.line, &line.current) {
+            ("current_value", _) => "proposals.accept_modal_current_value",
+            // Story 16-3 — replacing an inconsistent purchase price.
+            ("list_price", Some(old)) => {
+                out.push(
+                    t!(
+                        "proposals.accept_modal_purchase_replace",
+                        locale = loc,
+                        old = old.as_str(),
+                        amount = line.proposed.as_str(),
+                        target = target
+                    )
+                    .to_string(),
+                );
+                continue;
+            }
+            ("list_price", None) if !has_value => "proposals.accept_modal_list_price_alone",
+            ("list_price", None) => "proposals.accept_modal_list_price",
             _ => continue,
         };
         out.push(
@@ -181,7 +202,7 @@ fn volume_value_sentences(detail: &ReviewDetail, loc: &str) -> Vec<String> {
                 key,
                 locale = loc,
                 amount = line.proposed.as_str(),
-                target = target.as_str()
+                target = target
             )
             .to_string(),
         );
@@ -194,21 +215,30 @@ fn volume_value_sentences(detail: &ReviewDetail, loc: &str) -> Vec<String> {
 pub fn volume_value_message(id: u64, applied: &AppliedVolumeValue, loc: &str) -> String {
     use crate::services::volume_value_review::amount_text;
     use rust_i18n::t;
-    let mut parts = vec![
-        t!("proposals.accepted_feedback", locale = loc, id = id).to_string(),
-        t!(
-            "proposals.applied_current_value",
-            locale = loc,
-            target = applied.volume_name.as_str(),
-            amount = amount_text(&applied.value, loc).as_str()
-        )
-        .to_string(),
-    ];
-    if let Some(p) = &applied.purchase_price {
+    let mut parts = vec![t!("proposals.accepted_feedback", locale = loc, id = id).to_string()];
+    if let Some(v) = &applied.value {
         parts.push(
             t!(
-                "proposals.applied_list_price",
+                "proposals.applied_current_value",
                 locale = loc,
+                target = applied.volume_name.as_str(),
+                amount = amount_text(v, loc).as_str()
+            )
+            .to_string(),
+        );
+    }
+    if let Some(p) = &applied.purchase_price {
+        // Story 16-3 — a purchase price alone names its volume.
+        let key = if applied.value.is_some() {
+            "proposals.applied_list_price"
+        } else {
+            "proposals.applied_list_price_alone"
+        };
+        parts.push(
+            t!(
+                key,
+                locale = loc,
+                target = applied.volume_name.as_str(),
                 amount = amount_text(p, loc).as_str()
             )
             .to_string(),
@@ -738,6 +768,7 @@ pub fn into_app_error(e: AcceptError, loc: &str) -> AppError {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::services::proposals::{StaleReason, StaleTarget};
     use crate::services::series_acceptance::SkippedTome;
@@ -1090,5 +1121,40 @@ mod tests {
             }
             other => panic!("expected Conflict, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_purchase_price_accepted_alone_names_its_volume() {
+        use crate::models::volume_value::Amount;
+        let chf = |cents| Amount {
+            cents,
+            currency: Some("CHF".into()),
+        };
+        let applied = AppliedVolumeValue {
+            volume_id: 4,
+            volume_name: "V0004 — Titre".into(),
+            value: None,
+            purchase_price: Some(chf(2400)),
+            previous_value: None,
+            previous_purchase: Some(chf(240000)),
+        };
+        let m = volume_value_message(9, &applied, "en");
+        assert!(m.contains("V0004 — Titre") && m.contains("24.00 CHF"), "{m}");
+        assert!(!m.contains("current value"), "{m}");
+    }
+
+    #[test]
+    fn a_replacement_says_what_it_replaces() {
+        let list = |current: Option<&str>| LineView {
+            line: "list_price",
+            proposed: "24.00 CHF".into(),
+            current: current.map(str::to_string),
+            ..LineView::default()
+        };
+        let text = |lines: Vec<LineView>| value_sentences(&lines, "V0004", "en").join(" ");
+        let replacing = text(vec![list(Some("2400.00 CHF"))]);
+        assert!(replacing.contains("2400.00 CHF") && replacing.contains("24.00 CHF"), "{replacing}");
+        let alone = text(vec![list(None)]);
+        assert!(alone.starts_with("Accepting sets the purchase price"), "{alone}");
     }
 }

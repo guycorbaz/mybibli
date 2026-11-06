@@ -2,7 +2,7 @@
 //!
 //! The items (shapes: module doc of
 //! [`crate::services::volume_value_proposals`]) propose a volume's current
-//! value and, optionally, its list price as the purchase price. Acceptance
+//! value, its list price as the purchase price, or both. Acceptance
 //! runs in **one transaction** (shared steps in
 //! [`crate::services::acceptance`]):
 //!
@@ -12,8 +12,8 @@
 //!    `version` does not count, `version_counts`); a volume whose title was
 //!    deleted counts as deleted too;
 //! 3. per field (D7): the live current value differs from the one filed →
-//!    stale ([`AcceptConflict::ValueChanged`]); a list-price line while a
-//!    purchase price was set meanwhile → stale
+//!    stale ([`AcceptConflict::ValueChanged`]); a list-price line while the
+//!    purchase price is no longer the one filed → stale
 //!    ([`AcceptConflict::PurchasePriceSet`]); the default currency changed
 //!    since filing → stale ([`AcceptConflict::CurrencyChanged`], D3 as
 //!    amended in review: amounts are only ever written in the library's
@@ -45,21 +45,23 @@ use crate::services::acceptance::{
 };
 use crate::services::proposals::{Decision, ProposalService, StaleReason, StaleTarget, Transition};
 use crate::services::volume_value_proposals::{
-    ValueLine, parse_default_currency, parse_list_price_line, parse_value_line, same_value,
+    ListPriceLine, ValueLine, parse_default_currency, parse_list_price_line, parse_value_line,
+    same_value,
 };
 
 /// A stored value proposal, parsed back.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredVolumeValue {
     pub volume_id: u64,
-    pub value: ValueLine,
+    /// Story 16-3 — `None`: a purchase price proposed alone.
+    pub value: Option<ValueLine>,
     /// The list-price line, unless absent or removed by the librarian.
-    pub list_price: Option<Amount>,
+    pub list_price: Option<ListPriceLine>,
 }
 
-/// Parse the stored items of a value proposal (pure — unit tested): one
-/// current-value line and at most one list-price line, all targeting the
-/// same volume.
+/// Parse the stored items of a value proposal (pure — unit tested): at
+/// most one current-value line and one list-price line, at least one of
+/// them, all targeting the same volume.
 pub fn parse_items(items: &[ProposalItemRow]) -> Result<StoredVolumeValue, String> {
     let mut volume_id = None;
     let mut value = None;
@@ -90,9 +92,10 @@ pub fn parse_items(items: &[ProposalItemRow]) -> Result<StoredVolumeValue, Strin
             _ => return Err(format!("item {}: unexpected line", row.id)),
         }
     }
-    let value = value.ok_or_else(|| "no current-value line".to_string())?;
     let good = |a: &Amount| a.cents > 0 && a.currency.is_some();
-    if !good(&value.amount) || list_price.as_ref().is_some_and(|l| !good(l)) {
+    if value.as_ref().is_some_and(|v: &ValueLine| !good(&v.amount))
+        || list_price.as_ref().is_some_and(|l: &ListPriceLine| !good(&l.amount))
+    {
         return Err("an amount is not positive or has no currency".to_string());
     }
     Ok(StoredVolumeValue {
@@ -108,11 +111,14 @@ pub struct AppliedVolumeValue {
     pub volume_id: u64,
     /// "V0042 — title".
     pub volume_name: String,
-    pub value: Amount,
+    /// `None`: a purchase price accepted alone (story 16-3).
+    pub value: Option<Amount>,
     /// The list price written as the purchase price.
     pub purchase_price: Option<Amount>,
     /// The current value before (for the audit row).
     pub previous_value: Option<Amount>,
+    /// The purchase price before (story 16-3, for the audit row).
+    pub previous_purchase: Option<Amount>,
 }
 
 impl AppliedVolumeValue {
@@ -150,16 +156,20 @@ fn audit_amount(a: Option<&Amount>) -> (Option<String>, Option<String>) {
 /// The `admin_audit` row of an accepted value (best effort: the value is
 /// already committed).
 async fn audit(pool: &DbPool, user_id: u64, applied: &AppliedVolumeValue) {
-    let (old_cv, old_cv_cur) = audit_amount(applied.previous_value.as_ref());
-    let (new_cv, new_cv_cur) = audit_amount(Some(&applied.value));
-    let mut details = json!({
-        "source": "proposal",
-        "old": {"current_value": old_cv, "current_value_currency": old_cv_cur},
-        "new": {"current_value": new_cv, "current_value_currency": new_cv_cur},
-    });
+    let mut details = json!({"source": "proposal", "old": {}, "new": {}});
+    if let Some(v) = &applied.value {
+        let (old_cv, old_cv_cur) = audit_amount(applied.previous_value.as_ref());
+        let (new_cv, new_cv_cur) = audit_amount(Some(v));
+        details["old"]["current_value"] = json!(old_cv);
+        details["old"]["current_value_currency"] = json!(old_cv_cur);
+        details["new"]["current_value"] = json!(new_cv);
+        details["new"]["current_value_currency"] = json!(new_cv_cur);
+    }
     if let Some(p) = &applied.purchase_price {
+        let (old_pp, old_pp_cur) = audit_amount(applied.previous_purchase.as_ref());
         let (pp, pp_cur) = audit_amount(Some(p));
-        details["old"]["purchase_price"] = Value::Null;
+        details["old"]["purchase_price"] = json!(old_pp);
+        details["old"]["purchase_currency"] = json!(old_pp_cur);
         details["new"]["purchase_price"] = json!(pp);
         details["new"]["purchase_currency"] = json!(pp_cur);
     }
@@ -214,10 +224,14 @@ pub async fn accept_in(
             .collect();
         return Ok(AcceptOutcome::Stale(StaleCause::Targets(targets)));
     };
-    if !same_value(stored.value.current.as_ref(), live.current_value.as_ref()) {
+    if let Some(value) = &stored.value
+        && !same_value(value.current.as_ref(), live.current_value.as_ref())
+    {
         return mark_stale_in(conn, id, AcceptConflict::ValueChanged).await;
     }
-    if stored.list_price.is_some() && live.purchase_price.is_some() {
+    if let Some(list) = &stored.list_price
+        && !same_value(list.replaces.as_ref(), live.purchase_price.as_ref())
+    {
         return mark_stale_in(conn, id, AcceptConflict::PurchasePriceSet).await;
     }
     let default = parse_default_currency(
@@ -225,7 +239,13 @@ pub async fn accept_in(
             .await?
             .as_deref(),
     );
-    if stored.value.amount.currency.as_deref() != Some(default.as_str()) {
+    let value_amount = stored.value.as_ref().map(|v| v.amount.clone());
+    let list_amount = stored.list_price.as_ref().map(|l| l.amount.clone());
+    let filed_currency = value_amount
+        .as_ref()
+        .or(list_amount.as_ref())
+        .and_then(|a| a.currency.as_deref());
+    if filed_currency != Some(default.as_str()) {
         return mark_stale_in(conn, id, AcceptConflict::CurrencyChanged { currency: default })
             .await;
     }
@@ -241,19 +261,16 @@ pub async fn accept_in(
             return Ok(AcceptOutcome::Stale(StaleCause::Targets(targets)));
         }
     }
-    let currency = |a: &Amount| a.currency.clone().unwrap_or_default();
-    let value_currency = currency(&stored.value.amount);
-    let purchase_currency = stored.list_price.as_ref().map(currency);
+    let priced = |a: &'_ Option<Amount>| {
+        a.as_ref()
+            .map(|a| (a.cents, a.currency.clone().unwrap_or_default()))
+    };
+    let (value_written, purchase_written) = (priced(&value_amount), priced(&list_amount));
     let written = VolumeValueModel::apply_in(
         conn,
         live.id,
-        stored.value.amount.cents,
-        &value_currency,
-        stored
-            .list_price
-            .as_ref()
-            .zip(purchase_currency.as_deref())
-            .map(|(l, c)| (l.cents, c)),
+        value_written.as_ref().map(|(c, cur)| (*c, cur.as_str())),
+        purchase_written.as_ref().map(|(c, cur)| (*c, cur.as_str())),
     )
     .await?;
     if written != 1 {
@@ -265,9 +282,10 @@ pub async fn accept_in(
     Ok(AcceptOutcome::Accepted(AppliedVolumeValue {
         volume_id: live.id,
         volume_name,
-        value: stored.value.amount,
-        purchase_price: stored.list_price,
+        value: value_amount,
+        purchase_price: list_amount,
         previous_value: live.current_value,
+        previous_purchase: live.purchase_price,
     }))
 }
 
@@ -310,8 +328,8 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(stored.volume_id, 4);
-        assert_eq!(stored.value.amount.cents, 1850);
-        assert_eq!(stored.list_price.unwrap().cents, 2490);
+        assert_eq!(stored.value.unwrap().amount.cents, 1850);
+        assert_eq!(stored.list_price.unwrap().amount.cents, 2490);
         let alone = parse_items(&[row(1, v, 4, value_line(&state(), 1850, "CHF", None, None))])
             .unwrap();
         assert_eq!(alone.list_price, None);
@@ -322,7 +340,8 @@ mod tests {
         let v = ProposalTargetTable::Volumes;
         let value = || value_line(&state(), 1850, "CHF", None, None);
         assert!(parse_items(&[]).is_err());
-        assert!(parse_items(&[row(1, v, 4, list_price_line(2490, "CHF"))]).is_err());
+        // Story 16-3 — a list price alone is a proposal; no line at all is not.
+        assert!(parse_items(&[row(1, v, 4, list_price_line(2490, "CHF"))]).is_ok());
         assert!(parse_items(&[row(1, ProposalTargetTable::Titles, 4, value())]).is_err());
         assert!(parse_items(&[row(1, v, 4, value()), row(2, v, 5, list_price_line(1, "CHF"))])
             .is_err());

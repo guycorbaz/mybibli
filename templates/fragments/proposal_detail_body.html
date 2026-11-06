@@ -207,18 +207,7 @@
             {% else if line.line.eq("current_value") %}
                 {# Story 15-5 (UX-DR41) — the value as filed vs proposed; the live
                    volume beside it. The note is agent text, escaped. #}
-                <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("value_volume") }}</dt>
-                    <dd data-value-target class="text-stone-900 dark:text-stone-100">{% if let Some(href) = line.target_href %}<a href="{{ href }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ body.target_texts[loop.index0] }}</a>{% else %}{{ body.target_texts[loop.index0] }}{% endif %}</dd>
-                    {% if let Some(f) = line.volume_facts %}
-                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("value_condition") }}</dt>
-                    <dd data-value-condition class="text-stone-900 dark:text-stone-100">{% if let Some(c) = f.condition %}{{ c }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}</dd>
-                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("value_edition_comment") }}</dt>
-                    <dd data-value-edition class="text-stone-900 dark:text-stone-100 whitespace-pre-line">{% if let Some(c) = f.edition_comment %}{{ c }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}</dd>
-                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("value_purchase_price") }}</dt>
-                    <dd data-value-purchase class="text-stone-900 dark:text-stone-100">{% if let Some(p) = f.purchase_price %}{{ p }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}</dd>
-                    {% endif %}
-                </dl>
+                {% include "fragments/proposal_volume_facts.html" %}
                 <table data-compare data-volume-value class="mt-2 w-full table-fixed border-collapse">
                     <thead>
                         <tr>
@@ -243,10 +232,27 @@
                 <p data-value-note class="text-stone-900 dark:text-stone-100 whitespace-pre-line">{{ note }}</p>
                 {% endif %}
             {% else if line.line.eq("list_price") %}
-                {# Story 15-5 — the list price stands in for an unknown purchase price. #}
+                {# Story 15-5 — the list price stands in for an unknown purchase price.
+                   Story 16-3 — it may be the only line, and may replace a purchase price
+                   that looks wrong. #}
+                {% if line.volume_facts.is_some() %}<div class="mb-2">{% include "fragments/proposal_volume_facts.html" %}</div>{% endif %}
                 <span class="text-stone-500 dark:text-stone-400">{{ l.t("value_list_price") }} —</span>
                 <span data-list-price class="font-medium text-stone-900 dark:text-stone-100">{{ line.proposed }}</span>
+                {% if let Some(old) = line.current %}
+                <p data-purchase-replaces class="mt-2 text-stone-900 dark:text-stone-100">{{ l.t("value_purchase_replaces") }} {{ old }}</p>
+                {% else %}
                 <p data-list-price-note class="mt-1 text-xs text-stone-600 dark:text-stone-300">{{ l.t("value_list_price_note") }}</p>
+                {% endif %}
+                {% if line.purchase_changed && body.can_reject %}
+                <p data-purchase-changed class="mt-2 font-medium text-amber-800 dark:text-amber-300">{{ l.t("value_purchase_changed") }}</p>
+                {% endif %}
+                {% if let Some(why) = line.purchase_problem %}
+                <p data-purchase-problem class="mt-1 font-medium text-amber-800 dark:text-amber-300">{{ why }}</p>
+                {% endif %}
+                {% if let Some(note) = line.note %}
+                <p class="mt-2 text-stone-500 dark:text-stone-400">{{ l.t("label_note") }}</p>
+                <p data-value-note class="text-stone-900 dark:text-stone-100 whitespace-pre-line">{{ note }}</p>
+                {% endif %}
             {% else if line.line.eq("label") %}
                 {# Story 13-9 — a label on a title or a volume; the note is agent text, escaped. #}
                 <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">

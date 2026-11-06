@@ -135,6 +135,7 @@ Columns: `method | path | role | csrf | note`. `csrf` is `—` for GET (the midd
 | POST | `/admin/system/loans` | Admin | no | Save overdue threshold; reloads `AppSettings` cache. |
 | POST | `/admin/system/log-level` | Admin | no |  |
 | POST | `/admin/system/proposals` | Admin | no | 11-15 — resubmission delay for rejected proposals (days, 0..=3650) |
+| POST | `/admin/system/purchase-thresholds` | Admin | no | 16-3 — from when an agent may propose replacing a purchase price (negligible amount, gap factor 2..=100) |
 | POST | `/admin/system/provider-timeouts` | Admin | no |  |
 | POST | `/admin/system/providers` | Admin | no | Save 3 provider API keys (Google Books / OMDb / TMDb) in one transaction; NoChange/Clear/Set state machine; reloads cache. |
 | POST | `/admin/system/sessions` | Admin | no |  |
@@ -208,9 +209,10 @@ sources, refused while another proposal for the same series is pending).
 closed) and total, and the removal of expected tomes; a closed total below an
 owned position or a live expected tome the proposal does not remove is
 refused, naming the positions.
-`propose_volume_value` (15-5) proposes a volume's current value and, when the
-volume has no purchase price, the list price at publication as a labelled
-stand-in (`list_volumes_to_value`, 15-6, lists the volumes to value first:
+`propose_volume_value` (15-5, 16-3) proposes a volume's current value, the list
+price at publication as a labelled stand-in for the purchase price, or both; the
+list price fills an empty purchase price or replaces one of a listed inconsistent
+shape (`list_volumes_to_value`, 15-6, lists the volumes to value first:
 never valued, then the oldest estimates); amounts in the default currency only (no conversion), at most two
 decimals, one pending value proposal per volume. `get_title` gives each
 volume's edition note and amounts and the document's `default_currency`.

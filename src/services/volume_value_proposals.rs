@@ -1,8 +1,11 @@
 //! Story 15-5 (#564, FR165) — volume value proposals filed by an agent.
 //!
-//! The agent proposes what a volume is worth today (`current_value`) and,
-//! when the volume has no purchase price, the publisher's **list price at
-//! publication** as a labelled stand-in for it. The MCP tool
+//! The agent proposes what a volume is worth today (`current_value`), the
+//! publisher's **list price at publication** as a labelled stand-in for the
+//! purchase price, or both (story 16-3, #639: at least one). The list price
+//! fills an empty purchase price, or replaces one matching a listed
+//! inconsistent shape ([`purchase_price_problem`], thresholds set in Admin →
+//! System). The MCP tool
 //! `propose_volume_value` is a thin adapter over this module; the catalog
 //! does not change until a librarian accepts the proposal
 //! (`services::volume_value_acceptance`).
@@ -13,7 +16,7 @@
 //! not used for staleness — `proposals::version_counts`). Amounts are
 //! integer cents (D2), currencies the instance's default currency (D3).
 //!
-//! The **current-value line**, always present (and the last line kept):
+//! The **current-value line**, when a value is proposed (not removable):
 //!
 //! ```json
 //! {"line": "current_value", "amount_cents": 1850, "currency": "CHF",
@@ -23,24 +26,29 @@
 //!  "fingerprint": "1850CHF:list:2490CHF"}
 //! ```
 //!
-//! The **list-price line**, only when the volume had no purchase price at
-//! filing (removable by the librarian):
+//! The **list-price line**, when the volume had no purchase price at filing
+//! or one of an inconsistent shape (removable unless it is the last line):
 //!
 //! ```json
 //! {"line": "list_price", "amount_cents": 2490, "currency": "CHF"}
 //! ```
 //!
+//! Story 16-3 adds, only when they apply: `replaces` (the purchase price at
+//! filing, `{"amount_cents", "currency"}`) and `inconsistent` (its
+//! [`PriceProblem`]) on a replacement; `note` and `fingerprint` on a line
+//! filed without a current value (`list:2490CHF`).
+//!
 //! - `current` — the volume's current value at filing: acceptance is
 //!   stale when it differs from the live one (per field, D7); a list-price
-//!   line is stale once a purchase price was set.
+//!   line is stale once the purchase price differs from the one filed.
 //! - `fingerprint` — the amounts as filed ([`value_fingerprint`]): the
 //!   equivalence key is `volume_value:volumes/<id>:<fingerprint>`, so a
 //!   rejected estimate blocks the same amounts on the same volume (D5).
 //!
 //! Filing refuses an unknown volume, an amount out of range or with more
 //! than two decimals (never rounded, Rule #20), another currency than the
-//! default, a list price for a volume that has a purchase price, no
-//! change, a pending value proposal on the volume (D4) and an equivalent
+//! default, a list price for a volume whose purchase price is not of an
+//! inconsistent shape, no amount at all, an unchanged value, a pending value proposal on the volume (D4) and an equivalent
 //! rejection. Lock order: the filing key row (exclusive), then plain
 //! reads; the duplicate read starts from the target index.
 
@@ -68,6 +76,16 @@ const KEY_DEFAULT_CURRENCY: &str = "default_currency";
 /// The default currency when the setting is missing or unreadable (the
 /// same fallback as `AppSettings`).
 const FALLBACK_CURRENCY: &str = "CHF";
+/// Story 16-3 — the `settings` keys of [`PriceThresholds`] (Admin → System).
+pub const KEY_NEGLIGIBLE_AMOUNT: &str = "purchase_negligible_amount";
+pub const KEY_GAP_FACTOR: &str = "purchase_gap_factor";
+/// Story 16-3 — the accepted range of `purchase_gap_factor`: a factor of 1
+/// would make every price replaceable.
+pub const MIN_GAP_FACTOR: i64 = 2;
+pub const MAX_GAP_FACTOR: i64 = 100;
+/// Story 16-3 — from this factor, a probable scale error: only the reason
+/// shown to the librarian, not a threshold.
+pub const SCALE_FACTOR: i64 = 10;
 
 /// Which amount of the request (agent-facing names).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,7 +115,7 @@ pub struct AmountArg {
 pub struct VolumeValueRequest {
     pub api_key_id: u64,
     pub volume_id: u64,
-    pub current_value: AmountArg,
+    pub current_value: Option<AmountArg>,
     pub list_price: Option<AmountArg>,
     pub note: Option<String>,
     pub sources: Vec<String>,
@@ -123,11 +141,15 @@ pub enum VolumeValueError {
     VolumeNotFound {
         volume_id: u64,
     },
-    /// A list price for a volume that already has a purchase price.
+    /// Story 16-3 — neither `current_value` nor `list_price`.
+    NothingProposed,
+    /// A list price for a volume whose purchase price is of no inconsistent
+    /// shape.
     HasPurchasePrice {
         volume_id: u64,
+        thresholds: PriceThresholds,
     },
-    /// The current value is the proposed one and no list price is given.
+    /// The current value is the proposed one.
     NoChange {
         volume_id: u64,
     },
@@ -141,7 +163,7 @@ impl Refusal for VolumeValueError {
     fn class(&self) -> RefusalClass {
         use VolumeValueError::*;
         match self {
-            InvalidAmount { .. } | WrongCurrency { .. } | NoteTooLong { .. } => {
+            InvalidAmount { .. } | WrongCurrency { .. } | NoteTooLong { .. } | NothingProposed => {
                 RefusalClass::InvalidInput
             }
             VolumeNotFound { .. } => RefusalClass::NotFound,
@@ -186,19 +208,32 @@ impl fmt::Display for VolumeValueError {
                 "No volume with id {volume_id} exists in the catalog (or it was deleted). \
                  Find volume ids in get_title."
             ),
-            HasPurchasePrice { volume_id } => write!(
+            NothingProposed => write!(
                 f,
-                "Volume {volume_id} already has a purchase price: propose `list_price` only for \
-                 a volume without one (get_title shows `purchase_price`). Nothing was filed."
+                "Give `current_value`, `list_price` or both: there is nothing to propose. \
+                 Nothing was filed."
+            ),
+            HasPurchasePrice {
+                volume_id,
+                thresholds,
+            } => write!(
+                f,
+                "Volume {volume_id} already has a purchase price that does not look wrong: \
+                 propose `list_price` only for a volume without one, or whose purchase price is \
+                 at most {} against a higher list price, or differs from the list price by a \
+                 factor of {} or more, in the same currency (get_title shows `purchase_price`). \
+                 Nothing was filed.",
+                crate::models::volume_value::cents_to_decimal(thresholds.negligible_cents),
+                thresholds.gap_factor
             ),
             NoChange { volume_id } => write!(
                 f,
-                "Volume {volume_id} already has this current value: there is nothing to \
-                 propose. Nothing was filed."
+                "Volume {volume_id} already has this current value: propose another value, or \
+                 leave `current_value` out to propose `list_price` alone. Nothing was filed."
             ),
             PendingDuplicate { proposal_id } => write!(
                 f,
-                "Proposal {proposal_id} already proposes a value for this volume and is waiting \
+                "Proposal {proposal_id} already proposes amounts for this volume and is waiting \
                  for a librarian. Nothing was filed; follow it with list_my_proposals."
             ),
             Proposal(e) => write!(f, "{e}"),
@@ -300,6 +335,133 @@ pub fn value_fingerprint(value_cents: i64, currency: &str, list_price: Option<i6
     }
 }
 
+/// Story 16-3 — the fingerprint of a list price filed without a value
+/// (pure; pinned with [`value_fingerprint`]).
+pub fn list_fingerprint(cents: i64, currency: &str) -> String {
+    format!("list:{cents}{currency}")
+}
+
+/// Story 16-3 (#639) — why a stored purchase price looks wrong against an
+/// attested list price. Positive shapes only (Rule #20): anything else is
+/// a real price, even a bargain, and is left alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PriceProblem {
+    /// Zero, or at most [`PriceThresholds::negligible_cents`], against a list
+    /// price above it.
+    Negligible,
+    /// Past the gap factor and [`SCALE_FACTOR`] or more away from the list
+    /// price (24 typed 2400).
+    Scale,
+    /// [`PriceThresholds::gap_factor`] or more away from the list price.
+    Gap,
+}
+
+impl PriceProblem {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PriceProblem::Negligible => "negligible",
+            PriceProblem::Scale => "scale",
+            PriceProblem::Gap => "gap",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "negligible" => Some(PriceProblem::Negligible),
+            "scale" => Some(PriceProblem::Scale),
+            "gap" => Some(PriceProblem::Gap),
+            _ => None,
+        }
+    }
+}
+
+/// Story 16-3 — from when a purchase price looks wrong (Admin → System).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PriceThresholds {
+    pub negligible_cents: i64,
+    pub gap_factor: i64,
+}
+
+impl Default for PriceThresholds {
+    fn default() -> Self {
+        PriceThresholds {
+            negligible_cents: 100,
+            gap_factor: 3,
+        }
+    }
+}
+
+/// An amount typed or stored as text (pure): digits, at most two decimals, at
+/// most [`MAX_AMOUNT_CENTS`], zero allowed. `None` otherwise, never rounded.
+pub fn parse_threshold_cents(raw: &str) -> Option<i64> {
+    let raw = raw.trim();
+    let (whole, frac) = raw.split_once('.').unwrap_or((raw, ""));
+    let digits = |t: &str| t.bytes().all(|b| b.is_ascii_digit());
+    // `.5` is what a number input may send; a lone `.` is nothing.
+    if (whole.is_empty() && frac.is_empty()) || !digits(whole) || !digits(frac) || frac.len() > 2 {
+        return None;
+    }
+    let frac: i64 = format!("{frac:0<2}").parse().ok()?;
+    let whole = if whole.is_empty() { "0" } else { whole };
+    whole
+        .parse::<i64>()
+        .ok()?
+        .checked_mul(100)?
+        .checked_add(frac)
+        .filter(|c| *c <= MAX_AMOUNT_CENTS)
+}
+
+/// A gap factor typed or stored as text (pure): a whole number in range.
+pub fn parse_gap_factor(raw: &str) -> Option<i64> {
+    raw.trim()
+        .parse::<i64>()
+        .ok()
+        .filter(|f| (MIN_GAP_FACTOR..=MAX_GAP_FACTOR).contains(f))
+}
+
+impl PriceThresholds {
+    /// As stored (pure): an invalid or missing value reads as its default.
+    pub fn parse(negligible: Option<&str>, gap: Option<&str>) -> Self {
+        let defaults = Self::default();
+        PriceThresholds {
+            negligible_cents: negligible
+                .and_then(parse_threshold_cents)
+                .unwrap_or(defaults.negligible_cents),
+            gap_factor: gap.and_then(parse_gap_factor).unwrap_or(defaults.gap_factor),
+        }
+    }
+}
+
+/// The shape of an inconsistent purchase price (pure — unit tested);
+/// `None` is every other price, or one in another currency (amounts in two
+/// currencies cannot be compared).
+pub fn purchase_price_problem(
+    purchase: &Amount,
+    list_cents: i64,
+    default: &str,
+    thresholds: PriceThresholds,
+) -> Option<PriceProblem> {
+    if purchase.currency.as_deref() != Some(default) {
+        return None;
+    }
+    if purchase.cents <= thresholds.negligible_cents && list_cents > thresholds.negligible_cents {
+        return Some(PriceProblem::Negligible);
+    }
+    // Below, a purchase price of zero against a list price that is itself
+    // negligible: no factor to read.
+    if purchase.cents == 0 {
+        return None;
+    }
+    let (high, low) = (purchase.cents.max(list_cents), purchase.cents.min(list_cents));
+    if high / thresholds.gap_factor < low {
+        None
+    } else if high / SCALE_FACTOR >= low {
+        Some(PriceProblem::Scale)
+    } else {
+        Some(PriceProblem::Gap)
+    }
+}
+
 /// The current-value line (see the module doc for the contract).
 pub fn value_line(
     state: &VolumeValueState,
@@ -326,6 +488,21 @@ pub fn value_line(
 /// The list-price line.
 pub fn list_price_line(cents: i64, currency: &str) -> Value {
     json!({"line": "list_price", "amount_cents": cents, "currency": currency})
+}
+
+/// Story 16-3 — a list-price line replacing an inconsistent purchase price.
+pub fn with_replacement(mut line: Value, purchase: &Amount, problem: PriceProblem) -> Value {
+    line["replaces"] = json!({"amount_cents": purchase.cents, "currency": purchase.currency});
+    line["inconsistent"] = json!(problem.as_str());
+    line
+}
+
+/// Story 16-3 — a list-price line filed without a current value: it
+/// carries the note and the proposal's fingerprint.
+pub fn alone(mut line: Value, cents: i64, currency: &str, note: Option<&str>) -> Value {
+    line["note"] = json!(note);
+    line["fingerprint"] = json!(list_fingerprint(cents, currency));
+    line
 }
 
 /// A current-value line read back.
@@ -368,14 +545,40 @@ pub fn parse_value_line(v: &Value) -> Option<ValueLine> {
     })
 }
 
+/// A list-price line read back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListPriceLine {
+    pub amount: Amount,
+    /// Story 16-3 — the purchase price at filing; `None`: there was none.
+    pub replaces: Option<Amount>,
+    pub problem: Option<PriceProblem>,
+    /// Story 16-3 — the note of a line filed without a current value.
+    pub note: Option<String>,
+}
+
 /// Read a list-price line (pure); `None` when malformed.
-pub fn parse_list_price_line(v: &Value) -> Option<Amount> {
+pub fn parse_list_price_line(v: &Value) -> Option<ListPriceLine> {
     if v.get("line")?.as_str()? != "list_price" {
         return None;
     }
-    Some(Amount {
-        cents: v.get("amount_cents")?.as_i64()?,
-        currency: Some(v.get("currency")?.as_str()?.to_string()),
+    let replaces = match v.get("replaces") {
+        None | Some(Value::Null) => None,
+        Some(r) => Some(Amount {
+            cents: r.get("amount_cents")?.as_i64()?,
+            currency: r.get("currency").and_then(Value::as_str).map(str::to_string),
+        }),
+    };
+    Some(ListPriceLine {
+        amount: Amount {
+            cents: v.get("amount_cents")?.as_i64()?,
+            currency: Some(v.get("currency")?.as_str()?.to_string()),
+        },
+        replaces,
+        problem: v
+            .get("inconsistent")
+            .and_then(Value::as_str)
+            .and_then(PriceProblem::parse),
+        note: v.get("note").and_then(Value::as_str).map(str::to_string),
     })
 }
 
@@ -453,7 +656,14 @@ impl VolumeValueProposalService {
                 .await?
                 .as_deref(),
         );
-        let value_cents = check_amount(AmountField::CurrentValue, &req.current_value, &default)?;
+        if req.current_value.is_none() && req.list_price.is_none() {
+            return Err(VolumeValueError::NothingProposed);
+        }
+        let value_cents = req
+            .current_value
+            .as_ref()
+            .map(|v| check_amount(AmountField::CurrentValue, v, &default))
+            .transpose()?;
         let list_cents = req
             .list_price
             .as_ref()
@@ -464,16 +674,38 @@ impl VolumeValueProposalService {
                 volume_id: req.volume_id,
             });
         };
-        if list_cents.is_some() && state.purchase_price.is_some() {
-            return Err(VolumeValueError::HasPurchasePrice {
-                volume_id: req.volume_id,
-            });
-        }
-        let proposed = Amount {
-            cents: value_cents,
-            currency: Some(default.clone()),
+        // Story 16-3 — a purchase price is replaced only when of a listed
+        // inconsistent shape (Rule #20); the librarian decides.
+        let replaced = match (list_cents, state.purchase_price.as_ref()) {
+            (Some(list), Some(purchase)) => {
+                let thresholds = PriceThresholds::parse(
+                    ProposalModel::setting_value(&mut tx, KEY_NEGLIGIBLE_AMOUNT)
+                        .await?
+                        .as_deref(),
+                    ProposalModel::setting_value(&mut tx, KEY_GAP_FACTOR)
+                        .await?
+                        .as_deref(),
+                );
+                let problem = purchase_price_problem(purchase, list, &default, thresholds).ok_or(
+                    VolumeValueError::HasPurchasePrice {
+                        volume_id: req.volume_id,
+                        thresholds,
+                    },
+                )?;
+                Some((purchase, problem))
+            }
+            _ => None,
         };
-        if list_cents.is_none() && same_value(Some(&proposed), state.current_value.as_ref()) {
+        let unchanged = value_cents.is_some_and(|cents| {
+            let proposed = Amount {
+                cents,
+                currency: Some(default.clone()),
+            };
+            same_value(Some(&proposed), state.current_value.as_ref())
+        });
+        // Review of 16-3 — also with a list price: a value is optional now,
+        // and an unchanged estimate is never re-dated.
+        if unchanged {
             return Err(VolumeValueError::NoChange {
                 volume_id: req.volume_id,
             });
@@ -487,16 +719,26 @@ impl VolumeValueProposalService {
             table: ProposalTargetTable::Volumes,
             id: req.volume_id,
         });
-        let mut items = vec![NewProposalItem {
-            target,
-            expected_version: None,
-            proposed_values: value_line(&state, value_cents, &default, list_cents, note.as_deref()),
-        }];
-        if let Some(cents) = list_cents {
+        let mut items = Vec::new();
+        if let Some(cents) = value_cents {
             items.push(NewProposalItem {
                 target,
                 expected_version: None,
-                proposed_values: list_price_line(cents, &default),
+                proposed_values: value_line(&state, cents, &default, list_cents, note.as_deref()),
+            });
+        }
+        if let Some(cents) = list_cents {
+            let mut line = list_price_line(cents, &default);
+            if let Some((purchase, problem)) = replaced {
+                line = with_replacement(line, purchase, problem);
+            }
+            if value_cents.is_none() {
+                line = alone(line, cents, &default, note.as_deref());
+            }
+            items.push(NewProposalItem {
+                target,
+                expected_version: None,
+                proposed_values: line,
             });
         }
         let proposal = NewProposal {
@@ -631,9 +873,105 @@ mod tests {
         let blank = parse_value_line(&value_line(&state(None), 1850, "CHF", None, None)).unwrap();
         assert_eq!(blank.current, None);
         let list = parse_list_price_line(&list_price_line(2490, "CHF")).unwrap();
-        assert_eq!(list.cents, 2490);
+        assert_eq!(list.amount.cents, 2490);
+        assert_eq!((list.replaces, list.problem, list.note), (None, None, None));
         assert_eq!(parse_value_line(&json!({"line": "list_price"})), None);
         assert_eq!(parse_list_price_line(&json!({"line": "list_price"})), None);
+    }
+
+    fn chf(cents: i64) -> Amount {
+        Amount {
+            cents,
+            currency: Some("CHF".into()),
+        }
+    }
+
+    #[test]
+    fn only_listed_shapes_of_purchase_price_are_inconsistent() {
+        use PriceProblem::*;
+        let t = PriceThresholds::default();
+        let p = |cents, list| purchase_price_problem(&chf(cents), list, "CHF", t);
+        assert_eq!(p(0, 2400), Some(Negligible));
+        assert_eq!(p(100, 2400), Some(Negligible));
+        // Two negligible prices that agree are not a problem.
+        assert_eq!(p(100, 100), None);
+        assert_eq!(p(50, 60), None);
+        assert_eq!(p(0, 50), None);
+        assert_eq!(p(240000, 2400), Some(Scale));
+        assert_eq!(p(24000, 2400), Some(Scale));
+        assert_eq!(p(240, 2400), Some(Scale));
+        assert_eq!(p(7200, 2400), Some(Gap));
+        assert_eq!(p(800, 2400), Some(Gap));
+        // Everything else is a real price, a bargain included.
+        assert_eq!(p(801, 2400), None);
+        assert_eq!(p(2400, 2400), None);
+        assert_eq!(p(7199, 2400), None);
+        // Two currencies cannot be compared, nor a price without a currency.
+        let eur = Amount {
+            cents: 240000,
+            currency: Some("EUR".into()),
+        };
+        assert_eq!(purchase_price_problem(&eur, 2400, "CHF", t), None);
+        let bare = Amount {
+            cents: 0,
+            currency: None,
+        };
+        assert_eq!(purchase_price_problem(&bare, 2400, "CHF", t), None);
+    }
+
+    #[test]
+    fn the_thresholds_are_read_and_applied() {
+        use PriceProblem::*;
+        let at = |negligible_cents, gap_factor, cents, list| {
+            let t = PriceThresholds {
+                negligible_cents,
+                gap_factor,
+            };
+            purchase_price_problem(&chf(cents), list, "CHF", t)
+        };
+        // A wider negligible bound, a tighter or looser factor.
+        assert_eq!(at(500, 3, 500, 2400), Some(Negligible));
+        assert_eq!(at(100, 2, 1200, 2400), Some(Gap));
+        assert_eq!(at(100, 3, 1200, 2400), None);
+        // Past a high factor only: the scale label does not widen the rule.
+        assert_eq!(at(100, 20, 24000, 2400), None);
+        assert_eq!(at(100, 20, 48000, 2400), Some(Scale));
+        // Stored values: invalid reads as the default.
+        let d = PriceThresholds::default();
+        assert_eq!(PriceThresholds::parse(None, None), d);
+        assert_eq!(PriceThresholds::parse(Some("abc"), Some("1")), d);
+        assert_eq!(PriceThresholds::parse(Some("-1"), Some("101")), d);
+        assert_eq!(
+            PriceThresholds::parse(Some(" 2.5 "), Some(" 4 ")),
+            PriceThresholds {
+                negligible_cents: 250,
+                gap_factor: 4
+            }
+        );
+        assert_eq!(parse_threshold_cents("0"), Some(0));
+        assert_eq!(parse_threshold_cents(".5"), Some(50));
+        assert_eq!(parse_threshold_cents("."), None);
+        assert_eq!(parse_threshold_cents("1.005"), None);
+        assert_eq!(parse_threshold_cents("1,00"), None);
+    }
+
+    #[test]
+    fn a_replacing_line_alone_round_trips() {
+        let line = alone(
+            with_replacement(list_price_line(2400, "CHF"), &chf(240000), PriceProblem::Scale),
+            2400,
+            "CHF",
+            Some("why"),
+        );
+        assert_eq!(line["fingerprint"], json!("list:2400CHF"));
+        let read = parse_list_price_line(&line).unwrap();
+        assert_eq!(read.replaces, Some(chf(240000)));
+        assert_eq!(read.problem, Some(PriceProblem::Scale));
+        assert_eq!(read.note.as_deref(), Some("why"));
+        for p in [PriceProblem::Negligible, PriceProblem::Scale, PriceProblem::Gap] {
+            assert_eq!(PriceProblem::parse(p.as_str()), Some(p));
+        }
+        assert_eq!(PriceProblem::parse("other"), None);
     }
 
     #[test]
@@ -655,13 +993,17 @@ mod tests {
     fn refusals_are_classed_and_actionable() {
         use VolumeValueError::*;
         assert_eq!(VolumeNotFound { volume_id: 3 }.class(), RefusalClass::NotFound);
+        assert_eq!(NothingProposed.class(), RefusalClass::InvalidInput);
         assert!(
             VolumeNotFound { volume_id: 3 }
                 .to_string()
                 .contains("get_title")
         );
         for conflict in [
-            HasPurchasePrice { volume_id: 3 },
+            HasPurchasePrice {
+                volume_id: 3,
+                thresholds: PriceThresholds::default(),
+            },
             NoChange { volume_id: 3 },
             PendingDuplicate { proposal_id: 9 },
         ] {

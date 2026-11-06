@@ -1,6 +1,6 @@
 //! Story 15-5 (#564, FR165) — `propose_volume_value`: propose what a
-//! volume is worth today and, when it has no purchase price, its list
-//! price at publication.
+//! volume is worth today, its list price at publication as a stand-in for
+//! the purchase price (story 16-3, #639), or both.
 
 use serde::Deserialize;
 use serde_json::{Number, Value, json};
@@ -16,7 +16,7 @@ pub struct ProposeVolumeValue;
 
 const TOOL: &str = "propose_volume_value";
 
-const EXPECTED: &str = "{\"volume_id\": <id>, \"current_value\": {\"amount\": 18.5, \
+const EXPECTED: &str = "{\"volume_id\": <id>, \"current_value\"?: {\"amount\": 18.5, \
      \"currency\": \"CHF\"}, \"list_price\"?: {\"amount\": 24.9, \"currency\": \"CHF\"}, \
      \"note\"?: <text>, \"sources\": [<url>]}";
 
@@ -31,7 +31,7 @@ struct AmountIn {
 #[serde(deny_unknown_fields)]
 struct Args {
     volume_id: u64,
-    current_value: AmountIn,
+    current_value: Option<AmountIn>,
     list_price: Option<AmountIn>,
     note: Option<String>,
     sources: Vec<String>,
@@ -59,7 +59,7 @@ fn parse_args(args: Value, api_key_id: u64) -> Result<VolumeValueRequest, ToolEr
     Ok(VolumeValueRequest {
         api_key_id,
         volume_id: a.volume_id,
-        current_value: a.current_value.into(),
+        current_value: a.current_value.map(Into::into),
         list_price: a.list_price.map(Into::into),
         note: a.note,
         sources: a.sources,
@@ -97,24 +97,26 @@ impl McpTool for ProposeVolumeValue {
     }
 
     fn description(&self) -> &'static str {
-        "Propose the current market value of one physical volume (`current_value`: amount and \
-         currency) and, only when the volume has no purchase price, the publisher's list price \
-         at publication (`list_price`) — the librarian sees it labelled as a stand-in for the \
-         purchase price, since what was actually paid is unknown. Find the volumes to value \
-         first with list_volumes_to_value. Read the title with \
-         get_title first: each of its `volumes` gives its id, `condition_name`, \
+        "Propose, for one physical volume, its current market value (`current_value`: amount \
+         and currency), the publisher's list price at publication (`list_price`) as a stand-in \
+         for the purchase price, or both; at least one is required. The librarian sees the list \
+         price labelled as a stand-in, since what was actually paid is unknown. `list_price` is \
+         accepted on a volume with no purchase price, and on one whose purchase price looks \
+         wrong: negligible, or far from the list price, in the same currency (the library sets \
+         both thresholds; a refusal gives them). Find the volumes to value first with list_volumes_to_value. Read the title \
+         with get_title first: each of its `volumes` gives its id, `condition_name`, \
          `edition_comment`, `purchase_price` and `current_value` (with `updated_at`), and the \
          document gives `default_currency`, the only currency accepted. Take the copy's \
          condition and edition into account and explain them in `note`; give `sources`: the \
          http(s) URLs of the price guides or completed sales you used. This files ONE proposal \
          for a librarian to accept or reject; it does not change the catalog. Returns \
          `proposal_id` and `status` (`pending`). Refused with an explanation when: the volume \
-         id is unknown or deleted; an amount is not positive, has more than two decimals or \
-         exceeds 99999999.99; a currency is not the default one; `list_price` is given for a \
-         volume that has a purchase price; the volume already has this current value and no \
-         list price is proposed; a value proposal for this volume is still pending (the message \
-         gives its id); the same amounts were rejected recently; a source is not an http(s) \
-         URL."
+         id is unknown or deleted; neither amount is given; an amount is not positive, has more \
+         than two decimals or exceeds 99999999.99; a currency is not the default one; \
+         `list_price` is given for a volume whose purchase price does not look wrong; the \
+         volume already has this current value; a value proposal \
+         for this volume is still pending (the message gives its id); the same amounts were \
+         rejected recently; a source is not an http(s) URL."
     }
 
     fn input_schema(&self) -> Value {
@@ -127,7 +129,7 @@ impl McpTool for ProposeVolumeValue {
                     "description": "Numeric id of the volume (from get_title `volumes[].id`)."
                 },
                 "current_value": amount_schema("What the volume is worth today"),
-                "list_price": amount_schema("The publisher's list price at publication; only for a volume without purchase price"),
+                "list_price": amount_schema("The publisher's list price at publication; for a volume without purchase price, or whose purchase price looks wrong"),
                 "note": {
                     "type": "string",
                     "maxLength": MAX_NOTE_CHARS,
@@ -135,7 +137,7 @@ impl McpTool for ProposeVolumeValue {
                 },
                 "sources": sources_property()
             },
-            "required": ["volume_id", "current_value", "sources"],
+            "required": ["volume_id", "sources"],
             "additionalProperties": false
         })
     }
@@ -173,7 +175,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!((req.volume_id, req.api_key_id), (4, 9));
-        assert_eq!(req.current_value.amount.to_string(), "18.5");
+        assert_eq!(req.current_value.unwrap().amount.to_string(), "18.5");
         assert_eq!(req.list_price.unwrap().amount.to_string(), "24");
         assert_eq!(req.note.as_deref(), Some("good condition"));
         let bare = parse_args(
@@ -183,6 +185,9 @@ mod tests {
         )
         .unwrap();
         assert!(bare.list_price.is_none());
+        // Story 16-3 — the service refuses a request with neither amount.
+        let neither = parse_args(json!({"volume_id": 4, "sources": ["https://a.b"]}), 1).unwrap();
+        assert!(neither.current_value.is_none());
     }
 
     #[test]
@@ -191,7 +196,6 @@ mod tests {
         for bad in [
             json!(null),
             json!({"volume_id": 0, "current_value": cv, "sources": ["https://a.b"]}),
-            json!({"volume_id": 4, "sources": ["https://a.b"]}),
             json!({"volume_id": 4, "current_value": cv}),
             json!({"volume_id": 4, "current_value": {"amount": "1", "currency": "CHF"},
                    "sources": ["https://a.b"]}),
