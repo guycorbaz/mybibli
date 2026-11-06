@@ -32,26 +32,54 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.25.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.25.0)**
-(2026-11-05) — the agent's next tasks: dates follow an instance time
-zone, an admin writes *skills* for the agent, and the agent can propose
-a series correction and a volume's value, with a coverage view of the
-estimates on the value page. **Four additive migrations.** The section
-below has the detail; every release before it has its own section
-further down, and this is the file that carries them — the README
-quotes only the current release, and the website tells the same story
-for a different audience.
+**Current stable: [`v1.26.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.26.0)**
+(2026-11-06) — what real use showed: amounts on the volume page,
+purchase prices proposed by the agent, covers sent as files, and a
+warning on a code that looks wrong. **Two additive migrations.** The
+section below has the detail; every release before it has its own
+section further down, and this is the file that carries them — the
+README quotes only the current release, and the website tells the same
+story for a different audience.
 
-**Next:** epic 16 — the corrections drawn from the project lead's own
-use of v1.24.0 and v1.25.0, unless a bug comes first. Later
-candidates, awaiting prioritisation: a cover sent without base64
-transcription ([#587](https://github.com/guycorbaz/mybibli/issues/587)),
-more proposable fields
-([#589](https://github.com/guycorbaz/mybibli/issues/589)) and merging
-duplicates ([#591](https://github.com/guycorbaz/mybibli/issues/591)).
-The base-path setting for reverse proxies
-([#492](https://github.com/guycorbaz/mybibli/issues/492)) comes later.
-Everything else open lives in the issue tracker.
+**Next:** the corrections drawn from the project lead's own use, unless
+a bug comes first. Later candidates, awaiting prioritisation: more
+proposable fields ([#589](https://github.com/guycorbaz/mybibli/issues/589)) and merging duplicates
+([#591](https://github.com/guycorbaz/mybibli/issues/591)). The base-path setting for reverse proxies
+([#492](https://github.com/guycorbaz/mybibli/issues/492)) comes later. Everything else open lives in the issue
+tracker.
+
+## v1.26.0 — what real use showed *(shipped)*
+
+Shipped 2026-11-06. The closing release of epic 16
+([#597](https://github.com/guycorbaz/mybibli/issues/597), [#630](https://github.com/guycorbaz/mybibli/issues/630), [#639](https://github.com/guycorbaz/mybibli/issues/639), [#587](https://github.com/guycorbaz/mybibli/issues/587),
+[#638](https://github.com/guycorbaz/mybibli/issues/638), [#637](https://github.com/guycorbaz/mybibli/issues/637)), drawn from a first session on v1.25.0
+and a reading of its production logs. **Two additive migrations** (the
+purchase price thresholds, the `cover_uploads` table), no configuration
+change — back up first, pull the image and recreate the container
+(`docker compose up -d`).
+
+- **Amounts on the volume page.** Librarians see the purchase price and
+  the estimated current value with its date. Anonymous visitors do not.
+- **Purchase prices from the agent.** `propose_volume_value` can propose
+  the list price at publication without a current value, and can propose
+  replacing a purchase price that looks wrong: negligible, or far from
+  the list price. Thresholds in *Admin → System → Proposals* (default
+  1.00 and a factor of 3). A librarian decides each one. A volume keeps
+  two amounts.
+- **Covers as files.** `POST /api/v1/cover-uploads` takes the image from
+  a `propose` key and answers a single-use token, with the SHA-256 and
+  dimensions received, for `propose_cover`. Base64 still works.
+- **A warning on an irregular code.** A scanned code that is no known
+  barcode shape shows the media-type choice with the reason, even when
+  your last choice is remembered. Nothing is created until you choose,
+  and the code is kept as entered.
+- **Quieter nights.** The retry task logs a `WARN`, not an `ERROR`, when
+  the nightly backup makes the database unreachable.
+- **Under the hood.** `routes/catalog.rs` and `routes/titles.rs` are
+  split below the 2 000-line limit. A blank-browser epic smoke test
+  follows a warned code through a cover file and a purchase price.
+- **Manual** (EN + FR): *What's new in 1.26.0* in chapter 8; chapters 3
+  and 13 cover the new behaviour.
 
 ## v1.25.0 — the agent's next tasks *(shipped)*
 
