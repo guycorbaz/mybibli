@@ -209,7 +209,9 @@ pub async fn discard_all(staging_dir: &Path, staged_files: &[String]) {
     }
 }
 
-/// What the scheduled purge did.
+/// What the scheduled purge did. Story 16-4 — expired uploads count as
+/// unreferenced files: they leave after the same grace, or earlier when
+/// their key uploads again (`services::cover_uploads`).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct StagingPurgeStats {
     pub kept: usize,
@@ -256,6 +258,13 @@ pub async fn purge(pool: &DbPool, staging_dir: &Path) -> Result<StagingPurgeStat
     {
         listed.push(entry);
     }
+    // Story 16-4 — expired uploads: their files are unreferenced, so the
+    // grace below removes them.
+    crate::models::cover_upload::CoverUploadModel::purge_expired(
+        pool,
+        crate::services::cover_uploads::UPLOAD_TTL.as_secs(),
+    )
+    .await?;
     let referenced: HashSet<String> = ProposalModel::staged_cover_files_referenced(pool)
         .await?
         .into_iter()

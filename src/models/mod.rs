@@ -3,6 +3,7 @@ pub mod api_key;
 pub mod borrower;
 pub mod contributor;
 pub mod contributor_role;
+pub mod cover_upload;
 pub mod data_repair;
 pub mod date_added;
 pub mod expected_tome;

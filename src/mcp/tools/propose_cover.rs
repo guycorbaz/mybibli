@@ -8,7 +8,7 @@ use super::args;
 use super::proposal_args::{filed_document, sources_property, tool_error};
 use crate::mcp::tool::{McpTool, ToolContext, ToolError, ToolFuture};
 use crate::services::cover::COVER_MEDIA_TYPES;
-use crate::services::cover_proposals::{CoverProposalRequest, CoverProposalService};
+use crate::services::cover_proposals::{CoverProposalRequest, CoverProposalService, ProposedImage};
 
 pub struct ProposeCover;
 
@@ -19,8 +19,9 @@ const TOOL: &str = "propose_cover";
 struct Args {
     title_id: u64,
     version: Option<i32>,
-    image_base64: String,
-    media_type: String,
+    image_base64: Option<String>,
+    media_type: Option<String>,
+    upload_token: Option<String>,
     sources: Vec<String>,
 }
 
@@ -29,15 +30,26 @@ struct Args {
 fn parse_args(args: Value, api_key_id: u64) -> Result<CoverProposalRequest, ToolError> {
     let a: Args = args::parse_object(
         args,
-        "{\"title_id\": <id>, \"image_base64\": <base64>, \"media_type\": <type>, \
-         \"sources\": [<url>], \"version\"?: <int>}",
+        "{\"title_id\": <id>, \"upload_token\": <token> (or \"image_base64\": <base64> and \
+         \"media_type\": <type>), \"sources\": [<url>], \"version\"?: <int>}",
     )?;
+    let image = match (a.upload_token, a.image_base64, a.media_type) {
+        (Some(token), None, None) => ProposedImage::Upload { token },
+        (None, Some(image_base64), Some(media_type)) => ProposedImage::Base64 {
+            image_base64,
+            media_type,
+        },
+        _ => {
+            return Err(ToolError::InvalidArguments(
+                "give either `upload_token`, or `image_base64` with `media_type`".to_string(),
+            ));
+        }
+    };
     Ok(CoverProposalRequest {
         api_key_id,
         title_id: a.title_id,
         version: a.version,
-        image_base64: a.image_base64,
-        media_type: a.media_type,
+        image,
         sources: a.sources,
     })
 }
@@ -53,10 +65,18 @@ impl McpTool for ProposeCover {
 
     fn description(&self) -> &'static str {
         "Propose a cover image for a title, with or without a current cover (find titles \
-         without one with list_titles_without_cover). Send the image itself, base64-encoded in \
+         without one with list_titles_without_cover). Prefer uploading the file, if you can make HTTP requests with this \
+         key: POST it as multipart/form-data, in a part named `file`, to the same origin as this \
+         MCP endpoint with `/api/mcp` replaced by `/api/v1/cover-uploads` (for example `curl -H \
+         \"Authorization: Bearer $KEY\" -F file=@cover.jpg \
+         https://library.example/api/v1/cover-uploads`), check the `sha256` and dimensions it \
+         returns against your file, then pass its `upload_token` here. A token works once, for \
+         this key, for 30 minutes; a refused call keeps it; a key holds at most 20 uploads. \
+         Otherwise send the image itself, base64-encoded in \
          `image_base64` (standard alphabet, no `data:` prefix), with its `media_type` \
-         (image/jpeg, image/png, image/webp or image/gif); the library never downloads anything \
-         itself, so fetch the image first. Every proposal needs `sources`: the http(s) URLs of \
+         (image/jpeg, image/png, image/webp or image/gif); copying a long base64 text by hand \
+         can damage the image. The library never downloads anything itself, so fetch the image \
+         first. Every proposal needs `sources`: the http(s) URLs of \
          the page (or image) where you found it. The image is checked like a librarian's \
          upload, then kept in a private staging area, reduced to at most 400 px wide (JPEG); \
          this files ONE proposal for a librarian to accept or reject; it does not change the \
@@ -64,7 +84,7 @@ impl McpTool for ProposeCover {
          `replaces_existing` (true when the title already has a cover — the proposal is still \
          filed, as a replacement). Refused with an explanation, nothing filed, when: the title \
          id is unknown or deleted, or its `version` no longer matches (read it again with \
-         get_title); the base64 is invalid or empty; the decoded image exceeds 2 MiB (send a \
+         get_title); the `upload_token` is unknown, expired, used or another key's; the base64 is invalid or empty; the decoded image exceeds 2 MiB (send a \
          smaller version); the bytes are not a JPEG, PNG, WebP or GIF, or not the declared \
          `media_type`; the image cannot be decoded or exceeds 10000 px per side or about 16 \
          megapixels; a source is not an http(s) URL; the key was revoked or lacks the propose \
@@ -86,6 +106,11 @@ impl McpTool for ProposeCover {
                     "type": "integer",
                     "description": "The title's `version` as returned by get_title. When given and the title changed since, the proposal is refused so you can re-read it. Without it, a title edited while the call runs is refused too (retry)."
                 },
+                "upload_token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The token returned by POST /api/v1/cover-uploads; give it instead of `image_base64` and `media_type`."
+                },
                 "image_base64": {
                     "type": "string",
                     "minLength": 1,
@@ -94,11 +119,11 @@ impl McpTool for ProposeCover {
                 "media_type": {
                     "type": "string",
                     "enum": COVER_MEDIA_TYPES,
-                    "description": "The image's type; it must match the bytes."
+                    "description": "The type of `image_base64`; it must match the bytes."
                 },
                 "sources": sources_property()
             },
-            "required": ["title_id", "image_base64", "media_type", "sources"],
+            "required": ["title_id", "sources"],
             "additionalProperties": false
         })
     }
@@ -141,8 +166,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!((req.api_key_id, req.title_id, req.version), (9, 4, Some(3)));
-        assert_eq!(req.media_type, "image/png");
-        assert_eq!(req.image_base64, "iVBORw0K");
+        assert!(matches!(
+            req.image,
+            ProposedImage::Base64 { ref media_type, ref image_base64 }
+                if media_type == "image/png" && image_base64 == "iVBORw0K"
+        ));
+        let by_token = parse_args(
+            json!({"title_id": 4, "upload_token": "abc", "sources": ["https://a.b"]}),
+            9,
+        )
+        .unwrap();
+        assert!(matches!(by_token.image, ProposedImage::Upload { ref token } if token == "abc"));
     }
 
     #[test]
@@ -163,6 +197,11 @@ mod tests {
         for bad in [
             json!(null),
             json!([]),
+            json!({"title_id": 1, "sources": ["https://a.b"]}),
+            json!({"title_id": 1, "upload_token": "t", "image_base64": "x",
+                   "media_type": "image/png", "sources": ["https://a.b"]}),
+            json!({"title_id": 1, "upload_token": "t", "media_type": "image/png",
+                   "sources": ["https://a.b"]}),
             json!({"title_id": 1, "image_base64": 5, "media_type": "image/png", "sources": []}),
             json!({"title_id": 1, "image_base64": "x", "media_type": "image/png",
                    "sources": [], "image_url": "https://a.b/c.jpg"}),
@@ -196,6 +235,11 @@ mod tests {
         let cap_mib = crate::mcp::max_request_body_bytes() as f64 / (1024.0 * 1024.0);
         assert!((cap_mib - 3.7).abs() < 0.05, "{cap_mib}");
         assert!(d.contains("about 3.7 MiB"));
+        use crate::services::cover_uploads::{MAX_LIVE_UPLOADS_PER_KEY, UPLOAD_TTL};
+        assert_eq!(UPLOAD_TTL.as_secs(), 30 * 60);
+        assert!(d.contains("for 30 minutes"));
+        assert_eq!(MAX_LIVE_UPLOADS_PER_KEY, 20);
+        assert!(d.contains("at most 20 uploads"));
         // The largest image fits the body cap.
         const { assert!(MAX_IMAGE_BASE64_CHARS < crate::mcp::max_request_body_bytes()) };
     }

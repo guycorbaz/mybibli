@@ -1,8 +1,9 @@
 //! Story 11-14 (FR133, NFR45, NFR48) — cover proposals filed by an agent.
 //!
 //! The MCP tool `propose_cover` is a thin adapter over this module. The
-//! agent sends the image itself (base64) with its media type and the
-//! URLs where it found it; the server **never downloads anything** on an
+//! agent sends the image itself (base64, with its media type) or names a
+//! file it uploaded (`services::cover_uploads`, story 16-4), and the URLs
+//! where it found it; the server **never downloads anything** on an
 //! agent's behalf (no SSRF surface — `docs/auth-threat-model.md` §5.9).
 //! The image goes through the same checks as a manual upload
 //! (`services::cover::encode_cover`: magic bytes, #479 decode limits,
@@ -63,6 +64,7 @@ use serde_json::{Value, json};
 
 use crate::db::DbPool;
 use crate::error::AppError;
+use crate::models::cover_upload::CoverUploadModel;
 use crate::models::proposal::{ProposalKind, ProposalModel, ProposalTarget, ProposalTargetTable};
 use crate::models::title::TitleModel;
 use crate::services::cover::{
@@ -94,7 +96,7 @@ pub const MAX_PENDING_COVERS_PER_KEY: u64 = 100;
 /// Concurrent image decodes across all cover proposals (each may use up
 /// to the #479 budget, 64 MiB).
 const MAX_CONCURRENT_ENCODES: usize = 2;
-static ENCODE_PERMITS: tokio::sync::Semaphore =
+pub(crate) static ENCODE_PERMITS: tokio::sync::Semaphore =
     tokio::sync::Semaphore::const_new(MAX_CONCURRENT_ENCODES);
 
 /// A cover proposal as the agent sends it.
@@ -103,9 +105,19 @@ pub struct CoverProposalRequest {
     pub api_key_id: u64,
     pub title_id: u64,
     pub version: Option<i32>,
-    pub image_base64: String,
-    pub media_type: String,
+    pub image: ProposedImage,
     pub sources: Vec<String>,
+}
+
+/// How the image reaches the server.
+#[derive(Debug, Clone)]
+pub enum ProposedImage {
+    Base64 {
+        image_base64: String,
+        media_type: String,
+    },
+    /// Story 16-4 — the token of an upload (`services::cover_uploads`).
+    Upload { token: String },
 }
 
 /// Why the image was refused.
@@ -114,6 +126,8 @@ pub enum ImageProblem {
     DataUrl,
     NotBase64,
     Empty,
+    /// Story 16-4 — an uploaded file with no bytes.
+    EmptyFile,
     TooLarge,
     UnsupportedMediaType(String),
     UnrecognisedFormat,
@@ -139,6 +153,7 @@ impl fmt::Display for ImageProblem {
                  padding optional)"
             ),
             Empty => write!(f, "`image_base64` is empty"),
+            EmptyFile => write!(f, "the uploaded file is empty"),
             TooLarge => write!(
                 f,
                 "the image is larger than {} bytes ({} MiB) once decoded; send a smaller \
@@ -148,7 +163,7 @@ impl fmt::Display for ImageProblem {
             ),
             UnsupportedMediaType(t) => write!(
                 f,
-                "`media_type` {:?} is not accepted; use one of {}",
+                "the type {:?} is not accepted; use one of {}",
                 truncate(t, 80),
                 COVER_MEDIA_TYPES.join(", ")
             ),
@@ -159,7 +174,7 @@ impl fmt::Display for ImageProblem {
             ),
             Mismatch { declared, detected } => write!(
                 f,
-                "`media_type` says {declared} but the bytes are {detected}; send the right \
+                "the declared type says {declared} but the bytes are {detected}; send the right \
                  type (or the right file)"
             ),
             Undecodable(msg) => write!(f, "the image cannot be read: {msg}"),
@@ -186,6 +201,8 @@ pub enum CoverProposalError {
         /// The agent gave `version` (else the title moved during the call).
         pinned: bool,
     },
+    /// Story 16-4 — no usable upload for this token and key.
+    UploadUnknown,
     /// The staging directory does not exist (its creation at boot
     /// failed): an operator problem, not the agent's.
     StagingUnavailable,
@@ -202,7 +219,7 @@ impl Refusal for CoverProposalError {
     fn class(&self) -> RefusalClass {
         use CoverProposalError::*;
         match self {
-            Image(_) => RefusalClass::InvalidInput,
+            Image(_) | UploadUnknown => RefusalClass::InvalidInput,
             TitleNotFound { .. } => RefusalClass::NotFound,
             TargetChanged { .. } | StagingUnavailable | TooManyPending { .. } => {
                 RefusalClass::Conflict
@@ -220,6 +237,13 @@ impl fmt::Display for CoverProposalError {
         use CoverProposalError::*;
         match self {
             Image(p) => write!(f, "{p}. Nothing was filed."),
+            UploadUnknown => write!(
+                f,
+                "`upload_token` names no usable upload: it is unknown, expired (uploads last \
+                 {} minutes), already used, or another key's. Upload the file again. Nothing \
+                 was filed.",
+                crate::services::cover_uploads::UPLOAD_TTL.as_secs() / 60
+            ),
             TitleNotFound { title_id } => write!(
                 f,
                 "No title with id {title_id} exists in the catalog (or it was deleted). Find \
@@ -323,14 +347,29 @@ pub fn decode_image(image_base64: &str, declared: &'static str) -> Result<Vec<u8
     if bytes.is_empty() {
         return Err(ImageProblem::Empty);
     }
+    check_image_bytes(&bytes, Some(declared))?;
+    Ok(bytes)
+}
+
+/// Check an image's size and signature, against a declared type when there
+/// is one, and return its type (pure; story 16-4 shares it with the upload).
+pub fn check_image_bytes(
+    bytes: &[u8],
+    declared: Option<&'static str>,
+) -> Result<&'static str, ImageProblem> {
+    if bytes.is_empty() {
+        return Err(ImageProblem::EmptyFile);
+    }
     if bytes.len() > MAX_PROPOSED_COVER_BYTES {
         return Err(ImageProblem::TooLarge);
     }
-    let detected = detected_cover_media_type(&bytes).ok_or(ImageProblem::UnrecognisedFormat)?;
-    if detected != declared {
-        return Err(ImageProblem::Mismatch { declared, detected });
+    let detected = detected_cover_media_type(bytes).ok_or(ImageProblem::UnrecognisedFormat)?;
+    match declared {
+        Some(declared) if declared != detected => {
+            Err(ImageProblem::Mismatch { declared, detected })
+        }
+        _ => Ok(detected),
     }
-    Ok(bytes)
 }
 
 /// SHA-256 (lower-case hex) of the re-encoded image — what makes two
@@ -352,18 +391,40 @@ pub fn cover_item(
     original_bytes: usize,
     encoded: &EncodedCover,
 ) -> Value {
+    stored_cover_item(
+        staged_file,
+        &cover_fingerprint(&encoded.jpeg),
+        current,
+        media_type,
+        original_bytes as i64,
+        (i64::from(encoded.width), i64::from(encoded.height)),
+        encoded.jpeg.len() as i64,
+    )
+}
+
+/// The proposal item from what is known about a staged file (story 16-4:
+/// an upload, encoded earlier).
+fn stored_cover_item(
+    staged_file: &str,
+    fingerprint: &str,
+    current: Option<&str>,
+    media_type: &str,
+    original_bytes: i64,
+    (width, height): (i64, i64),
+    bytes: i64,
+) -> Value {
     let current = current.filter(|c| has_cover(Some(c)));
     json!({
         "line": "cover",
         "staged_file": staged_file,
-        "fingerprint": cover_fingerprint(&encoded.jpeg),
+        "fingerprint": fingerprint,
         "replaces_existing": current.is_some(),
         "current": current,
         "media_type": media_type,
         "original_bytes": original_bytes,
-        "width": encoded.width,
-        "height": encoded.height,
-        "bytes": encoded.jpeg.len(),
+        "width": width,
+        "height": height,
+        "bytes": bytes,
     })
 }
 
@@ -384,8 +445,16 @@ impl CoverProposalService {
         staging_dir: Option<&Path>,
         req: &CoverProposalRequest,
     ) -> Result<FiledCoverProposal, CoverProposalError> {
-        let declared = parse_media_type(&req.media_type)?;
-        let original = decode_image(&req.image_base64, declared)?;
+        let decoded = match &req.image {
+            ProposedImage::Base64 {
+                image_base64,
+                media_type,
+            } => {
+                let declared = parse_media_type(media_type)?;
+                Some((declared, decode_image(image_base64, declared)?))
+            }
+            ProposedImage::Upload { .. } => None,
+        };
         let sources = validate_sources(&req.sources)?;
 
         let Some(title) = TitleModel::find_by_id(pool, req.title_id).await? else {
@@ -419,6 +488,28 @@ impl CoverProposalService {
         if pending >= MAX_PENDING_COVERS_PER_KEY {
             return Err(CoverProposalError::TooManyPending { pending });
         }
+        let version = req.version.unwrap_or(title.version);
+        let identity = crate::services::proposals::title_identity(&title);
+        // Story 16-4 — an upload is already encoded and staged.
+        let Some((declared, original)) = decoded else {
+            let ProposedImage::Upload { token } = &req.image else {
+                return Err(AppError::Internal("cover image variant".to_string()).into());
+            };
+            return file_upload(
+                pool,
+                &staging_dir,
+                req,
+                token,
+                UploadFiling {
+                    version,
+                    identity,
+                    current_cover: title.cover_image_url,
+                    sources,
+                    title_id: title.id,
+                },
+            )
+            .await;
+        };
         // At most `MAX_CONCURRENT_ENCODES` jobs exist at once: the permit
         // is awaited HERE, in the request (a dropped request stops
         // waiting — no unbounded queue), then held by the job until it
@@ -432,7 +523,6 @@ impl CoverProposalService {
         // timeout or a disconnect does not abort it half-way (a staged
         // file without its proposal, or a filing cut off), it completes
         // and the agent may find the proposal filed (#514).
-        let version = req.version.unwrap_or(title.version);
         let job = FilingJob {
             pool: pool.clone(),
             staging_dir,
@@ -440,7 +530,7 @@ impl CoverProposalService {
             pinned: req.version.is_some(),
             title_id: title.id,
             version,
-            identity: crate::services::proposals::title_identity(&title),
+            identity,
             current_cover: title.cover_image_url,
             declared,
             original,
@@ -512,29 +602,12 @@ impl FilingJob {
                 proposed_values: values,
             }],
         };
-        let proposal_id = match file_capped(&self.pool, &proposal).await {
+        let proposal_id = match file_capped(&self.pool, &proposal, None).await {
             Ok(id) => id,
             Err(e) => {
                 cover_staging::discard_all(&self.staging_dir, std::slice::from_ref(&staged_file))
                     .await;
-                return Err(match e {
-                    CoverProposalError::Proposal(ProposalError::TargetNotFound { .. }) => {
-                        CoverProposalError::TitleNotFound {
-                            title_id: target.id,
-                        }
-                    }
-                    CoverProposalError::Proposal(ProposalError::TargetChanged {
-                        expected,
-                        current,
-                        ..
-                    }) => CoverProposalError::TargetChanged {
-                        title_id: target.id,
-                        expected,
-                        current,
-                        pinned: self.pinned,
-                    },
-                    other => other,
-                });
+                return Err(filing_refusal(e, target.id, self.pinned));
             }
         };
         Ok(FiledCoverProposal {
@@ -548,11 +621,108 @@ impl FilingJob {
     }
 }
 
+/// A refused filing, in the terms of this title (and of whether the agent
+/// pinned its version).
+fn filing_refusal(e: CoverProposalError, title_id: u64, pinned: bool) -> CoverProposalError {
+    match e {
+        CoverProposalError::Proposal(ProposalError::TargetNotFound { .. }) => {
+            CoverProposalError::TitleNotFound { title_id }
+        }
+        CoverProposalError::Proposal(ProposalError::TargetChanged {
+            expected, current, ..
+        }) => CoverProposalError::TargetChanged {
+            title_id,
+            expected,
+            current,
+            pinned,
+        },
+        other => other,
+    }
+}
+
+/// What the filing of an upload takes from the title (story 16-4).
+struct UploadFiling {
+    version: i32,
+    identity: Value,
+    current_cover: Option<String>,
+    sources: Vec<String>,
+    title_id: u64,
+}
+
+/// Story 16-4 — file a proposal naming an upload. A refusal keeps the upload
+/// and its file, so the agent can fix the call and retry.
+async fn file_upload(
+    pool: &DbPool,
+    staging_dir: &Path,
+    req: &CoverProposalRequest,
+    token: &str,
+    filing: UploadFiling,
+) -> Result<FiledCoverProposal, CoverProposalError> {
+    let ttl = crate::services::cover_uploads::UPLOAD_TTL.as_secs();
+    let upload = CoverUploadModel::find_live(pool, token, req.api_key_id, ttl)
+        .await?
+        .ok_or(CoverProposalError::UploadUnknown)?;
+    // The agent hears the one answer; the operator hears what happened.
+    let on_disk = cover_staging::is_staged_name(&upload.staged_file)
+        && tokio::fs::try_exists(staging_dir.join(&upload.staged_file))
+            .await
+            .inspect_err(|e| {
+                tracing::warn!(staged_file = %upload.staged_file, error = %e, "Uploaded cover unreadable");
+            })
+            .unwrap_or(false);
+    if !on_disk {
+        tracing::warn!(staged_file = %upload.staged_file, "Uploaded cover not usable");
+        return Err(CoverProposalError::UploadUnknown);
+    }
+    let mut values = stored_cover_item(
+        &upload.staged_file,
+        &upload.fingerprint,
+        filing.current_cover.as_deref(),
+        &upload.media_type,
+        upload.original_bytes,
+        (upload.width, upload.height),
+        upload.bytes,
+    );
+    values["identity"] = filing.identity;
+    let replaces_existing = values["replaces_existing"] == json!(true);
+    let proposal = NewProposal {
+        kind: ProposalKind::Cover,
+        api_key_id: req.api_key_id,
+        sources: filing.sources,
+        items: vec![NewProposalItem {
+            target: Some(ProposalTarget {
+                table: ProposalTargetTable::Titles,
+                id: filing.title_id,
+            }),
+            expected_version: Some(filing.version),
+            proposed_values: values,
+        }],
+    };
+    let proposal_id = file_capped(pool, &proposal, Some(token))
+        .await
+        .map_err(|e| filing_refusal(e, filing.title_id, req.version.is_some()))?;
+    Ok(FiledCoverProposal {
+        filed: FiledProposal {
+            proposal_id,
+            kind: ProposalKind::Cover,
+            item_count: 1,
+        },
+        replaces_existing,
+    })
+}
+
 /// File under the exclusive key lock (story 11-12 order: key row first),
 /// re-checking the per-key cap there, so concurrent calls cannot pass
 /// it together. A plain count right after the locking read sees every
-/// filing committed before the lock was granted (D-11-12-13).
-async fn file_capped(pool: &DbPool, proposal: &NewProposal) -> Result<u64, CoverProposalError> {
+/// filing committed before the lock was granted (D-11-12-13). Story 16-4 —
+/// `upload` is consumed in the same transaction (lock order: key row, then
+/// the upload by primary key; two calls naming one token: the second finds
+/// it gone).
+async fn file_capped(
+    pool: &DbPool,
+    proposal: &NewProposal,
+    upload: Option<&str>,
+) -> Result<u64, CoverProposalError> {
     let mut tx = pool.begin().await?;
     if !ProposalModel::lock_filing_key_exclusive(&mut tx, proposal.api_key_id).await? {
         return Err(ProposalError::KeyNotAllowed {
@@ -569,7 +739,21 @@ async fn file_capped(pool: &DbPool, proposal: &NewProposal) -> Result<u64, Cover
     if pending >= MAX_PENDING_COVERS_PER_KEY {
         return Err(CoverProposalError::TooManyPending { pending });
     }
+    if let Some(token) = upload
+        && !CoverUploadModel::lock_live_in(
+            &mut tx,
+            token,
+            proposal.api_key_id,
+            crate::services::cover_uploads::UPLOAD_TTL.as_secs(),
+        )
+        .await?
+    {
+        return Err(CoverProposalError::UploadUnknown);
+    }
     let id = ProposalService::file_in(&mut tx, proposal).await?;
+    if let Some(token) = upload {
+        CoverUploadModel::delete_in(&mut tx, token).await?;
+    }
     tx.commit().await?;
     log_filed(id, proposal);
     Ok(id)

@@ -191,6 +191,7 @@ this path (no anonymous `sessions` row).
 
 | method | path | role | csrf | note |
 |---|---|---|---|---|
+| POST | `/api/v1/cover-uploads` | API key *(propose)* | n/a | A cover image as a file (multipart, part `file`) for `propose_cover`; body capped at 2 MiB + 64 KiB (413), 30 s timeout (408) — #587. |
 | POST | `/api/mcp` | API key *(propose)* | n/a | JSON-RPC; body capped at ≈ 3.7 MiB (413), 30 s timeout (408) — #514. GET / DELETE answer 405. |
 
 Read tools (soft-deleted rows never returned): `get_title`
