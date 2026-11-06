@@ -65,12 +65,20 @@ pub fn value_view(volume_id: u64, values: &Value, loc: &str) -> Option<LineView>
 
 /// The display line of a list-price item (pure).
 pub fn list_price_view(volume_id: u64, values: &Value, loc: &str) -> Option<LineView> {
-    let amount = parse_list_price_line(values)?;
+    let line = parse_list_price_line(values)?;
+    let purchase_problem = line.problem.map(|p| {
+        let key = format!("proposals.purchase_problem_{}", p.as_str());
+        rust_i18n::t!(&key, locale = loc).to_string()
+    });
     Some(LineView {
         line: "list_price",
         target_id: Some(volume_id),
         on_volume: true,
-        proposed: amount_text(&amount, loc),
+        proposed: amount_text(&line.amount, loc),
+        // Story 16-3 — the purchase price this line replaces, as filed.
+        current: line.replaces.as_ref().map(|a| amount_text(a, loc)),
+        purchase_problem,
+        note: line.note.filter(|n| !n.trim().is_empty()),
         ..LineView::default()
     })
 }
@@ -83,10 +91,11 @@ pub async fn with_volume_facts(
     mut detail: ReviewDetail,
     loc: &str,
 ) -> Result<ReviewDetail, AppError> {
+    // Story 16-3 — a list price may be the proposal's only line.
     let Some(volume_id) = detail
         .lines
         .iter()
-        .find(|l| l.line == "current_value")
+        .find(|l| matches!(l.line, "current_value" | "list_price"))
         .and_then(|l| l.target_id)
     else {
         return Ok(detail);
@@ -120,13 +129,16 @@ pub async fn with_volume_facts(
     let Some((state, condition, edition_comment)) = facts else {
         return Ok(detail);
     };
+    let live_value = state.current_value.as_ref().map(|a| amount_text(a, loc));
     let filed_value = detail
         .lines
         .iter()
         .find(|l| l.line == "current_value")
-        .map(|l| l.current.clone())
-        .unwrap_or_default();
-    let live_value = state.current_value.as_ref().map(|a| amount_text(a, loc));
+        .map_or_else(|| live_value.clone(), |l| l.current.clone());
+    let live_purchase = state.purchase_price.as_ref().map(|a| amount_text(a, loc));
+    for line in detail.lines.iter_mut().filter(|l| l.line == "list_price") {
+        line.purchase_changed = line.current != live_purchase;
+    }
     let facts = VolumeFacts {
         value_changed: live_value != filed_value,
         condition,
@@ -137,8 +149,12 @@ pub async fn with_volume_facts(
             .current_value_updated_at
             .map(|at| format_local_date(at, tz)),
     };
-    for line in detail.lines.iter_mut().filter(|l| l.line == "current_value") {
-        line.volume_facts = Some(facts.clone());
+    if let Some(first) = detail
+        .lines
+        .iter_mut()
+        .find(|l| matches!(l.line, "current_value" | "list_price"))
+    {
+        first.volume_facts = Some(facts);
     }
     Ok(detail)
 }
@@ -175,6 +191,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!((list.line, list.proposed.as_str()), ("list_price", "24.90 CHF"));
+        assert_eq!((list.current, list.purchase_problem), (None, None));
+        let replacing = list_price_view(
+            4,
+            &json!({"line": "list_price", "amount_cents": 2490, "currency": "CHF",
+                    "replaces": {"amount_cents": 249000, "currency": "CHF"},
+                    "inconsistent": "scale", "note": "why"}),
+            "en",
+        )
+        .unwrap();
+        assert_eq!(replacing.current.as_deref(), Some("2490.00 CHF"));
+        assert!(replacing.purchase_problem.is_some());
+        assert_eq!(replacing.note.as_deref(), Some("why"));
         assert_eq!(value_view(4, &json!({"line": "current_value"}), "en"), None);
     }
 }

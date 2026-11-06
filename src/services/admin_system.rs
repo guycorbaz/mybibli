@@ -153,6 +153,31 @@ pub fn validate_resubmission_delay_days(raw: &str, loc: &'static str) -> Result<
     }
 }
 
+/// Story 16-3 — validate the negligible purchase price as typed.
+pub fn validate_negligible_amount(raw: &str, loc: &'static str) -> Result<i64, AppError> {
+    crate::services::volume_value_proposals::parse_threshold_cents(raw).ok_or_else(|| {
+        AppError::BadRequest(
+            rust_i18n::t!("error.system.purchase_negligible_invalid", locale = loc).to_string(),
+        )
+    })
+}
+
+/// Story 16-3 — validate the purchase price gap factor as typed.
+pub fn validate_gap_factor(raw: &str, loc: &'static str) -> Result<i64, AppError> {
+    use crate::services::volume_value_proposals::{MAX_GAP_FACTOR, MIN_GAP_FACTOR, parse_gap_factor};
+    parse_gap_factor(raw).ok_or_else(|| {
+        AppError::BadRequest(
+            rust_i18n::t!(
+                "error.system.purchase_gap_invalid",
+                locale = loc,
+                min = MIN_GAP_FACTOR,
+                max = MAX_GAP_FACTOR
+            )
+            .to_string(),
+        )
+    })
+}
+
 /// Story 15-1 (#602) — validate the instance time zone as typed: an IANA
 /// zone name, exact spelling (surrounding blanks ignored).
 pub fn validate_time_zone(raw: &str, loc: &'static str) -> Result<chrono_tz::Tz, AppError> {

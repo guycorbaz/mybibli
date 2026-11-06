@@ -401,6 +401,12 @@ pub struct LineView {
     // current_value / list_price (story 15-5) — `current` / `proposed`
     // above hold the amounts as text; the live volume beside them.
     pub volume_facts: Option<crate::services::volume_value_review::VolumeFacts>,
+    /// Story 16-3 — why the purchase price a list-price line replaces looks
+    /// wrong (translated).
+    pub purchase_problem: Option<String>,
+    /// Story 16-3 — the live purchase price is no longer the one filed:
+    /// accepting will only mark the proposal outdated.
+    pub purchase_changed: bool,
     // unknown
     pub raw_json: String,
 }

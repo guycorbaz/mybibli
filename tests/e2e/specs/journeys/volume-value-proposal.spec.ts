@@ -128,4 +128,92 @@ test.describe("Story 15-5 — the agent proposes a volume value", () => {
     }
     await revokeProposeKey(page, propose.label);
   });
+
+  // Story 16-3 (#639, FR168) — a purchase price proposed without a value,
+  // then a replacement of one that looks wrong.
+  test("an agent proposes a purchase price alone and flags a wrong one", async ({ page, baseURL }) => {
+    await page.context().clearCookies();
+    await loginAs(page, "admin");
+
+    const isbn = specIsbn("VV", 1 + Math.floor(Math.random() * 89999));
+    const vcode = `V${7000 + Math.floor(Math.random() * 500)}`;
+    await scanTitleAndVolume(page, isbn, vcode);
+    await page.goto(`/?q=${isbn}`);
+    await page
+      .locator('#browse-results table.browse-table tbody tr td a[href^="/title/"]')
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/title\/\d+/);
+    const titleId = Number(/\/title\/(\d+)/.exec(page.url())![1]);
+    const volumeId = Number(await volumeIdByLabel(page, String(titleId), vcode));
+
+    const propose = await createApiKey(page, "propose", "volume-price");
+    const agent = await playwrightRequest.newContext({ baseURL: baseURL! });
+    const file = async (amount: number): Promise<number> => {
+      const { default_currency: currency } = (
+        await mcpCallTool(agent, propose.plaintext, "get_title", { id: titleId })
+      ).structuredContent;
+      const filed = await mcpCallTool(agent, propose.plaintext, "propose_volume_value", {
+        volume_id: volumeId,
+        list_price: { amount, currency },
+        sources: [SOURCE],
+      });
+      expect(filed.isError, JSON.stringify(filed.content)).toBe(false);
+      return filed.structuredContent.proposal_id;
+    };
+    try {
+      await page.context().clearCookies();
+      await loginAs(page, "librarian");
+
+      // Alone: the volume page shows the price; the value stays unset.
+      await page.goto(`/proposals/${await file(24)}`);
+      const alone = page.locator('#proposal-items li[data-line="list_price"]');
+      await expect(alone.locator("[data-value-target]")).toContainText(vcode);
+      await expect(alone.locator("[data-purchase-problem]")).toHaveCount(0);
+      await acceptFromDetail(page);
+      await page.goto(`/volume/${volumeId}`);
+      await expect(page.locator("#volume-purchase-price")).toContainText(/^24[.,]00/);
+      await expect(page.locator("#volume-current-value")).toHaveText("—");
+
+      // A price ten times away from the list price is flagged and replaced.
+      await page.goto(`/proposals/${await file(2.4)}`);
+      const replacing = page.locator('#proposal-items li[data-line="list_price"]');
+      await expect(replacing.locator("[data-purchase-replaces]")).toContainText(/24[.,]00/);
+      await expect(replacing.locator("[data-purchase-problem]")).toBeVisible();
+      await acceptFromDetail(page);
+      await page.goto(`/volume/${volumeId}`);
+      await expect(page.locator("#volume-purchase-price")).toContainText(/^2[.,]40/);
+    } finally {
+      await agent.dispose();
+    }
+    await page.context().clearCookies();
+    await loginAs(page, "admin");
+    await revokeProposeKey(page, propose.label);
+  });
+
+  // Story 16-3 (#639) — the thresholds are in Admin → System. The defaults are
+  // saved back as they are: the setting is shared with every parallel spec.
+  test("an admin sees and saves the purchase price thresholds", async ({ page }) => {
+    await page.context().clearCookies();
+    await loginAs(page, "admin");
+    await page.goto("/admin?tab=system");
+    const form = page.locator("#admin-system-purchase-thresholds-form");
+    const gap = form.locator('input[name="gap_factor"]');
+    await expect(gap).toHaveValue("3");
+    await expect(form.locator('input[name="negligible_amount"]')).toHaveValue("1.00");
+
+    // Out of range: refused, the typed value kept.
+    await gap.evaluate((el: HTMLInputElement) => el.removeAttribute("min"));
+    await gap.fill("1");
+    await form.locator('button[type="submit"]').click();
+    await expect(form.locator('input[name="gap_factor"]')).toHaveValue("1");
+    await expect(page.locator("#feedback-list .feedback-entry").last()).toContainText(/2.*100/);
+
+    await form.locator('input[name="gap_factor"]').fill("3");
+    await form.locator('button[type="submit"]').click();
+    await expect(page.locator("#feedback-list .feedback-entry").last()).toContainText(
+      /saved|enregistr/i,
+    );
+    await expect(form.locator('input[name="gap_factor"]')).toHaveValue("3");
+  });
 });

@@ -328,7 +328,7 @@ async fn acceptance_goes_stale_when_an_amount_changed(pool: DbPool) {
     assert!(text(page).contains("data-value-changed"));
     for (id, needle_en, needle_fr) in [
         (on_a, "current value changed", "valeur actuelle du volume a changé"),
-        (on_b, "purchase price was set", "prix d'achat a été saisi"),
+        (on_b, "purchase price changed", "prix d'achat du volume a changé"),
         (on_c, "volume or its title was deleted", "volume ou son titre a été supprimé"),
     ] {
         let (status, body) = accept(&f, &pool, id).await;
@@ -445,12 +445,31 @@ async fn a_rejection_blocks_what_the_librarian_rejected(pool: DbPool) {
     .execute(&pool)
     .await
     .unwrap();
+    let msg = f
+        .agent
+        .err(
+            "propose_volume_value",
+            json!({"volume_id": vol, "current_value": value(json!(30)),
+                   "list_price": value(json!(8)), "sources": [SRC]}),
+        )
+        .await;
+    assert!(msg.contains("already has this current value"), "{msg}");
+    // Such a proposal may still exist, filed before story 16-3.
     let id = file(
         &f,
-        json!({"volume_id": vol, "current_value": value(json!(30)),
+        json!({"volume_id": vol, "current_value": value(json!(31)),
                "list_price": value(json!(8)), "sources": [SRC]}),
     )
     .await;
+    sqlx::query(
+        "UPDATE proposal_items SET proposed_values = JSON_SET(proposed_values, \
+         '$.amount_cents', 3000, '$.current.amount_cents', 3000, '$.current.currency', 'CHF') \
+         WHERE proposal_id = ? AND JSON_EXTRACT(proposed_values, '$.line') = 'current_value'",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
     let list_item = items(&pool, id).await[1].0;
     // Review pass 2: the page offers no Remove button for it.
     let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
@@ -575,3 +594,257 @@ async fn csrf_and_role_are_required(pool: DbPool) {
     assert_eq!(items(&pool, id).await.len(), 2);
     assert_eq!(amounts(&pool, vol).await.0, None);
 }
+
+// ─── Story 16-3 (#639): purchase price proposals ────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_purchase_price_alone_is_proposed_reviewed_and_accepted(pool: DbPool) {
+    let f = fx(&pool).await;
+    let (_, vol) = volume(&pool, "Prix seul", "V0520").await;
+    let before = proposal_count(&pool).await;
+    let msg = f
+        .agent
+        .err("propose_volume_value", json!({"volume_id": vol, "sources": [SRC]}))
+        .await;
+    assert!(msg.contains("nothing to propose"), "{msg}");
+    assert_eq!(proposal_count(&pool).await, before);
+
+    let id = file(
+        &f,
+        json!({"volume_id": vol, "list_price": value(json!(12)), "note": "Prix imprimé",
+               "sources": [SRC]}),
+    )
+    .await;
+    let lines = items(&pool, id).await;
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].1["line"], "list_price");
+    assert_eq!(lines[0].1["note"], "Prix imprimé");
+    let (key,): (String,) =
+        sqlx::query_as("SELECT CAST(equivalence_key AS CHAR) FROM proposals WHERE id = ?")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(key, format!("volume_value:volumes/{vol}:list:1200CHF"));
+
+    // The review names the volume; the only line cannot be removed.
+    let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    let page = text(page);
+    assert!(page.contains("data-value-target"), "{page}");
+    assert!(page.contains("Prix imprimé"), "{page}");
+    assert!(!page.contains("data-purchase-problem"), "{page}");
+    let v = version_of(&pool, id).await;
+    let (status, _) = post(
+        &f,
+        format!("/proposals/{id}/items/{}/remove", lines[0].0),
+        format!("version={v}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // The list and the agent's history name the volume (review of 16-3).
+    let (_, list) = f.lib.get(&f.agent.app, "/proposals").await;
+    assert!(text(list).contains("V0520"), "the queue names the volume");
+    let mine = f.agent.ok("list_my_proposals", json!({"kind": "volume_value"})).await;
+    assert_eq!(mine["items"][0]["subject"], json!({"volume_id": vol}));
+
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(status_of(&pool, id).await, "accepted");
+    let (cv, _, pp, pp_cur, dated) = amounts(&pool, vol).await;
+    assert_eq!(
+        (cv, pp.as_deref(), pp_cur.as_deref(), dated),
+        (None, Some("12.00"), Some("CHF"), false),
+        "a purchase price alone leaves the value and its date alone"
+    );
+    let (details,): (String,) = sqlx::query_as(
+        "SELECT CAST(details AS CHAR) FROM admin_audit \
+         WHERE action = 'volume_value_update' AND entity_id = ? ORDER BY id DESC LIMIT 1",
+    )
+    .bind(vol)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let details: Value = serde_json::from_str(&details).unwrap();
+    assert_eq!(details["new"]["purchase_price"], "12.00");
+    assert!(details["new"].get("current_value").is_none(), "{details}");
+    assert_eq!(details["old"]["purchase_price"], Value::Null);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn only_an_inconsistent_purchase_price_can_be_replaced(pool: DbPool) {
+    let f = fx(&pool).await;
+    let priced = |cents: &'static str, currency: &'static str, id: u64| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query("UPDATE volumes SET purchase_price = ?, purchase_currency = ? WHERE id = ?")
+                .bind(cents)
+                .bind(currency)
+                .bind(id)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+    };
+    let (_, real) = volume(&pool, "Vraie affaire", "V0521").await;
+    priced("9.00", "CHF", real).await;
+    let (_, foreign) = volume(&pool, "Autre devise", "V0522").await;
+    priced("2400.00", "EUR", foreign).await;
+    let before = proposal_count(&pool).await;
+    for vol in [real, foreign] {
+        let msg = f
+            .agent
+            .err(
+                "propose_volume_value",
+                json!({"volume_id": vol, "list_price": value(json!(24)), "sources": [SRC]}),
+            )
+            .await;
+        assert!(msg.contains("does not look wrong"), "{msg}");
+    }
+    assert_eq!(proposal_count(&pool).await, before);
+
+    let (_, wrong) = volume(&pool, "Erreur d'échelle", "V0523").await;
+    priced("2400.00", "CHF", wrong).await;
+    let id = file(
+        &f,
+        json!({"volume_id": wrong, "list_price": value(json!(24)), "sources": [SRC]}),
+    )
+    .await;
+    let line = items(&pool, id).await.remove(0).1;
+    assert_eq!(line["inconsistent"], "scale");
+    assert_eq!(line["replaces"], json!({"amount_cents": 240000, "currency": "CHF"}));
+    let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    let page = text(page);
+    assert!(page.contains("data-purchase-problem"), "{page}");
+    assert!(page.contains("data-purchase-replaces"), "{page}");
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(amounts(&pool, wrong).await.2.as_deref(), Some("24.00"));
+
+    // A value and a replacement together; the audit keeps the old price.
+    let (_, both) = volume(&pool, "Les deux", "V0526").await;
+    priced("80.00", "CHF", both).await;
+    let id = file(
+        &f,
+        json!({"volume_id": both, "current_value": value(json!(30)),
+               "list_price": value(json!(24)), "sources": [SRC]}),
+    )
+    .await;
+    let lines = items(&pool, id).await;
+    assert_eq!(lines[1].1["inconsistent"], "gap");
+    assert_eq!(lines[0].1["fingerprint"], "3000CHF:list:2400CHF");
+    let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    let page = text(page);
+    assert!(page.contains("data-purchase-replaces"), "{page}");
+    assert!(!page.contains("data-list-price-note"), "{page}");
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (cv, _, pp, _, dated) = amounts(&pool, both).await;
+    assert_eq!((cv.as_deref(), pp.as_deref(), dated), (Some("30.00"), Some("24.00"), true));
+    let (details,): (String,) = sqlx::query_as(
+        "SELECT CAST(details AS CHAR) FROM admin_audit \
+         WHERE action = 'volume_value_update' AND entity_id = ? ORDER BY id DESC LIMIT 1",
+    )
+    .bind(both)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let details: Value = serde_json::from_str(&details).unwrap();
+    assert_eq!(details["old"]["purchase_price"], "80.00");
+    assert_eq!(details["old"]["purchase_currency"], "CHF");
+
+    // A hand edit since filing outdates the replacement.
+    let (_, moved) = volume(&pool, "Corrigé à la main", "V0524").await;
+    priced("0.50", "CHF", moved).await;
+    let id = file(
+        &f,
+        json!({"volume_id": moved, "list_price": value(json!(24)), "sources": [SRC]}),
+    )
+    .await;
+    assert_eq!(items(&pool, id).await[0].1["inconsistent"], "negligible");
+    priced("22.00", "CHF", moved).await;
+    let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    assert!(text(page).contains("data-purchase-changed"));
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(status_of(&pool, id).await, "stale");
+    assert_eq!(amounts(&pool, moved).await.2.as_deref(), Some("22.00"));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_rejected_purchase_price_blocks_the_same_amount_only(pool: DbPool) {
+    let f = fx(&pool).await;
+    let (_, vol) = volume(&pool, "Rejet", "V0525").await;
+    let args = json!({"volume_id": vol, "list_price": value(json!(12)), "sources": [SRC]});
+    let id = file(&f, args.clone()).await;
+    reject(&f, &pool, id).await;
+    let msg = f.agent.err("propose_volume_value", args).await;
+    assert!(msg.contains("was rejected on"), "{msg}");
+    file(
+        &f,
+        json!({"volume_id": vol, "list_price": value(json!(13)), "sources": [SRC]}),
+    )
+    .await;
+}
+
+// Story 16-3 — the thresholds are set in Admin → System and apply to the next
+// filing.
+#[sqlx::test(migrations = "./migrations")]
+async fn the_thresholds_are_set_by_an_admin_and_apply_at_once(pool: DbPool) {
+    let f = fx(&pool).await;
+    let (_, vol) = volume(&pool, "Seuils", "V0527").await;
+    sqlx::query("UPDATE volumes SET purchase_price = 12.00, purchase_currency = 'CHF' WHERE id = ?")
+        .bind(vol)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let args = json!({"volume_id": vol, "list_price": value(json!(24)), "sources": [SRC]});
+    let msg = f.agent.err("propose_volume_value", args.clone()).await;
+    assert!(msg.contains("at most 1.00") && msg.contains("factor of 3"), "{msg}");
+
+    let admin = Browser::login(&f.agent.app, "vv-admin").await;
+    // A librarian cannot change them; bad values are refused and change nothing.
+    let good = "negligible_amount=2.50&negligible_version=1&gap_factor=2&gap_version=1&_csrf_token=x";
+    let (status, _) = f
+        .lib
+        .post_form(&f.agent.app, "/admin/system/purchase-thresholds", good)
+        .await;
+    assert_ne!(status, StatusCode::OK);
+    for bad in [
+        "negligible_amount=abc&negligible_version=1&gap_factor=2&gap_version=1&_csrf_token=x",
+        "negligible_amount=1.005&negligible_version=1&gap_factor=2&gap_version=1&_csrf_token=x",
+        "negligible_amount=1&negligible_version=1&gap_factor=1&gap_version=1&_csrf_token=x",
+        "negligible_amount=1&negligible_version=1&gap_factor=101&gap_version=1&_csrf_token=x",
+    ] {
+        let (status, _) = admin
+            .post_form(&f.agent.app, "/admin/system/purchase-thresholds", bad)
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+    }
+    let (status, body) = admin
+        .post_form(&f.agent.app, "/admin/system/purchase-thresholds", good)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // A stale version changes neither.
+    let (status, _) = admin
+        .post_form(
+            &f.agent.app,
+            "/admin/system/purchase-thresholds",
+            "negligible_amount=9&negligible_version=2&gap_factor=9&gap_version=1&_csrf_token=x",
+        )
+        .await;
+    assert_ne!(status, StatusCode::OK);
+    let (stored,): (String,) = sqlx::query_as(
+        "SELECT setting_value FROM settings WHERE setting_key = 'purchase_negligible_amount'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored, "2.50");
+
+    // The next filing applies them.
+    let id = file(&f, args).await;
+    assert_eq!(items(&pool, id).await[0].1["inconsistent"], "gap");
+}
+

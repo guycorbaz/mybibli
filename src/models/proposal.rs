@@ -1138,7 +1138,8 @@ impl ProposalModel {
                           CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.line')) AS CHAR) AS line \
                    FROM proposal_items \
                    WHERE proposal_id IN ({placeholders}) AND deleted_at IS NULL) i \
-             WHERE line IN ('series', 'field', 'cover', 'label', 'series_update', 'current_value') \
+             WHERE line IN ('series', 'field', 'cover', 'label', 'series_update', 'current_value', \
+                            'list_price') \
              ORDER BY proposal_id, id"
         );
         let mut q = sqlx::query(&sql);
