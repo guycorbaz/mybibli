@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-11-05 (epic 15 done — 8/8 stories merged; retrospective epic-15-retro-2026-11-05.md; release v1.25.0.)
+# last_updated: 2026-11-06 (epic 16 planned — what real use showed: split #597, volume amounts #630, purchase price proposals #639, cover upload #587, scan warning #638, retry log level #637; release v1.26.0 at epic close.)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -314,3 +314,18 @@ development_status:
   15-7-epic-15-smoke-test: done
   15-8-epic-15-documentation: done
   epic-15-retrospective: done
+
+  # ─── Epic 16: What real use showed ─────────────────────────────────
+  # Planned 2026-11-06 by the project lead. #597, #630, #639, #587, #638, #637.
+  # FRs: FR167-FR171 | UX-DRs: UX-DR42. Release: v1.26.0 at epic close.
+  # Sequencing: 16-1 -> 16-2 -> 16-3 -> 16-4 -> 16-5 -> 16-6 -> 16-7 (epic smoke, Rule #7) -> 16-8 -> retrospective -> release.
+  epic-16: in-progress
+  16-1-split-catalog-and-titles-routes: backlog
+  16-2-amounts-on-the-volume-page: backlog
+  16-3-purchase-price-proposals: backlog
+  16-4-cover-upload: backlog
+  16-5-irregular-code-warning: backlog
+  16-6-retry-log-level: backlog
+  16-7-epic-16-smoke-test: backlog
+  16-8-epic-16-documentation: backlog
+  epic-16-retrospective: optional

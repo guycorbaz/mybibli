@@ -9,6 +9,7 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 ## Changelog
 
 - **2026-11-04** — Added **Epic 15: The agent's next tasks** (#564, #590, #614, #602), with new requirements FR161–FR166 and UX-DR40–UX-DR41. Decided by the project lead on 2026-11-04; ships as v1.25.0.
+- **2026-11-06** — Added **Epic 16: What real use showed** (#597, #630, #639, #587, #638, #637), with new requirements FR167–FR171 and UX-DR42. Decided by the project lead the same day, after reading the v1.25.0 production logs and a first agent session on values.
 - **2026-11-04** — Added **Epic 14: The sidebar** (#547), with new requirements UX-DR38–UX-DR39. Decided by the project lead on 2026-11-04 from the interactive mock-up `ux-sidebar-mockup.html`; ships as v1.24.0. Agent purchase price / value (#564) stays Epic 15; the instance time zone (#602) is a small story at the next planning.
 - **2026-11-03** — Added **Epic 13: Cataloguing for real** (#574, #576–#586, #588), with new requirements FR153–FR160 and UX-DR36–UX-DR37. Decided by the project lead on 2026-11-03, after the first mass entry session and the agent session that enriched the comics; ships as v1.23.0. The sidebar (#547) moves to Epic 14, agent purchase price / value (#564) to Epic 15.
 - **2026-10-30** — Added **Epic 12: Proposals, after a first real use** (#502, #542, #560, #561, #563), with new requirements FR148–FR152 (FR149 refines FR140, FR152 extends FR132) and UX-DR35. Decided by the project lead on 2026-10-30, after the first production agent session; ships as v1.22.0 together with the #558 fix already on `main`. The sidebar (#547) is planned as Epic 13; the base path (#492) comes later.
@@ -189,6 +190,11 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - FR164: An MCP agent can propose to modify an existing series — name, open/closed type, total number of tomes, removal of expected tomes — reviewed like the other proposals; a total lower than an owned or expected position is refused, naming the positions in the way
 - FR165: An MCP agent can propose a volume's current value (amount in the default currency, with its sources and date) and, when the purchase price is missing, the list price at publication as a stand-in clearly labelled as such; accepted amounts count as hand-set
 - FR166: The collection value statistics show how much of the collection the total covers (volumes valued, share) and how old its estimates are
+- FR167: The volume page shows the volume's purchase price and estimated current value (with its date)
+- FR168: An MCP agent can propose a purchase price without a current value when it is empty, and can propose replacing an existing one only when it matches a listed inconsistent shape; a librarian decides
+- FR169: An MCP agent can upload a cover image as a file, outside the JSON-RPC call, then reference the upload in its cover proposal, and learns the SHA-256 and dimensions of what was received
+- FR170: A scanned all-digit code that is not a known valid barcode shape produces a warning the librarian must confirm before a title is created; stored codes are never rewritten
+- FR171: A background metadata retry that fails because the database pool timed out is logged as a warning, not as an error
 
 ### NonFunctional Requirements
 
@@ -320,6 +326,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR39: Navigation drawer below `lg`: a slim top bar with the menu button and the logo opens the same navigation as an off-canvas drawer from the left over a scrim, always expanded; Escape, the scrim and a close button dismiss it; focus moves into it and back to the menu button
 - UX-DR40: Admin → Skills tab (admin tab pattern): list (name, description, active, last change and author), create / edit form with a Markdown textarea, deactivate, delete through the Trash; skill text never rendered as unescaped HTML
 - UX-DR41: Proposal detail for a series modification (current vs proposed name / type / total, expected tomes removed) and for a volume value (current vs proposed amount, condition, edition note, sources, "list price" label); value coverage on the value statistics page
+- UX-DR42: Scan warning for an irregular code: the existing media-type choice carries a warning naming what is wrong (length, check digit), and nothing is created until the librarian chooses
 
 ### FR Coverage Map
 
@@ -385,6 +392,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 | FR144-FR147 | 11 | Accepted fields protected from re-fetch, expected-tome auto-settle at scan, decision trail, manual expected-tome CRUD |
 | FR148-FR152 | 12 | ISBN with separators, per-field staleness, providers already searched, readable proposals list, title correction |
 | FR161-FR166 | 15 | Instance time zone, MCP skills, series modification proposals, volume value proposals, value coverage |
+| FR167-FR171 | 16 | Amounts on the volume page, purchase price proposals, cover upload, scan warning, retry log level |
 | FR153-FR160 | 13 | Date added, move a volume, anomaly marks (by hand and proposed), tome number and hint, owned title fills an expected tome, full location paths |
 
 **NFR Distribution:**
@@ -417,8 +425,9 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR36, UX-DR37 → Epic 13
 - UX-DR38, UX-DR39 → Epic 14
 - UX-DR40, UX-DR41 → Epic 15
+- UX-DR42 → Epic 16
 
-**Coverage: 166/166 FRs, 48/48 NFRs, 31/31 ARs, 41/41 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04; Epic 15 added 2026-11-04.)
+**Coverage: 171/171 FRs, 48/48 NFRs, 31/31 ARs, 42/42 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04; Epic 15 added 2026-11-04.)
 
 ## Epic List
 
@@ -3154,3 +3163,147 @@ So that they are documented as they work.
 **Then** it describes the time zone setting, the Skills tab and how an agent uses skills, series modification and value proposals, and value coverage; the agent chapter lists the new tools and prompts
 **And** the PDFs are rebuilt; `CLAUDE.md` and the threat model reflect the new patterns
 **And** release documentation (Foundation Rule #19, v1.25.0) is done at release time, not in this story
+
+### Epic 16: What real use showed
+
+The first real session on v1.25.0 and a reading of its production logs showed what to do next: the amounts the librarian accepts are not visible on the volume page, purchase prices are almost all empty, covers cannot reach the server without the agent copying base64 by hand, a mistyped code quietly becomes a title that never resolves, and the nightly NAS backup raises false errors. The two largest route files must be split first, since they block the volume page.
+
+**FRs:** FR167–FR171
+**NFRs:** none new (NFR3 CSP, NFR12 a11y, NFR42–NFR48 unchanged; an agent never writes the catalog, NFR44)
+**UX-DRs:** UX-DR42
+**Issues:** #597, #630 (item 7), #639, #587, #638, #637
+
+**Release.** v1.26.0 at the close of the epic, after its retrospective.
+
+**Key decisions (project lead, 2026-11-06).**
+- #639: a volume has **two amounts only**, "Prix d'achat" and "Valeur actuelle estimée", both labels unchanged. No replacement value, no second skill, no per-series lot estimate (a series is the sum of its volumes). The list price may keep filling an empty purchase price: that amount is an estimate in any case. The agent can propose a purchase price alone, and can propose replacing one that is inconsistent (zero or negligible, scale error, clear gap with an attested list price); a librarian decides.
+- #638: **warn and let the librarian confirm**, never refuse and never rewrite. Stored codes stay untouched (Rule #20).
+- Out of this epic: #591 (duplicate merge), #589, #492.
+
+**Sequencing.** 16.1 (split, no behaviour change) → 16.2 → 16.3 → 16.4 → 16.5 → 16.6 → 16.7 (epic smoke, Foundation Rule #7) → 16.8 → retrospective → release v1.26.0.
+
+**Stories:**
+
+#### Story 16.1: Split the catalog and titles routes (closes #597)
+
+As a maintainer,
+I want `routes/catalog.rs` and `routes/titles.rs` under 2 000 lines,
+So that the next changes land in focused files (Foundation Rule #12).
+
+**Covers:** Foundation Rule #12
+
+**Acceptance Criteria:**
+
+**Given** `src/routes/catalog.rs` (≈ 3 200 lines) and `src/routes/titles.rs` (≈ 2 800 lines)
+**Then** each is under 2 000 lines, tests included, by moving whole concerns into new modules under `src/routes/`
+**And** no route, template, SQL query, response or log message changes: the moves carry code as it is, and the `.sqlx` cache is unchanged
+**And** the full Rust suite stays green; no new test is needed beyond those that moved
+
+#### Story 16.2: Amounts on the volume page (#630, item 7)
+
+As a librarian,
+I want to see what a volume cost and what it is worth on its page,
+So that I can check an accepted value without opening the edit form.
+
+**Covers:** FR167
+
+**Acceptance Criteria:**
+
+**Given** the volume page
+**Then** it shows the purchase price and the estimated current value with its date, in the instance time zone, using the existing labels; an amount not set reads as such
+**And** decimal formatting matches `/stats/value`; the amounts stay visible to the same roles as the volume's edit form, and hidden otherwise
+**And** unit and E2E cover it, with axe
+
+#### Story 16.3: Purchase price proposals (closes #639)
+
+As a librarian whose purchase prices are mostly empty,
+I want the agent to propose them, even without a value estimate, and to flag those that look wrong,
+So that the amounts fill up while I keep the decision.
+
+**Covers:** FR168
+
+**Acceptance Criteria:**
+
+**Given** `propose_volume_value`
+**Then** `current_value` becomes optional, at least one of `current_value` and `list_price` being required
+**And** `list_price` is accepted on a volume with no purchase price, and on one with a purchase price only when it matches a listed inconsistent shape (Rule #20; the bounds are set in the story file); any other case is refused and explained, nothing being filed
+**And** the review shows the old and new amounts, why the existing one is inconsistent, and the sources
+**And** acceptance goes stale if the purchase price changed since filing, and writes in the same transaction as the other lines; the lock-scope rule (Rule #22) holds
+**And** unit, DB integration and E2E (Rule #23) cover it
+
+#### Story 16.4: Cover upload outside the JSON-RPC call (closes #587)
+
+As an agent proposing covers,
+I want to send the image as a file,
+So that no image is damaged by being copied character by character.
+
+**Covers:** FR169
+
+**Acceptance Criteria:**
+
+**Given** a `propose` key
+**When** the agent posts an image in multipart to an authenticated `/api/v1` route
+**Then** the image passes the existing checks (size, declared type = magic bytes, limits), is re-encoded and staged, and the response gives an upload token with the SHA-256 and dimensions of the received image
+**And** `propose_cover` accepts this token as an alternative to the base64 image, exactly one of the two being required; a token is single-use and bound to its key
+**And** unused uploads are removed by the existing staging purge; the per-key limits hold; the server still never fetches a URL given by an agent (threat model § 5.9, updated)
+**And** unit, DB integration and E2E cover it, including another key's token, an expired token and a damaged image
+
+#### Story 16.5: Warn on an irregular scanned code (closes #638)
+
+As a librarian,
+I want to be warned when a scanned or typed code looks wrong,
+So that a lost `X` or a typing error does not quietly become a title that never resolves.
+
+**Covers:** FR170, UX-DR42
+
+**Acceptance Criteria:**
+
+**Given** an all-digit code classified as `upc` that is not an EAN-8, UPC-A or EAN-13 with a valid check digit
+**Then** the existing media-type choice carries a warning naming what is wrong (length or check digit), and nothing is created until the librarian chooses; the copy follows Rule #9
+**And** a valid barcode behaves as before, with no warning
+**And** nothing stored is rewritten and the code is kept as entered when confirmed
+**And** unit and E2E cover it, with a case where the librarian confirms and one where they correct the code; focus follows Rule #21
+
+#### Story 16.6: Metadata retry log level during backups (closes #637)
+
+As an operator,
+I want an expected nightly database outage not to read as an error,
+So that an `ERROR` line means "look at this".
+
+**Covers:** FR171
+
+**Acceptance Criteria:**
+
+**Given** a metadata retry tick that fails on a pool timeout
+**Then** it is logged at `WARN`; every other failure stays at `ERROR`; the retry behaviour does not change
+**And** a unit test covers the choice of level
+
+#### Story 16.7: Epic 16 smoke test (Foundation Rule #7)
+
+As the project,
+I want one end-to-end journey from a blank browser through the epic's core flow,
+So that the epic is proven done.
+
+**Covers:** Foundation Rule #7
+
+**Acceptance Criteria:**
+
+**Given** a blank browser with no injected cookie
+**When** the test runs
+**Then** it chains: `loginAs` → scan an irregular code, see the warning, confirm → an agent uploads a cover and proposes it by token, and proposes a purchase price alone → the librarian accepts both → the title shows the cover and the volume page shows the amount
+**And** no `waitForTimeout`; green under `CI=true npx playwright test --workers=2`; if this test fails, the epic is not done
+
+#### Story 16.8: Documentation
+
+As an operator,
+I want the manual to describe the new behaviour,
+So that it is documented as it works.
+
+**Covers:** FR167–FR170 (documentation)
+
+**Acceptance Criteria:**
+
+**Given** the user manual (English and French)
+**Then** it describes the amounts on the volume page, purchase price proposals, the cover upload and the scan warning; the agent chapter is up to date
+**And** the PDFs are rebuilt; `CLAUDE.md` and the threat model reflect the new patterns
+**And** release documentation (Foundation Rule #19, v1.26.0) is done at release time, not in this story
