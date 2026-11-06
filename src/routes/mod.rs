@@ -14,6 +14,7 @@ pub mod admin_users;
 pub mod api_v1;
 pub mod auth;
 pub mod borrowers;
+pub mod api_cover_uploads;
 pub mod catalog;
 pub mod catalog_code;
 pub mod catalog_contributors;
@@ -512,6 +513,8 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
             "/api/v1/series",
             axum::routing::get(api_v1::list_series_endpoint),
         )
+        // Story 16-4 (#587) — a cover file for `propose_cover`, propose key.
+        .merge(api_cover_uploads::router())
         // Story 11-6 — MCP endpoint `/api/mcp` (propose key; CSRF
         // short-circuits on `/api/*`, AR28). See `src/mcp/mod.rs`.
         .merge(crate::mcp::router(state.clone(), &mcp_config))

@@ -137,7 +137,10 @@ impl Session {
 /// canonical forms.
 pub(crate) fn should_skip_session_resolve(uri_path: &str) -> bool {
     let path = crate::middleware::csrf::normalize_exempt_path(uri_path);
-    if path == "/health" || path == crate::mcp::MCP_PATH {
+    if path == "/health"
+        || path == crate::mcp::MCP_PATH
+        || path == crate::services::cover_uploads::COVER_UPLOADS_PATH
+    {
         return true;
     }
     matches!(path.as_str(), "/static" | "/covers" | "/logo")
@@ -671,6 +674,8 @@ mod tests {
     /// each triggering a session row read + potential anonymous-row INSERT.
     #[test]
     fn should_skip_session_resolve_static_assets() {
+        // Story 16-4 — an agent's upload carries a key, never a session.
+        assert!(should_skip_session_resolve("/api/v1/cover-uploads"));
         assert!(should_skip_session_resolve("/static/app.css"));
         assert!(should_skip_session_resolve("/static/js/htmx.min.js"));
         assert!(should_skip_session_resolve("/covers/cache/abc.jpg"));

@@ -11,6 +11,7 @@ pub mod cover;
 pub mod cover_acceptance;
 pub mod cover_proposals;
 pub mod cover_staging;
+pub mod cover_uploads;
 pub mod dashboard;
 pub mod data_repairs;
 pub mod description_repair;

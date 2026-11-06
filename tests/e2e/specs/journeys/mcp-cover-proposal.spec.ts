@@ -19,6 +19,8 @@ import { specIsbn } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
 import { createApiKey, revokeApiKey } from "../../helpers/api-keys";
 import { MCP_TOOLS, mcpCallTool, mcpPost } from "../../helpers/mcp";
+import { acceptFromDetail, revokeProposeKey } from "../../helpers/proposals";
+import { createHash } from "node:crypto";
 
 const SOURCE = "https://example.org/couverture";
 /** A valid 1×1 RGBA PNG. */
@@ -61,7 +63,10 @@ test.describe("Story 11-14 — MCP cover proposal tool", () => {
       const tool = tools.find((t: { name: string }) => t.name === "propose_cover");
       expect(tool.annotations.readOnlyHint).toBe(false);
       expect(tool.inputSchema.required).toEqual(
-        expect.arrayContaining(["title_id", "image_base64", "media_type", "sources"]),
+        expect.arrayContaining(["title_id", "sources"]),
+      );
+      expect(Object.keys(tool.inputSchema.properties)).toEqual(
+        expect.arrayContaining(["upload_token", "image_base64", "media_type"]),
       );
 
       // Wait for the background metadata fetch (it bumps the version).
@@ -144,5 +149,65 @@ test.describe("Story 11-14 — MCP cover proposal tool", () => {
     } finally {
       await turnedAway.dispose();
     }
+  });
+
+  // Story 16-4 (#587, FR169) — the image travels as a file, not as a copied
+  // base64 text.
+  test("an agent uploads a cover file and the librarian accepts it", async ({ page, baseURL }) => {
+    await page.context().clearCookies();
+    await loginAs(page, "admin");
+    await page.goto("/catalog");
+    const scanField = page.locator("#scan-field");
+    await scanField.fill(specIsbn("PC", 2 + Math.floor(Math.random() * 89000)));
+    await scanField.press("Enter");
+    const titleId = Number(await titleIdFromSkeleton(page));
+
+    const propose = await createApiKey(page, "propose", "mcp-cover-upload");
+    const other = await createApiKey(page, "propose", "mcp-cover-upload-other");
+    const agent = await playwrightRequest.newContext({ baseURL: baseURL! });
+    const png = Buffer.from(PNG_1X1, "base64");
+    let proposalId = 0;
+    try {
+      const uploaded = await agent.post("/api/v1/cover-uploads", {
+        headers: { Authorization: `Bearer ${propose.plaintext}` },
+        multipart: { file: { name: "cover.png", mimeType: "image/png", buffer: png } },
+      });
+      expect(uploaded.status()).toBe(201);
+      const receipt = await uploaded.json();
+      expect(receipt.sha256).toBe(createHash("sha256").update(png).digest("hex"));
+      expect([receipt.width, receipt.height, receipt.bytes]).toEqual([1, 1, png.length]);
+
+      // A damaged file is refused at the door.
+      const damaged = await agent.post("/api/v1/cover-uploads", {
+        headers: { Authorization: `Bearer ${propose.plaintext}` },
+        multipart: {
+          file: { name: "cover.jpg", mimeType: "image/jpeg", buffer: Buffer.from(TRUNCATED_JPEG, "base64") },
+        },
+      });
+      expect(damaged.status()).toBe(400);
+
+      // Another key cannot use the token.
+      const args = { title_id: titleId, upload_token: receipt.upload_token, sources: [SOURCE] };
+      const foreign = await mcpCallTool(agent, other.plaintext, "propose_cover", args);
+      expect(foreign.isError).toBe(true);
+      expect(foreign.content[0].text).toContain("no usable upload");
+
+      const filed = await mcpCallTool(agent, propose.plaintext, "propose_cover", args);
+      expect(filed.isError, JSON.stringify(filed.content)).toBe(false);
+      proposalId = filed.structuredContent.proposal_id;
+
+      // A token works once.
+      const again = await mcpCallTool(agent, propose.plaintext, "propose_cover", args);
+      expect(again.isError).toBe(true);
+    } finally {
+      await agent.dispose();
+    }
+
+    await page.goto(`/proposals/${proposalId}`);
+    await acceptFromDetail(page);
+    await page.goto(`/title/${titleId}`);
+    await expect(page.locator(`img[src*="/covers/${titleId}.jpg"]`).first()).toBeVisible();
+    await revokeProposeKey(page, propose.label);
+    await revokeProposeKey(page, other.label);
   });
 });
