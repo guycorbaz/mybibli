@@ -105,6 +105,12 @@ The home page is the dashboard. From top to bottom:
   \item Print and stick a V-code label on the volume.
 \end{enumerate}
 
+If the code looks wrong --- a number of digits no barcode has, or a
+wrong check digit on an EAN-8 or EAN-13 --- mybibli says why and asks for the media type before creating
+anything, even when it usually remembers your last choice. A lost
+\texttt{X} at the end of an ISBN-10 is a common case. Check the code and
+scan it again, or choose a type to keep it as entered.
+
 If the metadata pipeline fails to resolve the ISBN, the title
 appears with an \emph{Unresolved} badge. You can edit the title
 fields manually and the volume is still created.
@@ -651,7 +657,9 @@ Two optional amounts can be recorded against each volume: what it
 \emph{cost} you (purchase price) and what it is \emph{worth} now
 (current value), each with its own currency. Both are blank by default
 and nothing forces you to fill them --- a library that is not an
-investment can ignore this section entirely.
+investment can ignore this section entirely. Since 1.26.0 librarians
+see both on the volume page, the value with its date; anonymous
+visitors never do.
 
 If you do record them, \texttt{/stats/value}\index{valuation} sums them
 across the catalogue: a total per currency, then a breakdown by genre
