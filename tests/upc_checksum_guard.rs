@@ -2,7 +2,7 @@
 //! `TitleService::create_from_code`.
 //!
 //! `CodeType::Upc` is a catch-all for 8–13 digit product barcodes (EAN-8,
-//! UPC-A, EAN-13 — see `routes::catalog::detect_code_type`). The #384 guard
+//! UPC-A, EAN-13 — see `routes::catalog_code::detect_code_type`). The #384 guard
 //! is deliberately scoped to the 12-digit UPC-A case, so a 13-digit EAN-13
 //! product code (also classified `Upc`) must NOT be rejected by the UPC-A
 //! mod-10 algorithm. These tests lock both halves of that contract.

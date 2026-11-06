@@ -63,7 +63,7 @@ const ALLOWED_HX_CONFIRM_RUST_SITES: &[(&str, usize)] = &[("src/routes/locations
 /// - `admin_health_panel.html` (2) — the two `disabled` bulk-action buttons.
 ///   WCAG 1.4.3 exempts inactive controls and axe skips `disabled` elements.
 ///   Darkening them would make a disabled button read as available.
-/// - `catalog.rs` (2) — a decorative `·` separator whose only child is
+/// - `catalog.rs` (1) and `catalog_contributors.rs` (1) — a decorative `·` separator whose only child is
 ///   `aria-hidden`, and the `animate-spin` skeleton SVG, likewise
 ///   `aria-hidden`. Neither carries text for a contrast rule to evaluate.
 ///
@@ -73,7 +73,8 @@ const ALLOWED_HX_CONFIRM_RUST_SITES: &[(&str, usize)] = &[("src/routes/locations
 /// a quote or `>`, so a backticked mention in documentation is not a match.
 const ALLOWED_LIGHT_STONE_400_SITES: &[(&str, usize)] = &[
     ("templates/fragments/admin_health_panel.html", 2),
-    ("src/routes/catalog.rs", 2),
+    ("src/routes/catalog.rs", 1),
+    ("src/routes/catalog_contributors.rs", 1),
 ];
 
 #[test]

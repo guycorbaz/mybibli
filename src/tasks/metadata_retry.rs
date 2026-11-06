@@ -15,7 +15,7 @@
 //! lookups are:
 //!
 //! * the scan-time fetch ([`super::metadata_fetch::fetch_metadata_chain`]);
-//! * the manual re-download (`routes::titles::redownload_metadata` — a found
+//! * the manual re-download (`routes::title_metadata_confirm::redownload_metadata` — a found
 //!   result dequeues only once applied, in that handler or in
 //!   `confirm_metadata`);
 //! * the bulk cover-refetch / metadata-backfill loop, once per title after

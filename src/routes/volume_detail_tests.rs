@@ -10,7 +10,7 @@
 //! See `tests/volume_detail_loan_status.rs` for the model-layer
 //! `#[sqlx::test]` integration suite (FR59 SQL projection-narrowing).
 
-use super::catalog::{LoanStatusView, VolumeDetailTemplate};
+use super::catalog_volumes::{LoanStatusView, VolumeDetailTemplate};
 use crate::models::volume::VolumeModel;
 use askama::Template;
 

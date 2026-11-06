@@ -2,7 +2,7 @@
 //!
 //! `GET /scan?code=…` (or `?q=…` when called from the home search field
 //! via HTMX `hx-include="#search-field"`) performs prefix detection
-//! (reusing `crate::routes::catalog::detect_code_type`) + a narrow DB
+//! (reusing `crate::routes::catalog_code::detect_code_type`) + a narrow DB
 //! lookup, then redirects to:
 //!
 //! - `/title/:id` when the code is a known active ISBN.
@@ -35,7 +35,7 @@ use crate::middleware::htmx::HxRequest;
 use crate::models::location::LocationModel;
 use crate::models::title::TitleModel;
 use crate::models::volume::VolumeModel;
-use crate::routes::catalog::detect_code_type;
+use crate::routes::catalog_code::detect_code_type;
 use crate::utils::url_encode;
 
 /// Query string for `GET /scan`. Accepts EITHER `code` (canonical) or
