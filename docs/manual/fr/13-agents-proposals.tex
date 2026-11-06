@@ -66,10 +66,10 @@ Avec une clé \emph{propositions}, un agent peut :
   \item proposer une correction d'une série existante : son nom, ouverte
         ou fermée, son nombre de volumes, et le retrait de tomes
         attendus qui n'existent pas ;
-  \item proposer ce que vaut un volume aujourd'hui et, si vous n'avez
-        jamais noté ce qu'il vous a coûté, le prix catalogue de
-        l'éditeur à la parution --- en trouvant d'abord les volumes
-        jamais estimés ou estimés il y a le plus longtemps ;
+  \item proposer ce que vaut un volume aujourd'hui, le prix catalogue
+        de l'éditeur à la parution pour tenir lieu de prix d'achat, ou
+        les deux --- en trouvant d'abord les volumes jamais estimés ou
+        estimés il y a le plus longtemps ;
   \item lire les \emph{compétences} que vous écrivez pour lui dans
         \emph{Administration \textrightarrow{} Compétences}
         (section~\ref{sec:agents-skills}) ;
@@ -444,7 +444,10 @@ employer.
         ajouter, pour un titre. Une description proposée en HTML est
         convertie en texte brut au dépôt.
   \item[\texttt{propose\_cover}] Une image de couverture pour un titre
-        (JPEG, PNG, WebP ou GIF, 2\,Mio au plus).
+        (JPEG, PNG, WebP ou GIF, 2\,Mio au plus). Depuis la 1.26.0, l'agent
+        peut envoyer le fichier lui-même (section~\ref{sec:agents-staging})
+        au lieu de le recopier en long texte base64, ce qui pouvait abîmer
+        l'image.
   \item[\texttt{propose\_label}] L'une de vos étiquettes de gestion
         (par son identifiant ou son nom exact) sur un titre ou un
         volume, avec une note facultative de 500 caractères au plus qui
@@ -458,10 +461,11 @@ employer.
         l'agent propose de retirer les tomes en trop dans le même
         appel.
   \item[\texttt{propose\_volume\_value}] La valeur actuelle d'un
-        volume, dans votre devise par défaut (sans conversion), et ---
-        seulement si le volume n'a pas de prix d'achat --- le prix
-        catalogue à la parution, avec une note facultative sur l'état
-        et l'édition.
+        volume, dans votre devise par défaut (sans conversion), le prix
+        catalogue à la parution pour tenir lieu de prix d'achat, ou les
+        deux, avec une note facultative sur l'état et l'édition. Le prix
+        catalogue remplit un prix d'achat vide ; depuis la 1.26.0, il peut
+        aussi remplacer un prix qui semble faux (voir plus bas).
 \end{description}
 
 Un outil refuse, avec une explication sur laquelle l'agent peut agir,
@@ -473,11 +477,24 @@ un tome attendu dont l'ISBN est celui d'un autre livre, une étiquette
 inconnue, une étiquette que la notice porte déjà ou qui lui est déjà
 proposée, un total de série inférieur à une position que vous
 possédez, un montant dans une autre devise que la vôtre ou à plus de
-deux décimales, un prix catalogue pour un volume dont vous avez noté
-le prix d'achat, ou une proposition que vous avez refusée récemment
+deux décimales, un prix catalogue pour un volume dont le prix d'achat
+ne semble pas faux, ou une proposition que vous avez refusée récemment
 (section~\ref{sec:agents-delay}). Chaque
 agent peut avoir au plus 100 propositions de couverture en attente à
 la fois.
+
+\subsubsection*{Un prix d'achat qui semble faux}
+
+Un prix d'achat n'est considéré comme faux que dans deux cas, dans votre
+devise par défaut : il est dérisoire (1,00 au plus par défaut) face à un
+prix catalogue supérieur à ce montant, ou il s'écarte nettement du prix catalogue,
+dans un sens ou dans l'autre (d'un facteur 3 ou plus par défaut).
+L'agent ne peut pas savoir ce que vous avez réellement payé, et une
+vraie bonne affaire peut sembler fausse : il ne fait que proposer.
+L'écran de revue montre le montant remplacé et la raison, et vous
+décidez. Réglez ces deux seuils dans \emph{Administration
+\(\rightarrow\) Système \(\rightarrow\) Propositions} ; un changement
+s'applique au dépôt suivant.
 
 \section{Examiner les propositions}
 \label{sec:proposals}
@@ -599,18 +616,21 @@ ne se retire pas --- refusez plutôt la proposition. L'acceptation
 applique le tout d'un coup.
 
 Une proposition \emph{Valeur d'un volume} présente le volume (son code V
-et son titre), son état et sa note d'édition, son prix d'achat, et un
-tableau qui met sa valeur actuelle --- telle qu'elle était au dépôt,
-avec la date de cette estimation --- à côté de la valeur proposée. Si
-la valeur a changé depuis, un avertissement le signale : accepter ne
-fera alors que marquer la proposition comme périmée. Une ligne
-\emph{prix catalogue à la parution} est signalée comme tenant lieu de
-prix d'achat, qui n'est pas connu : la somme réellement payée peut
-différer. Retirez cette ligne si vous n'en voulez pas ; la ligne de la
-valeur reste. Les montants ne se modifient pas ici : saisissez un autre
-montant sur la page de modification du volume. L'acceptation enregistre
-la valeur avec la date du jour, et le prix catalogue comme prix
-d'achat.
+et son titre), son état et sa note d'édition, et son prix d'achat. Une
+valeur proposée s'accompagne d'un tableau qui met la valeur actuelle ---
+telle qu'elle était au dépôt, avec la date de cette estimation --- à côté
+de la valeur proposée. Si la valeur a changé depuis, un avertissement le
+signale : accepter ne fera alors que marquer la proposition comme
+périmée. Une ligne \emph{prix catalogue à la parution} est signalée
+comme tenant lieu de prix d'achat, qui n'est pas connu : la somme
+réellement payée peut différer. Quand elle remplace un prix d'achat qui
+semble faux, elle montre à la place le montant remplacé et la raison, et
+vous avertit si ce prix a changé depuis. À côté d'une valeur proposée,
+vous pouvez retirer cette ligne et garder la valeur ; seule, elle est
+toute la proposition : refusez-la si vous n'en voulez pas. Les montants
+ne se modifient pas ici : saisissez un autre montant sur la page de
+modification du volume. L'acceptation enregistre une valeur avec la date
+du jour, et le prix catalogue comme prix d'achat.
 
 \subsection{Accepter}
 
@@ -674,8 +694,8 @@ depuis son dépôt, si un tome attendu qu'elle retire a été supprimé,
 déplacé ou modifié, ou si un titre occupe désormais une position
 au-delà du total proposé. Une proposition de valeur devient périmée si
 le volume (ou son titre) a été supprimé, si sa valeur actuelle a changé
-entre-temps, si un prix d'achat a été saisi alors qu'un prix catalogue
-était proposé, ou si la devise par défaut de la bibliothèque a changé.
+entre-temps, si son prix d'achat n'est plus celui vu au dépôt alors
+qu'un prix catalogue est proposé, ou si la devise par défaut de la bibliothèque a changé.
 
 Une proposition d'étiquette ne devient périmée que si le titre ou le
 volume qu'elle marque a été supprimé (un volume aussi quand son titre
@@ -796,6 +816,16 @@ acceptées, ou vous les saisissez vous-même.
 
 \section{Couvertures proposées : la zone d'attente}
 \label{sec:agents-staging}
+
+Un agent capable de faire des requêtes HTTP envoie le fichier à
+\texttt{POST /api/v1/cover-uploads} avec sa clé \texttt{propose}, en
+\texttt{multipart/form-data} dans une partie nommée \texttt{file}. La
+réponse donne un jeton, ainsi que le SHA-256 et les dimensions de ce qui
+a été reçu, pour que l'agent vérifie que le fichier est arrivé entier ;
+\texttt{propose\_cover} nomme ensuite le jeton. Un jeton ne sert qu'une
+fois, pour la seule clé qui a envoyé le fichier, pendant 30 minutes ; une
+clé détient au plus 20 envois non encore utilisés. Rien n'apparaît de
+votre côté avant le dépôt de la proposition.
 
 Une couverture proposée est contrôlée comme une couverture que vous
 téléversez vous-même, puis réduite à 400\,px de large au plus

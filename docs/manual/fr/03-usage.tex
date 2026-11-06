@@ -117,6 +117,14 @@ La page d'accueil est le tableau de bord. De haut en bas :
   \item Imprimez et collez une étiquette de code V sur le volume.
 \end{enumerate}
 
+Si le code semble faux --- un nombre de chiffres qu'aucun code-barres
+n'a, ou une mauvaise clé de contrôle sur un EAN-8 ou un EAN-13 ---,
+mybibli en donne la raison et
+demande le type de média avant de créer quoi que ce soit, même s'il
+retient d'habitude votre dernier choix. Un \texttt{X} perdu à la fin d'un
+ISBN-10 est un cas courant. Vérifiez le code et scannez-le à nouveau, ou
+choisissez un type pour le garder tel quel.
+
 Si le pipeline de métadonnées échoue à résoudre l'ISBN, le titre
 apparaît avec un badge \emph{Non résolu}. Vous pouvez modifier les
 champs manuellement et le volume est créé malgré tout.
@@ -696,7 +704,8 @@ Deux montants facultatifs peuvent être enregistrés sur chaque volume :
 ce qu'il vous a \emph{coûté} (prix d'achat) et ce qu'il \emph{vaut}
 aujourd'hui (valeur actuelle), chacun avec sa devise. Les deux sont
 vides par défaut et rien ne force à les remplir --- une bibliothèque qui
-n'est pas un placement peut ignorer cette section.
+n'est pas un placement peut ignorer cette section. Depuis la 1.26.0, les bibliothécaires voient les deux sur la page du
+volume, la valeur avec sa date ; les visiteurs anonymes jamais.
 
 Si vous les renseignez, \texttt{/stats/value}\index{valorisation} en
 fait la somme sur tout le catalogue : un total par devise, puis une

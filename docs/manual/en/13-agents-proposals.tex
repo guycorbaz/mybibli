@@ -60,10 +60,10 @@ With a \emph{propose} key an agent can:
   \item propose a correction of an existing series: its name, open or
         closed, its number of volumes, and the removal of expected
         tomes that do not exist;
-  \item propose what a volume is worth today and, when you never
-        recorded what it cost, the publisher's list price at
-        publication --- and find first the volumes never valued or
-        valued longest ago;
+  \item propose what a volume is worth today, the publisher's list
+        price at publication as a stand-in for its purchase price, or
+        both --- and find first the volumes never valued or valued
+        longest ago;
   \item read the \emph{skills} you write for it in
         \emph{Administration \textrightarrow{} Skills}
         (section~\ref{sec:agents-skills});
@@ -411,7 +411,9 @@ value proposal may use.
         add, for one title. A proposed description in HTML is
         converted to plain text when it is filed.
   \item[\texttt{propose\_cover}] A cover image for one title (JPEG,
-        PNG, WebP or GIF, at most 2\,MiB).
+        PNG, WebP or GIF, at most 2\,MiB). Since 1.26.0 the agent can send
+        the file itself (section~\ref{sec:agents-staging}) rather than
+        copy it as long base64 text, which could damage the image.
   \item[\texttt{propose\_label}] One of your management labels (by id,
         or by its exact name) on one title or one volume, with an
         optional note of at most 500 characters explaining the doubt.
@@ -423,9 +425,11 @@ value proposal may use.
         refusal names those positions, and the agent proposes removing
         the surplus tomes in the same call.
   \item[\texttt{propose\_volume\_value}] A volume's current value,
-        in your default currency (no conversion), and --- only when the
-        volume has no purchase price --- the list price at publication,
-        with an optional note on the condition and edition.
+        in your default currency (no conversion), the list price at
+        publication as a stand-in for the purchase price, or both, with
+        an optional note on the condition and edition. The list price
+        fills an empty purchase price; since 1.26.0 it may also replace
+        one that looks wrong (below).
 \end{description}
 
 A tool refuses, with an explanation the agent can act on, a proposal
@@ -436,9 +440,20 @@ an expected tome whose ISBN is another book's, an unknown label, a
 label the record already carries or that is already proposed for it,
 a series total below a position you hold, an amount in another
 currency than yours or with more than two decimals, a list price for a
-volume whose purchase price you recorded,
+volume whose purchase price does not look wrong,
 or a proposal you rejected recently (section~\ref{sec:agents-delay}). Each agent may
 have at most 100 pending cover proposals at a time.
+
+\subsubsection*{A purchase price that looks wrong}
+
+A purchase price counts as wrong in two cases only, in your default
+currency: it is negligible (at most 1.00 by default) against a list price above
+that amount, or it is far from the list price, in either direction (a
+factor of 3 or more by default). The agent cannot know what you really
+paid, and a real bargain can look wrong: it only proposes. The review
+shows the amount replaced and the reason, and you decide. Set both
+thresholds in \emph{Administration \(\rightarrow\) System
+\(\rightarrow\) Proposals}; a change applies to the next filing.
 
 \section{Reviewing proposals}
 \label{sec:proposals}
@@ -545,17 +560,20 @@ changes line itself cannot be removed --- reject the proposal instead.
 Accepting applies everything in one go.
 
 A \emph{Volume value} proposal shows the volume (its V-code and
-title), its condition and edition note, its purchase price, and a
-table with its current value --- as it was when the agent filed the
-proposal, with the date of that estimate --- next to the proposed
-one. When the value changed since, a warning says so: accepting will
-then only mark the proposal outdated. A \emph{list price at
-publication} line is labelled as standing in for the purchase price,
-which is unknown: what you actually paid may differ. Remove that line
-if you do not want it; the value line stays. Amounts are not edited
-here: type another amount on the volume's edit page instead. Accepting
-records the value with today's date, and the list price as the
-purchase price.
+title), its condition and edition note and its purchase price. A
+proposed value comes with a table of the current value --- as it was
+when the agent filed the proposal, with the date of that estimate ---
+next to the proposed one. When the value changed since, a warning says
+so: accepting will then only mark the proposal outdated. A \emph{list
+price at publication} line is labelled as standing in for the purchase
+price, which is unknown: what you actually paid may differ. When it
+replaces a purchase price that looks wrong, it shows the amount
+replaced and the reason instead, and warns you if that price changed
+since. Next to a proposed value, you can remove that line and keep the
+value; alone, it is the whole proposal: reject it if you do not want
+it. Amounts are not edited here: type another amount on the volume's
+edit page instead. Accepting records a value with today's date, and
+the list price as the purchase price.
 
 \subsection{Accepting}
 
@@ -613,9 +631,9 @@ A series change becomes outdated when the series was edited since it
 was filed, when an expected tome it removes was deleted, moved or
 edited, or when a title now holds a position above the proposed total.
 A value proposal becomes outdated when the volume (or its title) was
-deleted, when its current value changed in the meantime, when a
-purchase price was recorded while a list price was proposed, or when
-the library's default currency changed.
+deleted, when its current value changed in the meantime, when its
+purchase price is no longer the one seen at filing while a list price
+is proposed, or when the library's default currency changed.
 
 A label proposal becomes outdated only when the title or volume it
 marks was deleted (a volume also when its title was), when the label
@@ -729,6 +747,15 @@ yourself.
 
 \section{Proposed covers: the staging area}
 \label{sec:agents-staging}
+
+An agent able to make HTTP requests sends the file to
+\texttt{POST /api/v1/cover-uploads} with its \texttt{propose} key, as
+\texttt{multipart/form-data} in a part named \texttt{file}. The answer
+gives a token, and the SHA-256 and dimensions of what was received so
+the agent can check the file arrived whole; \texttt{propose\_cover} then
+names the token. A token works once, only for the key that uploaded,
+for 30 minutes; a key holds at most 20 uploads not yet used. Nothing
+appears on your side until the proposal is filed.
 
 A proposed cover is checked like a cover you upload yourself, then
 reduced to at most 400\,px wide (JPEG) --- what you review is exactly
