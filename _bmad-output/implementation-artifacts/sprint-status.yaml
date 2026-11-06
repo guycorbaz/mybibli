@@ -325,7 +325,7 @@ development_status:
   16-3-purchase-price-proposals: done
   16-4-cover-upload: done
   16-5-irregular-code-warning: done
-  16-6-retry-log-level: backlog
+  16-6-retry-log-level: done
   16-7-epic-16-smoke-test: backlog
   16-8-epic-16-documentation: backlog
   epic-16-retrospective: optional

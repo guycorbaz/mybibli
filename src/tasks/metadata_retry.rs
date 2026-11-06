@@ -444,6 +444,13 @@ async fn prepare(pool: &DbPool, title_id: u64) -> Result<Result<RetryJob, &'stat
     }))
 }
 
+/// Story 16-6 (#637) — a pool timeout is the expected reading of a database
+/// that is away for a while, such as during the nightly NAS backup: not worth
+/// an `ERROR`. Only this case; every other failure stays an error (pure).
+fn is_expected_outage(error: &AppError) -> bool {
+    matches!(error, AppError::Database(sqlx::Error::PoolTimedOut))
+}
+
 /// Spawn the retry task: a tick every [`TICK_INTERVAL_SECS`] after a short
 /// warm-up, `MissedTickBehavior::Skip` so a clock jump never fires a burst.
 pub fn spawn(state: AppState) {
@@ -466,6 +473,9 @@ pub fn spawn(state: AppState) {
                 ),
                 Ok(_) => {}
                 // Task continues; the rows stay due for the next tick.
+                Err(e) if is_expected_outage(&e) => {
+                    tracing::warn!(error = %e, "Metadata retry tick failed");
+                }
                 Err(e) => tracing::error!(error = %e, "Metadata retry tick failed"),
             }
         }
@@ -475,6 +485,14 @@ pub fn spawn(state: AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_pool_timeout_reads_as_an_expected_outage() {
+        assert!(is_expected_outage(&AppError::Database(sqlx::Error::PoolTimedOut)));
+        assert!(!is_expected_outage(&AppError::Database(sqlx::Error::PoolClosed)));
+        assert!(!is_expected_outage(&AppError::Database(sqlx::Error::RowNotFound)));
+        assert!(!is_expected_outage(&AppError::Internal("x".to_string())));
+    }
 
     #[test]
     fn retry_schedule_is_locked() {
