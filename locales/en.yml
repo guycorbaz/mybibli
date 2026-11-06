@@ -530,6 +530,7 @@ volume:
   valuation_section: "Valuation (optional)"
   purchase_price: "Purchase price"
   current_value: "Estimated current value"
+  current_value_dated: "Estimated on %{date}"
   currency_label: "Currency"
   valuation_help: "Optional — leave blank to skip. The currency defaults to the admin-configured value but can be overridden per volume."
   currently_on_loan: "Cannot delete: this volume is currently on loan."

@@ -128,7 +128,7 @@ struct SeriesRowDisplay {
 /// Format an amount with 2 decimals, locale-aware separator. Mirrors
 /// the home-dashboard percent formatter's locale split (FR uses
 /// comma + NBSP grouping; EN uses dot + comma grouping).
-fn format_amount(value: f64, loc: &str) -> String {
+pub(crate) fn format_amount(value: f64, loc: &str) -> String {
     let raw = format!("{value:.2}");
     if loc == "fr" {
         raw.replace('.', ",")

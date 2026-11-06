@@ -97,6 +97,29 @@
         {% if let Some(loan) = loan_status %}
         {% call loan_status_badge::badge(base.role, loan_status_field_label, loan_status_label_anonymous, loan_status_label_prefix, loan_status_label_suffix, loan.borrower_id, loan.borrower_name.as_deref()) %}{% endcall %}
         {% endif %}
+
+        {# Story 16-2 (#630) — the amounts, for the roles that can edit them. #}
+        {% if let Some(a) = amounts %}
+        <div class="flex items-center gap-3">
+            <span class="text-sm font-medium text-stone-500 dark:text-stone-400 w-32">{{ a.purchase_price_label }}:</span>
+            {% match a.purchase_price %}
+            {% when Some with (amount) %}
+            <span id="volume-purchase-price" class="text-stone-900 dark:text-stone-100">{{ amount }}</span>
+            {% when None %}
+            <span id="volume-purchase-price" class="text-stone-500 dark:text-stone-400 italic">—</span>
+            {% endmatch %}
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="text-sm font-medium text-stone-500 dark:text-stone-400 w-32">{{ a.current_value_label }}:</span>
+            {% match a.current_value %}
+            {% when Some with (amount) %}
+            <span id="volume-current-value" class="text-stone-900 dark:text-stone-100">{{ amount }}</span>
+            {% if let Some(date) = a.current_value_date %}<span id="volume-current-value-date" class="text-sm text-stone-500 dark:text-stone-400">{{ date }}</span>{% endif %}
+            {% when None %}
+            <span id="volume-current-value" class="text-stone-500 dark:text-stone-400 italic">—</span>
+            {% endmatch %}
+        </div>
+        {% endif %}
     </div>
 
     {% if base.role == "librarian" || base.role == "admin" %}

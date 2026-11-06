@@ -195,6 +195,56 @@ pub struct VolumeDetailTemplate {
     pub title_label: String,
     /// Story 13-10 (#579) — "Tome N" of the title, when in a series.
     pub tome_label: Option<String>,
+    /// Story 16-2 (#630) — the amounts; `None` below Librarian, the role
+    /// that can see them in the edit form.
+    pub amounts: Option<VolumeAmounts>,
+}
+
+/// Story 16-2 (#630) — the two amounts of a volume as its page shows them.
+pub struct VolumeAmounts {
+    pub purchase_price_label: String,
+    pub purchase_price: Option<String>,
+    pub current_value_label: String,
+    pub current_value: Option<String>,
+    /// "Estimated on YYYY-MM-DD", in the instance zone; `None` without a
+    /// value or a date.
+    pub current_value_date: Option<String>,
+}
+
+/// An amount and its optional currency, as `/stats/value` writes it (pure).
+fn amount_with_currency(amount: Option<f64>, currency: Option<&str>, loc: &str) -> Option<String> {
+    let number = crate::routes::stats::format_amount(amount?, loc);
+    Some(match currency {
+        Some(c) => format!("{number} {c}"),
+        None => number,
+    })
+}
+
+/// The amounts block of a volume (pure, apart from the locale tables).
+fn volume_amounts(volume: &VolumeModel, loc: &str, tz: chrono_tz::Tz) -> VolumeAmounts {
+    let current_value = amount_with_currency(
+        volume.current_value,
+        volume.current_value_currency.as_deref(),
+        loc,
+    );
+    let current_value_date = current_value
+        .as_ref()
+        .and(volume.current_value_updated_at)
+        .map(|at| {
+            let date = crate::utils::local_time::format_local_date(at, tz);
+            rust_i18n::t!("volume.current_value_dated", locale = loc, date = date).to_string()
+        });
+    VolumeAmounts {
+        purchase_price_label: rust_i18n::t!("volume.purchase_price", locale = loc).to_string(),
+        purchase_price: amount_with_currency(
+            volume.purchase_price,
+            volume.purchase_currency.as_deref(),
+            loc,
+        ),
+        current_value_label: rust_i18n::t!("volume.current_value", locale = loc).to_string(),
+        current_value,
+        current_value_date,
+    }
 }
 
 pub async fn volume_detail(
@@ -321,8 +371,10 @@ pub async fn volume_detail(
         loc,
         state.time_zone(),
     );
+    let amounts = (session.role >= Role::Librarian).then(|| volume_amounts(&volume, loc, tz));
     let base = base_context(&session, loc, "catalog", &uri, state.page_settings());
     let template = VolumeDetailTemplate {
+        amounts,
         record_dates,
         base,
         detail_title: rust_i18n::t!("volume.detail_title", locale = loc).to_string(),
@@ -601,5 +653,58 @@ mod tests {
         assert!(html.contains("/catalog/scan"), "action URL missing");
         // CSRF token threaded through
         assert!(html.contains("tok123"), "csrf token missing");
+    }
+
+    fn amounts_volume() -> VolumeModel {
+        VolumeModel {
+            id: 1,
+            label: "V0001".to_string(),
+            title_id: 10,
+            location_id: None,
+            condition_state_id: None,
+            edition_comment: None,
+            version: 1,
+            purchase_price: None,
+            purchase_currency: None,
+            current_value: None,
+            current_value_currency: None,
+            current_value_updated_at: None,
+            under_audit_since: None,
+        }
+    }
+
+    #[test]
+    fn volume_amounts_read_as_not_set_without_values() {
+        let a = volume_amounts(&amounts_volume(), "en", chrono_tz::UTC);
+        assert_eq!(a.purchase_price, None);
+        assert_eq!(a.current_value, None);
+        assert_eq!(a.current_value_date, None);
+    }
+
+    #[test]
+    fn volume_amounts_use_the_stats_convention_and_the_local_date() {
+        let mut v = amounts_volume();
+        v.purchase_price = Some(24.9);
+        v.purchase_currency = Some("CHF".to_string());
+        v.current_value = Some(18.5);
+        v.current_value_currency = Some("CHF".to_string());
+        // 23:30 UTC on 11-05 is already 11-06 in Zurich.
+        v.current_value_updated_at = chrono::NaiveDate::from_ymd_opt(2026, 11, 5)
+            .and_then(|d| d.and_hms_opt(23, 30, 0));
+        let a = volume_amounts(&v, "fr", chrono_tz::Europe::Zurich);
+        assert_eq!(a.purchase_price.as_deref(), Some("24,90 CHF"));
+        assert_eq!(a.current_value.as_deref(), Some("18,50 CHF"));
+        assert!(a.current_value_date.as_deref().is_some_and(|d| d.contains("2026-11-06")));
+        let en = volume_amounts(&v, "en", chrono_tz::UTC);
+        assert_eq!(en.current_value.as_deref(), Some("18.50 CHF"));
+        assert!(en.current_value_date.as_deref().is_some_and(|d| d.contains("2026-11-05")));
+    }
+
+    #[test]
+    fn volume_amounts_show_no_date_without_a_value() {
+        let mut v = amounts_volume();
+        v.current_value_updated_at = chrono::NaiveDate::from_ymd_opt(2026, 11, 5)
+            .and_then(|d| d.and_hms_opt(12, 0, 0));
+        assert_eq!(volume_amounts(&v, "en", chrono_tz::UTC).current_value_date, None);
     }
 }

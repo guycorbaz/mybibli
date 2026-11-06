@@ -45,6 +45,7 @@ fn make_test_volume_detail_template(
         loan_status_label_anonymous: "On loan since 2026-04-15".to_string(),
         loan_status_label_prefix: "On loan to ".to_string(),
         loan_status_label_suffix: " since 2026-04-15".to_string(),
+        amounts: None,
         can_audit: false,
         // CR #443 — this fixture renders no labels region; the wiring is
         // covered by the E2E journey.
@@ -359,4 +360,28 @@ fn volume_detail_move_button_is_librarian_only() {
         .expect("render");
     assert!(!anonymous.contains("/move-modal"));
     assert!(anonymous.contains(r#"href="/title/10""#));
+}
+
+// Story 16-2 (#630) — the amounts stay out of the page without the role.
+#[test]
+fn volume_detail_hides_the_amounts_without_the_block() {
+    let html = make_test_volume_detail_template("anonymous", None).render().unwrap();
+    assert!(!html.contains("volume-purchase-price"));
+    assert!(!html.contains("volume-current-value"));
+}
+
+#[test]
+fn volume_detail_shows_the_amounts_and_their_date() {
+    let mut t = make_test_volume_detail_template("librarian", None);
+    t.amounts = Some(super::catalog_volumes::VolumeAmounts {
+        purchase_price_label: "Purchase price".to_string(),
+        purchase_price: None,
+        current_value_label: "Estimated current value".to_string(),
+        current_value: Some("18.50 CHF".to_string()),
+        current_value_date: Some("Estimated on 2026-11-06".to_string()),
+    });
+    let html = t.render().unwrap();
+    assert!(html.contains("Purchase price:"));
+    assert!(html.contains("18.50 CHF"));
+    assert!(html.contains("Estimated on 2026-11-06"));
 }

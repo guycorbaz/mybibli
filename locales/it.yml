@@ -516,6 +516,7 @@ volume:
   valuation_section: "Valutazione (opzionale)"
   purchase_price: "Prezzo di acquisto"
   current_value: "Valore attuale stimato"
+  current_value_dated: "Stimato il %{date}"
   currency_label: "Valuta"
   valuation_help: "Opzionale — lascia vuoto per saltare. La valuta predefinita è quella configurata dall'amministratore, ma può essere sovrascritta per esemplare."
   currently_on_loan: "Impossibile eliminare: questo esemplare è attualmente prestato."
