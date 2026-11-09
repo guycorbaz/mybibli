@@ -9,6 +9,7 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 ## Changelog
 
 - **2026-11-04** — Added **Epic 15: The agent's next tasks** (#564, #590, #614, #602), with new requirements FR161–FR166 and UX-DR40–UX-DR41. Decided by the project lead on 2026-11-04; ships as v1.25.0.
+- **2026-11-09** — Added **Epic 17: Everyday entry** (#651, #652, #565, #643 items 1–2, #653, #656), with new requirements FR172–FR177 and UX-DR43–UX-DR44. Decided by the project lead on 2026-11-09 from the usage notes of the first comics sessions; ships as v1.27.0. The comics shelving plan (#655) gets its own epic later.
 - **2026-11-06** — Added **Epic 16: What real use showed** (#597, #630, #639, #587, #638, #637), with new requirements FR167–FR171 and UX-DR42. Decided by the project lead the same day, after reading the v1.25.0 production logs and a first agent session on values.
 - **2026-11-04** — Added **Epic 14: The sidebar** (#547), with new requirements UX-DR38–UX-DR39. Decided by the project lead on 2026-11-04 from the interactive mock-up `ux-sidebar-mockup.html`; ships as v1.24.0. Agent purchase price / value (#564) stays Epic 15; the instance time zone (#602) is a small story at the next planning.
 - **2026-11-03** — Added **Epic 13: Cataloguing for real** (#574, #576–#586, #588), with new requirements FR153–FR160 and UX-DR36–UX-DR37. Decided by the project lead on 2026-11-03, after the first mass entry session and the agent session that enriched the comics; ships as v1.23.0. The sidebar (#547) moves to Epic 14, agent purchase price / value (#564) to Epic 15.
@@ -195,6 +196,12 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - FR169: An MCP agent can upload a cover image as a file, outside the JSON-RPC call, then reference the upload in its cover proposal, and learns the SHA-256 and dimensions of what was received
 - FR170: A scanned all-digit code that is not a known valid barcode shape produces a warning the librarian must confirm before a title is created; stored codes are never rewritten
 - FR171: A background metadata retry that fails because the database pool timed out is logged as a warning, not as an error
+- FR172: A V-code typed or scanned with a lowercase `v` is accepted as that V-code; a code close to a V-code but of another shape is refused with a message naming the expected shape (`V` + 4 digits)
+- FR173: From a title's page, a librarian can add a volume to that title by typing or scanning its V-code, without scanning the ISBN again
+- FR174: Every form that takes an ISBN (manual title creation, title edit, wish list, scan and search) applies one rule: separators and an `ISBN` prefix removed, ISBN-10 converted to ISBN-13, checksum checked; titles already stored with separators are repaired once
+- FR175: A UPC typed in the manual title form or the title edit form gets the same irregular-code warning as a scanned one; a 12-digit code with a wrong check digit is refused with its specific message whichever path created it
+- FR176: A librarian can find a title by its id from the search field, and the id is shown on the title page
+- FR177: mybibli ships default MCP skills, inserted inactive once per database and never over a skill the admin holds under the same name; the first ones guide the agent through tidying comics (covers, series creation, series attachment, title spelling)
 
 ### NonFunctional Requirements
 
@@ -327,6 +334,8 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR40: Admin → Skills tab (admin tab pattern): list (name, description, active, last change and author), create / edit form with a Markdown textarea, deactivate, delete through the Trash; skill text never rendered as unescaped HTML
 - UX-DR41: Proposal detail for a series modification (current vs proposed name / type / total, expected tomes removed) and for a volume value (current vs proposed amount, condition, edition note, sources, "list price" label); value coverage on the value statistics page
 - UX-DR42: Scan warning for an irregular code: the existing media-type choice carries a warning naming what is wrong (length, check digit), and nothing is created until the librarian chooses
+- UX-DR43: Title page "Add a volume" field in the volumes section: V-code input for Librarian and above, same feedback as the catalog scan, focus kept in the field after a success for a scanner batch (Rule #21)
+- UX-DR44: Title id shown on the title page; default skills marked "provided by mybibli" in Admin → Skills
 
 ### FR Coverage Map
 
@@ -393,6 +402,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 | FR148-FR152 | 12 | ISBN with separators, per-field staleness, providers already searched, readable proposals list, title correction |
 | FR161-FR166 | 15 | Instance time zone, MCP skills, series modification proposals, volume value proposals, value coverage |
 | FR167-FR171 | 16 | Amounts on the volume page, purchase price proposals, cover upload, scan warning, retry log level |
+| FR172-FR177 | 17 | Lowercase V-code, add a volume from the title page, one ISBN rule, typed-code warnings, title id search, default skills |
 | FR153-FR160 | 13 | Date added, move a volume, anomaly marks (by hand and proposed), tome number and hint, owned title fills an expected tome, full location paths |
 
 **NFR Distribution:**
@@ -426,8 +436,9 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR38, UX-DR39 → Epic 14
 - UX-DR40, UX-DR41 → Epic 15
 - UX-DR42 → Epic 16
+- UX-DR43, UX-DR44 → Epic 17
 
-**Coverage: 171/171 FRs, 48/48 NFRs, 31/31 ARs, 42/42 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04; Epic 15 added 2026-11-04.)
+**Coverage: 177/177 FRs, 48/48 NFRs, 31/31 ARs, 44/44 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04; Epic 15 added 2026-11-04; Epic 16 added 2026-11-06; Epic 17 added 2026-11-09.)
 
 ## Epic List
 
@@ -3307,3 +3318,152 @@ So that it is documented as it works.
 **Then** it describes the amounts on the volume page, purchase price proposals, the cover upload and the scan warning; the agent chapter is up to date
 **And** the PDFs are rebuilt; `CLAUDE.md` and the threat model reflect the new patterns
 **And** release documentation (Foundation Rule #19, v1.26.0) is done at release time, not in this story
+
+### Epic 17: Everyday entry
+
+The first comics sessions on v1.26.0 left usage notes on entering volumes and titles: a volume could not be added to a title created by hand, adding a volume from the title page means going back through `/catalog` and the ISBN, an ISBN typed by hand is stored as typed and later missed by a scan, a typed code gets none of the scan's warnings, the titles the agent names by id cannot be found, and the comic-tidying skills written for #654 should ship with mybibli as models.
+
+**FRs:** FR172–FR177
+**NFRs:** none new (NFR3 CSP, NFR12 a11y, NFR42–NFR48 unchanged; an agent never writes the catalog, NFR44)
+**UX-DRs:** UX-DR43, UX-DR44
+**Issues:** #651, #652, #565, #643 (items 1 and 2), #653, #656
+
+**Release.** v1.27.0 at the close of the epic, after its retrospective.
+
+**Key decisions (project lead, 2026-11-09).**
+- #651 and #652 are the core of the epic; #565, #643 (items 1–2) and #653 join them because they touch the same entry paths.
+- #656: default skills are inserted **inactive**. They are both ready-to-use skills and models for the admin's own. Four small independent skills rather than one (`comics-covers`, `comics-series-create`, `comics-series-attach`, `comics-title-spelling`); their texts are attached to #654. Whether a later release may update a default text is decided in the story.
+- Out of this epic: the comics shelving plan (#655, own epic), #643 item 3, the series issues (#519, #526, #627, #628), #591, #589, #492.
+
+**Sequencing.** 17.1 → 17.2 (reuses the V-code path fixed in 17.1) → 17.3 → 17.4 → 17.5 → 17.6 → 17.7 (epic smoke, Foundation Rule #7) → 17.8 → retrospective → release v1.27.0.
+
+**Stories:**
+
+#### Story 17.1: A V-code is recognised whatever its case (closes #651)
+
+As a librarian adding a volume,
+I want the V-code I type or scan to be recognised,
+So that a volume is never refused with a message about media types.
+
+**Covers:** FR172
+
+**Acceptance Criteria:**
+
+**Given** the reported case (a title created by hand, then a V-code entered on `/catalog`, answered with `feedback.code_unsupported`)
+**Then** the story first reproduces it and records the exact input in the story file
+**And** a code matching `[vV]` followed by exactly 4 ASCII digits is the V-code `V` + those digits on every scan path (`/catalog/scan`, home scan, the title page of 17.2); nothing else is rewritten (Rule #20)
+**And** a code that starts with `v`/`V` but has another shape is refused with a message naming the expected shape (Rule #9), not `code_unsupported`; whether `V` + 4 non-digits stays a V-code is checked against the stored labels before tightening
+**And** unit tests cover the shapes; an E2E journey creates a title by hand and adds a volume to it with a lowercase V-code
+
+#### Story 17.2: Add a volume from the title page (closes #652)
+
+As a librarian on a title's page,
+I want to add a volume by its V-code there,
+So that I do not have to go back to `/catalog` and scan the ISBN again.
+
+**Covers:** FR173, UX-DR43
+
+**Acceptance Criteria:**
+
+**Given** `/title/{id}` and a Librarian or Admin
+**Then** the volumes section offers a V-code field, with or without existing volumes, that creates a volume on **this** title
+**And** it shares the V-code arm of the catalog scan (same validation, same messages: label taken, existing label with a link to `/volume/{id}`, the CR #300 confirmation when the title already has volumes); no second copy of that logic (DRY)
+**And** on success the volumes table updates without a reload and focus stays in the field (Rule #21); the scanner guard behaves as on `/catalog`; the field is CSP-clean
+**And** the empty-state link to `/catalog` is kept; ISBN entry on `/catalog` is unchanged
+**And** unit and E2E cover it (scanner burst, an existing label, an Anonymous visitor who sees no field), with axe
+
+#### Story 17.3: One ISBN rule for every form (closes #565)
+
+As a librarian typing an ISBN by hand,
+I want it stored the way a scan stores it,
+So that a later scan finds the title instead of creating a duplicate.
+
+**Covers:** FR174
+
+**Acceptance Criteria:**
+
+**Given** manual title creation, the title edit form, the wish list "By ISBN", the scan and the search
+**Then** they all go through one shared function: separators removed, an `ISBN` / `ISBN-10` / `ISBN-13` prefix removed (an `ISBN-13 ` prefix before an ISBN-10 starting with `13` keeps all its digits), ISBN-10 converted to ISBN-13, checksum checked; an invalid ISBN is refused with a terse field hint (Rule #9)
+**And** the SQL copy of the separator rule in `models/expected_tome.rs` is removed or shown to be unnecessary
+**And** titles already stored with separators are repaired once per database (`data_repairs::run_once`), on positive shapes only (Rule #20), without bumping `titles.version`; the repair is first run over the production export and its changes read before review
+**And** two stored titles that would collide after the repair are left untouched and logged
+**And** unit, DB integration and E2E cover it (a hyphenated ISBN typed by hand, then scanned bare, finds the same title)
+
+#### Story 17.4: Typed codes warned like scanned ones (#643, items 1 and 2)
+
+As a librarian typing a barcode by hand,
+I want the same warnings as when I scan it,
+So that a mistyped code is caught wherever I enter it.
+
+**Covers:** FR175
+
+**Acceptance Criteria:**
+
+**Given** the UPC field of the manual title form and of the title edit form
+**Then** a code that `code_irregularity` flags shows the same warning as a scan, and the librarian confirms or corrects it; a confirmed code is kept as entered, never rewritten
+**And** a 12-digit code with a wrong check digit picked from the media-type choice (no preference) is refused with the #384 message, not `error.title.creation_failed` (Rule #9)
+**And** unit and E2E cover both paths; #643 item 3 stays open
+
+#### Story 17.5: Find a title by its id (closes #653)
+
+As a librarian following up what the agent reports ("990 is a duplicate of 989"),
+I want to reach a title from its number,
+So that I can act on it without guessing a URL.
+
+**Covers:** FR176, UX-DR44 (title id)
+
+**Acceptance Criteria:**
+
+**Given** the search field
+**Then** a positive id shape (decided in the story, e.g. `#990`) that can never be an ISBN, a UPC or a V-code opens or lists that title, ignoring the filters like an exact ISBN / V-code hit
+**And** an id that is unknown answers not found, and an id of a title in the Trash says so; nothing is silently empty
+**And** the title page shows the title's id
+**And** unit and E2E cover it (Rule #23: on the spec's own titles)
+
+#### Story 17.6: Default MCP skills (closes #656)
+
+As an admin,
+I want mybibli to come with a few skills,
+So that I can use them as they are or as models for my own.
+
+**Covers:** FR177, UX-DR44 (default skills)
+
+**Acceptance Criteria:**
+
+**Given** the four comic-tidying skills of #654, versioned as files in the repository and embedded in the binary
+**Then** at startup each is inserted **inactive**, once per database (`data_repairs::run_once`, one marker per skill), so a skill the admin deletes never comes back
+**And** a name already held by a skill, live or in the Trash, is skipped with an `info` log; nothing an admin wrote is overwritten
+**And** each default passes `services::mcp_skills` validation (unit test over every embedded file); an inactive default is not served to the agent
+**And** Admin → Skills marks a default as "provided by mybibli" rather than "author unknown", in all four locales
+**And** the story decides and documents whether a later release may update a default text the admin has not edited
+**And** unit, DB integration and E2E cover it (fresh DB, name taken, deleted then restarted)
+
+#### Story 17.7: Epic 17 smoke test (Foundation Rule #7)
+
+As the project,
+I want one end-to-end journey from a blank browser through the epic's core flow,
+So that the epic is proven done.
+
+**Covers:** Foundation Rule #7
+
+**Acceptance Criteria:**
+
+**Given** a blank browser with no injected cookie
+**When** the test runs
+**Then** it chains: `loginAs` → create a title by hand with a hyphenated ISBN → on its page, add a volume with a lowercase V-code → scan the bare ISBN on `/catalog` and land on the same title → find the title by its id → see a default skill, inactive, in Admin → Skills
+**And** no `waitForTimeout`; green under `CI=true npx playwright test --workers=2`; if this test fails, the epic is not done
+
+#### Story 17.8: Documentation
+
+As an operator,
+I want the manual to describe the new behaviour,
+So that it is documented as it works.
+
+**Covers:** FR172–FR177 (documentation)
+
+**Acceptance Criteria:**
+
+**Given** the user manual (English and French)
+**Then** it describes adding a volume from the title page, the V-code and ISBN entry rules, the typed-code warning, the search by id, and the default skills as models (with their names and purpose); the agent chapter is up to date
+**And** the PDFs are rebuilt; `CLAUDE.md` reflects the new patterns
+**And** release documentation (Foundation Rule #19, v1.27.0) is done at release time, not in this story
