@@ -141,8 +141,9 @@ pub async fn create_loan(
     let pool = &state.pool;
     let loc = locale.0;
 
-    // Trim volume label to handle whitespace from form input
-    let volume_label = form.volume_label.trim().to_uppercase();
+    // Trim volume label to handle whitespace from form input; a lowercase
+    // `v` + 4 digits is that V-code (story 17-1, one rule).
+    let volume_label = crate::services::volume::VolumeService::label_from_input(&form.volume_label);
 
     // Look up volume by label
     let volume = match VolumeModel::find_by_label(pool, &volume_label).await? {
@@ -388,7 +389,7 @@ pub async fn scan_on_loans(
     session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
-    let code = params.code.trim().to_uppercase();
+    let code = crate::services::volume::VolumeService::label_from_input(&params.code);
 
     // Check if V-code format
     if !crate::services::volume::VolumeService::validate_vcode(&code) {

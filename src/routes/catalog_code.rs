@@ -25,10 +25,36 @@ fn validate_issn_from_ean(code: &str) -> bool {
     code.starts_with("977") && TitleService::validate_isbn13_checksum(code)
 }
 
+/// Story 17-1 (#651, Rule #20) — a code that looks like a mistyped V-code:
+/// `v`/`V` then 1 to 5 printable ASCII characters, no space, at least one
+/// of them not a letter (`V12345`, `v12`, `V,/+`, `V12A4`). A word such as
+/// `Valérian` or `Vol` is not one: the scan field also takes search text,
+/// which gets the general message.
+fn is_near_vcode(code: &str) -> bool {
+    let Some(rest) = code.strip_prefix(['v', 'V']) else {
+        return false;
+    };
+    (1..=5).contains(&rest.len())
+        && rest.bytes().all(|b| b.is_ascii_graphic())
+        && rest.bytes().any(|b| !b.is_ascii_alphabetic())
+}
+
 pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
     use crate::models::media_type::{CodeType, MediaType};
 
-    if code.starts_with('V') && code.len() == 5 {
+    // Story 17-1 (#651): `v`/`V` + 4 ASCII digits is that V-code, carried as
+    // `V` + digits (one rule, `VolumeService::normalize_vcode`). A near
+    // V-code (`is_near_vcode`) stays `vcode` without rewrite, so the caller's
+    // `validate_vcode` refuses it naming the expected shape.
+    if let Some(canonical) = crate::services::volume::VolumeService::normalize_vcode(code) {
+        return CodeDetection {
+            code_type: "vcode",
+            inferred_media_type: None,
+            inferred_code_type: None,
+            normalized_code: (canonical != code).then_some(canonical),
+        };
+    }
+    if is_near_vcode(code) {
         return CodeDetection {
             code_type: "vcode",
             inferred_media_type: None,
@@ -196,6 +222,44 @@ mod tests {
     #[test]
     fn test_detect_code_type_vcode() {
         assert_eq!(detect_code_type("V0042").code_type, "vcode");
+    }
+
+    // Story 17-1 (#651) — a lowercase `v` is the same V-code, carried canonical.
+    #[test]
+    fn test_detect_code_type_lowercase_vcode_is_normalized() {
+        let d = detect_code_type("v0042");
+        assert_eq!(d.code_type, "vcode");
+        assert_eq!(d.normalized_code.as_deref(), Some("V0042"));
+        assert_eq!(detect_code_type("V0042").normalized_code, None);
+    }
+
+    // Story 17-1 (#651) — any other code starting with a `v` is a malformed
+    // volume label (refused naming the shape), never rewritten.
+    #[test]
+    fn test_detect_code_type_near_vcode_stays_vcode_unrewritten() {
+        for code in ["V12345", "v12", "V,/+", "V12A4", "V0-42"] {
+            let d = detect_code_type(code);
+            assert_eq!(d.code_type, "vcode", "{code}");
+            assert_eq!(d.normalized_code, None, "{code}");
+            assert!(!crate::services::volume::VolumeService::validate_vcode(code), "{code}");
+        }
+    }
+
+    // Story 17-1 (#651) — words and spaced or long inputs starting with a V
+    // are search text or other codes, not near V-codes.
+    #[test]
+    fn test_detect_code_type_text_starting_with_v_is_not_a_vcode() {
+        for code in ["Valérian", "Vagabond", "Vol", "VABCD", "V for Vendetta", "V 0042", "V", "V123456", "V٠١٢٣"] {
+            assert_eq!(detect_code_type(code).code_type, "unknown", "{code}");
+        }
+    }
+
+    // Story 17-1 (#651) — the reported input: five digits, no V. Not guessed.
+    #[test]
+    fn test_detect_code_type_five_digits_is_unknown() {
+        let d = detect_code_type("11338");
+        assert_eq!(d.code_type, "unknown");
+        assert_eq!(d.normalized_code, None);
     }
 
     #[test]

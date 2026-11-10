@@ -227,7 +227,7 @@ feedback:
   title_created_suggestion: "Scansiona un codice V per collegare un esemplare, oppure un altro ISBN."
   title_exists: "Questo titolo è già nel catalogo."
   title_exists_suggestion: "Scansiona un codice V per collegare un esemplare."
-  code_unsupported: "Disambiguazione del tipo di supporto non ancora disponibile. Usa la creazione manuale del titolo per codici non ISBN."
+  code_unsupported: "Questo codice non è riconosciuto. Atteso: un ISBN, un codice a barre EAN o UPC, un codice V (V seguito da 4 cifre, es. V0042) o un codice L (L seguito da 4 cifre). Controlla il codice, oppure crea il titolo a mano con «Nuovo titolo»."
   isbn_invalid: "Questo codice non sembra un ISBN valido. Controlla il codice a barre e ripeti la scansione."
   volume_created: "Esemplare %{label} collegato a %{title}."
   volume_created_suggestion: "Scansiona un codice L per collocare, oppure un altro codice V."
