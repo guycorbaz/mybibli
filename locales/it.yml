@@ -212,6 +212,7 @@ title:
     isbn: ISBN
     issn: ISSN
     upc: UPC
+    upc_keep: "Mantieni %{code} così"
     page_count: Numero di pagine
     track_count: Numero di tracce
     total_duration: "Durata totale (secondi)"
@@ -449,7 +450,7 @@ error:
     already_used: "Un altro titolo usa già questo ISBN — non viene creato un duplicato"
     not_found: ISBN non trovato
   upc:
-    invalid_checksum: Checksum UPC non valido
+    invalid_checksum: "UPC non valido: la cifra di controllo non corrisponde — controlla la digitazione"
   genre:
     required: Il genere è obbligatorio
   media_type:
@@ -690,10 +691,13 @@ media_type:
   report: Relazione
 scan:
   select_media_type: "Di che tipo di supporto si tratta?"
-  irregular_nine_digits: "Questo codice ha 9 cifre, cosa che nessun codice a barre ha: forse è un ISBN-10 che ha perso l'ultimo carattere, spesso una X. Controllalo e scansionalo di nuovo, oppure scegli un tipo per mantenerlo così."
-  irregular_ten_digits: "Questo codice ha 10 cifre, ma la cifra di controllo non corrisponde a un ISBN-10: forse è stato letto o digitato male. Controllalo e scansionalo di nuovo, oppure scegli un tipo per mantenerlo così."
-  irregular_length: "Questo codice ha %{len} cifre, mentre un codice a barre ne ha 8, 12 o 13: forse è stato letto o digitato male. Controllalo e scansionalo di nuovo, oppure scegli un tipo per mantenerlo così."
-  irregular_check_digit: "La cifra di controllo di questo codice è sbagliata: forse una cifra è stata letta o digitata male. Controllalo e scansionalo di nuovo, oppure scegli un tipo per mantenerlo così."
+  irregular_nine_digits: "Questo codice ha 9 cifre, cosa che nessun codice a barre ha: forse è un ISBN-10 che ha perso l'ultimo carattere, spesso una X."
+  irregular_ten_digits: "Questo codice ha 10 cifre, ma la cifra di controllo non corrisponde a un ISBN-10: forse è stato letto o digitato male."
+  irregular_length: "Questo codice ha %{len} cifre, mentre un codice a barre ne ha 8, 12 o 13: forse è stato letto o digitato male."
+  irregular_check_digit: "La cifra di controllo di questo codice è sbagliata: forse una cifra è stata letta o digitata male."
+  irregular_not_digits: "Questo codice contiene caratteri diversi dalle cifre, mentre un codice a barre ha solo cifre: forse è stato digitato male."
+  irregular_action_scan: "Controllalo e scansionalo di nuovo, oppure scegli un tipo per mantenerlo così."
+  irregular_action_form: "Correggilo, oppure spunta la casella qui sotto per mantenerlo così."
 cover:
   alt_text: "Copertina di %{title}"
   no_cover: "Copertina non disponibile"

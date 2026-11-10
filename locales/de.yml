@@ -216,6 +216,7 @@ title:
     isbn: ISBN
     issn: ISSN
     upc: UPC
+    upc_keep: "%{code} unverändert behalten"
     page_count: Seitenzahl
     track_count: Anzahl Titel
     total_duration: "Gesamtdauer (Sekunden)"
@@ -455,7 +456,7 @@ error:
     already_used: "Diese ISBN wird bereits von einem anderen Titel verwendet — Duplikat wird nicht angelegt"
     not_found: ISBN nicht gefunden
   upc:
-    invalid_checksum: Ungültige UPC-Prüfsumme
+    invalid_checksum: "Ungültige UPC: Die Prüfziffer stimmt nicht — bitte auf Tippfehler prüfen"
   genre:
     required: Genre ist erforderlich
   media_type:
@@ -700,10 +701,13 @@ media_type:
   report: Bericht
 scan:
   select_media_type: "Um welchen Medientyp handelt es sich?"
-  irregular_nine_digits: "Dieser Code hat 9 Ziffern, was bei keinem Strichcode vorkommt: Vielleicht ist es eine ISBN-10 ohne ihr letztes Zeichen, oft ein X. Prüfen Sie ihn und scannen Sie erneut, oder wählen Sie einen Typ, um ihn unverändert zu behalten."
-  irregular_ten_digits: "Dieser Code hat 10 Ziffern, aber seine Prüfziffer passt nicht zu einer ISBN-10: Vielleicht wurde er falsch gelesen oder eingegeben. Prüfen Sie ihn und scannen Sie erneut, oder wählen Sie einen Typ, um ihn unverändert zu behalten."
-  irregular_length: "Dieser Code hat %{len} Ziffern, ein Strichcode aber 8, 12 oder 13: Vielleicht wurde er falsch gelesen oder eingegeben. Prüfen Sie ihn und scannen Sie erneut, oder wählen Sie einen Typ, um ihn unverändert zu behalten."
-  irregular_check_digit: "Die Prüfziffer dieses Codes ist falsch: Vielleicht wurde eine Ziffer falsch gelesen oder eingegeben. Prüfen Sie ihn und scannen Sie erneut, oder wählen Sie einen Typ, um ihn unverändert zu behalten."
+  irregular_nine_digits: "Dieser Code hat 9 Ziffern, was bei keinem Strichcode vorkommt: Vielleicht ist es eine ISBN-10 ohne ihr letztes Zeichen, oft ein X."
+  irregular_ten_digits: "Dieser Code hat 10 Ziffern, aber seine Prüfziffer passt nicht zu einer ISBN-10: Vielleicht wurde er falsch gelesen oder eingegeben."
+  irregular_length: "Dieser Code hat %{len} Ziffern, ein Strichcode aber 8, 12 oder 13: Vielleicht wurde er falsch gelesen oder eingegeben."
+  irregular_check_digit: "Die Prüfziffer dieses Codes ist falsch: Vielleicht wurde eine Ziffer falsch gelesen oder eingegeben."
+  irregular_not_digits: "Dieser Code enthält andere Zeichen als Ziffern, ein Strichcode hat aber nur Ziffern: Vielleicht wurde er falsch eingegeben."
+  irregular_action_scan: "Prüfen Sie ihn und scannen Sie erneut, oder wählen Sie einen Typ, um ihn unverändert zu behalten."
+  irregular_action_form: "Korrigieren Sie ihn, oder kreuzen Sie das Feld unten an, um ihn unverändert zu behalten."
 cover:
   alt_text: "Cover von %{title}"
   no_cover: "Kein Cover verfügbar"

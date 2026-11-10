@@ -145,6 +145,9 @@ pub enum CodeIrregularity {
     Length(usize),
     /// An EAN-8 or EAN-13 length with a wrong check digit.
     CheckDigit,
+    /// Story 17-4 — a character other than a digit. Only a hand-typed code
+    /// can carry one: the scan classifies digits only as `upc`.
+    NotDigits,
 }
 
 /// EAN-8 check digit of the first 7 digits (pure; weights 3 and 1).
@@ -180,6 +183,17 @@ pub fn code_irregularity(code: &str) -> Option<CodeIrregularity> {
 impl CodeIrregularity {
     /// The warning shown with the media-type choice (Rule #9).
     pub fn message(self, loc: &str) -> String {
+        format!("{} {}", self.cause(loc), rust_i18n::t!("scan.irregular_action_scan", locale = loc))
+    }
+
+    /// Story 17-4 — the same warning under a form's UPC field, where the
+    /// librarian corrects the code or ticks "keep as entered".
+    pub fn form_message(self, loc: &str) -> String {
+        format!("{} {}", self.cause(loc), rust_i18n::t!("scan.irregular_action_form", locale = loc))
+    }
+
+    /// What is wrong with the code, and why (Rule #9, first two parts).
+    fn cause(self, loc: &str) -> String {
         match self {
             CodeIrregularity::NineDigits => {
                 rust_i18n::t!("scan.irregular_nine_digits", locale = loc).to_string()
@@ -193,8 +207,109 @@ impl CodeIrregularity {
             CodeIrregularity::CheckDigit => {
                 rust_i18n::t!("scan.irregular_check_digit", locale = loc).to_string()
             }
+            CodeIrregularity::NotDigits => {
+                rust_i18n::t!("scan.irregular_not_digits", locale = loc).to_string()
+            }
         }
     }
+}
+
+/// The warning paragraph of an irregular code (`data-code-warning`), shared
+/// by the scan's media-type choice and the UPC field of the title forms.
+pub(crate) fn code_warning_html(warning: &str) -> String {
+    format!(
+        r#"<p data-code-warning class="mt-1 text-sm font-medium text-amber-800 dark:text-amber-300">{}</p>"#,
+        crate::utils::html_escape(warning)
+    )
+}
+
+/// Story 17-4 (#643 item 1) — what a UPC typed in a title form needs
+/// before it is stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypedUpcVerdict {
+    /// Store it as entered.
+    Keep,
+    /// Irregular and not confirmed yet: warn, store nothing.
+    Confirm(CodeIrregularity),
+    /// A 12-digit UPC-A with a wrong check digit: refused (#384), as the
+    /// scan refuses it; no confirmation can keep it.
+    Refuse,
+}
+
+/// Story 17-4 (Rule #20, pure) — the verdict on a typed UPC, separators
+/// already removed. `confirmed` is the code the librarian ticked "keep as
+/// entered" for; it keeps an irregular code only while it is that same
+/// code. Only all-digit codes that `code_irregularity` passes are kept
+/// silently.
+pub fn typed_upc_verdict(upc: &str, confirmed: Option<&str>) -> TypedUpcVerdict {
+    let irregularity = if !upc.bytes().all(|b| b.is_ascii_digit()) {
+        Some(CodeIrregularity::NotDigits)
+    } else if upc.len() == 12 && !TitleService::validate_upc12_checksum(upc) {
+        return TypedUpcVerdict::Refuse;
+    } else {
+        code_irregularity(upc)
+    };
+    match irregularity {
+        Some(i) if confirmed != Some(upc) => TypedUpcVerdict::Confirm(i),
+        _ => TypedUpcVerdict::Keep,
+    }
+}
+
+/// Story 17-4 — what a title form does with its UPC field.
+pub(crate) enum TypedUpcOutcome {
+    /// The value to write (`None` clears the column).
+    Store(Option<String>),
+    /// Store nothing: send this response, which puts the warning and its
+    /// confirmation in the form's UPC slot.
+    Warn(axum::response::Response),
+}
+
+/// Story 17-4 (#643 item 1) — the check of a title form's UPC field, shared
+/// by manual creation and the title edit. Separators are removed (CR #272).
+/// A value equal to `stored` (the title's UPC, edit form) is written back as
+/// stored without a check (as 17-3's unchanged ISBN). An irregular code
+/// answers with the scan's warning swapped into `#<slot_id>` (the response
+/// retargets there, so focus is not moved, Rule #21); a 12-digit code with a
+/// wrong check digit is refused with the #384 message.
+pub(crate) fn check_typed_upc(
+    typed: Option<&str>,
+    stored: Option<&str>,
+    confirmed: Option<&str>,
+    slot_id: &str,
+    loc: &str,
+) -> Result<TypedUpcOutcome, crate::error::AppError> {
+    use axum::response::IntoResponse;
+    let without_separators = |v: Option<&str>| v.and_then(crate::utils::identifier_without_separators);
+    let Some(upc) = without_separators(typed) else {
+        return Ok(TypedUpcOutcome::Store(None));
+    };
+    if without_separators(stored).as_deref() == Some(upc.as_str()) {
+        return Ok(TypedUpcOutcome::Store(stored.map(str::to_string)));
+    }
+    match typed_upc_verdict(&upc, without_separators(confirmed).as_deref()) {
+        TypedUpcVerdict::Keep => Ok(TypedUpcOutcome::Store(Some(upc))),
+        TypedUpcVerdict::Refuse => Err(crate::error::AppError::BadRequest(
+            TitleService::upc_checksum_refusal(&upc, loc).unwrap_or_default(),
+        )),
+        TypedUpcVerdict::Confirm(irregularity) => Ok(TypedUpcOutcome::Warn(
+            (
+                [("HX-Retarget", format!("#{slot_id}")), ("HX-Reswap", "innerHTML".to_string())],
+                axum::response::Html(typed_upc_warning_html(irregularity, &upc, loc)),
+            )
+                .into_response(),
+        )),
+    }
+}
+
+/// Story 17-4 — the content of a form's UPC warning slot: the scan's
+/// warning and a "keep as entered" box bound to this code.
+pub(crate) fn typed_upc_warning_html(irregularity: CodeIrregularity, upc: &str, loc: &str) -> String {
+    let code = crate::utils::html_escape(upc);
+    let keep = crate::utils::html_escape(&rust_i18n::t!("title.form.upc_keep", locale = loc, code = upc));
+    format!(
+        r#"{}<label class="mt-1 flex items-center gap-2 text-sm text-stone-700 dark:text-stone-300"><input type="checkbox" name="upc_confirmed" value="{code}" class="rounded border-stone-300 dark:border-stone-600"> {keep}</label>"#,
+        code_warning_html(&irregularity.form_message(loc))
+    )
 }
 
 #[cfg(test)]
@@ -457,12 +572,59 @@ mod tests {
             CodeIrregularity::TenDigits,
             CodeIrregularity::Length(11),
             CodeIrregularity::CheckDigit,
+            CodeIrregularity::NotDigits,
         ] {
             for loc in ["en", "fr", "de", "it"] {
-                let m = i.message(loc);
-                assert!(!m.is_empty() && !m.contains("scan."), "{loc}: {m}");
+                for m in [i.message(loc), i.form_message(loc)] {
+                    assert!(!m.is_empty() && !m.contains("scan."), "{loc}: {m}");
+                }
+                assert_ne!(i.message(loc), i.form_message(loc), "{loc}");
             }
         }
         assert!(CodeIrregularity::Length(11).message("en").contains("11"));
+    }
+
+    // Story 17-4 (#643 item 1).
+    #[test]
+    fn a_regular_typed_upc_is_kept() {
+        for code in ["96385074", "0093624738626", "036000291452"] {
+            assert_eq!(typed_upc_verdict(code, None), TypedUpcVerdict::Keep, "{code}");
+        }
+    }
+
+    #[test]
+    fn an_irregular_typed_upc_asks_for_confirmation() {
+        use CodeIrregularity::*;
+        assert_eq!(typed_upc_verdict("220500218", None), TypedUpcVerdict::Confirm(NineDigits));
+        assert_eq!(typed_upc_verdict("2205025062", None), TypedUpcVerdict::Confirm(TenDigits));
+        assert_eq!(typed_upc_verdict("12345", None), TypedUpcVerdict::Confirm(Length(5)));
+        assert_eq!(typed_upc_verdict("0093624738627", None), TypedUpcVerdict::Confirm(CheckDigit));
+        assert_eq!(typed_upc_verdict("1234567A", None), TypedUpcVerdict::Confirm(NotDigits));
+        assert_eq!(typed_upc_verdict("ABC", None), TypedUpcVerdict::Confirm(NotDigits));
+    }
+
+    #[test]
+    fn a_confirmation_keeps_only_the_code_it_was_given_for() {
+        assert_eq!(typed_upc_verdict("220500218", Some("220500218")), TypedUpcVerdict::Keep);
+        // Corrected after the warning: checked again.
+        assert_eq!(
+            typed_upc_verdict("220500217", Some("220500218")),
+            TypedUpcVerdict::Confirm(CodeIrregularity::NineDigits)
+        );
+    }
+
+    #[test]
+    fn a_wrong_upc_a_check_digit_is_refused_even_confirmed() {
+        assert_eq!(typed_upc_verdict("036000291453", None), TypedUpcVerdict::Refuse);
+        assert_eq!(typed_upc_verdict("036000291453", Some("036000291453")), TypedUpcVerdict::Refuse);
+    }
+
+    #[test]
+    fn the_form_warning_carries_the_scan_warning_and_a_bound_confirmation() {
+        let html = typed_upc_warning_html(CodeIrregularity::NotDigits, "12<b>", "en");
+        assert!(html.contains("data-code-warning"), "{html}");
+        assert!(html.contains(r#"name="upc_confirmed" value="12&lt;b&gt;""#), "{html}");
+        assert!(html.contains("Keep 12&lt;b&gt; as entered"), "{html}");
+        assert!(!html.contains("<b>"), "{html}");
     }
 }

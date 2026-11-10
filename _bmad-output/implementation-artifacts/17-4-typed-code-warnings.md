@@ -1,6 +1,6 @@
 # Story 17.4: Typed codes warned like scanned ones
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #643 (items 1 and 2 only; item 3 stays open). Covers: FR175. Epic 17; ships in v1.27.0.
 
@@ -38,12 +38,12 @@ so that a mistyped code is caught wherever I enter it.
 
 ## Tasks
 
-- [ ] `catalog_code.rs`: `NotDigits`, `TypedUpcVerdict`, `typed_upc_verdict`, `code_warning_html` (extracted from `media_type_selector_html`) + unit tests.
-- [ ] `services/title.rs`: `upc_checksum_refusal`; `create_from_code` uses it.
-- [ ] Scan error arms (D7).
-- [ ] Manual form + edit form: `upc_confirmed`, slot, verdict handling (D3–D5).
-- [ ] Locales en/fr/de/it: `scan.irregular_not_digits`, `title.form.upc_keep`, reworded `error.upc.invalid_checksum`.
-- [ ] DB integration `tests/typed_upc_warning.rs`; E2E `typed-upc-warning.spec.ts` (new spec id).
+- [x] `catalog_code.rs`: `NotDigits`, `TypedUpcVerdict`, `typed_upc_verdict`, `code_warning_html` (extracted from `media_type_selector_html`) + unit tests.
+- [x] `services/title.rs`: `upc_checksum_refusal`; `create_from_code` uses it.
+- [x] Scan error arms (D7).
+- [x] Manual form + edit form: `upc_confirmed`, slot, verdict handling (D3–D5).
+- [x] Locales en/fr/de/it: `scan.irregular_not_digits`, `title.form.upc_keep`, reworded `error.upc.invalid_checksum`.
+- [x] DB integration `tests/typed_upc_warning.rs`; E2E `typed-upc-warning.spec.ts` (new spec id).
 
 ## Dev Notes
 
@@ -55,6 +55,20 @@ so that a mistyped code is caught wherever I enter it.
 
 ### Agent Model Used
 
+Claude Opus 5.5
+
 ### Completion Notes List
 
+- The scan's warnings were split into a cause and an action sentence (`scan.irregular_action_scan` / `irregular_action_form`), so the form shows the same cause with the action that fits it ("correct it, or tick the box below").
+- The edit form's post-save display (`metadata_display_html`) does not show the UPC (existing, unrelated); the E2E reloads the page to read it.
+
 ### File List
+
+- `src/routes/catalog_code.rs` — `NotDigits`, `form_message`, `code_warning_html`, `TypedUpcVerdict`, `typed_upc_verdict`, `TypedUpcOutcome`, `check_typed_upc`, `typed_upc_warning_html` + unit tests.
+- `src/services/title.rs` — `upc_checksum_refusal`; `TitleForm.upc_confirmed`.
+- `src/routes/catalog.rs` — shared warning renderer; `upc_creation_error_message` in both UPC error arms (D7).
+- `src/routes/catalog_title_form.rs`, `src/routes/titles.rs` — the UPC check on both forms.
+- `templates/components/title_form.html`, `templates/fragments/title_edit_form.html` — warning slots.
+- `locales/{en,fr,de,it}.yml` — split warnings, `irregular_not_digits`, `title.form.upc_keep`, reworded `error.upc.invalid_checksum`.
+- `tests/typed_upc_warning.rs` (new) — DB integration.
+- `tests/e2e/specs/journeys/typed-upc-warning.spec.ts` (new, title names `TU`).

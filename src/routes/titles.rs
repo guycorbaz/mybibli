@@ -689,6 +689,9 @@ pub struct TitleEditForm {
     pub issn: Option<String>,
     #[serde(default)]
     pub upc: Option<String>,
+    /// Story 17-4 — the irregular UPC the librarian chose to keep as entered.
+    #[serde(default)]
+    pub upc_confirmed: Option<String>,
     // Issue #331 — editable media_type. Empty / absent → keep the current
     // value (handler short-circuits). Validated against the `MediaType`
     // enum in `crate::models::media_type::MediaType::from_str`; invalid
@@ -769,7 +772,18 @@ pub async fn update_title(
             .map_err(|e| AppError::BadRequest(e.message(loc)))?
     };
     let issn = non_empty(&form.issn).map(|s| s.replace('-', ""));
-    let upc = form.upc.as_deref().and_then(crate::utils::identifier_without_separators);
+    // Story 17-4 (#643 item 1) — a typed UPC gets the scan's warnings; an
+    // unchanged stored UPC saves as stored.
+    let upc = match crate::routes::catalog_code::check_typed_upc(
+        form.upc.as_deref(),
+        old_title.upc.as_deref(),
+        form.upc_confirmed.as_deref(),
+        "edit-upc-warning",
+        loc,
+    )? {
+        crate::routes::catalog_code::TypedUpcOutcome::Store(upc) => upc,
+        crate::routes::catalog_code::TypedUpcOutcome::Warn(response) => return Ok(response),
+    };
 
     if let Some(ref new_isbn) = isbn
         && new_isbn.as_str() != old_title.isbn.as_deref().unwrap_or("")
@@ -956,7 +970,7 @@ pub async fn update_title(
     ));
 
     tracing::info!(title_id = id, "Title metadata updated manually");
-    Ok(Html(html))
+    Ok(Html(html).into_response())
 }
 
 #[cfg(test)]

@@ -123,12 +123,29 @@ pub async fn create_title(
     Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
     State(state): State<AppState>,
-    axum::Form(form): axum::Form<TitleForm>,
+    axum::Form(mut form): axum::Form<TitleForm>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Librarian, locale.0)?;
     let loc = locale.0;
 
     let pool = &state.pool;
+
+    // Story 17-4 (#643 item 1) — a typed UPC gets the scan's warnings.
+    use crate::routes::catalog_code::{TypedUpcOutcome, check_typed_upc};
+    match check_typed_upc(
+        form.upc.as_deref(),
+        None,
+        form.upc_confirmed.as_deref(),
+        "upc-field-warning",
+        loc,
+    ) {
+        Ok(TypedUpcOutcome::Store(upc)) => form.upc = upc,
+        Ok(TypedUpcOutcome::Warn(response)) => return Ok(response),
+        Err(AppError::BadRequest(message)) => {
+            return Ok(Html(feedback_html("error", &message, "")).into_response());
+        }
+        Err(e) => return Err(e),
+    }
 
     match TitleService::create_manual(pool, &form, loc).await {
         Ok(title) => {
