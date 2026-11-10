@@ -179,7 +179,12 @@
     }
 
     function restoreScanField() {
-        var scanField = document.getElementById("scan-field");
+        // Story 17-2: the field that posted (the title page's V-code field
+        // is a scan field too), else the catalog's.
+        var posted = window.mybibliLastScanField;
+        var scanField = posted && document.contains(posted)
+            ? posted
+            : document.getElementById("scan-field");
         if (!scanField) return;
         if (window.mybibliLastScanCode) {
             scanField.value = window.mybibliLastScanCode;

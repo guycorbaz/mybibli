@@ -250,6 +250,7 @@ feedback:
   volume_label_in_trash_with_loans: "Le label %{label} appartient à un volume supprimé qui a un historique de prêts, il ne peut donc pas être réutilisé. Restaurez ce volume, ou supprimez-le définitivement depuis la corbeille."
   volume_label_race: "Le label %{label} a été modifié au même moment. Scannez-le à nouveau."
   volume_no_title: "Aucun titre sélectionné. Scannez d'abord un ISBN pour établir un contexte."
+  title_page_title_gone: "Ce titre a été supprimé entre-temps, aucun volume n’a donc été ajouté. Ouvrez le titre auquel appartient le volume, puis saisissez à nouveau son code V."
   volume_confirm:
     title: "Ajouter un autre exemplaire ?"
     body: "<em>%{title}</em> a déjà %{count} exemplaire(s) attaché(s). Ajouter un autre exemplaire de ce titre, ou scanner d'abord l'ISBN du nouveau livre ?"

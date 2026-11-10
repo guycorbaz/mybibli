@@ -115,7 +115,9 @@ async fn the_catalog_session_is_left_alone(pool: DbPool) {
     assert_eq!(SessionModel::get_active_location(&pool, token).await.unwrap(), Some(shelf));
     assert_eq!(SessionModel::get_session_counter(&pool, token).await.unwrap(), counter_before);
     let last = SessionModel::get_last_volume_label(&pool, token).await.unwrap();
-    assert_ne!(last.as_deref(), Some("V0653"), "last label untouched");
+    assert_eq!(last, None, "last label untouched");
+    let undo = SessionModel::get_last_undoable_action(&pool, token).await.unwrap();
+    assert!(undo.is_none(), "no undo log written");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -199,9 +201,11 @@ async fn a_deleted_title_takes_no_volume(pool: DbPool) {
     let (router, browser, title) = setup(&pool).await;
     soft_delete(&pool, "titles", title).await;
 
-    let (status, _) = add(&router, &browser, title, "V0658", false).await;
+    let (status, body) = add(&router, &browser, title, "V0658", false).await;
 
-    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(status, StatusCode::OK, "answered in the field's region");
+    assert!(body.contains("border-amber-500"), "warning: {body}");
+    assert!(body.contains("deleted meanwhile"), "says what happened: {body}");
     assert_eq!(volume_count(&pool).await, 0);
 }
 
@@ -219,6 +223,81 @@ async fn an_anonymous_visitor_sees_no_field_and_cannot_add(pool: DbPool) {
     let (status, _) = anon
         .post_form(&router, &format!("/title/{title}/volumes"), "code=V0659")
         .await;
-    assert_ne!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::SEE_OTHER, "sent to the login page");
     assert_eq!(volume_count(&pool).await, 0);
+}
+
+/// Insert a deleted volume `label` on `title_id`, with a returned loan when
+/// `with_loan` (#442: such a label cannot be reused).
+async fn trashed_volume(pool: &DbPool, title_id: u64, label: &str, with_loan: bool) {
+    let volume = add_volume(pool, title_id, label, None).await;
+    if with_loan {
+        let borrower = sqlx::query("INSERT INTO borrowers (name) VALUES ('Past borrower')")
+            .execute(pool)
+            .await
+            .unwrap()
+            .last_insert_id();
+        sqlx::query("INSERT INTO loans (volume_id, borrower_id, returned_at) VALUES (?, ?, NOW())")
+            .bind(volume)
+            .bind(borrower)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+    soft_delete(pool, "volumes", volume).await;
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_label_in_the_trash_follows_the_reuse_rules(pool: DbPool) {
+    let (router, browser, title) = setup(&pool).await;
+    let old = seed_title(&pool, "L'Oreille cassée").await;
+    trashed_volume(&pool, old, "V0660", false).await;
+
+    let (status, body) = add(&router, &browser, title, "V0660", false).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("reused"), "#442 reuse named: {body}");
+    assert_eq!(labels_of(&pool, title).await, vec!["V0660".to_string()]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_service_refusal_is_in_the_request_locale(pool: DbPool) {
+    let (router, browser, title) = setup(&pool).await;
+    sqlx::query("UPDATE users SET preferred_language = 'fr' WHERE username = ?")
+        .bind(USER)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let old = seed_title(&pool, "Le Sceptre d'Ottokar").await;
+    trashed_volume(&pool, old, "V0661", true).await;
+
+    let (status, body) = add(&router, &browser, title, "V0661", false).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("border-red-500"), "refused: {body}");
+    assert!(body.contains("historique de prêts"), "French: {body}");
+    assert!(!body.contains("loan history"), "not English: {body}");
+    assert!(labels_of(&pool, title).await.is_empty());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_refusal_after_confirm_closes_the_modal(pool: DbPool) {
+    let (router, browser, title) = setup(&pool).await;
+    let other = seed_title(&pool, "Coke en stock").await;
+    add_volume(&pool, title, "V0662", None).await;
+    // The label was taken by another title between the modal and Confirm.
+    add_volume(&pool, other, "V0663", None).await;
+
+    let res = browser
+        .send(
+            &router,
+            "POST",
+            &format!("/title/{title}/volumes"),
+            "code=V0663&confirmed=true",
+            true,
+        )
+        .await;
+    assert_eq!(res.headers().get("HX-Trigger-After-Swap").unwrap(), "modal-close");
+    let body = body_string(res).await;
+    assert!(body.contains("border-amber-500"), "other title → warning: {body}");
+    assert_eq!(labels_of(&pool, title).await, vec!["V0662".to_string()]);
 }

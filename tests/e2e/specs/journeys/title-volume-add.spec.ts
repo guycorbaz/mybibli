@@ -9,8 +9,9 @@
  * the field. A label of another title is answered with a link to its volume,
  * never created again. An Anonymous visitor sees no field. axe on the page.
  *
- * Data: ISBNs from specIsbn("TP", n); V-codes this spec's own (V9900–V9989
- * base, random); assertions only on the rows this test creates (Rule #23).
+ * Data: ISBNs from specIsbn("TP", n); V-codes this spec's own, random in
+ * disjoint ranges per test (V9900–V9959 in pairs, V9960–V9999); assertions
+ * only on the rows each test creates (Rule #23).
  */
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
@@ -22,8 +23,14 @@ import { checkAccessibility } from "../../helpers/accessibility";
 const FIELD = "#title-volume-vcode";
 const FEEDBACK = "#title-volume-add-feedback";
 
-function labelBase(): number {
-  return 9900 + Math.floor(Math.random() * 80);
+/** First of two consecutive labels in V9900–V9959. */
+function pairBase(): number {
+  return 9900 + 2 * Math.floor(Math.random() * 30);
+}
+
+/** One label in V9960–V9999 (disjoint from `pairBase`). */
+function singleLabel(): string {
+  return `V${9960 + Math.floor(Math.random() * 40)}`;
 }
 
 /** Scan `isbn` on /catalog and return the new title's id. */
@@ -43,14 +50,17 @@ test.describe("Story 17-2 — add a volume from the title page", () => {
     const field = page.locator(FIELD);
     await expect(field).toBeVisible();
     await expect(page.locator("#title-volumes-count")).toHaveText("(0)");
+    await expect(page.locator("#title-delete-button")).toBeVisible();
 
-    const base = labelBase();
+    const base = pairBase();
     const first = `V${base}`;
     await simulateScan(page, FIELD, first.toLowerCase());
     const created = page.locator(`${FEEDBACK} .feedback-entry[data-feedback-variant="success"]`);
     await expect(created).toContainText(first, { timeout: 10000 });
     await expect(page.locator("#title-volumes-list")).toContainText(first);
     await expect(page.locator("#title-volumes-count")).toHaveText("(1)");
+    await expect(page.locator("#title-volume-count-label")).toContainText("1");
+    await expect(page.locator("#title-delete-button")).toHaveCount(0);
     await expect(field).toBeFocused();
     await expect(field).toHaveValue("");
 
@@ -81,6 +91,20 @@ test.describe("Story 17-2 — add a volume from the title page", () => {
 
     await checkAccessibility(page);
 
+    // Rule #21: another modal returns focus to what opened it, not to the
+    // field that scanned last.
+    const rowDelete = page
+      .locator(`#title-volumes-list tr:has(a:text-is("${first}")) button`)
+      .first();
+    await rowDelete.focus();
+    await rowDelete.press("Enter");
+    const deleteDialog = page.locator("#modal-slot dialog[open]");
+    await expect(deleteDialog).toBeVisible({ timeout: 10000 });
+    await deleteDialog.locator("[data-modal-cancel]").click();
+    await expect(deleteDialog).toHaveCount(0);
+    await expect(rowDelete).toBeFocused();
+    await expect(field).not.toBeFocused();
+
     // Survives a reload: both volumes belong to this title.
     await page.reload();
     await expect(page.locator("#title-volumes-list")).toContainText(first);
@@ -90,7 +114,7 @@ test.describe("Story 17-2 — add a volume from the title page", () => {
   test("a label of another title links to its volume and adds nothing", async ({ page }) => {
     await loginAs(page, "librarian");
     const owner = await scanTitle(page, specIsbn("TP", 2));
-    const label = `V${labelBase() + 5}`;
+    const label = singleLabel();
     await simulateScan(page, "#scan-field", label);
     await expect(
       page.locator('#feedback-list .feedback-entry[data-feedback-variant="success"]').filter({ hasText: label }),

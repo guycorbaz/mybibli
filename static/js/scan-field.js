@@ -91,20 +91,29 @@
         else feedbackList.insertAdjacentHTML("afterbegin", html);
     }
 
-    // Story 17-2 (Rule #21): the field that posted last. When a modal its
-    // answer opened (CR #300 confirmation) closes and nothing holds focus,
-    // focus returns to that field — never to a fixed one.
-    var lastScanField = null;
-
+    // Story 17-2 (Rule #21): when a modal of #modal-slot closes and nothing
+    // holds focus any more (a dialog opened by a scan's answer has no trigger
+    // button for modal.js to return to), focus goes back to the element that
+    // held it before the modal opened — the scan field that posted, or a
+    // row's button — never to a fixed target. Tracked with `focusin`: the
+    // last focused element outside the slot.
     function watchModalSlot() {
         var slot = document.getElementById("modal-slot");
         if (!slot || typeof MutationObserver === "undefined") return;
+        var lastOutside = null;
+        document.addEventListener("focusin", function (e) {
+            if (e.target && e.target !== document.body && !slot.contains(e.target)) {
+                lastOutside = e.target;
+            }
+        });
         var hadModal = false;
         new MutationObserver(function () {
             var hasModal = slot.childElementCount > 0;
-            if (hadModal && !hasModal && lastScanField && document.contains(lastScanField)) {
+            if (hadModal && !hasModal && lastOutside && document.contains(lastOutside)) {
                 var active = document.activeElement;
-                if (!active || active === document.body) lastScanField.focus();
+                if (!active || active === document.body) {
+                    try { lastOutside.focus(); } catch (_) { /* ignore */ }
+                }
             }
             hadModal = hasModal;
         }).observe(slot, { childList: true });
@@ -194,7 +203,7 @@
 
                 // Store last scan code for error recovery (restored by mybibli.js HTMX error handler)
                 window.mybibliLastScanCode = code;
-                lastScanField = field;
+                window.mybibliLastScanField = field;
 
                 if (typeof htmx !== "undefined") {
                     htmx.ajax("POST", postUrl, {

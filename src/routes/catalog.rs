@@ -764,7 +764,7 @@ pub async fn handle_scan(
                         // librarian most needs to read.
                         (
                             rust_i18n::t!(
-                                "feedback.volume_label_reused",
+                                "feedback.volume_label_reused", locale = loc,
                                 label = &volume.label,
                                 title = &title.0
                             )
@@ -774,7 +774,7 @@ pub async fn handle_scan(
                     } else if let Some(ref path) = shelved_path {
                         (
                             rust_i18n::t!(
-                                "feedback.volume_created_and_shelved",
+                                "feedback.volume_created_and_shelved", locale = loc,
                                 label = &volume.label,
                                 title = &title.0,
                                 path = &path
@@ -785,26 +785,26 @@ pub async fn handle_scan(
                     } else {
                         (
                             rust_i18n::t!(
-                                "feedback.volume_created",
+                                "feedback.volume_created", locale = loc,
                                 label = &volume.label,
                                 title = &title.0
                             )
                             .to_string(),
-                            rust_i18n::t!("feedback.volume_created_suggestion").to_string(),
+                            rust_i18n::t!("feedback.volume_created_suggestion", locale = loc).to_string(),
                         )
                     };
 
                     let guide_msg = if shelved_path.is_some() {
-                        rust_i18n::t!("guide.shelved").to_string()
+                        rust_i18n::t!("guide.shelved", locale = loc).to_string()
                     } else {
-                        rust_i18n::t!("guide.volume_ready", label = &volume.label)
+                        rust_i18n::t!("guide.volume_ready", locale = loc, label = &volume.label)
                             .to_string()
                     };
                     // polish-2 (#9): offer Undo only when the volume was
                     // actually shelved (creation itself is not undoable).
                     let main_feedback = if shelved_path.is_some() {
                         let undo_label =
-                            rust_i18n::t!("feedback.undo_label").to_string();
+                            rust_i18n::t!("feedback.undo_label", locale = loc).to_string();
                         feedback_html_undoable(
                             "success", &message, &suggestion, &undo_label,
                         )
@@ -852,7 +852,7 @@ pub async fn handle_scan(
                 // Unreachable: session.token is always present for authenticated users
                 // (require_role(Librarian) already validated the session)
                 let message = rust_i18n::t!(
-                    "feedback.volume_created",
+                    "feedback.volume_created", locale = loc,
                     label = &volume.label,
                     title = "?"
                 )

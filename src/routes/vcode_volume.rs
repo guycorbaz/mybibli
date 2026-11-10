@@ -78,14 +78,15 @@ pub async fn add_to_title(
             pool, existing, title_id, loc,
         )
         .await?;
-        return Ok(VcodeAdd::Answered(resp));
+        return Ok(VcodeAdd::Answered(closing_modal(resp, confirmed)));
     }
 
     // CR #300: when the title already has volumes and the librarian has not
     // confirmed, ask before attaching another copy. Only reached for a
     // genuinely new label (an existing one returned above).
     if !confirmed {
-        let already_has = VolumeModel::count_by_title(pool, title_id).await.unwrap_or(0);
+        // A failed count must not skip the confirmation (fail closed).
+        let already_has = VolumeModel::count_by_title(pool, title_id).await?;
         if already_has >= 1 {
             let Some(title) = TitleModel::find_by_id(pool, title_id).await? else {
                 return Ok(VcodeAdd::TitleGone);
@@ -121,11 +122,25 @@ pub async fn add_to_title(
                 AppError::NotFound(_) => return Ok(VcodeAdd::TitleGone),
                 _ => ("error", rust_i18n::t!("error.internal", locale = loc).to_string()),
             };
-            Ok(VcodeAdd::Answered(
+            Ok(VcodeAdd::Answered(closing_modal(
                 Html(feedback_html(level, &message, "")).into_response(),
-            ))
+                confirmed,
+            )))
         }
     }
+}
+
+/// An answer to the CR #300 modal's Confirm (`confirmed`) closes the modal
+/// too, after the swap: a refusal at that point (the label taken meanwhile,
+/// a label in the Trash with loans) must not sit behind an open dialog.
+pub fn closing_modal(mut resp: Response, confirmed: bool) -> Response {
+    if confirmed {
+        resp.headers_mut().insert(
+            axum::http::HeaderName::from_static("hx-trigger-after-swap"),
+            axum::http::HeaderValue::from_static("modal-close"),
+        );
+    }
+    resp
 }
 
 /// The CR #300 confirmation modal (UX-DR8), re-posting `code` with
@@ -188,6 +203,14 @@ mod tests {
         let fr = rust_i18n::t!("feedback.vcode_invalid", locale = "fr").to_string();
         assert_ne!(en, fr, "the key is translated");
         assert!(en.contains("V0042"));
+    }
+
+    #[test]
+    fn an_answer_to_confirm_closes_the_modal_after_the_swap() {
+        let closed = closing_modal(Html("x").into_response(), true);
+        assert_eq!(closed.headers().get("hx-trigger-after-swap").unwrap(), "modal-close");
+        let plain = closing_modal(Html("x").into_response(), false);
+        assert!(plain.headers().get("hx-trigger-after-swap").is_none());
     }
 
     #[test]

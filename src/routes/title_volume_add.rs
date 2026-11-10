@@ -109,7 +109,7 @@ pub async fn add_volume(
     let pool = &state.pool;
 
     if TitleModel::find_by_id(pool, id).await?.is_none() {
-        return Err(title_gone(loc));
+        return Ok(title_gone_response(id, form.confirmed, loc));
     }
 
     let Some(code) = vcode_volume::read_vcode(&form.code) else {
@@ -137,7 +137,7 @@ pub async fn add_volume(
     .await?
     {
         VcodeAdd::Answered(resp) => return Ok(resp),
-        VcodeAdd::TitleGone => return Err(title_gone(loc)),
+        VcodeAdd::TitleGone => return Ok(title_gone_response(id, form.confirmed, loc)),
         VcodeAdd::Created(creation) => creation,
     };
 
@@ -154,7 +154,7 @@ pub async fn add_volume(
         .map_err(|_| AppError::TemplateRenderFailed { template: "title_volumes_list" })?;
 
     let resp = HtmxResponse {
-        main: feedback_html("success", &message, "") + &count_oob_html(count),
+        main: feedback_html("success", &message, "") + &count_oob_html(count, loc),
         oob: vec![OobUpdate {
             target: "title-volumes-list".to_string(),
             content: list_html,
@@ -170,9 +170,15 @@ pub async fn add_volume(
     })
 }
 
-/// The title vanished (deleted meanwhile).
-fn title_gone(loc: &str) -> AppError {
-    AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
+/// The title was deleted meanwhile (#441): say so in the field's answer
+/// region (Rule #9), close the CR #300 modal if this answers its Confirm.
+fn title_gone_response(title_id: u64, confirmed: bool, loc: &str) -> Response {
+    tracing::info!(title_id, "Volume not added from the title page: the title is gone");
+    let message = rust_i18n::t!("feedback.title_page_title_gone", locale = loc).to_string();
+    vcode_volume::closing_modal(
+        axum::response::Html(feedback_html("warning", &message, "")).into_response(),
+        confirmed,
+    )
 }
 
 /// "Volume V0042 attached to …", or the #442 reuse wording, which takes
@@ -191,12 +197,22 @@ fn success_message(creation: &VolumeCreation, title: &str, loc: &str) -> String 
     .to_string()
 }
 
-/// The heading count, swapped out of band (a `<span>`, not the `<div>`
-/// wrapper of `OobUpdate`, since it sits inside the `<h2>`).
-fn count_oob_html(count: usize) -> String {
-    format!(
-        r#"<span id="title-volumes-count" hx-swap-oob="true" class="text-stone-500 dark:text-stone-400">({count})</span>"#
-    )
+/// The counts the page shows, swapped out of band as `<span>`s (not the
+/// `<div>` wrapper of `OobUpdate`: they sit inside a heading and a line of
+/// text): the section heading's and the header's "N volumes". A title with a
+/// volume can no longer be deleted (CR #271), so the header's Delete-title
+/// button goes when the first volume arrives.
+fn count_oob_html(count: usize, loc: &str) -> String {
+    let label_vol = crate::utils::html_escape(&rust_i18n::t!("title_detail.volumes", locale = loc));
+    let mut html = format!(
+        r#"<span id="title-volumes-count" hx-swap-oob="true" class="text-stone-500 dark:text-stone-400">({count})</span><span id="title-volume-count-label" hx-swap-oob="true">{count} {label_vol}</span>"#
+    );
+    // Only the first volume removes it: the button was rendered at 0 (a
+    // missing out-of-band target only logs `htmx:oobErrorNoTarget`).
+    if count == 1 {
+        html.push_str(r#"<span id="title-delete-button" hx-swap-oob="delete"></span>"#);
+    }
+    html
 }
 
 #[cfg(test)]
@@ -276,9 +292,21 @@ mod tests {
     }
 
     #[test]
-    fn the_count_is_a_span_swapped_out_of_band() {
-        let html = count_oob_html(3);
+    fn the_counts_are_spans_swapped_out_of_band() {
+        let html = count_oob_html(1, "en");
+        assert!(html.contains(r#"id="title-delete-button" hx-swap-oob="delete""#), "{html}");
+        let html = count_oob_html(3, "en");
         assert!(html.starts_with(r#"<span id="title-volumes-count" hx-swap-oob="true""#), "{html}");
         assert!(html.contains("(3)"));
+        assert!(html.contains(r#"<span id="title-volume-count-label" hx-swap-oob="true">3 "#), "{html}");
+        assert!(!html.contains("title-delete-button"), "{html}");
+        assert!(!count_oob_html(0, "en").contains("title-delete-button"));
+    }
+
+    #[test]
+    fn a_gone_title_is_said_in_the_field_answer_and_closes_the_modal() {
+        let resp = title_gone_response(7, true, "en");
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        assert_eq!(resp.headers().get("hx-trigger-after-swap").unwrap(), "modal-close");
     }
 }

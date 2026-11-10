@@ -68,7 +68,7 @@
                     {% if let Some(dewey) = title.dewey_code %}
                     <span title="{{ label_dewey_code }}">{{ label_dewey_code }} {{ dewey }}</span>
                     {% endif %}
-                    <span>{{ volume_count }} {{ label_vol }}</span>
+                    <span id="title-volume-count-label">{{ volume_count }} {{ label_vol }}</span>
                 </div>
                 {# CR #443 — management labels, Librarian+ only. `labels_html`
                    is empty for anonymous visitors (the handler never queries
@@ -144,7 +144,7 @@
                        (the title row has no active volumes; deletion is then
                        harmless since no children get orphaned). UX-DR8 modal. #}
                     {% if volume_count == 0 %}
-                    <button hx-get="/title/{{ title.id }}/delete-modal"
+                    <button id="title-delete-button" hx-get="/title/{{ title.id }}/delete-modal"
                             hx-target="#modal-slot"
                             hx-swap="innerHTML"
                             class="px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20">
@@ -336,6 +336,7 @@
                    data-scan-target="#title-volume-add-feedback"
                    data-scan-swap="innerHTML"
                    data-vcode-error="{{ volumes_view.label_vcode_error }}"
+                   data-isbn-error="{{ volumes_view.label_vcode_error }}"
                    aria-describedby="title-volume-vcode-hint"
                    autocomplete="off"
                    spellcheck="false"
