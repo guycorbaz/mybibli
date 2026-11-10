@@ -136,6 +136,7 @@ pub async fn create_title(
         form.upc.as_deref(),
         None,
         form.upc_confirmed.as_deref(),
+        &form.media_type,
         "upc-field-warning",
         loc,
     ) {

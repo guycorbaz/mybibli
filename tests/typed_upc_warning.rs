@@ -44,8 +44,12 @@ async fn post(app: &Router, b: &Browser, path: &str, body: &str) -> (Option<Stri
 }
 
 async fn create_by_hand(app: &Router, b: &Browser, pool: &DbPool, name: &str, upc: &str, confirmed: Option<&str>) -> (Option<String>, String) {
+    create_as(app, b, pool, "cd", name, upc, confirmed).await
+}
+
+async fn create_as(app: &Router, b: &Browser, pool: &DbPool, media_type: &str, name: &str, upc: &str, confirmed: Option<&str>) -> (Option<String>, String) {
     let genre = genre_id(pool, "Roman").await;
-    let mut body = format!("title={name}&media_type=cd&genre_id={genre}&upc={}", url_encode(upc));
+    let mut body = format!("title={name}&media_type={media_type}&genre_id={genre}&upc={}", url_encode(upc));
     if let Some(c) = confirmed {
         body.push_str(&format!("&upc_confirmed={}", url_encode(c)));
     }
@@ -175,14 +179,31 @@ async fn a_upc_longer_than_the_column_is_refused_even_confirmed(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn a_valid_isbn10_typed_as_upc_is_sent_to_the_isbn_field(pool: DbPool) {
+async fn a_valid_isbn10_typed_as_upc_is_sent_to_the_isbn_field_for_a_book(pool: DbPool) {
     let (app, b) = admin(&pool).await;
-    // Refused even confirmed: kept as a UPC, the boot conversion (13-3)
-    // would move it to the ISBN anyway.
-    let (retarget, body) = create_by_hand(&app, &b, &pool, "Isbn", "080442957X", Some("080442957X")).await;
+    // A book: refused even confirmed — it is the title's ISBN, and kept as
+    // a UPC the boot conversion (13-3) would move it there anyway.
+    let (retarget, body) = create_as(&app, &b, &pool, "book", "Isbn", "080442957X", Some("080442957X")).await;
     assert_eq!(retarget, None, "{body}");
     assert!(body.contains("ISBN field"), "{body}");
     assert!(upc_of_titles_named(&pool, "Isbn").await.is_empty());
+
+    // The edit form refuses it the same way.
+    let id = seed_title(&pool, "Book to edit").await;
+    let (_, body) = edit_upc(&app, &b, &pool, id, "2070360245", Some("2070360245")).await;
+    assert!(body.contains("ISBN field"), "{body}");
+    assert_eq!(stored_upc(&pool, id).await, None);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_isbn10_shaped_code_on_a_cd_is_named_by_its_length_and_kept_when_confirmed(pool: DbPool) {
+    let (app, b) = admin(&pool).await;
+    let (retarget, body) = create_by_hand(&app, &b, &pool, "Disc", "2070360245", None).await;
+    assert_eq!(retarget.as_deref(), Some("#upc-field-warning"), "{body}");
+    assert!(body.contains("10 digits") && !body.contains("ISBN field"), "{body}");
+    let (retarget, body) = create_by_hand(&app, &b, &pool, "Disc", "2070360245", Some("2070360245")).await;
+    assert_eq!(retarget, None, "{body}");
+    assert_eq!(upc_of_titles_named(&pool, "Disc").await, vec![Some("2070360245".to_string())]);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -199,7 +220,7 @@ async fn an_unchanged_stored_upc_saves_without_a_warning(pool: DbPool) {
     let (app, b) = admin(&pool).await;
     let id = seed_title(&pool, "Legacy").await;
     // Stored before story 17-4: irregular, and a wrong UPC-A check digit.
-    for legacy in ["220500218", "036000291453"] {
+    for legacy in ["220500218", "036000291453", "2070360245"] {
         set_upc(&pool, id, legacy).await;
         let (retarget, body) = edit_upc(&app, &b, &pool, id, legacy, None).await;
         assert_eq!(retarget, None, "{legacy}: {body}");

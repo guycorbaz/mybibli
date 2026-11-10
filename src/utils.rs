@@ -156,6 +156,13 @@ pub fn identifier_without_separators(input: &str) -> Option<String> {
     Some(strip_isbn_separators(input)).filter(|s| !s.is_empty())
 }
 
+/// 9 digits then a digit or `X`: the shape of an ISBN-10, valid or not.
+pub fn is_isbn10_shaped(code: &str) -> bool {
+    code.len() == 10
+        && code.as_bytes()[..9].iter().all(u8::is_ascii_digit)
+        && code.ends_with(|c: char| c.is_ascii_digit() || c == 'X' || c == 'x')
+}
+
 /// An identifier as printed on a book or copied from a page —
 /// `978-2-07-036024-6`, `2 07 036024 X`, Unicode hyphens or dashes,
 /// non-breaking spaces — without those separators, when what remains is
@@ -167,9 +174,7 @@ pub fn identifier_without_separators(input: &str) -> Option<String> {
 pub fn compact_isbn(input: &str) -> String {
     let compact = strip_isbn_separators(input);
     let isbn_shaped = (compact.len() == 13 && compact.chars().all(|c| c.is_ascii_digit()))
-        || (compact.len() == 10
-            && compact.as_bytes()[..9].iter().all(u8::is_ascii_digit)
-            && compact.ends_with(|c: char| c.is_ascii_digit() || c == 'X' || c == 'x'));
+        || is_isbn10_shaped(&compact);
     if compact.len() != input.len() && isbn_shaped {
         compact
     } else {

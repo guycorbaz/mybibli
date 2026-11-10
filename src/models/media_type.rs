@@ -41,6 +41,12 @@ impl MediaType {
         MediaType::Magazine,
         MediaType::Report,
     ];
+
+    /// Printed media, which carry an ISBN: the media types of the 13-3
+    /// boot conversion of ISBN-10 UPCs (`TitleModel::list_isbn10_shaped_upc`).
+    pub fn is_print(self) -> bool {
+        matches!(self, MediaType::Book | MediaType::Bd | MediaType::Magazine | MediaType::Report)
+    }
 }
 
 impl fmt::Display for MediaType {

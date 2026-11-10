@@ -778,6 +778,8 @@ pub async fn update_title(
         form.upc.as_deref(),
         old_title.upc.as_deref(),
         form.upc_confirmed.as_deref(),
+        // The media type the title will have once saved.
+        form.media_type.as_deref().map(str::trim).filter(|m| !m.is_empty()).unwrap_or(&old_title.media_type),
         "edit-upc-warning",
         loc,
     )? {
