@@ -1,0 +1,54 @@
+# Story 17.2: Add a volume from the title page
+
+Status: ready-for-dev
+
+GitHub issue: #652 (type:change-request). Covers: FR173, UX-DR43. Epic 17; ships in v1.27.0.
+
+## Story
+
+As a librarian on a title's page,
+I want to add a volume by its V-code there,
+so that I do not have to go back to `/catalog` and scan the ISBN again.
+
+## Decisions
+
+- **D1 — one V-code arm (DRY).** The part of the `/catalog/scan` V-code arm that does not depend on the catalog session moves to `src/routes/vcode_volume.rs`: reading the input (`VolumeService::normalize_vcode` + `validate_vcode`, refused with `feedback.vcode_invalid`), the existing-label answer (#585, `catalog_existing_label::existing_label_response`), the CR #300 confirmation modal, `VolumeService::create_volume` and the mapping of its refusals (label taken, label in the Trash with loans, race, title gone). The catalog arm and the new title-page handler both call it; each renders its own success.
+- **D2 — the title page leaves the `/catalog` session alone.** The page names its title, so the handler never reads or writes `current_title_id`, and does not touch `last_volume_label`, the session counter, the active (batch) location or the scan-undo log. Why: those belong to a scanning run on `/catalog`; silently shelving a volume added from another page at the batch location of an earlier run is the kind of hidden attachment CR #300 exists to stop, and the title page has no Undo to offer. An existing label on the title page therefore always gets the #585 answer (same title → info; other title → warning + link to `/volume/{id}`), never the shelve path.
+- **D3 — CR #300 is kept** as the spec asks: when the title already has volumes, a new label opens the same UX-DR8 confirmation modal; its Confirm posts back to the title page's endpoint with `confirmed=true`. The modal template takes its action URL and swap target instead of hard-coding `/catalog/scan`.
+- **D4 — the field takes V-codes only.** Anything that is not `[vV]` + 4 digits (an ISBN, a word, `V0000`) gets `feedback.vcode_invalid` (Rule #9: it names the expected shape). Nothing else is rewritten (Rule #20).
+- **D5 — request locale.** Every message of the shared arm is rendered in the request locale (`locale = loc`), including the service refusals (`VolumeService::create_volume_in(…, loc)`). This also closes the `vcode_invalid` half of #661 item 5 on `/catalog`; `code_unsupported` there gets the locale too (one line, same item).
+- **D6 — scanner behaviour shared, not copied.** The field is a `data-mybibli-scan-field` input; `static/js/scan-field.js` reads its post URL, target and swap from data attributes (defaults = `/catalog/scan`, `#feedback-list`, `afterbegin`), so Enter handling, the V-code pre-check, the 1 s duplicate drop and the clearing of the field are the catalog's own. The answer lands in a live region under the field (`#title-volume-add-feedback`, replaced on each answer); the volumes list (`#title-volumes-list`) and its count are refreshed out of band. The field itself is never swapped, so focus stays in it (Rule #21); after the CR #300 modal closes, focus returns to the field that posted, only when nothing else holds focus.
+- **D7 — the empty-state link to `/catalog` is kept unchanged**; ISBN entry on `/catalog` is unchanged. The issue's optional "open `/catalog` with the title active" is not done: the field covers the need.
+
+## Acceptance Criteria
+
+1. **AC1.** On `/title/{id}`, a Librarian or Admin sees a V-code field in the volumes section, with or without volumes; Anonymous sees none. A valid new V-code (any case) creates a volume on this title.
+2. **AC2.** Same validation and messages as the catalog arm: invalid shape → `vcode_invalid`; existing label of this title → info; of another title → warning + link to `/volume/{id}`; title with volumes → CR #300 modal, Confirm creates; label in the Trash → #442 rules.
+3. **AC3.** On success the volumes list and count update without reload; focus stays in the field; the `/catalog` session (current title, last label, counter, active location) is untouched.
+4. **AC4.** CSP-clean (no inline script/style/handlers); messages in the request locale; new keys in en/fr/de/it.
+5. **AC5.** Unit tests (input reading, modal action URL), DB integration (`tests/title_volume_add.rs`), E2E (`title-volume-add.spec.ts`: scanner burst on a title without volumes, CR #300 confirm, an existing label of another title, Anonymous sees no field, axe).
+
+## Tasks
+
+- [ ] `src/routes/vcode_volume.rs`: shared arm; `catalog.rs` V-code arm calls it.
+- [ ] `VolumeService::create_volume_in` with a locale.
+- [ ] `VolumeConfirmAddModalTemplate`: `action_url`, `hx_target`, `hx_swap`.
+- [ ] Volumes list fragment (`templates/fragments/title_volumes_list.html`) shared by the page and the HTMX answer.
+- [ ] `POST /title/{id}/volumes` (`src/routes/title_volume_add.rs`), Librarian+.
+- [ ] `scan-field.js` data attributes + focus return after a modal.
+- [ ] Locale keys (field label, hint) in four locales.
+- [ ] Unit, DB integration, E2E.
+
+## Dev Notes
+
+- Catalog V-code arm: `src/routes/catalog.rs` `"vcode" =>` (shelve-existing at active location, title context, #441 deleted title, #585, CR #300, create, auto-shelve, OOBs).
+- `routes/titles.rs` is at 1804 lines (Rule #12): new code goes to new files.
+- Templates: `templates/pages/title_detail.html` `#title-volumes`; modal `templates/fragments/volume_confirm_add_modal.html`.
+
+## Dev Agent Record
+
+### File List
+
+### Review
+
+### Change Log
