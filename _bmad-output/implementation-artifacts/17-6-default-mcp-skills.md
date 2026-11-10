@@ -1,6 +1,6 @@
 # Story 17.6: Default MCP skills
 
-Status: review
+Status: done
 
 GitHub issue: #656 (type:change-request; supersedes #654, whose comment holds the four skill texts). Covers: FR177, UX-DR44. Epic 17; ships in v1.27.0.
 
@@ -65,8 +65,12 @@ so that I can use them as they are or as models for my own.
 
 - **Round 1** (Blind Hunter, Edge Case Hunter, Acceptance Auditor). Medium, fixed: the story file was not updated after dev. Medium, dismissed: the skill files "missing" from the diff (excluded from the review diff on purpose; tracked) and a `.dockerignore` risk (the repo has none; both build contexts include `skills/`); "existing specs may assert an empty skills list" (checked: none does; the skills specs pass on the new baseline). Medium, kept as designed and deferred: activation clears the mention, so a stock default reads "by <admin>" once activated — the column is "last change", D4; recorded in #665 for the day a later release changes a default text. Low, fixed: two descriptions now follow #656 ("titles"); only a duplicate entry (1062) counts as "name taken", not the whole 23000 class; the lock comment states the shared lock a duplicate insert takes; a unit test checks every tool a default names is registered; the body test is scoped to the comic defaults; the edit and deactivation run through the admin routes with the admin as author, the admin's author is checked untouched on a skip, and a Trash restore keeps the mention (tests). Low, deferred to #665: concurrent boots, restore date credited to mybibli, E2E on a non-reset local stack.
 
+- **Round 2** (combined adversarial + edge pass): round-1 fixes verified (1062 only; every tool and argument the defaults name exists); no Medium+. Low: sprint-status line aligned at story close; the report has no `failed` field (a non-1062 error is only logged, no marker — correct by reading, not locked by a test; left as is). Story clean (Rule #6).
+
 ### Gates (final code)
+
+`cargo clippy --all-targets -- -D warnings` clean; full `cargo test` (unit + DB integration, `locale_parity` included) green; `cargo sqlx prepare --check` clean (dynamic queries only); `waitForTimeout` gate clean; full Playwright suite `CI=true --workers=2`: 464 passed, 2 skipped.
 
 ### Change Log
 
-- 2026-11-10: implementation, review round 1.
+- 2026-11-10: implementation, review rounds 1–2, done.
