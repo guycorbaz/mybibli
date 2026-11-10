@@ -270,6 +270,18 @@ impl TitleModel {
         }
     }
 
+    /// Story 17-5 (#653) — the title is soft-deleted and not yet purged
+    /// (it sits in the Trash). Deliberately reads `deleted_at IS NOT NULL`.
+    pub async fn is_in_trash(pool: &DbPool, id: u64) -> Result<bool, AppError> {
+        let count = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM titles WHERE id = ? AND deleted_at IS NOT NULL",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+        Ok(count > 0)
+    }
+
     pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<Option<TitleModel>, AppError> {
         let mut conn = pool.acquire().await?;
         Self::find_by_id_in(&mut conn, id, false).await

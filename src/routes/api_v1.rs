@@ -96,11 +96,13 @@ pub async fn list_titles(
 
     let results = match outcome {
         crate::services::search::SearchOutcome::Results(r) => r,
-        crate::services::search::SearchOutcome::Redirect(_) => {
+        crate::services::search::SearchOutcome::Redirect(_)
+        | crate::services::search::SearchOutcome::TitleIdMiss(_) => {
             // V-code / L-code shortcut paths in SearchService don't
             // apply to the JSON API surface; treat them as empty for
             // v1. A client wanting V/L lookups uses the dedicated
-            // /api/v1/titles/:id or /api/v1/locations endpoints.
+            // /api/v1/titles/:id or /api/v1/locations endpoints. Story
+            // 17-5: a `#<id>` naming no live title is an empty list too.
             return Ok(Json(ApiListResponse {
                 items: vec![],
                 page,

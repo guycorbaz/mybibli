@@ -1,6 +1,6 @@
 # Story 17.5: Find a title by its id
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #653 (type:change-request). Covers: FR176, UX-DR44 (title id). Epic 17; ships in v1.27.0.
 
@@ -37,14 +37,14 @@ Story 17-3 (paused on its own branch) changes `detect_code` and the title forms:
 
 ## Tasks
 
-- [ ] `services/title_id_search.rs`: `parse_title_id` (shape) + `lookup` (live / trash / unknown) + unit tests.
-- [ ] `TitleModel::is_in_trash`.
-- [ ] `SearchService::search`: id arm before `detect_code`; `SearchOutcome::TitleIdMiss`; api_v1 maps it to an empty list.
-- [ ] Home: miss message on the HTMX fragment and the full page.
-- [ ] `/scan`: id arm.
-- [ ] Title page: `#title-id`.
-- [ ] Locale keys in en/fr/de/it.
-- [ ] DB integration test, E2E spec.
+- [x] `services/title_id_search.rs`: `parse_title_id` (shape) + `lookup` (live / trash / unknown) + unit tests.
+- [x] `TitleModel::is_in_trash`.
+- [x] `SearchService::search`: id arm before `detect_code`; `SearchOutcome::TitleIdMiss`; api_v1 maps it to an empty list.
+- [x] Home: miss message on the HTMX fragment and the full page.
+- [x] `/scan`: id arm.
+- [x] Title page: `#title-id`.
+- [x] Locale keys in en/fr/de/it.
+- [x] DB integration test, E2E spec.
 
 ## Dev Notes
 
@@ -55,6 +55,17 @@ Story 17-3 (paused on its own branch) changes `detect_code` and the title forms:
 ## Dev Agent Record
 
 ### File List
+
+- `src/services/title_id_search.rs` (new) — `parse_title_id`, `TitleIdMiss`, `lookup` + unit tests.
+- `src/models/title.rs` — `TitleModel::is_in_trash`.
+- `src/services/search.rs` — id arm before `detect_code`; `SearchOutcome::TitleIdMiss`.
+- `src/routes/api_v1.rs` — a miss is an empty list.
+- `src/routes/home.rs`, `src/routes/home_search_fragment.rs`, `templates/pages/home.html` — `empty_copy` (one source of the empty-state copy), the miss message on the HTMX fragment and the full page, filters ignored.
+- `src/routes/home_scan.rs` — id arm.
+- `src/routes/titles.rs`, `templates/pages/title_detail.html` — `#title-id`.
+- `locales/{en,fr,de,it}.yml` — `empty.title_id_*`, `title_detail.title_id`.
+- `tests/title_id_search.rs` (new) — DB integration; `tests/{date_added,search_filter_browse,search_isbn10}.rs` — new outcome arm.
+- `tests/e2e/specs/journeys/title-id-search.spec.ts` (new, spec id `TI`).
 
 ### Review
 

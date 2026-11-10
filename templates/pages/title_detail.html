@@ -40,6 +40,10 @@
             {% endif %}
         </div>
         <div class="flex-1">
+            {# Story 17-5 (#653) — the id the MCP agent quotes; `#<id>` in the
+               search field finds it. Outside #title-metadata, which the edit
+               form swaps. #}
+            <p id="title-id" class="text-xs text-stone-500 dark:text-stone-400">{{ label_title_id }} <span data-title-id>#{{ title.id }}</span></p>
             <div id="title-metadata">
                 <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ title.title }}</h1>
                 {% if let Some(sub) = title.subtitle %}

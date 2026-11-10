@@ -85,6 +85,8 @@ pub struct TitleDetailTemplate {
     pub similar_titles: Vec<SimilarTitle>,
     pub label_similar_titles: String,
     pub label_dewey_code: String,
+    /// Story 17-5 (#653) — "Title id" before the `#<id>` line.
+    pub label_title_id: String,
     // #389 — UNIMARC-zone metadata labels (palier 1). One label per zone;
     // collection_title + collection_number share the single "Collection" label.
     pub label_statement_of_responsibility: String,
@@ -235,6 +237,7 @@ pub async fn title_detail(
             similar_titles,
             label_similar_titles: rust_i18n::t!("title_detail.similar_titles", locale = loc).to_string(),
             label_dewey_code: rust_i18n::t!("metadata.field.dewey_code", locale = loc).to_string(),
+            label_title_id: rust_i18n::t!("title_detail.title_id", locale = loc).to_string(),
             label_statement_of_responsibility: rust_i18n::t!(
                 "metadata.field.statement_of_responsibility",
                 locale = loc
@@ -1258,6 +1261,7 @@ mod tests {
             similar_titles: vec![],
             label_similar_titles: "Similar titles".to_string(),
             label_dewey_code: "Dewey code".to_string(),
+            label_title_id: "Title id".to_string(),
             label_statement_of_responsibility: "Statement of responsibility".to_string(),
             label_edition_statement: "Edition".to_string(),
             label_collection: "Collection".to_string(),
@@ -1407,6 +1411,7 @@ mod tests {
             similar_titles: vec![],
             label_similar_titles: "Similar titles".to_string(),
             label_dewey_code: "Dewey code".to_string(),
+            label_title_id: "Title id".to_string(),
             label_statement_of_responsibility: "Statement of responsibility".to_string(),
             label_edition_statement: "Edition".to_string(),
             label_collection: "Collection".to_string(),
@@ -1533,6 +1538,7 @@ mod tests {
             similar_titles: similar,
             label_similar_titles: "Similar titles".to_string(),
             label_dewey_code: "Dewey code".to_string(),
+            label_title_id: "Title id".to_string(),
             label_statement_of_responsibility: "Statement of responsibility".to_string(),
             label_edition_statement: "Edition".to_string(),
             label_collection: "Collection".to_string(),

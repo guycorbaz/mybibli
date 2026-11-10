@@ -19,7 +19,7 @@ use crate::routes::home_indicators::{
 };
 use crate::services::search::{SearchOutcome, SearchService};
 use crate::services::title::TitleService;
-use crate::utils::{base_context, html_escape, url_encode};
+use crate::utils::{base_context, url_encode};
 
 #[derive(Debug, Deserialize)]
 pub struct SearchParams {
@@ -60,6 +60,9 @@ pub struct HomeTemplate {
     pub search_empty_body: String,
     pub search_empty_cta: String,
     pub search_empty_cta_url: String,
+    /// Story 17-5 (#653) — the empty state explains a `#<id>` miss,
+    /// whatever the filters.
+    pub title_id_miss: bool,
     pub filter_empty_heading: String,
     pub filter_empty_body: String,
     pub pagination_previous: String,
@@ -396,6 +399,8 @@ pub async fn home(
     );
     let has_filter = (params.filter.is_some() && parsed_indicator.is_none())
         || added_since_date.is_some();
+    // Story 17-5 (#653) — `#<id>` naming no live title.
+    let mut title_id_miss = None;
     let (mut results, redirect) = if !query.trim().is_empty() || has_filter {
         let outcome = SearchService::search(
             pool,
@@ -414,6 +419,10 @@ pub async fn home(
         match outcome {
             SearchOutcome::Results(r) => (Some(r), None),
             SearchOutcome::Redirect(url) => (None, Some(url)),
+            SearchOutcome::TitleIdMiss(miss) => {
+                title_id_miss = Some(miss);
+                (Some(PaginatedList::new(vec![], 1, 0, None, None, None)), None)
+            }
         }
     } else {
         (None, None)
@@ -472,6 +481,7 @@ pub async fn home(
             &params.sort,
             &params.dir,
             added_since_date,
+            title_id_miss,
             &session,
             loc,
             state.time_zone(),
@@ -811,6 +821,7 @@ pub async fn home(
     };
 
     let base = base_context(&session, loc, "home", &uri, state.page_settings());
+    let empty_copy = super::home_search_fragment::empty_copy(&query, title_id_miss, loc);
     let template = HomeTemplate {
         base,
         time_zone: state.time_zone(),
@@ -838,10 +849,11 @@ pub async fn home(
         genres,
         volume_states,
         results,
-        search_empty_heading: rust_i18n::t!("empty.search_heading", locale = loc).to_string(),
-        search_empty_body: rust_i18n::t!("empty.search_body", locale = loc, query = html_escape(&query)).to_string(),
-        search_empty_cta: rust_i18n::t!("empty.search_cta", locale = loc).to_string(),
-        search_empty_cta_url: format!("/catalog/title/new?title={}", url_encode(&query)),
+        search_empty_heading: empty_copy.heading,
+        search_empty_body: empty_copy.body_html,
+        search_empty_cta: empty_copy.cta_label,
+        search_empty_cta_url: empty_copy.cta_url,
+        title_id_miss: title_id_miss.is_some(),
         query,
         filter_empty_heading: rust_i18n::t!("empty.filter_heading", locale = loc).to_string(),
         filter_empty_body: rust_i18n::t!("empty.filter_body", locale = loc).to_string(),
@@ -1328,6 +1340,7 @@ pub(crate) mod tests {
             search_empty_body: "No matches for ''.".to_string(),
             search_empty_cta: "Add this title".to_string(),
             search_empty_cta_url: "/catalog/title/new".to_string(),
+            title_id_miss: false,
             filter_empty_heading: "No matches".to_string(),
             filter_empty_body: "Nothing matches this filter.".to_string(),
             pagination_previous: "Previous".to_string(),

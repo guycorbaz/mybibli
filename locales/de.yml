@@ -62,6 +62,11 @@ connection:
   lost_retry: "Jetzt erneut versuchen"
   restored_toast: "Verbindung wiederhergestellt"
 empty:
+  # Story 17-5 (#653) — `#<id>` in the search field naming no live title.
+  title_id_trash_heading: "Titel im Papierkorb"
+  title_id_trash_body: "Der Titel %{id} liegt im Papierkorb und wird deshalb von der Suche nicht angezeigt. Ein Administrator kann ihn unter Verwaltung → Papierkorb wiederherstellen."
+  title_id_unknown_heading: "Kein Titel mit dieser ID"
+  title_id_unknown_body: "Kein Titel hat die ID %{id}: Er wurde vielleicht endgültig gelöscht, oder die Nummer ist falsch. Prüfen Sie die Nummer oder suchen Sie nach Titel, Autor oder ISBN."
   loans_heading: "Keine aktiven Ausleihen"
   loans_body: "Ausleihen erscheinen hier, sobald ein Entleiher ein Exemplar ausleiht."
   borrowers_heading: "Noch keine Entleiher"
@@ -317,6 +322,8 @@ pagination:
   next: Weiter
   aria_label: Seitennavigation
 title_detail:
+  # Story 17-5 (#653) — label of the `#<id>` line.
+  title_id: "Titel-ID"
   contributors: Mitwirkende
   # Fix #318 — Hinzufügen / Entfernen-Affordance für Mitwirkende auf der Titel-Detailseite.
   contributor_add: "Mitwirkenden hinzufügen"

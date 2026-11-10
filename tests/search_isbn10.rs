@@ -24,6 +24,7 @@ async fn search_ids(pool: &MySqlPool, query: &str) -> Vec<u64> {
     {
         SearchOutcome::Results(list) => list.items.iter().map(|r| r.id).collect(),
         SearchOutcome::Redirect(url) => panic!("unexpected redirect to {url}"),
+        SearchOutcome::TitleIdMiss(miss) => panic!("unexpected title id miss {miss:?}"),
     }
 }
 
