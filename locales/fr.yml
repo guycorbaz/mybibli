@@ -461,6 +461,7 @@ error:
   upc:
     invalid_checksum: "UPC invalide : la clé de contrôle ne correspond pas — vérifiez la saisie"
     too_long: "Un UPC a au plus 13 chiffres — vérifiez qu'il n'y a pas un chiffre de trop"
+    isbn10: "C'est un ISBN-10, pas un code-barres de produit — saisissez-le dans le champ ISBN"
   genre:
     required: Le genre est obligatoire
   media_type:
@@ -713,7 +714,6 @@ scan:
   irregular_length: "Ce code a %{len} chiffres, alors qu'un code-barres en a 8, 12 ou 13 : il est peut-être mal lu ou mal saisi."
   irregular_check_digit: "La clé de contrôle de ce code est fausse : un chiffre est peut-être mal lu ou mal saisi."
   irregular_not_digits: "Ce code contient d'autres caractères que des chiffres, alors qu'un code-barres n'a que des chiffres : il est peut-être mal saisi."
-  irregular_isbn10: "Ce code est un ISBN-10 valide, pas un code-barres de produit : il a sa place dans le champ ISBN, où il est enregistré comme ISBN-13."
   irregular_action_scan: "Vérifiez-le et scannez-le à nouveau, ou choisissez un type pour le garder tel quel."
   irregular_action_form: "Corrigez-le, ou cochez la case ci-dessous pour le garder tel quel."
 cover:

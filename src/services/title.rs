@@ -60,8 +60,13 @@ impl TitleService {
     /// check digit (Rule #9 field hint), `None` for any other code. Shared by
     /// the scan's creation and error message and the title forms.
     pub fn upc_checksum_refusal(code: &str, loc: &str) -> Option<String> {
-        (code.len() == 12 && !Self::validate_upc12_checksum(code))
+        Self::is_bad_upc_a(code)
             .then(|| rust_i18n::t!("error.upc.invalid_checksum", locale = loc).to_string())
+    }
+
+    /// #384 — a 12-character code that fails the UPC-A check digit.
+    pub fn is_bad_upc_a(code: &str) -> bool {
+        code.len() == 12 && !Self::validate_upc12_checksum(code)
     }
 
     /// Validate a UPC-A checksum using the modulo-10 algorithm (#384).

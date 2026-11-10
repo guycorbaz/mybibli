@@ -175,11 +175,13 @@ async fn a_upc_longer_than_the_column_is_refused_even_confirmed(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn a_valid_isbn10_typed_as_upc_is_named(pool: DbPool) {
+async fn a_valid_isbn10_typed_as_upc_is_sent_to_the_isbn_field(pool: DbPool) {
     let (app, b) = admin(&pool).await;
-    let (retarget, body) = create_by_hand(&app, &b, &pool, "Isbn", "080442957X", None).await;
-    assert_eq!(retarget.as_deref(), Some("#upc-field-warning"), "{body}");
-    assert!(body.contains("valid ISBN-10"), "{body}");
+    // Refused even confirmed: kept as a UPC, the boot conversion (13-3)
+    // would move it to the ISBN anyway.
+    let (retarget, body) = create_by_hand(&app, &b, &pool, "Isbn", "080442957X", Some("080442957X")).await;
+    assert_eq!(retarget, None, "{body}");
+    assert!(body.contains("ISBN field"), "{body}");
     assert!(upc_of_titles_named(&pool, "Isbn").await.is_empty());
 }
 

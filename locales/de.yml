@@ -458,6 +458,7 @@ error:
   upc:
     invalid_checksum: "Ungültige UPC: Die Prüfziffer stimmt nicht — bitte auf Tippfehler prüfen"
     too_long: "Eine UPC hat höchstens 13 Ziffern — bitte auf eine überzählige Ziffer prüfen"
+    isbn10: "Das ist eine ISBN-10, kein Produkt-Strichcode — bitte im ISBN-Feld eingeben"
   genre:
     required: Genre ist erforderlich
   media_type:
@@ -707,7 +708,6 @@ scan:
   irregular_length: "Dieser Code hat %{len} Ziffern, ein Strichcode aber 8, 12 oder 13: Vielleicht wurde er falsch gelesen oder eingegeben."
   irregular_check_digit: "Die Prüfziffer dieses Codes ist falsch: Vielleicht wurde eine Ziffer falsch gelesen oder eingegeben."
   irregular_not_digits: "Dieser Code enthält andere Zeichen als Ziffern, ein Strichcode hat aber nur Ziffern: Vielleicht wurde er falsch eingegeben."
-  irregular_isbn10: "Dieser Code ist eine gültige ISBN-10, kein Produkt-Strichcode: Er gehört in das ISBN-Feld, wo er als ISBN-13 gespeichert wird."
   irregular_action_scan: "Prüfen Sie ihn und scannen Sie erneut, oder wählen Sie einen Typ, um ihn unverändert zu behalten."
   irregular_action_form: "Korrigieren Sie ihn, oder kreuzen Sie das Feld unten an, um ihn unverändert zu behalten."
 cover:

@@ -148,9 +148,6 @@ pub enum CodeIrregularity {
     /// Story 17-4 — a character other than a digit. Only a hand-typed code
     /// can carry one: the scan classifies digits only as `upc`.
     NotDigits,
-    /// Story 17-4 — a valid ISBN-10 typed in the UPC field (the scan reads
-    /// it as an ISBN and never reaches this).
-    Isbn10,
 }
 
 /// EAN-8 check digit of the first 7 digits (pure; weights 3 and 1).
@@ -213,9 +210,6 @@ impl CodeIrregularity {
             CodeIrregularity::NotDigits => {
                 rust_i18n::t!("scan.irregular_not_digits", locale = loc).to_string()
             }
-            CodeIrregularity::Isbn10 => {
-                rust_i18n::t!("scan.irregular_isbn10", locale = loc).to_string()
-            }
         }
     }
 }
@@ -249,6 +243,11 @@ pub enum UpcRefusal {
     CheckDigit,
     /// More than 13 characters: `titles.upc` cannot hold it.
     TooLong,
+    /// A valid ISBN-10: it belongs in the ISBN field. The scan reads it as
+    /// an ISBN, and one kept as a UPC would be moved to the ISBN at the next
+    /// start (`convert_isbn10_upc_titles`, story 13-3) — so no "keep as
+    /// entered" is offered (review round 2).
+    Isbn10,
 }
 
 impl UpcRefusal {
@@ -259,6 +258,7 @@ impl UpcRefusal {
                 rust_i18n::t!("error.upc.invalid_checksum", locale = loc).to_string()
             }
             UpcRefusal::TooLong => rust_i18n::t!("error.upc.too_long", locale = loc).to_string(),
+            UpcRefusal::Isbn10 => rust_i18n::t!("error.upc.isbn10", locale = loc).to_string(),
         }
     }
 }
@@ -275,10 +275,14 @@ pub fn typed_upc_verdict(upc: &str, confirmed: Option<&str>) -> TypedUpcVerdict 
     let irregularity = if upc.chars().count() > UPC_MAX_CHARS {
         return TypedUpcVerdict::Refuse(UpcRefusal::TooLong);
     } else if crate::utils::isbn10_to_isbn13(upc).is_some() {
-        Some(CodeIrregularity::Isbn10)
+        return TypedUpcVerdict::Refuse(UpcRefusal::Isbn10);
+    } else if is_isbn10_shaped(upc) {
+        // 9 digits and an `X` that fail the ISBN-10 check: the scan's
+        // 10-digit warning, not "characters other than digits".
+        Some(CodeIrregularity::TenDigits)
     } else if !upc.bytes().all(|b| b.is_ascii_digit()) {
         Some(CodeIrregularity::NotDigits)
-    } else if upc.len() == 12 && !TitleService::validate_upc12_checksum(upc) {
+    } else if TitleService::is_bad_upc_a(upc) {
         return TypedUpcVerdict::Refuse(UpcRefusal::CheckDigit);
     } else {
         code_irregularity(upc)
@@ -287,6 +291,13 @@ pub fn typed_upc_verdict(upc: &str, confirmed: Option<&str>) -> TypedUpcVerdict 
         Some(i) if confirmed != Some(upc) => TypedUpcVerdict::Confirm(i),
         _ => TypedUpcVerdict::Keep,
     }
+}
+
+/// 9 digits then a digit or `X`: the shape of an ISBN-10, valid or not.
+fn is_isbn10_shaped(code: &str) -> bool {
+    code.len() == 10
+        && code.as_bytes()[..9].iter().all(u8::is_ascii_digit)
+        && code.ends_with(|c: char| c.is_ascii_digit() || c == 'X' || c == 'x')
 }
 
 /// Story 17-4 — what a title form does with its UPC field.
@@ -606,7 +617,6 @@ mod tests {
             CodeIrregularity::Length(11),
             CodeIrregularity::CheckDigit,
             CodeIrregularity::NotDigits,
-            CodeIrregularity::Isbn10,
         ] {
             for loc in ["en", "fr", "de", "it"] {
                 for m in [i.message(loc), i.form_message(loc)] {
@@ -663,18 +673,23 @@ mod tests {
         // 13 characters fit, even irregular ones.
         assert_eq!(typed_upc_verdict("ééééééééééééé", None), TypedUpcVerdict::Confirm(CodeIrregularity::NotDigits));
         for loc in ["en", "fr", "de", "it"] {
-            for r in [UpcRefusal::CheckDigit, UpcRefusal::TooLong] {
+            for r in [UpcRefusal::CheckDigit, UpcRefusal::TooLong, UpcRefusal::Isbn10] {
                 assert!(!r.message(loc).contains("error."), "{loc}: {r:?}");
             }
         }
     }
 
     #[test]
-    fn a_valid_isbn10_typed_as_upc_is_named() {
-        assert_eq!(typed_upc_verdict("2070360245", None), TypedUpcVerdict::Confirm(CodeIrregularity::Isbn10));
-        assert_eq!(typed_upc_verdict("080442957X", None), TypedUpcVerdict::Confirm(CodeIrregularity::Isbn10));
-        // A failed ISBN-10 keeps the scan's 10-digit warning.
-        assert_eq!(typed_upc_verdict("2205025062", None), TypedUpcVerdict::Confirm(CodeIrregularity::TenDigits));
+    fn a_valid_isbn10_typed_as_upc_is_refused_towards_the_isbn_field() {
+        for code in ["2070360245", "080442957X", "080442957x"] {
+            assert_eq!(typed_upc_verdict(code, None), TypedUpcVerdict::Refuse(UpcRefusal::Isbn10), "{code}");
+            assert_eq!(typed_upc_verdict(code, Some(code)), TypedUpcVerdict::Refuse(UpcRefusal::Isbn10), "{code}");
+        }
+        // A failed ISBN-10, with or without an `X`, keeps the scan's
+        // 10-digit warning.
+        for code in ["2205025062", "220500121X"] {
+            assert_eq!(typed_upc_verdict(code, None), TypedUpcVerdict::Confirm(CodeIrregularity::TenDigits), "{code}");
+        }
     }
 
     #[test]
