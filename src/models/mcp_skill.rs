@@ -87,6 +87,14 @@ impl From<sqlx::Error> for SkillWriteError {
     }
 }
 
+/// Story 17-6 review — a duplicate entry exactly (error 1062), not the
+/// whole 23000 class (foreign key, NOT NULL, CHECK…).
+fn is_duplicate_entry(err: &sqlx::Error) -> bool {
+    err.as_database_error()
+        .and_then(|db| db.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>())
+        .is_some_and(|db| db.number() == 1062)
+}
+
 fn is_duplicate_key(err: &sqlx::Error) -> bool {
     matches!(err, sqlx::Error::Database(db) if db.code().as_deref() == Some("23000"))
 }
@@ -229,9 +237,11 @@ impl McpSkillModel {
     /// caller's transaction: no author, marked `provided_by_mybibli`.
     /// `Ok(false)` when any row, live or in the Trash, already holds the
     /// name: nothing is written and that row is left untouched. A plain
-    /// insert whose duplicate-key error is the signal — no locking read on
-    /// `mcp_skills` (Rule #22); in MariaDB a failed statement rolls back
-    /// alone, the transaction goes on.
+    /// insert whose duplicate-key error is the signal, rather than a
+    /// `SELECT … FOR UPDATE` on the name (Rule #22: no locking read on a
+    /// non-primary key). On a duplicate InnoDB still share-locks that one
+    /// index record until the commit; at startup nothing waits on it. In
+    /// MariaDB a failed statement rolls back alone, the transaction goes on.
     pub async fn insert_default_in(
         conn: &mut MySqlConnection,
         skill: &ValidSkill,
@@ -249,7 +259,10 @@ impl McpSkillModel {
         .await;
         match inserted {
             Ok(_) => Ok(true),
-            Err(err) if is_duplicate_key(&err) => Ok(false),
+            // Only a duplicate entry (MySQL 1062) means "name taken": any
+            // other integrity error of class 23000 is a real failure, so no
+            // marker is written and the default is retried next boot.
+            Err(err) if is_duplicate_entry(&err) => Ok(false),
             Err(err) => Err(err.into()),
         }
     }

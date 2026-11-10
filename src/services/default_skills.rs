@@ -44,12 +44,12 @@ pub const DEFAULT_SKILLS: &[DefaultSkill] = &[
     },
     DefaultSkill {
         name: "comics-series-attach",
-        description: "Propose to attach comics to their existing series, at their position.",
+        description: "Propose to attach titles to their existing series, at their position.",
         body: include_str!("../../skills/defaults/comics-series-attach.md"),
     },
     DefaultSkill {
         name: "comics-series-create",
-        description: "Propose to create a missing series with the library's comics.",
+        description: "Propose to create a missing series with the library's titles.",
         body: include_str!("../../skills/defaults/comics-series-create.md"),
     },
     DefaultSkill {
@@ -157,9 +157,35 @@ mod tests {
         }
     }
 
+    /// Story 17-6 review: a default is never updated once inserted, so a
+    /// tool it names must exist when it ships. Every backticked word shaped
+    /// like a tool name (`get_…`, `list_…`, `propose_…`, `search_…`) is a
+    /// registered MCP tool.
+    #[test]
+    fn every_tool_a_default_names_is_registered() {
+        let registered: Vec<&str> = crate::mcp::tools::registry()
+            .iter()
+            .map(|t| t.name())
+            .collect();
+        for d in DEFAULT_SKILLS {
+            let mut named = 0;
+            for word in d.body.split('`').skip(1).step_by(2) {
+                let tool_like = ["get_", "list_", "propose_", "search_"]
+                    .iter()
+                    .any(|p| word.starts_with(p))
+                    && word.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
+                if tool_like {
+                    named += 1;
+                    assert!(registered.contains(&word), "{}: unknown tool `{word}`", d.name);
+                }
+            }
+            assert!(named > 0, "{}: names no tool", d.name);
+        }
+    }
+
     #[test]
     fn bodies_are_the_comic_texts_of_654() {
-        for d in DEFAULT_SKILLS {
+        for d in DEFAULT_SKILLS.iter().filter(|d| d.name.starts_with("comics-")) {
             assert!(d.body.contains("## Ground rules"), "{}", d.name);
             assert!(d.body.contains("`media_type` = `bd`"), "{}", d.name);
             assert!(d.body.ends_with('\n') && !d.body.ends_with("\n\n"), "{}", d.name);

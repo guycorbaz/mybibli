@@ -29,7 +29,11 @@ fn all_names() -> Vec<&'static str> {
 
 async fn admin_create(pool: &DbPool, name: &str, body: &str, active: bool) -> u64 {
     let skill = validate(name, "The admin's own", body, active).unwrap();
-    McpSkillModel::create(pool, &skill, None).await.unwrap()
+    let author: Option<u64> = sqlx::query_scalar("SELECT id FROM users WHERE username = 'owner'")
+        .fetch_optional(pool)
+        .await
+        .unwrap();
+    McpSkillModel::create(pool, &skill, author).await.unwrap()
 }
 
 async fn markers(pool: &DbPool) -> Vec<String> {
@@ -74,6 +78,7 @@ async fn a_second_startup_inserts_nothing(pool: DbPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn a_name_held_by_a_live_or_trashed_skill_is_never_overwritten(pool: DbPool) {
+    seed_admin(&pool, "owner").await;
     // The admin's own live skill, active, under a default's name …
     let live = admin_create(&pool, "comics-covers", "# Mine", true).await;
     // … and another one in the Trash.
@@ -88,6 +93,7 @@ async fn a_name_held_by_a_live_or_trashed_skill_is_never_overwritten(pool: DbPoo
     assert_eq!((mine.body.as_str(), mine.active, mine.version), ("# Mine", true, 1));
     assert_eq!(mine.description, "The admin's own");
     assert!(!mine.provided_by_mybibli, "the admin's row is not marked");
+    assert_eq!(mine.updated_by_name.as_deref(), Some("owner"), "author untouched");
     let (body, deleted): (String, bool) = sqlx::query_as(
         "SELECT body, deleted_at IS NOT NULL FROM mcp_skills WHERE id = ?",
     )
@@ -165,18 +171,51 @@ async fn an_admin_change_replaces_the_mention_and_activation_serves_it(pool: DbP
     let served = served_skill(&pool, "comics-covers").await.unwrap().unwrap();
     assert_eq!(served.body, covers.body);
 
-    // A text edit too.
-    let skill = validate(&attach.name, &attach.description, "# Edited", false).unwrap();
-    McpSkillModel::update(&pool, attach.id, 1, &skill, None).await.unwrap();
+    // A text edit through the editor, by the admin.
+    let (status, body) = admin
+        .post_form(
+            &app,
+            &format!("/admin/skills/{}", attach.id),
+            "name=comics-series-attach&description=Mine&body=%23%20Edited&version=1",
+        )
+        .await;
+    assert_eq!(status, axum::http::StatusCode::OK, "{body}");
     let s = McpSkillModel::find_by_id(&pool, attach.id).await.unwrap().unwrap();
-    assert!(!s.provided_by_mybibli, "an edit clears the mention");
+    assert!(!s.provided_by_mybibli && !s.active, "an edit clears the mention");
+    assert_eq!(s.body, "# Edited");
+    assert_eq!(s.updated_by_name.as_deref(), Some("defaults_admin"));
+
+    // Deactivating the activated default keeps the admin as author.
+    let (status, body) = admin
+        .post_form(&app, &format!("/admin/skills/{}/active", covers.id), "version=2&active=0")
+        .await;
+    assert_eq!(status, axum::http::StatusCode::OK, "{body}");
+    let s = McpSkillModel::find_by_id(&pool, covers.id).await.unwrap().unwrap();
+    assert!(!s.active && !s.provided_by_mybibli);
 
     let res = admin.send(&app, "GET", "/admin/skills", "", true).await;
     let html = common::web::body_string(res).await;
     assert_eq!(count_provided(&html), DEFAULT_SKILLS.len() - 2);
-    assert!(html.contains("by defaults_admin") || html.contains("par defaults_admin"), "{html}");
-    assert!(
-        html.contains("author unknown") || html.contains("auteur inconnu"),
-        "the edit without author: {html}"
+    assert_eq!(
+        html.matches("by defaults_admin").count() + html.matches("par defaults_admin").count(),
+        2,
+        "{html}"
     );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_restored_default_keeps_its_mention(pool: DbPool) {
+    insert_defaults(&pool).await;
+    let covers = McpSkillModel::list_all(&pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|s| s.name == "comics-covers")
+        .unwrap();
+    McpSkillModel::soft_delete(&pool, covers.id, covers.version).await.unwrap();
+    mybibli::services::trash::TrashService::restore(&pool, "mcp_skills", covers.id, covers.version)
+        .await
+        .unwrap();
+    let s = McpSkillModel::find_by_id(&pool, covers.id).await.unwrap().unwrap();
+    assert!(s.provided_by_mybibli && !s.active && s.updated_by_name.is_none());
 }

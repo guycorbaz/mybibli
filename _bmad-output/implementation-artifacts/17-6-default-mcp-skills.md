@@ -1,6 +1,6 @@
 # Story 17.6: Default MCP skills
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #656 (type:change-request; supersedes #654, whose comment holds the four skill texts). Covers: FR177, UX-DR44. Epic 17; ships in v1.27.0.
 
@@ -13,7 +13,7 @@ so that I can use them as they are or as models for my own.
 ## Decisions
 
 - **Project lead, 2026-11-09:** defaults are inserted **inactive**; four small independent skills (`comics-covers`, `comics-series-create`, `comics-series-attach`, `comics-title-spelling`), texts from #654.
-- **D1 — versioned files, embedded.** Each body lives in `skills/defaults/<name>.md`, exactly as written in #654, embedded with `include_str!`; the one-line description sits beside it in the table `services::default_skills::DEFAULT_SKILLS` (from the "Purpose" column of #656). The files double as examples for writing other skills. The Dockerfile's builder stage copies `skills/`.
+- **D1 — versioned files, embedded.** Each body lives in `skills/defaults/<name>.md`, exactly as written in #654, embedded with `include_str!`; the one-line description sits beside it in the table `services::default_skills::DEFAULT_SKILLS` (the "Purpose" column of #656, as a sentence). The files double as examples for writing other skills. The Dockerfile's builder stage copies `skills/`.
 - **D2 — once per database, per skill.** At startup (after migrations, non-fatal like the other one-shot steps), each default goes through `data_repairs::run_once` with its own marker `default-skill:<name>`: a default the admin deletes (or purges) never comes back, and a default added by a later release is still inserted on an existing database.
 - **D3 — never overwrite.** A name already held by any skill, live or in the Trash, is skipped with an `info` log naming it; the marker is written anyway (the default was offered once, so the log does not repeat on every boot). The insert is a plain `INSERT` whose duplicate-key error is the "taken" signal — no locking read on `mcp_skills` (Rule #22).
 - **D4 — "provided by mybibli".** New column `mcp_skills.provided_by_mybibli BOOLEAN NOT NULL DEFAULT FALSE`, set only by the default insertion and cleared by every admin write (`update`, `set_active`), so it means "last change: mybibli itself". Admin → Skills shows "provided by mybibli" in the last-change cell instead of "author unknown" while it is set. A Trash restore leaves it as it was.
@@ -32,13 +32,13 @@ so that I can use them as they are or as models for my own.
 
 ## Tasks
 
-- [ ] Migration: `mcp_skills.provided_by_mybibli`.
-- [ ] `skills/defaults/*.md` (four texts from #654); Dockerfile `COPY skills/`.
-- [ ] `src/services/default_skills.rs`: table, `insert_defaults(pool)`, unit tests.
-- [ ] `McpSkillModel::insert_default_in`; `update` / `set_active` clear the mark; `McpSkill.provided_by_mybibli`.
-- [ ] `main.rs` startup call (non-fatal).
-- [ ] `admin_skills.rs` last-change label; `admin.skills.last_change_provided` in four locales.
-- [ ] `cargo sqlx prepare` if typed queries change; DB integration; E2E.
+- [x] Migration: `mcp_skills.provided_by_mybibli`.
+- [x] `skills/defaults/*.md` (four texts from #654); Dockerfile `COPY skills/`.
+- [x] `src/services/default_skills.rs`: table, `insert_defaults(pool)`, unit tests.
+- [x] `McpSkillModel::insert_default_in`; `update` / `set_active` clear the mark; `McpSkill.provided_by_mybibli`.
+- [x] `main.rs` startup call (non-fatal).
+- [x] `admin_skills.rs` last-change label; `admin.skills.last_change_provided` in four locales.
+- [x] `cargo sqlx prepare` if typed queries change; DB integration; E2E.
 
 ## Dev Notes
 
@@ -51,8 +51,22 @@ so that I can use them as they are or as models for my own.
 
 ### File List
 
+- `skills/defaults/{comics-covers,comics-series-attach,comics-series-create,comics-title-spelling}.md` — the four bodies of #654, as written.
+- `src/services/default_skills.rs` — `DEFAULT_SKILLS`, `insert_defaults` (one `run_once` per default), unit tests (validation, markers, tools named are registered).
+- `src/models/mcp_skill.rs` — `provided_by_mybibli` read; `insert_default_in` (1062 = name taken); `update` / `set_active` clear the mark.
+- `migrations/20261110090000_mcp_skills_provided_by_mybibli.sql` — the column.
+- `src/main.rs` — startup call, non-fatal.
+- `src/routes/admin_skills.rs` — "provided by mybibli" in the last-change cell + unit test; `locales/{en,fr,de,it}.yml` — `admin.skills.last_change_provided`.
+- `src/mcp/mod.rs` — `tools` is `pub(crate)` (the unit test reads the registry).
+- `Dockerfile` — `COPY skills/` in the builder stage; `CLAUDE.md` — pattern paragraph.
+- `tests/default_skills.rs` — DB integration; `tests/e2e/specs/journeys/default-skills.spec.ts` — E2E (spec id `DS`).
+
 ### Review
+
+- **Round 1** (Blind Hunter, Edge Case Hunter, Acceptance Auditor). Medium, fixed: the story file was not updated after dev. Medium, dismissed: the skill files "missing" from the diff (excluded from the review diff on purpose; tracked) and a `.dockerignore` risk (the repo has none; both build contexts include `skills/`); "existing specs may assert an empty skills list" (checked: none does; the skills specs pass on the new baseline). Medium, kept as designed and deferred: activation clears the mention, so a stock default reads "by <admin>" once activated — the column is "last change", D4; recorded in #665 for the day a later release changes a default text. Low, fixed: two descriptions now follow #656 ("titles"); only a duplicate entry (1062) counts as "name taken", not the whole 23000 class; the lock comment states the shared lock a duplicate insert takes; a unit test checks every tool a default names is registered; the body test is scoped to the comic defaults; the edit and deactivation run through the admin routes with the admin as author, the admin's author is checked untouched on a skip, and a Trash restore keeps the mention (tests). Low, deferred to #665: concurrent boots, restore date credited to mybibli, E2E on a non-reset local stack.
 
 ### Gates (final code)
 
 ### Change Log
+
+- 2026-11-10: implementation, review round 1.
