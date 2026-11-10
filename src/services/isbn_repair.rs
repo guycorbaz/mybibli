@@ -13,8 +13,12 @@
 //! - positive shapes only (Rule #20): a stored value is rewritten only when
 //!   `parse_isbn` accepts it and its ISBN-13 differs; anything else
 //!   (another EAN, a wrong check digit, text) is left as is;
-//! - two or more titles (live or trashed) that would carry the same ISBN-13
-//!   after the repair are all left untouched (no merge, see #591);
+//! - collisions (no merge, see #591; coordinator decision 2026-11-10,
+//!   #669): two or more **live** titles that would carry the same ISBN-13
+//!   are all left untouched; a trashed title never blocks the rewrite of a
+//!   live one (the live title is the one the librarian kept; restoring the
+//!   trashed twin is an explicit act); a trashed title is rewritten only
+//!   when its new value collides with no other row, live or trashed;
 //! - a **non-edit write** guarded by `version` and the old value, `version`
 //!   not bumped (#521, story 13-4); the pending metadata / cover items'
 //!   `identity.isbn` follows, so the repair outdates no proposal.
@@ -48,12 +52,14 @@ pub struct IsbnRewrite {
     pub new: String,
 }
 
-/// Titles that would carry the same ISBN-13 after the repair: all left
-/// untouched. `titles` holds `(id, stored value)`.
+/// Titles that carry, or would carry after the repair, the same ISBN-13.
+/// `titles` holds every one of them `(id, stored value)`; `left` the ids
+/// that needed a rewrite and were left untouched because of the others.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IsbnCollision {
     pub isbn13: String,
     pub titles: Vec<(u64, String)>,
+    pub left: Vec<u64>,
 }
 
 /// What the repair would do with a set of stored ISBNs (pure).
@@ -67,32 +73,47 @@ pub struct IsbnRepairPlan {
     pub not_isbn: Vec<(u64, String)>,
 }
 
-/// Classify the stored ISBNs `(title id, value)` of the titles, live and
-/// trashed alike.
-pub fn plan_isbn_repair<'a>(rows: impl IntoIterator<Item = (u64, &'a str)>) -> IsbnRepairPlan {
+/// Classify the stored ISBNs `(title id, value, in the Trash)` of the
+/// titles, live and trashed alike (collision rules in the module docs).
+pub fn plan_isbn_repair<'a>(
+    rows: impl IntoIterator<Item = (u64, &'a str, bool)>,
+) -> IsbnRepairPlan {
     let mut plan = IsbnRepairPlan::default();
-    let mut groups: BTreeMap<String, Vec<(u64, &str)>> = BTreeMap::new();
-    for (id, stored) in rows {
+    let mut groups: BTreeMap<String, Vec<(u64, &str, bool)>> = BTreeMap::new();
+    for (id, stored, trashed) in rows {
         match crate::utils::parse_isbn(stored) {
-            Ok(isbn13) => groups.entry(isbn13).or_default().push((id, stored)),
+            Ok(isbn13) => groups.entry(isbn13).or_default().push((id, stored, trashed)),
             Err(_) => plan.not_isbn.push((id, stored.to_string())),
         }
     }
     for (isbn13, members) in groups {
-        let rewrites = members.iter().filter(|(_, old)| *old != isbn13).count();
-        if rewrites == 0 {
-            plan.canonical += members.len();
-            continue;
+        let live = members.iter().filter(|(_, _, trashed)| !trashed).count();
+        let mut left = Vec::new();
+        for &(id, old, trashed) in &members {
+            if old == isbn13 {
+                plan.canonical += 1;
+                continue;
+            }
+            // A live title is blocked only by another live title; a
+            // trashed one by any other row.
+            let blocked = if trashed { members.len() > 1 } else { live > 1 };
+            if blocked {
+                left.push(id);
+            } else {
+                plan.rewrites.push(IsbnRewrite {
+                    title_id: id,
+                    old: old.to_string(),
+                    new: isbn13.clone(),
+                });
+            }
         }
-        if members.len() > 1 {
+        if !left.is_empty() {
             plan.collisions.push(IsbnCollision {
                 isbn13,
-                titles: members.iter().map(|(id, old)| (*id, old.to_string())).collect(),
+                titles: members.iter().map(|(id, old, _)| (*id, old.to_string())).collect(),
+                left,
             });
-            continue;
         }
-        let (id, old) = members[0];
-        plan.rewrites.push(IsbnRewrite { title_id: id, old: old.to_string(), new: isbn13 });
     }
     plan.rewrites.sort_by_key(|r| r.title_id);
     plan
@@ -141,15 +162,15 @@ pub async fn repair_in(conn: &mut MySqlConnection) -> Result<IsbnRepairReport, A
     let stored = list_isbns(conn).await?;
     let rows: BTreeMap<u64, (i32, bool)> =
         stored.iter().map(|s| (s.id, (s.version, s.deleted))).collect();
-    let plan = plan_isbn_repair(stored.iter().map(|s| (s.id, s.isbn.as_str())));
+    let plan = plan_isbn_repair(stored.iter().map(|s| (s.id, s.isbn.as_str(), s.deleted)));
     let mut report = IsbnRepairReport {
         canonical: plan.canonical,
         not_isbn: plan.not_isbn.len(),
         ..Default::default()
     };
     for collision in &plan.collisions {
-        report.collided += collision.titles.len();
-        for (id, stored) in &collision.titles {
+        report.collided += collision.left.len();
+        for (id, stored) in collision.titles.iter().filter(|(id, _)| collision.left.contains(id)) {
             let others: Vec<u64> =
                 collision.titles.iter().map(|(o, _)| *o).filter(|o| o != id).collect();
             tracing::warn!(
@@ -199,9 +220,14 @@ mod tests {
         IsbnRewrite { title_id: id, old: old.into(), new: new.into() }
     }
 
+    /// Live rows `(id, value)`.
+    fn live<'a>(rows: &'a [(u64, &'a str)]) -> impl Iterator<Item = (u64, &'a str, bool)> + 'a {
+        rows.iter().map(|&(id, v)| (id, v, false))
+    }
+
     #[test]
     fn positive_shapes_are_rewritten_everything_else_is_left() {
-        let plan = plan_isbn_repair([
+        let plan = plan_isbn_repair(live(&[
             (1, "9782070360246"),
             (2, "978-2-205-00121-1"),
             (3, "2-205-01150-2"),
@@ -211,7 +237,7 @@ mod tests {
             (7, "9772070360246"),
             (8, "inconnu"),
             (9, "978207036024"),
-        ]);
+        ]));
         assert_eq!(
             plan.rewrites,
             vec![
@@ -228,53 +254,80 @@ mod tests {
     }
 
     #[test]
-    fn titles_that_would_collide_are_all_left_untouched() {
-        let plan = plan_isbn_repair([
+    fn live_titles_that_would_collide_are_left_untouched() {
+        let plan = plan_isbn_repair(live(&[
             (10, "9782205001211"),
             (11, "978-2-205-00121-1"),
             (12, "2-205-01150-2"),
             (13, "2205011502"),
-        ]);
+        ]));
         assert!(plan.rewrites.is_empty());
-        assert_eq!(plan.canonical, 0);
+        assert_eq!(plan.canonical, 1);
         assert_eq!(
             plan.collisions,
             vec![
                 IsbnCollision {
                     isbn13: "9782205001211".into(),
                     titles: vec![(10, "9782205001211".into()), (11, "978-2-205-00121-1".into())],
+                    left: vec![11],
                 },
                 IsbnCollision {
                     isbn13: "9782205011500".into(),
                     titles: vec![(12, "2-205-01150-2".into()), (13, "2205011502".into())],
+                    left: vec![12, 13],
                 },
             ]
         );
     }
 
     #[test]
-    fn a_trashed_twin_blocks_the_rewrite_of_a_live_title() {
-        // Coordinator decision (2026-11-10): the collision check spans live
-        // and trashed titles. A live ISBN-10 whose duplicate (made by a
-        // later scan) sits in the Trash is left as stored and logged (#669).
-        let plan = plan_isbn_repair([(30, "2-205-00121-3"), (31, "9782205001211")]);
-        assert!(plan.rewrites.is_empty());
-        assert_eq!(plan.collisions.len(), 1);
+    fn a_trashed_twin_never_blocks_the_rewrite_of_a_live_title() {
+        // Coordinator decision (2026-11-10, #669): a live ISBN-10 whose
+        // duplicate (made by a later scan) sits in the Trash is rewritten.
+        let plan = plan_isbn_repair([
+            (30, "2-205-00121-3", false),
+            (31, "9782205001211", true),
+            // Both forms non-canonical: the live one is rewritten, the
+            // trashed one (colliding with it) left.
+            (32, "2-205-01150-2", false),
+            (33, "2205011502", true),
+        ]);
+        assert_eq!(
+            plan.rewrites,
+            vec![rw(30, "2-205-00121-3", "9782205001211"), rw(32, "2-205-01150-2", "9782205011500")]
+        );
+        assert_eq!(plan.canonical, 1);
+        let left: Vec<Vec<u64>> = plan.collisions.iter().map(|c| c.left.clone()).collect();
+        assert_eq!(left, vec![vec![33]]);
+    }
+
+    #[test]
+    fn a_trashed_title_is_rewritten_only_without_any_twin() {
+        let plan = plan_isbn_repair([
+            (40, "2-205-00121-3", true),
+            (41, "2-205-01150-2", true),
+            (42, "9782205011500", true),
+            (43, "0-201-63361-2", true),
+            (44, "9780201633610", false),
+        ]);
+        assert_eq!(plan.rewrites, vec![rw(40, "2-205-00121-3", "9782205001211")]);
+        let left: Vec<u64> = plan.collisions.iter().flat_map(|c| c.left.clone()).collect();
+        assert_eq!(left, vec![43, 41]);
     }
 
     #[test]
     fn canonical_duplicates_are_not_a_repair_collision() {
         // Two titles already sharing an ISBN-13 (#591) need no rewrite.
-        let plan = plan_isbn_repair([(20, "9782205001211"), (21, "9782205001211")]);
+        let plan = plan_isbn_repair(live(&[(20, "9782205001211"), (21, "9782205001211")]));
         assert_eq!(plan, IsbnRepairPlan { canonical: 2, ..Default::default() });
     }
 
     #[test]
     fn the_plan_is_idempotent() {
-        let first = plan_isbn_repair([(1, "978-2-205-00121-1"), (2, "2070360245")]);
+        let first = plan_isbn_repair(live(&[(1, "978-2-205-00121-1"), (2, "2070360245")]));
         let after: Vec<(u64, String)> =
             first.rewrites.iter().map(|r| (r.title_id, r.new.clone())).collect();
-        let second = plan_isbn_repair(after.iter().map(|(id, v)| (*id, v.as_str())));
+        let second = plan_isbn_repair(after.iter().map(|(id, v)| (*id, v.as_str(), false)));
         assert!(second.rewrites.is_empty());
         assert_eq!(second.canonical, 2);
     }
@@ -306,7 +359,8 @@ mod tests {
             rows.push((id, isbn.to_string()));
         }
         let mark = |id: &u64| if trashed.contains(id) { " (trash)" } else { "" };
-        let plan = plan_isbn_repair(rows.iter().map(|(id, v)| (*id, v.as_str())));
+        let plan =
+            plan_isbn_repair(rows.iter().map(|(id, v)| (*id, v.as_str(), trashed.contains(id))));
         println!("titles with an ISBN: {} (of which in the Trash: {})", rows.len(), trashed.len());
         println!("canonical (unchanged): {}", plan.canonical);
         println!("rewrites: {}", plan.rewrites.len());
@@ -315,7 +369,7 @@ mod tests {
         }
         println!("collisions (left untouched): {}", plan.collisions.len());
         for c in &plan.collisions {
-            println!("  COLLISION {}: {:?}", c.isbn13, c.titles);
+            println!("  COLLISION {}: {:?}, left untouched: {:?}", c.isbn13, c.titles, c.left);
         }
         println!("not an ISBN (left untouched): {}", plan.not_isbn.len());
         for (id, v) in &plan.not_isbn {

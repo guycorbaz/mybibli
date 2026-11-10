@@ -307,24 +307,31 @@ async fn the_repair_rewrites_positive_shapes_once_without_bumping_version(pool: 
 
 #[sqlx::test(migrations = "./migrations")]
 async fn titles_that_would_collide_are_left_untouched(pool: DbPool) {
+    // Live titles that would collide: all left untouched.
     let a = title_with(&pool, "A", "9782205001211").await;
     let b = title_with(&pool, "B", "2-205-00121-3").await;
     let c = title_with(&pool, "C", "2-205-01150-2").await;
     let d = title_with(&pool, "D", "2205011502").await;
-    // A trashed holder collides too (a restore would make a duplicate).
+    // Coordinator decision (2026-11-10, #669): a trashed twin never blocks
+    // a live title (E is rewritten); a trashed title colliding with any
+    // other row stays (G).
     let e = title_with(&pool, "E", "0-201-63361-2").await;
     let f = title_with(&pool, "F", "9780201633610").await;
-    sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
-        .bind(f)
-        .execute(&pool)
-        .await
-        .unwrap();
+    let g = title_with(&pool, "G", "0201633612").await;
+    for trashed in [f, g] {
+        sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+            .bind(trashed)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
 
     let report = repair_stored_isbns_once(&pool).await.unwrap().expect("first run");
 
-    assert_eq!((report.rewritten, report.collided), (0, 6));
-    assert_eq!(stored_isbn(&pool, e).await.as_deref(), Some("0-201-63361-2"));
+    assert_eq!((report.rewritten, report.rewritten_trashed, report.collided), (1, 0, 4));
+    assert_eq!(stored_isbn(&pool, e).await.as_deref(), Some("9780201633610"));
     assert_eq!(stored_isbn(&pool, f).await.as_deref(), Some("9780201633610"));
+    assert_eq!(stored_isbn(&pool, g).await.as_deref(), Some("0201633612"));
     assert_eq!(stored_isbn(&pool, a).await.as_deref(), Some("9782205001211"));
     assert_eq!(stored_isbn(&pool, b).await.as_deref(), Some("2-205-00121-3"));
     assert_eq!(stored_isbn(&pool, c).await.as_deref(), Some("2-205-01150-2"));
