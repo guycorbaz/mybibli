@@ -253,6 +253,16 @@ mod tests {
     }
 
     #[test]
+    fn a_trashed_twin_blocks_the_rewrite_of_a_live_title() {
+        // Coordinator decision (2026-11-10): the collision check spans live
+        // and trashed titles. A live ISBN-10 whose duplicate (made by a
+        // later scan) sits in the Trash is left as stored and logged (#669).
+        let plan = plan_isbn_repair([(30, "2-205-00121-3"), (31, "9782205001211")]);
+        assert!(plan.rewrites.is_empty());
+        assert_eq!(plan.collisions.len(), 1);
+    }
+
+    #[test]
     fn canonical_duplicates_are_not_a_repair_collision() {
         // Two titles already sharing an ISBN-13 (#591) need no rewrite.
         let plan = plan_isbn_repair([(20, "9782205001211"), (21, "9782205001211")]);
