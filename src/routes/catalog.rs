@@ -581,7 +581,7 @@ pub async fn handle_scan(
                 };
 
                 let Some(title_id) = current_title_id else {
-                    let message = rust_i18n::t!("feedback.volume_no_title").to_string();
+                    let message = rust_i18n::t!("feedback.volume_no_title", locale = loc).to_string();
                     return Ok(Html(feedback_html("warning", &message, "")).into_response());
                 };
 
@@ -607,7 +607,7 @@ pub async fn handle_scan(
                         code = %code,
                         "V-code scanned with a deleted active title; context cleared"
                     );
-                    let message = rust_i18n::t!("feedback.volume_no_title").to_string();
+                    let message = rust_i18n::t!("feedback.volume_no_title", locale = loc).to_string();
                     let resp = HtmxResponse {
                         main: feedback_html("warning", &message, ""),
                         oob: vec![
