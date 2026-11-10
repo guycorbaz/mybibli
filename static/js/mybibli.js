@@ -154,7 +154,7 @@
             }
             var message = template.replace("%{status}", String(status));
             injectErrorFeedback(message);
-            restoreScanField();
+            restoreScanField(e);
         });
 
         // Story 9-16 — REMOVED `htmx:sendError` listener that injected a
@@ -178,8 +178,21 @@
         list.insertAdjacentHTML("afterbegin", html);
     }
 
-    function restoreScanField() {
-        var scanField = document.getElementById("scan-field");
+    function restoreScanField(e) {
+        // Story 17-2: when the failed request is the post of the field that
+        // scanned last (the title page's V-code field is a scan field too),
+        // restore into that field; never for another control's error, which
+        // would refill a stale code and take focus from the input in use
+        // (Rule #21). Otherwise the catalog's #scan-field, as before.
+        var posted = window.mybibliLastScanField;
+        var path = ((e && e.detail && e.detail.requestConfig) || {}).path;
+        var scanField;
+        if (posted && document.contains(posted) && posted.id !== "scan-field") {
+            if (path !== posted.getAttribute("data-scan-url")) return;
+            scanField = posted;
+        } else {
+            scanField = document.getElementById("scan-field");
+        }
         if (!scanField) return;
         if (window.mybibliLastScanCode) {
             scanField.value = window.mybibliLastScanCode;

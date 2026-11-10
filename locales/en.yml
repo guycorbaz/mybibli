@@ -248,6 +248,7 @@ feedback:
   volume_label_in_trash_with_loans: "Label %{label} belongs to a deleted volume that still has loan history, so it can't be reused. Restore that volume, or delete it permanently from the Trash."
   volume_label_race: "Label %{label} was being changed at the same moment. Scan it again."
   volume_no_title: "No title selected. Scan an ISBN first to establish a title context."
+  title_page_title_gone: "This title was deleted meanwhile, so no volume was added. Open the title the volume belongs to, then enter its V-code again."
   volume_confirm:
     title: "Add another copy?"
     body: "<em>%{title}</em> already has %{count} volume(s) attached. Add another copy of this title, or scan the new book's ISBN first?"
@@ -331,6 +332,8 @@ title_detail:
   volumes_section_heading: Volumes of this title
   no_volumes: "No volumes for this title yet."
   add_volume_cta: "Scan a new volume"
+  add_volume_field: "Add a volume by its V-code"
+  add_volume_hint: "Type or scan the label (V followed by 4 digits), then press Enter. The volume is added to this title."
   col_vcode: V-code
   col_location: Location
   col_condition: Condition

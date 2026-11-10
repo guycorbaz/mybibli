@@ -89,6 +89,11 @@ pub struct VolumeConfirmAddModalTemplate {
     pub cancel_label: String,
     pub csrf_token: String,
     pub inner_form_html: String,
+    /// Where Confirm re-posts, and where its answer lands (story 17-2: the
+    /// catalog scan and the title page share this modal).
+    pub action_url: String,
+    pub hx_target: String,
+    pub hx_swap: String,
 }
 
 /// `GET /volume/:id/delete-modal` — returns the UX-DR8 destructive
@@ -638,6 +643,9 @@ mod tests {
             cancel_label: "Cancel".to_string(),
             csrf_token: "tok123".to_string(),
             inner_form_html: r#"<input type="hidden" name="code" value="V0099"><input type="hidden" name="confirmed" value="true">"#.to_string(),
+            action_url: "/catalog/scan".to_string(),
+            hx_target: "#feedback-list".to_string(),
+            hx_swap: "innerHTML".to_string(),
         };
         let html = modal.render().expect("modal must render");
         // Title + labels surfaced

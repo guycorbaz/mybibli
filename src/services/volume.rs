@@ -81,9 +81,23 @@ impl VolumeService {
         title_id: u64,
         actor_user_id: Option<u64>,
     ) -> Result<VolumeCreation, AppError> {
+        let loc = rust_i18n::locale();
+        Self::create_volume_in(pool, label, title_id, actor_user_id, &loc).await
+    }
+
+    /// [`Self::create_volume`] with its refusals worded in `loc`, the
+    /// request locale (story 17-2: the shared V-code arm answers in the
+    /// librarian's language, #661).
+    pub async fn create_volume_in(
+        pool: &DbPool,
+        label: &str,
+        title_id: u64,
+        actor_user_id: Option<u64>,
+        loc: &str,
+    ) -> Result<VolumeCreation, AppError> {
         if !Self::validate_vcode(label) {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("feedback.vcode_invalid").to_string(),
+                rust_i18n::t!("feedback.vcode_invalid", locale = loc).to_string(),
             ));
         }
 
@@ -91,7 +105,7 @@ impl VolumeService {
         let title = TitleModel::find_by_id(pool, title_id).await?;
         if title.is_none() {
             return Err(AppError::NotFound(
-                rust_i18n::t!("error.not_found").to_string(),
+                rust_i18n::t!("error.not_found", locale = loc).to_string(),
             ));
         }
 
@@ -99,7 +113,7 @@ impl VolumeService {
         match VolumeModel::create(pool, title_id, label).await {
             Ok(vol) => Ok(VolumeCreation::Created(vol)),
             Err(AppError::BadRequest(msg)) if msg.starts_with("DUPLICATE_LABEL:") => {
-                Self::resolve_duplicate_label(pool, label, title_id, actor_user_id).await
+                Self::resolve_duplicate_label(pool, label, title_id, actor_user_id, loc).await
             }
             Err(e) => Err(e),
         }
@@ -118,6 +132,7 @@ impl VolumeService {
         label: &str,
         title_id: u64,
         actor_user_id: Option<u64>,
+        loc: &str,
     ) -> Result<VolumeCreation, AppError> {
         let Some((existing, is_deleted)) =
             VolumeModel::find_by_label_any_state(pool, label).await?
@@ -125,7 +140,7 @@ impl VolumeService {
             // The row vanished between the failed INSERT and this lookup — a
             // concurrent hard delete. Retrying is the honest advice.
             return Err(AppError::Conflict(
-                rust_i18n::t!("feedback.volume_label_race", label = label).to_string(),
+                rust_i18n::t!("feedback.volume_label_race", locale = loc, label = label).to_string(),
             ));
         };
 
@@ -133,7 +148,7 @@ impl VolumeService {
             // Live volume — the label is genuinely taken.
             let owner = Self::get_volume_title_name(pool, &existing).await;
             return Err(AppError::BadRequest(
-                rust_i18n::t!("feedback.volume_duplicate", label = label, title = &owner)
+                rust_i18n::t!("feedback.volume_duplicate", locale = loc, label = label, title = &owner)
                     .to_string(),
             ));
         }
@@ -142,7 +157,7 @@ impl VolumeService {
         let loans = VolumeModel::count_loans(pool, existing.id).await?;
         if loans > 0 {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("feedback.volume_label_in_trash_with_loans", label = label)
+                rust_i18n::t!("feedback.volume_label_in_trash_with_loans", locale = loc, label = label)
                     .to_string(),
             ));
         }

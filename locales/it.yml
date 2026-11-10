@@ -244,6 +244,7 @@ feedback:
   volume_label_in_trash_with_loans: "L'etichetta %{label} appartiene a un esemplare eliminato che ha uno storico prestiti, quindi non può essere riutilizzata. Ripristina quell'esemplare oppure eliminalo definitivamente dal cestino."
   volume_label_race: "L'etichetta %{label} è stata modificata nello stesso momento. Scansionala di nuovo."
   volume_no_title: "Nessun titolo selezionato. Scansiona prima un ISBN per stabilire un titolo di contesto."
+  title_page_title_gone: "Questo titolo è stato eliminato nel frattempo, quindi nessun esemplare è stato aggiunto. Apri il titolo a cui appartiene l’esemplare, poi inserisci di nuovo il suo codice V."
   volume_confirm:
     title: "Aggiungere un'altra copia?"
     body: "<em>%{title}</em> ha già %{count} esemplare/i. Aggiungere un'altra copia di questo titolo, o scansionare prima l'ISBN del nuovo libro?"
@@ -326,6 +327,8 @@ title_detail:
   volumes_section_heading: Esemplari di questo titolo
   no_volumes: "Ancora nessun esemplare per questo titolo."
   add_volume_cta: "Scansiona un nuovo esemplare"
+  add_volume_field: "Aggiungi un esemplare con il suo codice V"
+  add_volume_hint: "Digita o scansiona l’etichetta (V seguita da 4 cifre), poi premi Invio. L’esemplare viene aggiunto a questo titolo."
   col_vcode: Codice V
   col_location: Ubicazione
   col_condition: Condizione

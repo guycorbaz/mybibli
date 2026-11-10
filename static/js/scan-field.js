@@ -53,8 +53,8 @@
     /**
      * Inject a client-side error feedback entry (no server round-trip).
      */
-    function injectLocalFeedback(variant, message) {
-        var feedbackList = document.getElementById("feedback-list");
+    function injectLocalFeedback(variant, message, targetSelector, swap) {
+        var feedbackList = document.querySelector(targetSelector || "#feedback-list");
         if (!feedbackList) return;
 
         var colors = {
@@ -85,7 +85,38 @@
             '<svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>' +
             '</button></div></div>';
 
-        feedbackList.insertAdjacentHTML("afterbegin", html);
+        // Story 17-2: a field whose answers replace each other (the title
+        // page) shows only the latest one, as the server's answer would.
+        if (swap === "innerHTML") feedbackList.innerHTML = html;
+        else feedbackList.insertAdjacentHTML("afterbegin", html);
+    }
+
+    // Story 17-2 (Rule #21): when a modal of #modal-slot closes and nothing
+    // holds focus any more (a dialog opened by a scan's answer has no trigger
+    // button for modal.js to return to), focus goes back to the element that
+    // held it before the modal opened — the scan field that posted, or a
+    // row's button — never to a fixed target. Tracked with `focusin`: the
+    // last focused element outside the slot.
+    function watchModalSlot() {
+        var slot = document.getElementById("modal-slot");
+        if (!slot || typeof MutationObserver === "undefined") return;
+        var lastOutside = null;
+        document.addEventListener("focusin", function (e) {
+            if (e.target && e.target !== document.body && !slot.contains(e.target)) {
+                lastOutside = e.target;
+            }
+        });
+        var hadModal = false;
+        new MutationObserver(function () {
+            var hasModal = slot.childElementCount > 0;
+            if (hadModal && !hasModal && lastOutside && document.contains(lastOutside)) {
+                var active = document.activeElement;
+                if (!active || active === document.body) {
+                    try { lastOutside.focus(); } catch (_) { /* ignore */ }
+                }
+            }
+            hadModal = hasModal;
+        }).observe(slot, { childList: true });
     }
 
     // #574 — a scanner sometimes reads the same barcode twice in a burst
@@ -103,6 +134,12 @@
     function initScanFields() {
         var fields = document.querySelectorAll("[data-mybibli-scan-field]");
         fields.forEach(function (field) {
+            // Story 17-2: where the field posts and where the answer lands
+            // (defaults: the catalog scan). The title page's V-code field
+            // posts to /title/{id}/volumes and replaces its own answer.
+            var postUrl = field.getAttribute("data-scan-url") || "/catalog/scan";
+            var target = field.getAttribute("data-scan-target") || "#feedback-list";
+            var swap = field.getAttribute("data-scan-swap") || "afterbegin";
             // Last code this field posted, and when ({code, at}).
             var lastPost = null;
             // A failed post did no work: forget it, so re-pressing Enter on
@@ -111,7 +148,7 @@
             // the memory; a successful post stays remembered.
             function forgetFailedScanPost(e) {
                 var cfg = (e.detail || {}).requestConfig || {};
-                if (cfg.path !== "/catalog/scan" || !lastPost) return;
+                if (cfg.path !== postUrl || !lastPost) return;
                 var failedCode = cfg.formData && typeof cfg.formData.get === "function"
                     ? cfg.formData.get("code")
                     : (cfg.parameters || {}).code;
@@ -138,7 +175,7 @@
                 if (prefix === "isbn") {
                     if (!validateIsbn13(code)) {
                         var isbnError = field.getAttribute("data-isbn-error") || "Invalid ISBN checksum";
-                        injectLocalFeedback("error", isbnError);
+                        injectLocalFeedback("error", isbnError, target, swap);
                         field.value = "";
                         return;
                     }
@@ -148,7 +185,7 @@
                 if (prefix === "vcode") {
                     if (!validateVcode(code)) {
                         var vcodeError = field.getAttribute("data-vcode-error") || "Invalid volume code format";
-                        injectLocalFeedback("error", vcodeError);
+                        injectLocalFeedback("error", vcodeError, target, swap);
                         field.value = "";
                         return;
                     }
@@ -166,11 +203,12 @@
 
                 // Store last scan code for error recovery (restored by mybibli.js HTMX error handler)
                 window.mybibliLastScanCode = code;
+                window.mybibliLastScanField = field;
 
                 if (typeof htmx !== "undefined") {
-                    htmx.ajax("POST", "/catalog/scan", {
-                        target: "#feedback-list",
-                        swap: "afterbegin",
+                    htmx.ajax("POST", postUrl, {
+                        target: target,
+                        swap: swap,
                         values: { code: code },
                     });
                 }
@@ -181,10 +219,15 @@
     }
 
     // Self-initialize when DOM is ready
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", initScanFields);
-    } else {
+    function init() {
         initScanFields();
+        watchModalSlot();
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+    } else {
+        init();
     }
 
     // Expose for testing

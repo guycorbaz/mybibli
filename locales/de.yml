@@ -248,6 +248,7 @@ feedback:
   volume_label_in_trash_with_loans: "Etikett %{label} gehört zu einem gelöschten Exemplar mit Ausleihverlauf und kann daher nicht wiederverwendet werden. Stellen Sie das Exemplar wieder her oder löschen Sie es endgültig aus dem Papierkorb."
   volume_label_race: "Etikett %{label} wurde im selben Moment geändert. Bitte erneut scannen."
   volume_no_title: "Kein Titel ausgewählt. Scannen Sie zuerst eine ISBN, um einen Titelkontext aufzubauen."
+  title_page_title_gone: "Dieser Titel wurde inzwischen gelöscht, daher wurde kein Exemplar hinzugefügt. Öffnen Sie den Titel, zu dem das Exemplar gehört, und geben Sie seinen V-Code erneut ein."
   volume_confirm:
     title: "Weiteres Exemplar hinzufügen?"
     body: "<em>%{title}</em> hat bereits %{count} Exemplar(e). Weiteres Exemplar dieses Titels hinzufügen, oder zuerst die ISBN des neuen Buchs scannen?"
@@ -331,6 +332,8 @@ title_detail:
   volumes_section_heading: Exemplare dieses Titels
   no_volumes: "Noch keine Exemplare für diesen Titel."
   add_volume_cta: "Neues Exemplar scannen"
+  add_volume_field: "Exemplar per V-Code hinzufügen"
+  add_volume_hint: "Etikett eintippen oder scannen (V gefolgt von 4 Ziffern), dann Eingabe drücken. Das Exemplar wird diesem Titel hinzugefügt."
   col_vcode: V-Code
   col_location: Standort
   col_condition: Zustand

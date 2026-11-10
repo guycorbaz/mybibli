@@ -7,7 +7,6 @@ use serde::Deserialize;
 
 use crate::AppState;
 use crate::routes::catalog_code::detect_code_type;
-use crate::routes::catalog_volumes::VolumeConfirmAddModalTemplate;
 use crate::error::AppError;
 use crate::utils::base_context;
 use crate::middleware::auth::{Role, Session};
@@ -478,11 +477,11 @@ pub async fn handle_scan(
                 }
             }
             "vcode" => {
-                // Validate V-code format server-side
-                if !VolumeService::validate_vcode(&code) {
-                    let message = rust_i18n::t!("feedback.vcode_invalid").to_string();
-                    return Ok(Html(feedback_html("error", &message, "")).into_response());
-                }
+                // Validate V-code format server-side (story 17-2: the shared
+                // V-code arm, `routes/vcode_volume.rs`).
+                let Some(code) = super::vcode_volume::read_vcode(&code) else {
+                    return Ok(super::vcode_volume::invalid_vcode_response(loc));
+                };
 
                 // If volume already exists and batch location is active, shelve it
                 let existing_vol_lookup = VolumeModel::find_by_label(pool, &code).await?;
@@ -582,7 +581,7 @@ pub async fn handle_scan(
                 };
 
                 let Some(title_id) = current_title_id else {
-                    let message = rust_i18n::t!("feedback.volume_no_title").to_string();
+                    let message = rust_i18n::t!("feedback.volume_no_title", locale = loc).to_string();
                     return Ok(Html(feedback_html("warning", &message, "")).into_response());
                 };
 
@@ -608,7 +607,7 @@ pub async fn handle_scan(
                         code = %code,
                         "V-code scanned with a deleted active title; context cleared"
                     );
-                    let message = rust_i18n::t!("feedback.volume_no_title").to_string();
+                    let message = rust_i18n::t!("feedback.volume_no_title", locale = loc).to_string();
                     let resp = HtmxResponse {
                         main: feedback_html("warning", &message, ""),
                         oob: vec![
@@ -629,320 +628,236 @@ pub async fn handle_scan(
                     return Ok(resp.into_response());
                 }
 
-                // #585 — the label already labels a live volume: never try to
-                // create it again; say whose it is instead.
-                if let Some(existing_vol) = &existing_vol_lookup {
-                    return super::catalog_existing_label::existing_label_response(
-                        pool, existing_vol, title_id, loc,
-                    )
-                    .await;
-                }
+                // #585, CR #300, creation and its refusals: the shared arm.
+                let creation = match super::vcode_volume::add_to_title(
+                    pool,
+                    &session,
+                    &code,
+                    title_id,
+                    existing_vol_lookup.as_ref(),
+                    form.confirmed,
+                    super::vcode_volume::ConfirmTarget {
+                        action_url: "/catalog/scan",
+                        hx_target: "#feedback-list",
+                        hx_swap: "innerHTML",
+                    },
+                    loc,
+                )
+                .await?
+                {
+                    super::vcode_volume::VcodeAdd::Answered(resp) => return Ok(resp),
+                    super::vcode_volume::VcodeAdd::TitleGone => {
+                        let message =
+                            rust_i18n::t!("feedback.volume_no_title", locale = loc).to_string();
+                        return Ok(Html(feedback_html("warning", &message, "")).into_response());
+                    }
+                    super::vcode_volume::VcodeAdd::Created(creation) => creation,
+                };
+                // #442 — a reused label discards the previous copy's
+                // data, so the librarian must be told in as many words.
+                let reused_label =
+                    matches!(creation, crate::services::volume::VolumeCreation::ReusedLabel(_));
+                let volume = creation.into_volume();
+                if let Some(token) = &session.token {
+                    // Store last volume label for subsequent L-code scan
+                    if let Err(e) =
+                        SessionModel::set_last_volume_label(pool, token, &code).await
+                    {
+                        tracing::warn!(error = %e, "Failed to store last volume label in session");
+                    }
 
-                // CR #300: phantom-volume guard. `current_title_id` is sticky
-                // (set on ISBN scan, never cleared) — scanning a fresh V-code
-                // for ANOTHER physical book without re-scanning its ISBN would
-                // silently attach a new volume to the previous title. When the
-                // active title already has volumes and the librarian hasn't
-                // explicitly confirmed via the modal, return the UX-DR8
-                // confirmation modal instead of creating blind. Multi-copy
-                // titles (legitimate N volumes under one ISBN) just click
-                // Confirm; accidental stale-title attaches click Cancel.
-                // Only reached when the V-code is genuinely NEW (an existing
-                // live label returned above, #585).
-                if !form.confirmed {
-                    let already_has =
-                        VolumeModel::count_by_title(pool, title_id).await.unwrap_or(0);
-                    if already_has >= 1 {
-                        let title_name = crate::models::title::TitleModel::find_by_id(
-                            pool, title_id,
+                    // Auto-shelve if batch location is active and still exists
+                    let active_loc = SessionModel::get_active_location(pool, token)
+                        .await
+                        .unwrap_or(None);
+                    let shelved_path = if let Some(loc_id) = active_loc {
+                        // Validate location still exists (may have been deleted)
+                        // AND is not organizational (CR #280 — same
+                        // rule as the volume-edit form: a container
+                        // node cannot directly hold volumes; the
+                        // auto-shelve quietly skips in that case
+                        // rather than dropping a scan into a wrong
+                        // shelf).
+                        match crate::models::location::LocationModel::find_by_id(
+                            pool, loc_id,
                         )
                         .await?
-                        .map(|t| t.title)
-                        .unwrap_or_else(|| "?".to_string());
-                        let escaped_title = crate::utils::html_escape(&title_name);
-                        let escaped_code = crate::utils::html_escape(&code);
-                        let body_html = rust_i18n::t!(
-                            "feedback.volume_confirm.body",
-                            locale = loc,
-                            title = &escaped_title,
-                            count = &already_has.to_string()
-                        )
-                        .to_string();
-                        let inner_form_html = format!(
-                            r#"<input type="hidden" name="code" value="{escaped_code}"><input type="hidden" name="confirmed" value="true">"#
-                        );
-                        let modal = VolumeConfirmAddModalTemplate {
-                            title: rust_i18n::t!(
-                                "feedback.volume_confirm.title",
-                                locale = loc
-                            )
-                            .to_string(),
-                            body_html,
-                            confirm_label: rust_i18n::t!(
-                                "feedback.volume_confirm.confirm",
-                                locale = loc
-                            )
-                            .to_string(),
-                            cancel_label: rust_i18n::t!(
-                                "feedback.volume_confirm.cancel",
-                                locale = loc
-                            )
-                            .to_string(),
-                            csrf_token: session.csrf_token.clone(),
-                            inner_form_html,
-                        };
-                        let html = modal.render().map_err(|_| {
-                            AppError::Internal(
-                                "volume confirm modal render failed".to_string(),
-                            )
-                        })?;
-                        return Ok((
-                            axum::http::StatusCode::OK,
-                            [
-                                ("HX-Retarget", "#modal-slot"),
-                                ("HX-Reswap", "innerHTML"),
-                            ],
-                            Html(html),
-                        )
-                            .into_response());
-                    }
-                }
-
-                match VolumeService::create_volume(pool, &code, title_id, session.user_id).await {
-                    Ok(creation) => {
-                        // #442 — a reused label discards the previous copy's
-                        // data, so the librarian must be told in as many words.
-                        let reused_label =
-                            matches!(creation, crate::services::volume::VolumeCreation::ReusedLabel(_));
-                        let volume = creation.into_volume();
-                        if let Some(token) = &session.token {
-                            // Store last volume label for subsequent L-code scan
-                            if let Err(e) =
-                                SessionModel::set_last_volume_label(pool, token, &code).await
-                            {
-                                tracing::warn!(error = %e, "Failed to store last volume label in session");
+                        {
+                            Some(loc) if !loc.is_assignable() => {
+                                tracing::info!(
+                                    volume_label = %volume.label,
+                                    location_label = %loc.label,
+                                    "Active-scan auto-shelve skipped — location is organizational"
+                                );
+                                None
                             }
-
-                            // Auto-shelve if batch location is active and still exists
-                            let active_loc = SessionModel::get_active_location(pool, token)
-                                .await
-                                .unwrap_or(None);
-                            let shelved_path = if let Some(loc_id) = active_loc {
-                                // Validate location still exists (may have been deleted)
-                                // AND is not organizational (CR #280 — same
-                                // rule as the volume-edit form: a container
-                                // node cannot directly hold volumes; the
-                                // auto-shelve quietly skips in that case
-                                // rather than dropping a scan into a wrong
-                                // shelf).
-                                match crate::models::location::LocationModel::find_by_id(
-                                    pool, loc_id,
+                            Some(_) => {
+                                match VolumeModel::update_location(
+                                    pool,
+                                    volume.id,
+                                    Some(loc_id),
                                 )
-                                .await?
+                                .await
                                 {
-                                    Some(loc) if !loc.is_assignable() => {
-                                        tracing::info!(
-                                            volume_label = %volume.label,
-                                            location_label = %loc.label,
-                                            "Active-scan auto-shelve skipped — location is organizational"
+                                    Ok(()) => {
+                                        // polish-2 (#9): a freshly created
+                                        // volume was auto-shelved. Undo
+                                        // detaches it (prev location None);
+                                        // it never deletes the volume.
+                                        let action = UndoableAction::shelve_volume(
+                                            volume.id,
+                                            None,
+                                            None,
+                                            chrono::Utc::now().naive_utc(),
                                         );
+                                        if let Err(e) = SessionModel::set_last_undoable_action(pool, token, &action).await {
+                                            tracing::warn!(error = %e, "Failed to record undoable auto-shelve action");
+                                        }
+                                        let path = crate::models::location::LocationModel::get_path(pool, loc_id).await.unwrap_or_default();
+                                        Some(path)
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(error = %e, "Failed to auto-shelve volume at active location");
                                         None
                                     }
-                                    Some(_) => {
-                                        match VolumeModel::update_location(
-                                            pool,
-                                            volume.id,
-                                            Some(loc_id),
+                                }
+                            }
+                            None => {
+                                // Location was deleted — clear stale session
+                                let _ =
+                                    SessionModel::clear_active_location(pool, token).await;
+                                tracing::warn!(
+                                    loc_id = loc_id,
+                                    "Active location no longer exists, clearing"
+                                );
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
+                    // Increment session counter
+                    let counter = match SessionModel::increment_session_counter(pool, token)
+                        .await
+                    {
+                        Ok(c) => c,
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Failed to increment session counter");
+                            0
+                        }
+                    };
+
+                    let vol_count = VolumeModel::count_by_title(pool, title_id)
+                        .await
+                        .unwrap_or(0);
+                    let title =
+                        crate::models::title::TitleModel::find_by_id(pool, title_id)
+                            .await?
+                            .map(|t| (t.title.clone(), t.media_type.clone()))
+                            .unwrap_or_else(|| ("?".to_string(), "book".to_string()));
+
+                    let (message, suggestion) = if reused_label {
+                        // #442 — reuse takes precedence over the
+                        // shelved/not-shelved split: discarding the
+                        // previous copy's data is the thing the
+                        // librarian most needs to read.
+                        (
+                            rust_i18n::t!(
+                                "feedback.volume_label_reused", locale = loc,
+                                label = &volume.label,
+                                title = &title.0
+                            )
+                            .to_string(),
+                            String::new(),
+                        )
+                    } else if let Some(ref path) = shelved_path {
+                        (
+                            rust_i18n::t!(
+                                "feedback.volume_created_and_shelved", locale = loc,
+                                label = &volume.label,
+                                title = &title.0,
+                                path = &path
+                            )
+                            .to_string(),
+                            String::new(),
+                        )
+                    } else {
+                        (
+                            rust_i18n::t!(
+                                "feedback.volume_created", locale = loc,
+                                label = &volume.label,
+                                title = &title.0
+                            )
+                            .to_string(),
+                            rust_i18n::t!("feedback.volume_created_suggestion", locale = loc).to_string(),
+                        )
+                    };
+
+                    let guide_msg = if shelved_path.is_some() {
+                        rust_i18n::t!("guide.shelved", locale = loc).to_string()
+                    } else {
+                        rust_i18n::t!("guide.volume_ready", locale = loc, label = &volume.label)
+                            .to_string()
+                    };
+                    // polish-2 (#9): offer Undo only when the volume was
+                    // actually shelved (creation itself is not undoable).
+                    let main_feedback = if shelved_path.is_some() {
+                        let undo_label =
+                            rust_i18n::t!("feedback.undo_label", locale = loc).to_string();
+                        feedback_html_undoable(
+                            "success", &message, &suggestion, &undo_label,
+                        )
+                    } else {
+                        feedback_html("success", &message, &suggestion)
+                    };
+                    let resp = HtmxResponse {
+                        main: main_feedback,
+                        oob: vec![
+                            OobUpdate { swap_mode: Default::default(),
+                                target: "context-banner".to_string(),
+                                content: {
+                                    let author =
+                                        TitleContributorModel::get_primary_contributor(
+                                            pool, title_id,
                                         )
                                         .await
-                                        {
-                                            Ok(()) => {
-                                                // polish-2 (#9): a freshly created
-                                                // volume was auto-shelved. Undo
-                                                // detaches it (prev location None);
-                                                // it never deletes the volume.
-                                                let action = UndoableAction::shelve_volume(
-                                                    volume.id,
-                                                    None,
-                                                    None,
-                                                    chrono::Utc::now().naive_utc(),
-                                                );
-                                                if let Err(e) = SessionModel::set_last_undoable_action(pool, token, &action).await {
-                                                    tracing::warn!(error = %e, "Failed to record undoable auto-shelve action");
-                                                }
-                                                let path = crate::models::location::LocationModel::get_path(pool, loc_id).await.unwrap_or_default();
-                                                Some(path)
-                                            }
-                                            Err(e) => {
-                                                tracing::warn!(error = %e, "Failed to auto-shelve volume at active location");
-                                                None
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        // Location was deleted — clear stale session
-                                        let _ =
-                                            SessionModel::clear_active_location(pool, token).await;
-                                        tracing::warn!(
-                                            loc_id = loc_id,
-                                            "Active location no longer exists, clearing"
-                                        );
-                                        None
-                                    }
-                                }
-                            } else {
-                                None
-                            };
-
-                            // Increment session counter
-                            let counter = match SessionModel::increment_session_counter(pool, token)
-                                .await
-                            {
-                                Ok(c) => c,
-                                Err(e) => {
-                                    tracing::warn!(error = %e, "Failed to increment session counter");
-                                    0
-                                }
-                            };
-
-                            let vol_count = VolumeModel::count_by_title(pool, title_id)
-                                .await
-                                .unwrap_or(0);
-                            let title =
-                                crate::models::title::TitleModel::find_by_id(pool, title_id)
-                                    .await?
-                                    .map(|t| (t.title.clone(), t.media_type.clone()))
-                                    .unwrap_or_else(|| ("?".to_string(), "book".to_string()));
-
-                            let (message, suggestion) = if reused_label {
-                                // #442 — reuse takes precedence over the
-                                // shelved/not-shelved split: discarding the
-                                // previous copy's data is the thing the
-                                // librarian most needs to read.
-                                (
-                                    rust_i18n::t!(
-                                        "feedback.volume_label_reused",
-                                        label = &volume.label,
-                                        title = &title.0
+                                        .unwrap_or(None);
+                                    context_banner_html(
+                                        &title.0,
+                                        &title.1,
+                                        vol_count,
+                                        author.as_deref(),
                                     )
-                                    .to_string(),
-                                    String::new(),
-                                )
-                            } else if let Some(ref path) = shelved_path {
-                                (
-                                    rust_i18n::t!(
-                                        "feedback.volume_created_and_shelved",
-                                        label = &volume.label,
-                                        title = &title.0,
-                                        path = &path
-                                    )
-                                    .to_string(),
-                                    String::new(),
-                                )
-                            } else {
-                                (
-                                    rust_i18n::t!(
-                                        "feedback.volume_created",
-                                        label = &volume.label,
-                                        title = &title.0
-                                    )
-                                    .to_string(),
-                                    rust_i18n::t!("feedback.volume_created_suggestion").to_string(),
-                                )
-                            };
-
-                            let guide_msg = if shelved_path.is_some() {
-                                rust_i18n::t!("guide.shelved").to_string()
-                            } else {
-                                rust_i18n::t!("guide.volume_ready", label = &volume.label)
-                                    .to_string()
-                            };
-                            // polish-2 (#9): offer Undo only when the volume was
-                            // actually shelved (creation itself is not undoable).
-                            let main_feedback = if shelved_path.is_some() {
-                                let undo_label =
-                                    rust_i18n::t!("feedback.undo_label").to_string();
-                                feedback_html_undoable(
-                                    "success", &message, &suggestion, &undo_label,
-                                )
-                            } else {
-                                feedback_html("success", &message, &suggestion)
-                            };
-                            let resp = HtmxResponse {
-                                main: main_feedback,
-                                oob: vec![
-                                    OobUpdate { swap_mode: Default::default(),
-                                        target: "context-banner".to_string(),
-                                        content: {
-                                            let author =
-                                                TitleContributorModel::get_primary_contributor(
-                                                    pool, title_id,
-                                                )
-                                                .await
-                                                .unwrap_or(None);
-                                            context_banner_html(
-                                                &title.0,
-                                                &title.1,
-                                                vol_count,
-                                                author.as_deref(),
-                                            )
-                                        },
-                                    },
-                                    OobUpdate { swap_mode: Default::default(),
-                                        target: "session-counter".to_string(),
-                                        content: session_counter_html(counter),
-                                    },
-                                    OobUpdate { swap_mode: Default::default(),
-                                        target: "guide-strip".to_string(),
-                                        content: guide_strip_html(&guide_msg),
-                                    },
-                                ],
-                            };
-                            // CR #300: when the create was confirmed via the
-                            // phantom-volume modal, close the modal on success.
-                            return Ok(if form.confirmed {
-                                resp.into_response_with_hx_trigger("modal-close")
-                            } else {
-                                resp.into_response()
-                            });
-                        }
-                        // Unreachable: session.token is always present for authenticated users
-                        // (require_role(Librarian) already validated the session)
-                        let message = rust_i18n::t!(
-                            "feedback.volume_created",
-                            label = &volume.label,
-                            title = "?"
-                        )
-                        .to_string();
-                        Ok(Html(feedback_html("success", &message, "")).into_response())
-                    }
-                    Err(e) => {
-                        // #585 — a refusal of the librarian's input is not a
-                        // server fault: warn, keep `error` for the rest.
-                        if matches!(e, AppError::BadRequest(_) | AppError::Conflict(_)) {
-                            tracing::warn!(error = %e, code = %code, "V-code scan refused");
-                        } else {
-                            tracing::error!(error = %e, code = %code, "V-code scan failed");
-                        }
-                        let (level, message) = match &e {
-                            AppError::BadRequest(msg) => ("error", msg.clone()),
-                            // Already user-facing copy (e.g. volume_label_race).
-                            AppError::Conflict(msg) => ("warning", msg.clone()),
-                            // #441 — defence in depth. The guard above catches
-                            // the deleted-active-title case before we get here,
-                            // but if a title is deleted between that check and
-                            // the INSERT, the librarian must still be told the
-                            // item is gone rather than that something unnamed
-                            // is "introuvable".
-                            AppError::NotFound(_) => (
-                                "warning",
-                                rust_i18n::t!("feedback.volume_no_title").to_string(),
-                            ),
-                            _ => ("error", rust_i18n::t!("error.internal").to_string()),
-                        };
-                        Ok(Html(feedback_html(level, &message, "")).into_response())
-                    }
+                                },
+                            },
+                            OobUpdate { swap_mode: Default::default(),
+                                target: "session-counter".to_string(),
+                                content: session_counter_html(counter),
+                            },
+                            OobUpdate { swap_mode: Default::default(),
+                                target: "guide-strip".to_string(),
+                                content: guide_strip_html(&guide_msg),
+                            },
+                        ],
+                    };
+                    // CR #300: when the create was confirmed via the
+                    // phantom-volume modal, close the modal on success.
+                    return Ok(if form.confirmed {
+                        resp.into_response_with_hx_trigger("modal-close")
+                    } else {
+                        resp.into_response()
+                    });
                 }
+                // Unreachable: session.token is always present for authenticated users
+                // (require_role(Librarian) already validated the session)
+                let message = rust_i18n::t!(
+                    "feedback.volume_created", locale = loc,
+                    label = &volume.label,
+                    title = "?"
+                )
+                .to_string();
+                Ok(Html(feedback_html("success", &message, "")).into_response())
             }
             "lcode" => {
                 // Check if L-code exists in DB first
@@ -1264,7 +1179,7 @@ pub async fn handle_scan(
             }
             _ => {
                 // unknown → amber warning
-                let message = rust_i18n::t!("feedback.code_unsupported").to_string();
+                let message = rust_i18n::t!("feedback.code_unsupported", locale = loc).to_string();
                 Ok(Html(feedback_html("warning", &message, "")).into_response())
             }
         }
