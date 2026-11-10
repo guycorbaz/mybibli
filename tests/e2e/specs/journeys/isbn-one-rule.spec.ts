@@ -7,7 +7,7 @@
  * of creating a duplicate. An ISBN with a wrong check digit is refused with
  * the field hint and nothing is created.
  *
- * Data: ISBNs from `specIsbn("IR", random seq)`, the title names carry the
+ * Data: ISBNs from `specIsbn("IR", clock-based seq)`, the title names carry the
  * spec id; assertions only on this spec's rows (Rule #23).
  */
 import { test, expect, type Page } from "@playwright/test";
@@ -15,8 +15,12 @@ import { loginAs } from "../../helpers/auth";
 import { specIsbn, specIsbn10 } from "../../helpers/isbn";
 import { simulateScan } from "../../helpers/scanner";
 
-function seq(): number {
-  return 1000 + Math.floor(Math.random() * 98000);
+// Review round 1: manual creation refuses an ISBN another title holds, so
+// a rerun on a database that was not reset must not draw a used ISBN. The
+// sequence follows the clock (one value per 10 ms, cycling every ~5 min,
+// far longer than a run) and each test takes its own slot.
+function seq(slot: number): number {
+  return 1000 + (Math.floor(Date.now() / 10) % 32000) * 3 + slot;
 }
 
 function hyphenated(isbn13: string): string {
@@ -53,7 +57,7 @@ test.describe("Story 17-3 — one ISBN rule", () => {
     await loginAs(page, "librarian");
     await page.goto("/catalog");
 
-    const isbn13 = specIsbn("IR", seq());
+    const isbn13 = specIsbn("IR", seq(0));
     const name = `ISBN typed by hand IR ${Date.now()}`;
     const form = await openTitleForm(page, name, hyphenated(isbn13));
     await expect(
@@ -68,7 +72,7 @@ test.describe("Story 17-3 — one ISBN rule", () => {
     await loginAs(page, "librarian");
     await page.goto("/catalog");
 
-    const { isbn10, isbn13 } = specIsbn10("IR", seq());
+    const { isbn10, isbn13 } = specIsbn10("IR", seq(1));
     const name = `ISBN-10 by hand IR ${Date.now()}`;
     await openTitleForm(page, name, `ISBN ${isbn10.slice(0, 1)}-${isbn10.slice(1, 4)}-${isbn10.slice(4, 9)}-${isbn10.slice(9)}`);
     await expect(
@@ -82,7 +86,7 @@ test.describe("Story 17-3 — one ISBN rule", () => {
     await loginAs(page, "librarian");
     await page.goto("/catalog");
 
-    const isbn13 = specIsbn("IR", seq());
+    const isbn13 = specIsbn("IR", seq(2));
     const wrong = isbn13.slice(0, 12) + ((Number(isbn13[12]) + 1) % 10).toString();
     const name = `Wrong check digit IR ${Date.now()}`;
     const form = await openTitleForm(page, name, hyphenated(wrong));

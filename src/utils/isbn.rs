@@ -111,8 +111,9 @@ pub fn normalize_isbn_input(input: &str) -> Result<Option<String>, IsbnError> {
 
 /// What the scan and the search look an input up by: its canonical
 /// ISBN-13 when it is an ISBN, otherwise the separator compaction of
-/// [`compact_isbn`] (an ISBN-shaped value with a wrong check digit still
-/// reaches the scan's checksum refusal; text stays text).
+/// [`compact_isbn`] (an unprefixed ISBN-shaped value with a wrong check
+/// digit still reaches the scan's checksum refusal; a prefixed one stays as
+/// typed, like any text).
 pub fn isbn_lookup_form(input: &str) -> String {
     parse_isbn(input).unwrap_or_else(|_| compact_isbn(input))
 }

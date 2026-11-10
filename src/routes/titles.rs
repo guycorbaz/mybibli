@@ -754,22 +754,19 @@ pub async fn update_title(
     let dewey_code = non_empty(&form.dewey_code);
     let age_rating = non_empty(&form.age_rating);
 
-    // CR #272 — identifier edit path. Story 17-3 (#565): the ISBN goes
+    // CR #272 — identifier edit path. Story 17-3 (#565): a typed ISBN goes
     // through the one rule (separators, `ISBN` prefix, ISBN-10 → ISBN-13,
     // check digit); empty → None ("clear the column"). A stored value sent
-    // back unchanged round-trips even when it is no ISBN — fixing it is
-    // what the librarian is here for.
-    let isbn = match crate::utils::normalize_isbn_input(form.isbn.as_deref().unwrap_or("")) {
-        Ok(isbn) => isbn,
-        Err(e) => {
-            let typed = form.isbn.as_deref().and_then(crate::utils::identifier_without_separators);
-            let stored = old_title.isbn.as_deref().and_then(crate::utils::identifier_without_separators);
-            if typed.is_some() && typed == stored {
-                old_title.isbn.clone()
-            } else {
-                return Err(AppError::BadRequest(e.message(loc)));
-            }
-        }
+    // back unchanged (separators aside) round-trips as stored, whether or
+    // not it is an ISBN — fixing it is the librarian's call, and a title
+    // the boot repair left alone (collision, #591) stays editable.
+    let typed = form.isbn.as_deref().and_then(crate::utils::identifier_without_separators);
+    let stored = old_title.isbn.as_deref().and_then(crate::utils::identifier_without_separators);
+    let isbn = if typed.is_some() && typed == stored {
+        old_title.isbn.clone()
+    } else {
+        crate::utils::normalize_isbn_input(form.isbn.as_deref().unwrap_or(""))
+            .map_err(|e| AppError::BadRequest(e.message(loc)))?
     };
     let issn = non_empty(&form.issn).map(|s| s.replace('-', ""));
     let upc = form.upc.as_deref().and_then(crate::utils::identifier_without_separators);

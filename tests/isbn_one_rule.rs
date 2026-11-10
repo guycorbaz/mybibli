@@ -162,6 +162,51 @@ async fn a_stored_value_that_is_no_isbn_round_trips_unchanged(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn a_title_left_by_a_repair_collision_stays_editable(pool: DbPool) {
+    // Review round 1: the stored value is a valid ISBN-10 whose ISBN-13
+    // another title holds; saving the form untouched must not hit the
+    // duplicate guard.
+    let (app, b) = admin(&pool).await;
+    let holder = seed_title(&pool, "Holder").await;
+    sqlx::query("UPDATE titles SET isbn = '9782205001211' WHERE id = ?")
+        .bind(holder)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let left = seed_title(&pool, "Left").await;
+    sqlx::query("UPDATE titles SET isbn = '2-205-00121-3' WHERE id = ?")
+        .bind(left)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (status, body) = edit_isbn(&app, &b, &pool, left, "2-205-00121-3").await;
+    assert!(status.is_success(), "{status}: {body}");
+    assert_eq!(stored_isbn(&pool, left).await.as_deref(), Some("2-205-00121-3"));
+
+    // Typed anew in another spelling, it is the holder's ISBN: refused.
+    let (status, body) = edit_isbn(&app, &b, &pool, left, "978-2-205-00121-1").await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_volume_move_picker_finds_a_title_by_isbn10(pool: DbPool) {
+    let target = seed_title(&pool, "Target").await;
+    sqlx::query("UPDATE titles SET isbn = '9782205001211' WHERE id = ?")
+        .bind(target)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let source = seed_title(&pool, "Source").await;
+    for query in ["2-205-00121-3", "ISBN 2205001213"] {
+        let found = mybibli::models::volume_move::search_candidates(&pool, query, source)
+            .await
+            .unwrap();
+        assert_eq!(found.first().map(|c| c.id), Some(target), "{query}");
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn the_wish_list_takes_a_hyphenated_isbn(pool: DbPool) {
     let (app, b) = admin(&pool).await;
 
@@ -221,11 +266,11 @@ async fn the_repair_rewrites_positive_shapes_once_without_bumping_version(pool: 
     // store (`maxlength="13"`).
     let hyphen = title_with(&pool, "Hyphen", "2-205-00121-3").await;
     let ten = title_with(&pool, "Ten", "080442957x").await;
-    let prefixed = title_with(&pool, "Spaced", "0 201 63361 2").await;
+    let spaced = title_with(&pool, "Spaced", "0 201 63361 2").await;
     let bad = title_with(&pool, "Bad", "9782070360247").await;
     let ean = title_with(&pool, "Ean", "4006381333931").await;
     let canonical = title_with(&pool, "Canonical", "9782070360246").await;
-    let gone = title_with(&pool, "Gone", "2-07-036024-5").await;
+    let gone = title_with(&pool, "Gone", "2-205-01150-2").await;
     sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
         .bind(gone)
         .execute(&pool)
@@ -235,21 +280,23 @@ async fn the_repair_rewrites_positive_shapes_once_without_bumping_version(pool: 
 
     let report = repair_stored_isbns_once(&pool).await.unwrap().expect("first run");
 
-    assert_eq!(report.rewritten, 3);
+    assert_eq!((report.rewritten, report.rewritten_trashed), (4, 1));
     assert_eq!((report.canonical, report.not_isbn, report.collided), (1, 2, 0));
     assert_eq!(stored_isbn(&pool, hyphen).await.as_deref(), Some("9782205001211"));
     assert_eq!(stored_isbn(&pool, ten).await.as_deref(), Some("9780804429573"));
-    assert_eq!(stored_isbn(&pool, prefixed).await.as_deref(), Some("9780201633610"));
+    assert_eq!(stored_isbn(&pool, spaced).await.as_deref(), Some("9780201633610"));
     assert_eq!(stored_isbn(&pool, bad).await.as_deref(), Some("9782070360247"));
     assert_eq!(stored_isbn(&pool, ean).await.as_deref(), Some("4006381333931"));
     assert_eq!(stored_isbn(&pool, canonical).await.as_deref(), Some("9782070360246"));
-    assert_eq!(stored_isbn(&pool, gone).await.as_deref(), Some("2-07-036024-5"), "trash untouched");
+    // Coordinator decision (2026-11-10): the Trash is repaired too, so a
+    // restore never brings the old form back.
+    assert_eq!(stored_isbn(&pool, gone).await.as_deref(), Some("9782205011500"), "trash repaired");
     assert_eq!(version_and_updated(&pool, hyphen).await, before, "non-edit write");
 
     // Once per database: a value stored as typed afterwards is not rewritten.
-    let later = title_with(&pool, "Later", "2-205-01150-2").await;
+    let later = title_with(&pool, "Later", "2-205-00121-3").await;
     assert_eq!(repair_stored_isbns_once(&pool).await.unwrap(), None);
-    assert_eq!(stored_isbn(&pool, later).await.as_deref(), Some("2-205-01150-2"));
+    assert_eq!(stored_isbn(&pool, later).await.as_deref(), Some("2-205-00121-3"));
     let marked: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM data_repairs WHERE name = ?")
         .bind(STORED_ISBN_REPAIR)
         .fetch_one(&pool)
@@ -264,10 +311,20 @@ async fn titles_that_would_collide_are_left_untouched(pool: DbPool) {
     let b = title_with(&pool, "B", "2-205-00121-3").await;
     let c = title_with(&pool, "C", "2-205-01150-2").await;
     let d = title_with(&pool, "D", "2205011502").await;
+    // A trashed holder collides too (a restore would make a duplicate).
+    let e = title_with(&pool, "E", "0-201-63361-2").await;
+    let f = title_with(&pool, "F", "9780201633610").await;
+    sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+        .bind(f)
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let report = repair_stored_isbns_once(&pool).await.unwrap().expect("first run");
 
-    assert_eq!((report.rewritten, report.collided), (0, 4));
+    assert_eq!((report.rewritten, report.collided), (0, 6));
+    assert_eq!(stored_isbn(&pool, e).await.as_deref(), Some("0-201-63361-2"));
+    assert_eq!(stored_isbn(&pool, f).await.as_deref(), Some("9780201633610"));
     assert_eq!(stored_isbn(&pool, a).await.as_deref(), Some("9782205001211"));
     assert_eq!(stored_isbn(&pool, b).await.as_deref(), Some("2-205-00121-3"));
     assert_eq!(stored_isbn(&pool, c).await.as_deref(), Some("2-205-01150-2"));

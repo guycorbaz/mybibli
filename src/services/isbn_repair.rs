@@ -4,18 +4,25 @@
 //! separators, an `ISBN` prefix or as an ISBN-10), so a later scan of the
 //! bare ISBN-13 missed the title and created a duplicate. Every form now
 //! goes through the one rule (`utils::parse_isbn`); this repair applies it
-//! once per database to the live titles already stored
+//! once per database to the titles already stored — **titles in the Trash
+//! included** (coordinator decision, 2026-11-10), so a later restore never
+//! brings back the old form
 //! ([`repair_stored_isbns_once`], from `main.rs`, under a `data_repairs`
 //! marker):
 //!
 //! - positive shapes only (Rule #20): a stored value is rewritten only when
 //!   `parse_isbn` accepts it and its ISBN-13 differs; anything else
 //!   (another EAN, a wrong check digit, text) is left as is;
-//! - two or more live titles that would carry the same ISBN-13 after the
-//!   repair are all left untouched and logged (no merge, see #591);
+//! - two or more titles (live or trashed) that would carry the same ISBN-13
+//!   after the repair are all left untouched (no merge, see #591);
 //! - a **non-edit write** guarded by `version` and the old value, `version`
 //!   not bumped (#521, story 13-4); the pending metadata / cover items'
 //!   `identity.isbn` follows, so the repair outdates no proposal.
+//!
+//! The first boot is auditable from the logs (Rule #20 mitigation, the
+//! production export being unavailable): one `info` line per rewritten
+//! title (id, old value, new value), one `warn` per title left untouched
+//! by a collision, one `info` summary.
 //!
 //! [`plan_isbn_repair`] is the pure classification, also run over a
 //! production export by the ignored test `production_corpus`.
@@ -26,7 +33,7 @@ use sqlx::MySqlConnection;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::isbn_repair::{list_live_isbns, set_canonical_isbn};
+use crate::models::isbn_repair::{list_isbns, set_canonical_isbn};
 use crate::models::proposal::ProposalModel;
 use crate::services::data_repairs;
 
@@ -60,7 +67,8 @@ pub struct IsbnRepairPlan {
     pub not_isbn: Vec<(u64, String)>,
 }
 
-/// Classify the stored ISBNs `(title id, value)` of the live titles.
+/// Classify the stored ISBNs `(title id, value)` of the titles, live and
+/// trashed alike.
 pub fn plan_isbn_repair<'a>(rows: impl IntoIterator<Item = (u64, &'a str)>) -> IsbnRepairPlan {
     let mut plan = IsbnRepairPlan::default();
     let mut groups: BTreeMap<String, Vec<(u64, &str)>> = BTreeMap::new();
@@ -94,6 +102,8 @@ pub fn plan_isbn_repair<'a>(rows: impl IntoIterator<Item = (u64, &'a str)>) -> I
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IsbnRepairReport {
     pub rewritten: usize,
+    /// Of which titles in the Trash.
+    pub rewritten_trashed: usize,
     /// Titles left untouched because they would collide.
     pub collided: usize,
     pub canonical: usize,
@@ -111,6 +121,7 @@ pub async fn repair_stored_isbns_once(pool: &DbPool) -> Result<Option<IsbnRepair
             let report = repair_in(conn).await?;
             tracing::info!(
                 rewritten = report.rewritten,
+                rewritten_trashed = report.rewritten_trashed,
                 skipped_collision = report.collided,
                 skipped_canonical = report.canonical,
                 skipped_not_isbn = report.not_isbn,
@@ -127,8 +138,9 @@ pub async fn repair_stored_isbns_once(pool: &DbPool) -> Result<Option<IsbnRepair
 /// The transactional part (pub for the DB integration tests, which run it
 /// without the marker).
 pub async fn repair_in(conn: &mut MySqlConnection) -> Result<IsbnRepairReport, AppError> {
-    let stored = list_live_isbns(conn).await?;
-    let versions: BTreeMap<u64, i32> = stored.iter().map(|s| (s.id, s.version)).collect();
+    let stored = list_isbns(conn).await?;
+    let rows: BTreeMap<u64, (i32, bool)> =
+        stored.iter().map(|s| (s.id, (s.version, s.deleted))).collect();
     let plan = plan_isbn_repair(stored.iter().map(|s| (s.id, s.isbn.as_str())));
     let mut report = IsbnRepairReport {
         canonical: plan.canonical,
@@ -137,21 +149,28 @@ pub async fn repair_in(conn: &mut MySqlConnection) -> Result<IsbnRepairReport, A
     };
     for collision in &plan.collisions {
         report.collided += collision.titles.len();
-        let ids: Vec<u64> = collision.titles.iter().map(|(id, _)| *id).collect();
-        let values: Vec<&str> = collision.titles.iter().map(|(_, v)| v.as_str()).collect();
-        tracing::warn!(
-            isbn = %collision.isbn13,
-            title_ids = ?ids,
-            stored = ?values,
-            "Stored ISBN: these titles would carry the same ISBN; left unchanged (see #591)"
-        );
+        for (id, stored) in &collision.titles {
+            let others: Vec<u64> =
+                collision.titles.iter().map(|(o, _)| *o).filter(|o| o != id).collect();
+            tracing::warn!(
+                title_id = id,
+                stored = %stored,
+                isbn = %collision.isbn13,
+                trashed = rows[id].1,
+                colliding_title_ids = ?others,
+                "Stored ISBN: another title would carry the same ISBN; left unchanged (see #591)"
+            );
+        }
     }
     for rewrite in &plan.rewrites {
-        let version = versions[&rewrite.title_id];
+        let (version, trashed) = rows[&rewrite.title_id];
         if !set_canonical_isbn(conn, rewrite.title_id, version, &rewrite.old, &rewrite.new).await? {
             report.superseded += 1;
             tracing::info!(
                 title_id = rewrite.title_id,
+                old = %rewrite.old,
+                isbn = %rewrite.new,
+                trashed,
                 "Stored ISBN: title changed meanwhile; left unchanged"
             );
             continue;
@@ -160,10 +179,12 @@ pub async fn repair_in(conn: &mut MySqlConnection) -> Result<IsbnRepairReport, A
         report.items_carried +=
             ProposalModel::carry_identity_isbn(conn, rewrite.title_id, &rewrite.old, &rewrite.new)
                 .await?;
+        report.rewritten_trashed += usize::from(trashed);
         tracing::info!(
             title_id = rewrite.title_id,
             old = %rewrite.old,
             isbn = %rewrite.new,
+            trashed,
             "Stored ISBN rewritten to its ISBN-13"
         );
     }
@@ -249,34 +270,38 @@ mod tests {
     }
 
     /// Story 17-3 (Rule #20) — run the classification over a production
-    /// export before review: `MYBIBLI_ISBN_CORPUS=/path/to/export.csv
-    /// cargo test --lib production_corpus -- --ignored --nocapture`. The
-    /// CSV has a header and the columns `id, isbn, deleted` (`deleted`:
-    /// 1 / true for a soft-deleted title, which the repair never touches).
-    /// Never commit the export.
+    /// export: `MYBIBLI_ISBN_CORPUS=/path/to/export.csv cargo test --lib
+    /// production_corpus -- --ignored --nocapture`. The CSV has a header and
+    /// the columns `id, isbn, deleted` (`deleted`: 1 / true for a title in
+    /// the Trash, which the repair covers too). Never commit the export.
+    /// Kept for later use: on 2026-11-10 the project lead had no export and
+    /// replaced this step by the production-log analysis (story file).
     #[test]
     #[ignore]
     fn production_corpus() {
         let path = std::env::var("MYBIBLI_ISBN_CORPUS").expect("MYBIBLI_ISBN_CORPUS");
         let text = std::fs::read_to_string(&path).expect("read corpus");
-        let mut live = Vec::new();
-        let mut deleted = Vec::new();
+        let mut rows = Vec::new();
+        let mut trashed = std::collections::BTreeSet::new();
         for line in text.lines().skip(1).filter(|l| !l.trim().is_empty()) {
             let cols: Vec<&str> = line.split(',').map(|c| c.trim().trim_matches('"')).collect();
             let id: u64 = cols[0].parse().expect("id");
             let isbn = cols.get(1).copied().unwrap_or("");
-            let is_deleted = matches!(cols.get(2).copied(), Some("1" | "true" | "TRUE"));
             if isbn.is_empty() || isbn.eq_ignore_ascii_case("null") || isbn == "\\N" {
                 continue;
             }
-            if is_deleted { deleted.push((id, isbn.to_string())) } else { live.push((id, isbn.to_string())) }
+            if matches!(cols.get(2).copied(), Some("1" | "true" | "TRUE")) {
+                trashed.insert(id);
+            }
+            rows.push((id, isbn.to_string()));
         }
-        let plan = plan_isbn_repair(live.iter().map(|(id, v)| (*id, v.as_str())));
-        println!("live titles with an ISBN: {}", live.len());
+        let mark = |id: &u64| if trashed.contains(id) { " (trash)" } else { "" };
+        let plan = plan_isbn_repair(rows.iter().map(|(id, v)| (*id, v.as_str())));
+        println!("titles with an ISBN: {} (of which in the Trash: {})", rows.len(), trashed.len());
         println!("canonical (unchanged): {}", plan.canonical);
         println!("rewrites: {}", plan.rewrites.len());
         for r in &plan.rewrites {
-            println!("  REWRITE title {}: {:?} -> {}", r.title_id, r.old, r.new);
+            println!("  REWRITE title {}{}: {:?} -> {}", r.title_id, mark(&r.title_id), r.old, r.new);
         }
         println!("collisions (left untouched): {}", plan.collisions.len());
         for c in &plan.collisions {
@@ -284,16 +309,7 @@ mod tests {
         }
         println!("not an ISBN (left untouched): {}", plan.not_isbn.len());
         for (id, v) in &plan.not_isbn {
-            println!("  LEFT title {id}: {v:?}");
-        }
-        let deleted_plan = plan_isbn_repair(deleted.iter().map(|(id, v)| (*id, v.as_str())));
-        println!(
-            "soft-deleted titles with an ISBN (never touched): {} — {} would be rewritten if live",
-            deleted.len(),
-            deleted_plan.rewrites.len()
-        );
-        for r in &deleted_plan.rewrites {
-            println!("  DELETED title {}: {:?} -> {}", r.title_id, r.old, r.new);
+            println!("  LEFT title {id}{}: {v:?}", mark(id));
         }
     }
 }
