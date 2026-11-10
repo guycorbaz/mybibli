@@ -464,27 +464,20 @@ impl ExpectedTomeModel {
             .map_err(AppError::Database)
     }
 
-    /// Live titles whose stored ISBN, once hyphens and spaces are
-    /// removed, is one of `forms` (the ISBN-13 and, for a 978 code, its
-    /// ISBN-10 — the manual form stores what was typed), by id.
-    pub async fn live_titles_with_isbn_in(
+    /// Live titles whose stored ISBN is `isbn13`, by id. Story 17-3
+    /// (#565): every writer stores the ISBN-13 of the one rule and the boot
+    /// repair rewrote older values, so no separator or ISBN-10 form is
+    /// compared here.
+    pub async fn live_titles_with_isbn(
         conn: &mut MySqlConnection,
-        forms: &[String],
+        isbn13: &str,
     ) -> Result<Vec<u64>, AppError> {
-        if forms.is_empty() {
-            return Ok(Vec::new());
-        }
-        let marks = vec!["?"; forms.len()].join(", ");
-        let sql = format!(
-            "SELECT id FROM titles WHERE deleted_at IS NULL \
-               AND UPPER(REPLACE(REPLACE(isbn, '-', ''), ' ', '')) IN ({marks}) \
-             ORDER BY id ASC"
-        );
-        let mut q = sqlx::query_scalar(&sql);
-        for f in forms {
-            q = q.bind(f);
-        }
-        let ids: Vec<u64> = q.fetch_all(&mut *conn).await?;
+        let ids: Vec<u64> = sqlx::query_scalar(
+            "SELECT id FROM titles WHERE deleted_at IS NULL AND isbn = ? ORDER BY id ASC",
+        )
+        .bind(isbn13)
+        .fetch_all(&mut *conn)
+        .await?;
         Ok(ids)
     }
 

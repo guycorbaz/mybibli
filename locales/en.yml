@@ -22,7 +22,6 @@ wishlist:
   notes_placeholder: "e.g. hardback only, second-hand OK"
   lookup_button: "Look up"
   confirm_add: "Add to wish list"
-  isbn_invalid: "Invalid ISBN — must be 13 digits with a valid check digit."
   title_required: "Title is required."
   resolved_intro: "Found this on the metadata providers:"
   no_metadata: "No metadata found for this ISBN. Switch to free-form mode to add the book manually."
@@ -458,8 +457,8 @@ error:
     creation_failed: "We couldn't create the title. Please try again; if it keeps happening, contact your administrator."
     required: Title is required
   isbn:
-    invalid_checksum: Invalid ISBN checksum
-    invalid_format: "Invalid ISBN format — must be 13 digits"
+    invalid_checksum: "Invalid ISBN: the check digit does not match — check for a typo"
+    invalid_format: "Not an ISBN — expected 10 or 13 digits, e.g. 978-2-07-036024-6"
     already_used: "Another title already uses this ISBN — refusing to create a duplicate"
     not_found: ISBN not found
   upc:

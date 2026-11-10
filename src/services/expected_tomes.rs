@@ -24,7 +24,6 @@ use crate::models::expected_tome::{
     SeriesShape,
 };
 use crate::models::series::{SeriesType, TitleSeriesModel};
-use crate::services::title::TitleService;
 
 /// At most this many characters in a tome title (the `titles.title`
 /// width, so a settled tome's title always fits a title row).
@@ -234,58 +233,14 @@ impl ExpectedTomeError {
 }
 
 /// Normalise an ISBN given for an expected tome (pure — unit tested):
-/// separators removed (`utils::strip_isbn_separators`, story 12-1); empty → `None`; a valid ISBN-10
-/// becomes its ISBN-13 (story 11-1 helper); an ISBN-13 must start with
-/// 978 / 979 (a book EAN — the only codes `/catalog/scan` treats as
-/// ISBNs) and pass its checksum; anything else is refused.
+/// the one ISBN rule (`utils::normalize_isbn_input`, story 17-3 — separators
+/// and an `ISBN` prefix removed, ISBN-10 → ISBN-13, 978 / 979 with a valid
+/// check digit); empty → `None`; anything else is refused.
 pub fn normalize_isbn(raw: Option<&str>) -> Result<Option<String>, ExpectedTomeError> {
     let Some(raw) = raw else { return Ok(None) };
-    let compact = crate::utils::strip_isbn_separators(raw);
-    if compact.is_empty() {
-        return Ok(None);
-    }
-    if let Some(isbn13) = crate::utils::isbn10_to_isbn13(&compact) {
-        return Ok(Some(isbn13));
-    }
-    if (compact.starts_with("978") || compact.starts_with("979"))
-        && TitleService::validate_isbn13_checksum(&compact)
-    {
-        return Ok(Some(compact));
-    }
-    Err(ExpectedTomeError::InvalidIsbn {
+    crate::utils::normalize_isbn_input(raw).map_err(|_| ExpectedTomeError::InvalidIsbn {
         value: raw.trim().chars().take(40).collect(),
     })
-}
-
-/// The ISBN-10 of a 978 ISBN-13 (pure — unit tested); `None` for a 979
-/// code (no ISBN-10 exists) or a malformed value.
-pub fn isbn13_to_isbn10(isbn13: &str) -> Option<String> {
-    if isbn13.len() != 13
-        || !isbn13.starts_with("978")
-        || !isbn13.bytes().all(|b| b.is_ascii_digit())
-    {
-        return None;
-    }
-    let body = &isbn13[3..12];
-    let sum: u32 = body
-        .bytes()
-        .enumerate()
-        .map(|(i, b)| u32::from(b - b'0') * (10 - i as u32))
-        .sum();
-    let check = (11 - sum % 11) % 11;
-    let check = if check == 10 {
-        'X'
-    } else {
-        char::from(b'0' + check as u8)
-    };
-    Some(format!("{body}{check}"))
-}
-
-/// The stored forms a title may carry for this ISBN-13.
-fn stored_forms(isbn13: &str) -> Vec<String> {
-    let mut forms = vec![isbn13.to_string()];
-    forms.extend(isbn13_to_isbn10(isbn13));
-    forms
 }
 
 /// Whether a stored title ISBN is this ISBN-13 (any accepted spelling).
@@ -534,7 +489,7 @@ impl ExpectedTomeService {
         position: i32,
         isbn: &str,
     ) -> Result<Option<(u64, i32)>, AppError> {
-        let owners = ExpectedTomeModel::live_titles_with_isbn_in(conn, &stored_forms(isbn)).await?;
+        let owners = ExpectedTomeModel::live_titles_with_isbn(conn, isbn).await?;
         let mut elsewhere = None;
         for &owner in &owners {
             let held = ExpectedTomeModel::title_positions_in(conn, owner, series_id).await?;
@@ -739,7 +694,7 @@ impl ExpectedTomeService {
         attach: bool,
     ) -> Result<(), ExpectedTomeError> {
         let Some(isbn) = isbn else { return Ok(()) };
-        let owners = ExpectedTomeModel::live_titles_with_isbn_in(conn, &stored_forms(isbn)).await?;
+        let owners = ExpectedTomeModel::live_titles_with_isbn(conn, isbn).await?;
         // Prefer an owner already holding the position (several titles
         // may share an ISBN), else the first by id.
         let mut chosen = owners.first().copied();
@@ -940,18 +895,9 @@ mod tests {
     }
 
     #[test]
-    fn isbn13_to_isbn10_inverts_the_conversion() {
-        for ten in ["2205001213", "080442957X", "0201633612", "2070360245"] {
-            let thirteen = crate::utils::isbn10_to_isbn13(ten).unwrap();
-            assert_eq!(isbn13_to_isbn10(&thirteen).as_deref(), Some(ten));
-        }
-        assert_eq!(isbn13_to_isbn10("9791032305690"), None); // 979: no ISBN-10
-        assert_eq!(isbn13_to_isbn10("978123"), None);
-        assert_eq!(
-            stored_forms("9782070360246"),
-            vec!["9782070360246", "2070360245"]
-        );
+    fn same_isbn_reads_a_stored_value_through_the_one_rule() {
         assert!(same_isbn(Some("2-07-036024-5"), "9782070360246"));
+        assert!(same_isbn(Some("ISBN 978-2-07-036024-6"), "9782070360246"));
         assert!(!same_isbn(None, "9782070360246"));
     }
 

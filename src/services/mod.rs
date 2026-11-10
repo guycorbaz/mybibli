@@ -16,6 +16,7 @@ pub mod dashboard;
 pub mod data_repairs;
 pub mod default_skills;
 pub mod description_repair;
+pub mod isbn_repair;
 pub mod expected_tomes;
 pub mod label_acceptance;
 pub mod label_proposals;

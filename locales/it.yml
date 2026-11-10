@@ -22,7 +22,6 @@ wishlist:
   notes_placeholder: "es. solo rilegato, usato OK"
   lookup_button: "Cerca"
   confirm_add: "Aggiungi alla lista dei desideri"
-  isbn_invalid: "ISBN non valido — deve contenere 13 cifre con un codice di controllo corretto."
   title_required: "Il titolo è obbligatorio."
   resolved_intro: "Trovato presso i fornitori di metadati:"
   no_metadata: "Nessun metadato trovato per questo ISBN. Passa alla modalità libera per aggiungere il libro manualmente."
@@ -445,8 +444,8 @@ error:
     creation_failed: "Impossibile creare il titolo. Riprova; se il problema persiste, contatta il tuo amministratore."
     required: Il titolo è obbligatorio
   isbn:
-    invalid_checksum: Checksum ISBN non valido
-    invalid_format: "Formato ISBN non valido — devono essere 13 cifre"
+    invalid_checksum: "ISBN non valido: la cifra di controllo non corrisponde — controlla la digitazione"
+    invalid_format: "Non è un ISBN — attese 10 o 13 cifre, ad es. 978-2-07-036024-6"
     already_used: "Un altro titolo usa già questo ISBN — non viene creato un duplicato"
     not_found: ISBN non trovato
   upc:

@@ -285,6 +285,18 @@ async fn main() {
         );
     }
 
+    // Story 17-3 (#565): ISBNs stored as typed by the manual form before
+    // v1.27.0 (separators, `ISBN` prefix, ISBN-10) rewritten to their
+    // ISBN-13, once per database (`data_repairs` marker); colliding titles
+    // are left untouched and logged. Runs before the 13-3 conversion so its
+    // collision check sees canonical values. Non-fatal, retried next boot.
+    if let Err(e) = mybibli::services::isbn_repair::repair_stored_isbns_once(&pool).await {
+        tracing::error!(
+            error = %e,
+            "Stored ISBN: startup repair failed (non-fatal, continuing)"
+        );
+    }
+
     // Story 13-3 (#584): titles catalogued before v1.21.0 with an ISBN-10
     // carry it in `upc`. One-shot, idempotent data repair: convert them to
     // their ISBN-13 now; each converted title is queued for the metadata

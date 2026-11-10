@@ -8,6 +8,7 @@ pub mod data_repair;
 pub mod date_added;
 pub mod expected_tome;
 pub mod genre;
+pub mod isbn_repair;
 pub mod label;
 pub mod loan;
 pub mod location;

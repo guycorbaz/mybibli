@@ -22,7 +22,6 @@ wishlist:
   notes_placeholder: "ex. reliure rigide, occasion possible"
   lookup_button: "Rechercher"
   confirm_add: "Ajouter à la wish list"
-  isbn_invalid: "ISBN invalide — 13 chiffres avec une clé de contrôle valide."
   title_required: "Le titre est obligatoire."
   resolved_intro: "Voici ce que les fournisseurs de métadonnées ont trouvé :"
   no_metadata: "Aucune métadonnée trouvée pour cet ISBN. Passez en mode saisie libre pour ajouter le livre manuellement."
@@ -454,8 +453,8 @@ error:
     creation_failed: "Impossible de créer le titre. Réessayez ; si cela persiste, contactez votre administrateur."
     required: Le titre est obligatoire
   isbn:
-    invalid_checksum: Checksum ISBN invalide
-    invalid_format: "Format ISBN invalide — doit contenir 13 chiffres"
+    invalid_checksum: "ISBN invalide : la clé de contrôle ne correspond pas — vérifiez la saisie"
+    invalid_format: "Ce n'est pas un ISBN — 10 ou 13 chiffres attendus, p. ex. 978-2-07-036024-6"
     already_used: "Un autre titre utilise déjà cet ISBN — refus de créer un doublon"
     not_found: ISBN introuvable
   upc:

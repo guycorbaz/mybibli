@@ -33,7 +33,6 @@ use crate::middleware::htmx::HxRequest;
 use crate::middleware::locale::Locale;
 use crate::models::media_type::{CodeType, MediaType};
 use crate::models::wishlist::{WishlistItem, WishlistItemDraft, WishlistItemModel};
-use crate::services::title::TitleService;
 use crate::utils::base_context;
 
 // ─── List page ───────────────────────────────────────────────────
@@ -192,12 +191,12 @@ pub async fn wishlist_preview_isbn(
         return Ok(axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response());
     }
 
-    let isbn = form.isbn.trim();
-    if !TitleService::validate_isbn13_checksum(isbn) {
-        return Err(AppError::BadRequest(
-            rust_i18n::t!("wishlist.isbn_invalid", locale = loc).to_string(),
-        ));
-    }
+    // Story 17-3 (#565): the one ISBN rule; a blank field is a format error.
+    let isbn = match crate::utils::parse_isbn(&form.isbn) {
+        Ok(isbn) => isbn,
+        Err(e) => return Err(AppError::BadRequest(e.message(loc))),
+    };
+    let isbn = isbn.as_str();
 
     let timeout_secs = state
         .settings
@@ -303,14 +302,9 @@ pub async fn wishlist_create(
     // ISBN mode: re-validate the carried isbn. Free-form mode: ignore any
     // isbn field even if the form snuck one in.
     let isbn = if form.mode == "isbn" {
-        match form.isbn.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-            Some(i) if TitleService::validate_isbn13_checksum(i) => Some(i.to_string()),
-            Some(_) => {
-                return Err(AppError::BadRequest(
-                    rust_i18n::t!("wishlist.isbn_invalid", locale = loc).to_string(),
-                ));
-            }
-            None => None,
+        match crate::utils::normalize_isbn_input(form.isbn.as_deref().unwrap_or("")) {
+            Ok(isbn) => isbn,
+            Err(e) => return Err(AppError::BadRequest(e.message(loc))),
         }
     } else {
         None

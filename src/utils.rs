@@ -5,6 +5,8 @@ pub use plain_text::{decode_char_references, description_paragraphs, html_to_pla
 mod nav;
 pub use nav::{NavEntry, nav_groups};
 pub mod local_time;
+mod isbn;
+pub use isbn::{IsbnError, isbn_lookup_form, normalize_isbn_input, parse_isbn};
 
 /// Generate a STANDARD-base64-encoded 32-byte session token (44 chars
 /// w/ padding). Canonical implementation for `sessions.token`. Earlier
