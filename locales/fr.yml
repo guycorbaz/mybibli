@@ -333,6 +333,8 @@ title_detail:
   volumes_section_heading: Volumes de ce titre
   no_volumes: "Aucun volume pour ce titre pour le moment."
   add_volume_cta: "Scanner un nouveau volume"
+  add_volume_field: "Ajouter un volume par son code V"
+  add_volume_hint: "Tapez ou scannez l’étiquette (V suivi de 4 chiffres), puis appuyez sur Entrée. Le volume est ajouté à ce titre."
   col_vcode: Code V
   col_location: Emplacement
   col_condition: État

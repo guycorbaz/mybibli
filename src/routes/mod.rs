@@ -23,6 +23,8 @@ pub mod catalog_volumes;
 pub mod catalog_undo;
 pub mod catalog_existing_label;
 pub mod catalog_isbn_banners;
+pub mod vcode_volume;
+pub mod title_volume_add;
 pub mod contributors;
 pub mod home;
 pub mod home_added_since;
@@ -209,6 +211,10 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
             axum::routing::get(titles::title_detail)
                 .post(titles::update_title)
                 .delete(title_lifecycle::delete_title),
+        )
+        .route(
+            "/title/{id}/volumes",
+            axum::routing::post(title_volume_add::add_volume),
         )
         .route(
             "/title/{id}/delete-modal",

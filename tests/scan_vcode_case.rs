@@ -40,6 +40,12 @@ async fn volume_count(pool: &DbPool) -> i64 {
 /// A librarian browser with a hand-made title in context (the reported case).
 async fn setup(pool: &DbPool) -> (axum::Router, Browser, u64) {
     seed_admin(pool, "vc_admin").await;
+    // Story 17-2 — the scan answers in the request locale (#661); these
+    // checks read the English wording.
+    sqlx::query("UPDATE users SET preferred_language = 'en' WHERE username = 'vc_admin'")
+        .execute(pool)
+        .await
+        .unwrap();
     let router = router(pool);
     let browser = Browser::login(&router, "vc_admin").await;
     let title = seed_title(pool, "La planète de l'angoisse").await;
@@ -143,6 +149,6 @@ async fn the_loans_scan_takes_a_lowercase_vcode(pool: DbPool) {
 
     assert_eq!(status, StatusCode::OK);
     assert!(!body.contains("V0042"), "not refused as malformed: {body}");
-    // The instance default language is French: "not on loan" = found.
-    assert!(body.contains("pas en prêt"), "the volume is found: {body}");
+    // "not on loan" = found (the browser reads English, see `setup`).
+    assert!(body.contains("not currently on loan"), "the volume is found: {body}");
 }

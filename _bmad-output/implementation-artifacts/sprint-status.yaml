@@ -336,7 +336,7 @@ development_status:
   # Sequencing: 17-1 -> 17-2 -> 17-3 -> 17-4 -> 17-5 -> 17-6 -> 17-7 (epic smoke, Rule #7) -> 17-8 -> retrospective -> release.
   epic-17: in-progress
   17-1-v-code-any-case: done
-  17-2-add-volume-from-title-page: ready-for-dev
+  17-2-add-volume-from-title-page: review
   17-3-one-isbn-rule: backlog
   17-4-typed-code-warnings: backlog
   17-5-title-id-search: backlog

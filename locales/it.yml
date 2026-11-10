@@ -326,6 +326,8 @@ title_detail:
   volumes_section_heading: Esemplari di questo titolo
   no_volumes: "Ancora nessun esemplare per questo titolo."
   add_volume_cta: "Scansiona un nuovo esemplare"
+  add_volume_field: "Aggiungi un esemplare con il suo codice V"
+  add_volume_hint: "Digita o scansiona l’etichetta (V seguita da 4 cifre), poi premi Invio. L’esemplare viene aggiunto a questo titolo."
   col_vcode: Codice V
   col_location: Ubicazione
   col_condition: Condizione

@@ -1,6 +1,6 @@
 # Story 17.2: Add a volume from the title page
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #652 (type:change-request). Covers: FR173, UX-DR43. Epic 17; ships in v1.27.0.
 
@@ -30,14 +30,14 @@ so that I do not have to go back to `/catalog` and scan the ISBN again.
 
 ## Tasks
 
-- [ ] `src/routes/vcode_volume.rs`: shared arm; `catalog.rs` V-code arm calls it.
-- [ ] `VolumeService::create_volume_in` with a locale.
-- [ ] `VolumeConfirmAddModalTemplate`: `action_url`, `hx_target`, `hx_swap`.
-- [ ] Volumes list fragment (`templates/fragments/title_volumes_list.html`) shared by the page and the HTMX answer.
-- [ ] `POST /title/{id}/volumes` (`src/routes/title_volume_add.rs`), Librarian+.
-- [ ] `scan-field.js` data attributes + focus return after a modal.
-- [ ] Locale keys (field label, hint) in four locales.
-- [ ] Unit, DB integration, E2E.
+- [x] `src/routes/vcode_volume.rs`: shared arm; `catalog.rs` V-code arm calls it.
+- [x] `VolumeService::create_volume_in` with a locale.
+- [x] `VolumeConfirmAddModalTemplate`: `action_url`, `hx_target`, `hx_swap`.
+- [x] Volumes list fragment (`templates/fragments/title_volumes_list.html`) shared by the page and the HTMX answer.
+- [x] `POST /title/{id}/volumes` (`src/routes/title_volume_add.rs`), Librarian+.
+- [x] `scan-field.js` data attributes + focus return after a modal.
+- [x] Locale keys (field label, hint) in four locales.
+- [x] Unit, DB integration, E2E.
 
 ## Dev Notes
 
@@ -48,6 +48,18 @@ so that I do not have to go back to `/catalog` and scan the ISBN again.
 ## Dev Agent Record
 
 ### File List
+
+- `src/routes/vcode_volume.rs` — the shared V-code arm (`read_vcode`, `invalid_vcode_response`, `add_to_title`, CR #300 modal) + unit tests.
+- `src/routes/catalog.rs` — the V-code arm calls the shared arm; `code_unsupported` in the request locale.
+- `src/routes/title_volume_add.rs` — `POST /title/{id}/volumes`, `TitleVolumesView`, list template + unit tests.
+- `src/routes/titles.rs`, `src/routes/mod.rs` — the page carries `volumes_view`; route.
+- `src/routes/catalog_volumes.rs`, `templates/fragments/volume_confirm_add_modal.html` — modal action URL, target, swap.
+- `src/services/volume.rs` — `create_volume_in` (refusals in the request locale).
+- `templates/pages/title_detail.html`, `templates/fragments/title_volumes_list.html` — V-code field; list fragment shared with the HTMX answer.
+- `static/js/scan-field.js` — post URL / target / swap from data attributes; focus returns to the posting field after a modal.
+- `locales/{en,fr,de,it}.yml` — `title_detail.add_volume_field`, `title_detail.add_volume_hint`.
+- `tests/title_volume_add.rs` — DB integration; `tests/scan_vcode_case.rs` — reads English explicitly (the scan now answers in the request locale).
+- `tests/e2e/specs/journeys/title-volume-add.spec.ts` — E2E (spec id `TP`).
 
 ### Review
 

@@ -331,6 +331,8 @@ title_detail:
   volumes_section_heading: Exemplare dieses Titels
   no_volumes: "Noch keine Exemplare für diesen Titel."
   add_volume_cta: "Neues Exemplar scannen"
+  add_volume_field: "Exemplar per V-Code hinzufügen"
+  add_volume_hint: "Etikett eintippen oder scannen (V gefolgt von 4 Ziffern), dann Eingabe drücken. Das Exemplar wird diesem Titel hinzugefügt."
   col_vcode: V-Code
   col_location: Standort
   col_condition: Zustand

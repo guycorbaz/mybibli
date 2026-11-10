@@ -331,6 +331,8 @@ title_detail:
   volumes_section_heading: Volumes of this title
   no_volumes: "No volumes for this title yet."
   add_volume_cta: "Scan a new volume"
+  add_volume_field: "Add a volume by its V-code"
+  add_volume_hint: "Type or scan the label (V followed by 4 digits), then press Enter. The volume is added to this title."
   col_vcode: V-code
   col_location: Location
   col_condition: Condition

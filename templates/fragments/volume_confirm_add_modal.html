@@ -3,7 +3,8 @@
    before a new volume is attached, defeating the phantom-volume mechanism
    (a stale current_title_id silently accumulating volumes from other
    physical books during a shelve batch). Inner hidden inputs re-POST
-   /catalog/scan with the same code and confirmed=true to bypass the guard.
+   `action_url` (/catalog/scan, or the title page's /title/{id}/volumes —
+   story 17-2) with the same code and confirmed=true to bypass the guard.
    CSP-clean. #}
 {% import "components/modal.html" as modal %}
 {% call modal::modal(
@@ -12,11 +13,11 @@
     body_html,
     confirm_label,
     cancel_label,
-    "/catalog/scan",
+    action_url,
     "POST",
     csrf_token,
-    "#feedback-list",
-    "innerHTML",
+    hx_target,
+    hx_swap,
     0,
     inner_form_html,
 ) %}{% endcall %}
