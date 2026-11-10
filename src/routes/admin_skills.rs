@@ -256,6 +256,8 @@ fn make_row(skill: &McpSkill, loc: &str, tz: chrono_tz::Tz) -> SkillRow {
     };
     let last_change_author = match &skill.updated_by_name {
         Some(name) => t_name("admin.skills.last_change_by", loc, name),
+        // Story 17-6: a default no admin has changed since it was shipped.
+        None if skill.provided_by_mybibli => t("admin.skills.last_change_provided", loc),
         None => t("admin.skills.last_change_unknown_author", loc),
     };
     SkillRow {
@@ -670,6 +672,7 @@ mod tests {
                 .and_hms_opt(10, 0, 0)
                 .unwrap(),
             updated_by_name: Some("admin".to_string()),
+            provided_by_mybibli: false,
         }
     }
 
@@ -696,6 +699,26 @@ mod tests {
         assert!(!html.contains("<b>catalog</b>"), "description escaped too");
         // Instance zone (story 15-1): 10:00 UTC is 12:00 in Zurich in July.
         assert!(html.contains("2026-07-01 12:00"), "{html}");
+    }
+
+    #[test]
+    fn last_change_names_the_author_mybibli_or_unknown() {
+        let tz = chrono_tz::Europe::Zurich;
+        let mut s = skill("b");
+        assert_eq!(make_row(&s, "en", tz).last_change_author, "by admin");
+        s.updated_by_name = None;
+        assert_eq!(make_row(&s, "en", tz).last_change_author, "author unknown");
+        // Story 17-6: an untouched default reads as provided by mybibli,
+        // in every locale.
+        s.provided_by_mybibli = true;
+        for (loc, want) in [
+            ("en", "provided by mybibli"),
+            ("fr", "fourni par mybibli"),
+            ("de", "von mybibli bereitgestellt"),
+            ("it", "fornito da mybibli"),
+        ] {
+            assert_eq!(make_row(&s, loc, tz).last_change_author, want, "{loc}");
+        }
     }
 
     #[test]

@@ -27,7 +27,8 @@
 mod config;
 mod instructions;
 pub mod tool;
-mod tools;
+// pub(crate): story 17-6 checks the default skills name registered tools.
+pub(crate) mod tools;
 mod transport;
 
 use std::sync::Arc;

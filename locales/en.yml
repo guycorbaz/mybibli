@@ -1158,6 +1158,7 @@ admin:
     show_body: "Show the instructions"
     last_change_by: "by %{name}"
     last_change_unknown_author: "author unknown"
+    last_change_provided: "provided by mybibli"
     btn_edit: "Edit"
     edit_aria: "Edit skill %{name}"
     btn_activate: "Activate"

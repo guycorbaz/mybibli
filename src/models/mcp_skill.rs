@@ -7,13 +7,17 @@
 //! only reads the MCP layer needs (through `services::mcp_skills`), all
 //! limited to live **and** active rows.
 //!
+//! Story 17-6: `insert_default_in` writes the default skills mybibli ships
+//! (`services::default_skills`), flagged `provided_by_mybibli` until an
+//! admin changes them.
+//!
 //! Every write takes already-validated input (`services::mcp_skills`).
 //! Name reuse: `name` is UNIQUE across all rows, trashed ones included. A
 //! create or a rename onto a trashed name is refused (`NameInTrash`): the
 //! trashed skill is never overwritten, and a Trash restore never collides.
 
 use chrono::NaiveDateTime;
-use sqlx::Row;
+use sqlx::{MySqlConnection, Row};
 
 use crate::db::DbPool;
 use crate::error::AppError;
@@ -34,6 +38,9 @@ pub struct McpSkill {
     /// Username of the last change's author; `None` once that user was
     /// purged (`ON DELETE SET NULL`) or for a row written outside the UI.
     pub updated_by_name: Option<String>,
+    /// Story 17-6 — a default skill no admin has changed since mybibli
+    /// inserted it (cleared by `update` and `set_active`).
+    pub provided_by_mybibli: bool,
 }
 
 /// What the agent reads (story 15-3): one live, active skill.
@@ -80,6 +87,14 @@ impl From<sqlx::Error> for SkillWriteError {
     }
 }
 
+/// Story 17-6 review — a duplicate entry exactly (error 1062), not the
+/// whole 23000 class (foreign key, NOT NULL, CHECK…).
+fn is_duplicate_entry(err: &sqlx::Error) -> bool {
+    err.as_database_error()
+        .and_then(|db| db.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>())
+        .is_some_and(|db| db.number() == 1062)
+}
+
 fn is_duplicate_key(err: &sqlx::Error) -> bool {
     matches!(err, sqlx::Error::Database(db) if db.code().as_deref() == Some("23000"))
 }
@@ -91,7 +106,8 @@ fn is_duplicate_key(err: &sqlx::Error) -> bool {
 /// deactivated admin still made it. Once the user row is purged,
 /// `updated_by` is SET NULL and the name reads as unknown.
 const SELECT_SKILL: &str = "SELECT s.id, s.name, s.description, s.body, s.active, s.version, \
-     CAST(s.updated_at AS DATETIME) AS updated_at, u.username AS updated_by_name \
+     CAST(s.updated_at AS DATETIME) AS updated_at, u.username AS updated_by_name, \
+     s.provided_by_mybibli \
      FROM mcp_skills s LEFT JOIN users u ON u.id = s.updated_by";
 
 pub struct McpSkillModel;
@@ -107,6 +123,7 @@ impl McpSkillModel {
             version: r.try_get("version")?,
             updated_at: r.try_get("updated_at")?,
             updated_by_name: r.try_get("updated_by_name")?,
+            provided_by_mybibli: r.try_get("provided_by_mybibli")?,
         })
     }
 
@@ -216,6 +233,40 @@ impl McpSkillModel {
         }
     }
 
+    /// Story 17-6 — insert a default skill shipped with mybibli, inside the
+    /// caller's transaction: no author, marked `provided_by_mybibli`.
+    /// `Ok(false)` when any row, live or in the Trash, already holds the
+    /// name: nothing is written and that row is left untouched. A plain
+    /// insert whose duplicate-key error is the signal, rather than a
+    /// `SELECT … FOR UPDATE` on the name (Rule #22: no locking read on a
+    /// non-primary key). On a duplicate InnoDB still share-locks that one
+    /// index record until the commit; at startup nothing waits on it. In
+    /// MariaDB a failed statement rolls back alone, the transaction goes on.
+    pub async fn insert_default_in(
+        conn: &mut MySqlConnection,
+        skill: &ValidSkill,
+    ) -> Result<bool, AppError> {
+        let inserted = sqlx::query(
+            "INSERT INTO mcp_skills \
+             (name, description, body, active, updated_by, provided_by_mybibli) \
+             VALUES (?, ?, ?, ?, NULL, TRUE)",
+        )
+        .bind(&skill.name)
+        .bind(&skill.description)
+        .bind(&skill.body)
+        .bind(skill.active)
+        .execute(&mut *conn)
+        .await;
+        match inserted {
+            Ok(_) => Ok(true),
+            // Only a duplicate entry (MySQL 1062) means "name taken": any
+            // other integrity error of class 23000 is a real failure, so no
+            // marker is written and the default is retried next boot.
+            Err(err) if is_duplicate_entry(&err) => Ok(false),
+            Err(err) => Err(err.into()),
+        }
+    }
+
     /// After a duplicate-name error: which kind of row holds the name.
     async fn name_holder(pool: &DbPool, name: &str) -> Result<SkillWriteError, AppError> {
         let in_trash: Option<(u64,)> =
@@ -240,7 +291,7 @@ impl McpSkillModel {
     ) -> Result<(), SkillWriteError> {
         let res = sqlx::query(
             "UPDATE mcp_skills SET name = ?, description = ?, body = ?, active = ?, \
-             updated_by = ?, version = version + 1 \
+             updated_by = ?, provided_by_mybibli = FALSE, version = version + 1 \
              WHERE id = ? AND version = ? AND deleted_at IS NULL",
         )
         .bind(&skill.name)
@@ -270,7 +321,8 @@ impl McpSkillModel {
         user_id: Option<u64>,
     ) -> Result<(), SkillWriteError> {
         let res = sqlx::query(
-            "UPDATE mcp_skills SET active = ?, updated_by = ?, version = version + 1 \
+            "UPDATE mcp_skills SET active = ?, updated_by = ?, provided_by_mybibli = FALSE, \
+             version = version + 1 \
              WHERE id = ? AND version = ? AND deleted_at IS NULL",
         )
         .bind(active)
