@@ -125,12 +125,15 @@ async fn the_home_search_explains_a_miss(pool: DbPool) {
     assert!(body.contains(&format!("Title #{title} is in the Trash")), "{body}");
     assert!(!body.contains("/catalog/title/new"), "no call to action: {body}");
 
-    // Direct navigation (the full page).
+    // Direct navigation (the full page), with a filter active too.
     let unknown = title + 1000;
-    let (status, body) = browser.get(&router, &format!("/?q=%23{unknown}")).await;
+    let (status, body) = browser
+        .get(&router, &format!("/?q=%23{unknown}&filter=uncategorized"))
+        .await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains(&format!("No title has the ID #{unknown}")), "{body}");
     assert!(!body.contains("Add this title"), "no call to action: {body}");
+    assert!(!body.contains("Nothing matches this filter"), "not the filter copy: {body}");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -140,12 +143,17 @@ async fn an_anonymous_visitor_is_not_told_about_the_trash(pool: DbPool) {
     SoftDeleteService::soft_delete(&pool, "titles", title).await.unwrap();
 
     let browser = Browser::anonymous(&router).await;
+    let unknown = format!("No title has the ID #{title}");
+    // HTMX live search, then the full page.
     let res = browser.send(&router, "GET", &format!("/?q=%23{title}&lang=en"), "", true).await;
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_string(res).await;
-    assert!(!body.contains(&format!("#{title} is in the Trash")), "{body}");
-    assert!(!body.contains(&format!("#{title} est dans la corbeille")), "{body}");
-    assert!(body.contains(&format!("#{title}")), "the miss still names the id: {body}");
+    assert!(body.contains(&unknown), "{body}");
+    assert!(!body.contains("in the Trash"), "{body}");
+    let (status, body) = browser.get(&router, &format!("/?q=%23{title}&lang=en")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains(&unknown), "{body}");
+    assert!(!body.contains("in the Trash"), "{body}");
 }
 
 #[sqlx::test(migrations = "./migrations")]

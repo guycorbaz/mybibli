@@ -66,7 +66,7 @@ empty:
   title_id_trash_heading: "Title in the Trash"
   title_id_trash_body: "Title %{id} is in the Trash, so the search does not list it. An administrator can restore it from Admin → Trash."
   title_id_unknown_heading: "No title with this ID"
-  title_id_unknown_body: "No title has the ID %{id}: it may have been deleted for good, or the number is wrong. Check the number, or type your search without the # to search titles, authors and ISBNs."
+  title_id_unknown_body: "No title has the ID %{id}: it may have been permanently deleted, or the number is wrong. Check the number, or type your search without the # to search titles, authors and ISBNs."
   loans_heading: "No active loans"
   loans_body: "Loans appear here when a borrower scans a volume out."
   borrowers_heading: "No borrowers yet"

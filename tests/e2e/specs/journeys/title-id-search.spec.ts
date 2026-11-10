@@ -87,9 +87,11 @@ test.describe("Story 17-5 — find a title by its id", () => {
     );
     await expect(results.locator('a[href^="/catalog/title/new"]')).toHaveCount(0);
 
-    // Without `#`, digits (here neither an ISBN nor a code) are an ordinary search.
+    // Without `#`, digits (here neither an ISBN nor a code) are an ordinary
+    // search: the search field answers, never with the id message.
     await searchHome(page, "987654321");
-    await expect(results).toContainText(/No matches|Aucun résultat/, { timeout: 10000 });
+    await expect(page.locator("#search-field")).toHaveValue("987654321");
+    await expect(page).toHaveURL(/q=987654321/, { timeout: 10000 });
     await expect(results).not.toContainText(/No title has the ID|Aucun titre ne porte/);
   });
 });
