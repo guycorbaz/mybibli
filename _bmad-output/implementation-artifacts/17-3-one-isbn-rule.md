@@ -1,6 +1,6 @@
 # Story 17.3: One ISBN rule for every form
 
-Status: in-progress
+Status: done
 
 GitHub issue: #565 (type:code-review-finding, deferred from story 12-1). Covers: FR174. Epic 17; ships in v1.27.0.
 
@@ -83,6 +83,8 @@ Claude Opus 5.5
 - The existing test `a_tome_entered_for_a_title_already_in_place_or_stored_as_isbn10` relied on the SQL copy (D7): it now runs the boot repair first, which shows the copy unnecessary.
 - **AC4:** no production export (2026-11-10); the project lead decided to continue on the log analysis. For a later run: `MYBIBLI_ISBN_CORPUS=<export.csv> SQLX_OFFLINE=true cargo test --lib production_corpus -- --ignored --nocapture`.
 - Rebased on `main` after 17-5 / 17-6 (conflict in `services/search.rs`: the `#id` lookup of 17-5 kept before the ISBN arm).
+
+- Final gates on the final code (2026-11-10): `cargo clippy --all-targets -D warnings` clean; full `cargo test` with the DB integration tests 2694 passed, 0 failed (locale parity included); `cargo sqlx prepare --check --workspace -- --all-targets` OK; `waitForTimeout` grep gate OK; full E2E `CI=true --workers=2`: 469 passed, 2 skipped, 0 failed.
 
 ### Review
 
