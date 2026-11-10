@@ -1,6 +1,6 @@
 # Story 17.1: A V-code is recognised whatever its case
 
-Status: review
+Status: done
 
 GitHub issue: #651 (type:bug). Covers: FR172. Epic 17; ships in v1.27.0.
 
