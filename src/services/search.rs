@@ -113,6 +113,9 @@ pub enum GenreLookup {
 pub enum SearchOutcome {
     Results(PaginatedList<SearchResult>),
     Redirect(String),
+    /// Story 17-5 (#653) — `#<id>` names no live title; the caller says
+    /// so instead of showing an empty list.
+    TitleIdMiss(crate::services::title_id_search::TitleIdMiss),
 }
 
 impl SearchService {
@@ -171,6 +174,20 @@ impl SearchService {
                 added_since,
             )
             .await;
+        }
+
+        // Story 17-5 (#653): `#<id>` names a title by its id. Like an
+        // exact ISBN / V-code hit it ignores the filters; it lists the
+        // title (never redirects: the field searches as you type).
+        if let Some(id) = crate::services::title_id_search::parse_title_id(trimmed) {
+            use crate::services::title_id_search::{TitleIdLookup, lookup};
+            return Ok(match lookup(pool, id).await? {
+                TitleIdLookup::Live(title) => {
+                    let item = Self::enrich_title(pool, &title).await;
+                    SearchOutcome::Results(PaginatedList::new(vec![item], 1, 1, None, None, None))
+                }
+                TitleIdLookup::Miss(miss) => SearchOutcome::TitleIdMiss(miss),
+            });
         }
 
         // Story 12-1 (#502): an ISBN typed with separators is looked up

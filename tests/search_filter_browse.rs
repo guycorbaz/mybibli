@@ -84,6 +84,7 @@ async fn empty_query_with_genre_filter_returns_filtered_titles(pool: MySqlPool) 
             assert!(!titles.contains(&"Other genre"), "got {:?}", titles);
         }
         SearchOutcome::Redirect(_) => panic!("unexpected redirect for filter-only browse"),
+        SearchOutcome::TitleIdMiss(miss) => panic!("unexpected title id miss {miss:?}"),
     }
 }
 
@@ -106,6 +107,7 @@ async fn empty_query_without_filter_returns_empty(pool: MySqlPool) {
             assert_eq!(paginated.total_items, 0);
         }
         SearchOutcome::Redirect(_) => panic!("unexpected redirect"),
+        SearchOutcome::TitleIdMiss(miss) => panic!("unexpected title id miss {miss:?}"),
     }
 }
 
@@ -127,6 +129,7 @@ async fn whitespace_query_with_filter_is_treated_as_filter_only_browse(pool: MyS
             );
         }
         SearchOutcome::Redirect(_) => panic!("unexpected redirect"),
+        SearchOutcome::TitleIdMiss(miss) => panic!("unexpected title id miss {miss:?}"),
     }
 }
 
@@ -183,6 +186,7 @@ async fn no_volumes_only_filters_titles_with_active_volumes(pool: MySqlPool) {
             );
         }
         SearchOutcome::Redirect(_) => panic!("unexpected redirect for no_volumes browse"),
+        SearchOutcome::TitleIdMiss(miss) => panic!("unexpected title id miss {miss:?}"),
     }
 }
 
@@ -206,6 +210,7 @@ async fn no_volumes_only_disables_empty_query_short_circuit(pool: MySqlPool) {
             );
         }
         SearchOutcome::Redirect(_) => panic!("unexpected redirect"),
+        SearchOutcome::TitleIdMiss(miss) => panic!("unexpected title id miss {miss:?}"),
     }
 }
 
@@ -256,6 +261,7 @@ async fn no_cover_only_filters_titles_with_cover(pool: MySqlPool) {
             );
         }
         SearchOutcome::Redirect(_) => panic!("unexpected redirect for no_cover browse"),
+        SearchOutcome::TitleIdMiss(miss) => panic!("unexpected title id miss {miss:?}"),
     }
 }
 
@@ -279,5 +285,6 @@ async fn no_cover_only_disables_empty_query_short_circuit(pool: MySqlPool) {
             );
         }
         SearchOutcome::Redirect(_) => panic!("unexpected redirect"),
+        SearchOutcome::TitleIdMiss(miss) => panic!("unexpected title id miss {miss:?}"),
     }
 }

@@ -14,6 +14,7 @@ use askama::Template;
 use crate::middleware::auth::Session;
 use crate::models::PaginatedList;
 use crate::models::title::SearchResult;
+use crate::services::title_id_search::TitleIdMiss;
 use crate::utils::{html_escape, url_encode};
 
 #[allow(clippy::too_many_arguments)]
@@ -26,6 +27,8 @@ pub(super) fn render_search_fragment(
     // Story 13-7 (#586) — the active "added since" date, carried by the
     // pagination links and counted as a filter by the empty state.
     added_since: Option<chrono::NaiveDate>,
+    // Story 17-5 (#653) — a `#<id>` naming no live title.
+    title_id_miss: Option<TitleIdMiss>,
     session: &Session,
     loc: &str,
     // Story 15-1 (#602) — the instance zone of the "Added" dates.
@@ -80,8 +83,16 @@ pub(super) fn render_search_fragment(
         _ => {
             // Empty state + clear stale pagination
             let is_librarian = session.role >= crate::middleware::auth::Role::Librarian;
-            let has_filter = filter.is_some() || added_since.is_some();
-            html.push_str(&render_empty_state(query, has_filter, is_librarian, loc));
+            // Story 17-5: an id miss ignores the filters, like the hit.
+            let has_filter =
+                title_id_miss.is_none() && (filter.is_some() || added_since.is_some());
+            html.push_str(&render_empty_state(
+                query,
+                title_id_miss,
+                has_filter,
+                is_librarian,
+                loc,
+            ));
             html.push_str(
                 "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>",
             );
@@ -251,16 +262,65 @@ struct SearchEmptyState {
     filter_empty_body: String,
 }
 
-fn render_empty_state(query: &str, has_filter: bool, is_librarian: bool, loc: &str) -> String {
+/// The search empty state's copy: the "no matches" message with its
+/// "Add this title" call to action, or (story 17-5, #653) the message of a
+/// `#<id>` that names no live title, without call to action. `body_html`
+/// is escaped here (the template renders it `|safe`).
+pub(super) struct EmptyCopy {
+    pub heading: String,
+    pub body_html: String,
+    pub cta_label: String,
+    pub cta_url: String,
+}
+
+pub(super) fn empty_copy(query: &str, title_id_miss: Option<TitleIdMiss>, loc: &str) -> EmptyCopy {
+    match title_id_miss {
+        Some(miss) => {
+            let id = format!("#{}", miss.id);
+            let (heading, body) = if miss.in_trash {
+                (
+                    rust_i18n::t!("empty.title_id_trash_heading", locale = loc),
+                    rust_i18n::t!("empty.title_id_trash_body", locale = loc, id = id),
+                )
+            } else {
+                (
+                    rust_i18n::t!("empty.title_id_unknown_heading", locale = loc),
+                    rust_i18n::t!("empty.title_id_unknown_body", locale = loc, id = id),
+                )
+            };
+            EmptyCopy {
+                heading: heading.to_string(),
+                body_html: body.to_string(),
+                cta_label: String::new(),
+                cta_url: String::new(),
+            }
+        }
+        None => EmptyCopy {
+            heading: rust_i18n::t!("empty.search_heading", locale = loc).to_string(),
+            body_html: rust_i18n::t!("empty.search_body", locale = loc, query = html_escape(query))
+                .to_string(),
+            cta_label: rust_i18n::t!("empty.search_cta", locale = loc).to_string(),
+            cta_url: format!("/catalog/title/new?title={}", url_encode(query)),
+        },
+    }
+}
+
+fn render_empty_state(
+    query: &str,
+    title_id_miss: Option<TitleIdMiss>,
+    has_filter: bool,
+    is_librarian: bool,
+    loc: &str,
+) -> String {
     let role = if is_librarian { "librarian" } else { "anonymous" }.to_string();
+    let copy = empty_copy(query, title_id_miss, loc);
     let template = SearchEmptyState {
         role,
         has_filter,
-        search_empty_heading: rust_i18n::t!("empty.search_heading", locale = loc).to_string(),
-        search_empty_body: rust_i18n::t!("empty.search_body", locale = loc, query = html_escape(query))
-            .to_string(),
-        search_empty_cta: rust_i18n::t!("empty.search_cta", locale = loc).to_string(),
-        search_empty_cta_url: format!("/catalog/title/new?title={}", url_encode(query)),
+        search_empty_heading: copy.heading,
+        search_empty_body: copy.body_html,
+        search_empty_cta: copy.cta_label,
+        search_empty_cta_url: copy.cta_url,
         filter_empty_heading: rust_i18n::t!("empty.filter_heading", locale = loc).to_string(),
         filter_empty_body: rust_i18n::t!("empty.filter_body", locale = loc).to_string(),
     };
@@ -310,6 +370,7 @@ mod tests {
                 &None,
                 &None,
                 &None,
+                None,
                 None,
                 &session,
                 "en",
@@ -444,23 +505,64 @@ mod tests {
     fn test_render_empty_state_search_librarian() {
         // has_filter=false → search sub-case → librarian sees the
         // "Add this title" CTA pointing at /catalog/title/new.
-        let html = render_empty_state("test query", false, true, "en");
+        let html = render_empty_state("test query", None, false, true, "en");
         assert!(html.contains("/catalog/title/new"));
     }
 
     #[test]
     fn test_render_empty_state_search_anonymous() {
         // has_filter=false → search sub-case → anonymous sees no CTA.
-        let html = render_empty_state("test query", false, false, "en");
+        let html = render_empty_state("test query", None, false, false, "en");
         assert!(!html.contains("/catalog/title/new"));
     }
 
     #[test]
     fn test_render_empty_state_filter_no_cta() {
         // has_filter=true → filter sub-case → no CTA regardless of role.
-        let html_lib = render_empty_state("", true, true, "en");
+        let html_lib = render_empty_state("", None, true, true, "en");
         assert!(!html_lib.contains("/catalog/title/new"));
-        let html_anon = render_empty_state("", true, false, "en");
+        let html_anon = render_empty_state("", None, true, false, "en");
         assert!(!html_anon.contains("/catalog/title/new"));
+    }
+
+    /// Story 17-5 (#653) — a `#<id>` in the Trash says so, without the
+    /// "Add this title" call to action, even with a filter active.
+    #[test]
+    fn title_id_in_trash_says_so_whatever_the_filters() {
+        let miss = TitleIdMiss { id: 990, in_trash: true };
+        let mut session =
+            crate::middleware::auth::Session::anonymous_with_token("t".to_string());
+        session.role = crate::middleware::auth::Role::Librarian;
+        let html = render_search_fragment(
+            &Some(crate::models::PaginatedList::new(vec![], 1, 0, None, None, None)),
+            "#990",
+            &Some("genre:3".to_string()),
+            &None,
+            &None,
+            None,
+            Some(miss),
+            &session,
+            "en",
+            chrono_tz::UTC,
+        );
+        assert!(html.contains("Title in the Trash"), "{html}");
+        assert!(html.contains("Title #990 is in the Trash"), "{html}");
+        assert!(!html.contains("/catalog/title/new"), "{html}");
+        assert!(!html.contains("Nothing matches this filter"), "{html}");
+    }
+
+    #[test]
+    fn title_id_unknown_names_the_id() {
+        let copy = empty_copy("#991", Some(TitleIdMiss { id: 991, in_trash: false }), "fr");
+        assert!(copy.body_html.contains("#991"), "{}", copy.body_html);
+        assert!(copy.heading.contains("Aucun titre"), "{}", copy.heading);
+        assert!(copy.cta_label.is_empty() && copy.cta_url.is_empty());
+    }
+
+    #[test]
+    fn no_miss_keeps_the_search_copy() {
+        let copy = empty_copy("Tintin", None, "en");
+        assert_eq!(copy.heading, "No matches");
+        assert_eq!(copy.cta_url, "/catalog/title/new?title=Tintin");
     }
 }

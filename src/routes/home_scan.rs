@@ -8,6 +8,8 @@
 //! - `/title/:id` when the code is a known active ISBN.
 //! - `/volume/:id` when the code is a known active V-code.
 //! - `/location/:id` when the code is a known active L-code.
+//! - `/title/:id` for `#<id>` of a live title, else `/?q=%23<id>` (the
+//!   search explains the miss) — story 17-5.
 //! - `/catalog?code=<URL-encoded>` for any other case (unknown prefix,
 //!   ISSN/UPC, or known prefix with no DB match — the cataloging
 //!   workflow on `/catalog` takes over).
@@ -36,6 +38,7 @@ use crate::models::location::LocationModel;
 use crate::models::title::TitleModel;
 use crate::models::volume::VolumeModel;
 use crate::routes::catalog_code::detect_code_type;
+use crate::services::title_id_search::parse_title_id;
 use crate::utils::url_encode;
 
 /// Query string for `GET /scan`. Accepts EITHER `code` (canonical) or
@@ -75,6 +78,21 @@ pub async fn handle_home_scan(
     // Empty code → redirect to home (graceful no-op for blank submits).
     if code.is_empty() {
         return Ok(redirect_response(is_htmx, "/"));
+    }
+
+    // Story 17-5 (#653) — `#<id>` opens a live title; a miss goes to the
+    // search, which says whether the title is in the Trash or unknown
+    // (the catalog would refuse `#990` as an unknown code).
+    if let Some(id) = parse_title_id(code) {
+        let target = match TitleModel::find_by_id(pool, id).await {
+            Ok(Some(_)) => format!("/title/{id}"),
+            Ok(None) => title_id_search_url(id),
+            Err(e) => {
+                tracing::warn!(title_id = id, error = %e, "find_by_id failed; falling back to the search");
+                title_id_search_url(id)
+            }
+        };
+        return Ok(redirect_response(is_htmx, &target));
     }
 
     let detection = detect_code_type(code);
@@ -119,6 +137,11 @@ pub async fn handle_home_scan(
     };
 
     Ok(redirect_response(is_htmx, &target))
+}
+
+/// Story 17-5 — the home search for `#<id>`.
+fn title_id_search_url(id: u64) -> String {
+    format!("/?q=%23{id}")
 }
 
 fn fallback_url(code: &str) -> String {
@@ -216,6 +239,11 @@ mod tests {
         // `%2D` in the fallback URL.
         let url = fallback_url("978-2-07-036024-6");
         assert_eq!(url, "/catalog?code=978-2-07-036024-6");
+    }
+
+    #[test]
+    fn title_id_search_url_encodes_the_hash() {
+        assert_eq!(title_id_search_url(990), "/?q=%23990");
     }
 
     #[test]

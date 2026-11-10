@@ -86,6 +86,7 @@ fn result_ids(outcome: SearchOutcome) -> Vec<u64> {
     match outcome {
         SearchOutcome::Results(r) => r.items.iter().map(|i| i.id).collect(),
         SearchOutcome::Redirect(url) => panic!("unexpected redirect to {url}"),
+        SearchOutcome::TitleIdMiss(miss) => panic!("unexpected title id miss {miss:?}"),
     }
 }
 

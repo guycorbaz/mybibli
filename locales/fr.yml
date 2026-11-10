@@ -63,6 +63,11 @@ connection:
   lost_retry: "Réessayer"
   restored_toast: "Connexion rétablie"
 empty:
+  # Story 17-5 (#653) — `#<id>` in the search field naming no live title.
+  title_id_trash_heading: "Titre dans la corbeille"
+  title_id_trash_body: "Le titre %{id} est dans la corbeille ; la recherche ne l'affiche donc pas. Un administrateur peut le restaurer depuis Admin → Corbeille."
+  title_id_unknown_heading: "Aucun titre avec cet identifiant"
+  title_id_unknown_body: "Aucun titre ne porte l'identifiant %{id} : il a peut-être été supprimé définitivement, ou le numéro est erroné. Vérifiez le numéro, ou tapez votre recherche sans le # pour chercher dans les titres, auteurs et ISBN."
   loans_heading: "Aucun prêt en cours"
   loans_body: "Les prêts apparaissent ici lorsqu'un emprunteur scanne un volume."
   borrowers_heading: "Aucun emprunteur pour l'instant"
@@ -319,6 +324,8 @@ pagination:
   next: Suivant
   aria_label: Pagination
 title_detail:
+  # Story 17-5 (#653) — label of the `#<id>` line.
+  title_id: "Identifiant du titre"
   contributors: Contributeurs
   # Fix #318 — affordance Ajouter / Retirer contributeur sur la page de détail du titre.
   contributor_add: "Ajouter un contributeur"

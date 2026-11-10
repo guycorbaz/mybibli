@@ -45,6 +45,7 @@ pub mod setup;
 pub mod soft_delete;
 pub mod title;
 pub mod title_detail;
+pub mod title_id_search;
 pub mod tome;
 pub mod trash;
 pub mod volume;
