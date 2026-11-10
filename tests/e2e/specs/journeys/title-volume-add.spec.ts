@@ -7,7 +7,9 @@
  * update without a reload and focus stays in the field (Rule #21). A second
  * label asks the CR #300 confirmation; Confirm adds it and focus returns to
  * the field. A label of another title is answered with a link to its volume,
- * never created again. An Anonymous visitor sees no field. axe on the page.
+ * never created again. An HTTP error restores the code into the field, and an
+ * error of another control leaves it alone. An Anonymous visitor sees no
+ * field. axe on the page.
  *
  * Data: ISBNs from specIsbn("TP", n); V-codes this spec's own, random in
  * disjoint ranges per test (V9900–V9959 in pairs, V9960–V9999); assertions
@@ -129,6 +131,41 @@ test.describe("Story 17-2 — add a volume from the title page", () => {
     await expect(warning.locator('a[href^="/volume/"]')).toBeVisible();
     await expect(page.locator("#title-volumes-count")).toHaveText("(0)");
     await expect(page.locator(FIELD)).toBeFocused();
+  });
+
+  test("an HTTP error restores the code into the field, never for another control", async ({ page }) => {
+    await loginAs(page, "librarian");
+    const titleId = await scanTitle(page, specIsbn("TP", 5));
+    await page.goto(`/title/${titleId}`);
+    const field = page.locator(FIELD);
+    const errors = page.locator('#feedback-list .feedback-entry[data-feedback-variant="error"]');
+
+    // The field's own post fails: the code comes back, focus stays in it.
+    const label = singleLabel();
+    await page.route(`**/title/${titleId}/volumes`, (route) =>
+      route.fulfill({ status: 500, body: "boom" }),
+    );
+    await simulateScan(page, FIELD, label);
+    await expect(errors).toHaveCount(1, { timeout: 10000 });
+    await expect(field).toHaveValue(label);
+    await expect(field).toBeFocused();
+    await page.unroute(`**/title/${titleId}/volumes`);
+
+    // Another control's request fails while something else holds focus:
+    // the field is neither refilled nor focused (Rule #21).
+    await field.fill("");
+    const other = page.locator("#title-delete-button");
+    await other.focus();
+    await page.evaluate((id) => {
+      (window as unknown as { htmx: { ajax: (m: string, u: string, o: object) => void } }).htmx.ajax(
+        "GET",
+        `/title/${id}/no-such-fragment`,
+        { target: "#title-feedback" },
+      );
+    }, titleId);
+    await expect(errors).toHaveCount(2, { timeout: 10000 });
+    await expect(field).toHaveValue("");
+    await expect(other).toBeFocused();
   });
 
   test("an Anonymous visitor sees no V-code field", async ({ page }) => {
