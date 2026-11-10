@@ -233,7 +233,7 @@ feedback:
   title_created_suggestion: "Scannez un code V pour attacher un volume, ou scannez un autre ISBN."
   title_exists: "Ce titre est déjà dans votre catalogue."
   title_exists_suggestion: "Scannez un code V pour attacher un volume."
-  code_unsupported: "Ce code n'est pas reconnu. Attendu : un ISBN, un code-barres EAN ou UPC, une étiquette de volume (V suivi de 4 chiffres, ex. V0042) ou une étiquette d'emplacement (L suivi de 4 chiffres). Vérifiez le code, ou créez le titre à la main avec Nouveau titre."
+  code_unsupported: "Ce code n'est pas reconnu. Attendu : un ISBN, un code-barres EAN ou UPC, un code V (V suivi de 4 chiffres, ex. V0042) ou un code L (L suivi de 4 chiffres). Vérifiez le code, ou créez le titre à la main avec « Nouveau titre »."
   isbn_invalid: "Ce code ne semble pas être un ISBN valide. Vérifiez le code-barres et réessayez."
   volume_created: "Volume %{label} attaché à %{title}."
   volume_created_suggestion: "Scannez un code L pour ranger, ou scannez un autre code V."

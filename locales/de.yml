@@ -231,7 +231,7 @@ feedback:
   title_created_suggestion: "Scannen Sie einen V-Code, um ein Exemplar anzuhängen, oder eine weitere ISBN."
   title_exists: "Dieser Titel ist bereits in Ihrem Katalog."
   title_exists_suggestion: "Scannen Sie einen V-Code, um ein Exemplar anzuhängen."
-  code_unsupported: "Dieser Code wird nicht erkannt. Erwartet wird eine ISBN, ein EAN- oder UPC-Strichcode, ein Exemplaretikett (V gefolgt von 4 Ziffern, z. B. V0042) oder ein Standortetikett (L gefolgt von 4 Ziffern). Prüfen Sie den Code oder legen Sie den Titel mit „Neuer Titel“ manuell an."
+  code_unsupported: "Dieser Code wird nicht erkannt. Erwartet wird eine ISBN, ein EAN- oder UPC-Strichcode, ein V-Code (V gefolgt von 4 Ziffern, z. B. V0042) oder ein L-Code (L gefolgt von 4 Ziffern). Prüfen Sie den Code oder legen Sie den Titel mit „Neuer Titel“ manuell an."
   isbn_invalid: "Dieser Code scheint keine gültige ISBN zu sein. Bitte den Barcode prüfen und erneut scannen."
   volume_created: "Exemplar %{label} an %{title} angehängt."
   volume_created_suggestion: "L-Code scannen zum Einsortieren, oder weiteren V-Code scannen."

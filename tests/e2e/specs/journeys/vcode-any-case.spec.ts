@@ -52,14 +52,17 @@ test.describe("Story 17-1 — V-code any case", () => {
 
     // A near V-code names the expected shape, not media types.
     await simulateScan(page, "#scan-field", "V12A4");
-    const shape = page.locator(".feedback-entry").filter({ hasText: /V0042/ });
+    const shape = page
+      .locator(".feedback-entry")
+      .filter({ hasText: /Invalid volume code format|Format de code volume invalide/ });
     await expect(shape.first()).toBeVisible({ timeout: 10000 });
-    await expect(page.locator("#feedback-list")).not.toContainText(/disambiguation|distinction de type/i);
+    await expect(shape.first()).toContainText(/V0042/);
+    await expect(page.locator("#feedback-list")).not.toContainText(/not recognized|pas reconnu/i);
     await expect(page.locator("#scan-field")).toBeFocused();
 
     // The reported input: five digits, no V — the accepted shapes are named.
     await simulateScan(page, "#scan-field", "11338");
-    const unknown = page.locator(".feedback-entry").filter({ hasText: /not recognised|pas reconnu/i });
+    const unknown = page.locator(".feedback-entry").filter({ hasText: /not recognized|pas reconnu/i });
     await expect(unknown.first()).toBeVisible({ timeout: 10000 });
     await expect(unknown.first()).toContainText(/V0042/);
     await expect(page.locator("#scan-field")).toBeFocused();
@@ -68,8 +71,11 @@ test.describe("Story 17-1 — V-code any case", () => {
     // shows the canonical label and the hand-made title.
     const volumeUrl = await page.evaluate(async (code) => {
       const res = await fetch(`/scan?code=${code}`, { headers: { "HX-Request": "true" } });
-      return res.headers.get("hx-redirect");
-    }, `v${digits}`);
+      return `${res.status} ${res.headers.get("hx-redirect")}`;
+    }, `v${digits}`).then((r) => {
+      expect(r).toMatch(/^200 /);
+      return r.slice(4);
+    });
     expect(volumeUrl).toMatch(/^\/volume\/\d+$/);
     await page.goto(volumeUrl!);
     await expect(page.locator("main")).toContainText(label);

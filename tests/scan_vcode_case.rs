@@ -85,8 +85,10 @@ async fn a_near_vcode_is_refused_naming_the_expected_shape(pool: DbPool) {
     for code in ["V12345", "v12", "V,/+", "V12A4", "v0000"] {
         let (status, body) = scan(&router, &browser, code).await;
         assert_eq!(status, StatusCode::OK, "{code}");
-        assert!(body.contains("V0042"), "{code}: the expected shape is named: {body}");
-        assert!(!body.contains("not recognised"), "{code}: not code_unsupported: {body}");
+        // `feedback.vcode_invalid`, which names the shape, not code_unsupported.
+        assert!(body.contains("Invalid volume code format"), "{code}: {body}");
+        assert!(body.contains("V followed by 4 digits"), "{code}: {body}");
+        assert!(!body.contains("not recognized"), "{code}: not code_unsupported: {body}");
     }
     assert_eq!(volume_count(&pool).await, 0, "nothing created");
 }
@@ -98,10 +100,21 @@ async fn the_reported_code_names_the_accepted_shapes(pool: DbPool) {
     let (status, body) = scan(&router, &browser, "11338").await;
 
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("not recognised"), "{body}");
+    assert!(body.contains("not recognized"), "{body}");
     assert!(body.contains("V followed by 4 digits"), "{body}");
     assert!(!body.contains("disambiguation"), "no media-type wording: {body}");
     assert_eq!(volume_count(&pool).await, 0, "nothing created");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn search_text_starting_with_v_is_not_called_a_malformed_vcode(pool: DbPool) {
+    let (router, browser, _) = setup(&pool).await;
+    for text in ["Valérian", "V for Vendetta"] {
+        let (status, body) = scan(&router, &browser, text).await;
+        assert_eq!(status, StatusCode::OK, "{text}");
+        assert!(body.contains("not recognized"), "{text}: {body}");
+        assert!(!body.contains("Invalid volume code format"), "{text}: {body}");
+    }
 }
 
 #[sqlx::test(migrations = "./migrations")]
