@@ -464,6 +464,7 @@ error:
     not_found: ISBN not found
   upc:
     invalid_checksum: "Invalid UPC: the check digit does not match — check for a typo"
+    too_long: "A UPC has at most 13 digits — check for an extra digit"
   genre:
     required: Genre is required
   media_type:
@@ -714,6 +715,7 @@ scan:
   irregular_length: "This code has %{len} digits, while a barcode has 8, 12 or 13: it may be misread or mistyped."
   irregular_check_digit: "The check digit of this code is wrong: a digit may be misread or mistyped."
   irregular_not_digits: "This code contains characters other than digits, while a barcode has digits only: it may be mistyped."
+  irregular_isbn10: "This code is a valid ISBN-10, not a product barcode: it belongs in the ISBN field, where it is stored as its ISBN-13."
   irregular_action_scan: "Check it and scan it again, or choose a type to keep it as entered."
   irregular_action_form: "Correct it, or tick the box below to keep it as entered."
 cover:

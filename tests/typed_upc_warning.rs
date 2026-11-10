@@ -12,7 +12,10 @@ mod common;
 
 use axum::Router;
 use common::mcp::{genre_id, router, seed_title};
+use axum::body::Body;
+use axum::http::Request;
 use common::web::{Browser, body_string, seed_admin};
+use tower::ServiceExt;
 use mybibli::db::DbPool;
 use mybibli::utils::url_encode;
 
@@ -147,6 +150,40 @@ async fn the_edit_form_warns_on_an_irregular_upc(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn the_edit_form_takes_a_correction_after_a_warning(pool: DbPool) {
+    let (app, b) = admin(&pool).await;
+    let id = seed_title(&pool, "To edit").await;
+
+    let (retarget, _) = edit_upc(&app, &b, &pool, id, "12345", None).await;
+    assert_eq!(retarget.as_deref(), Some("#edit-upc-warning"));
+    // Corrected, the old confirmation still sent: checked again, kept silently.
+    let (retarget, body) = edit_upc(&app, &b, &pool, id, "0093624738626", Some("12345")).await;
+    assert_eq!(retarget, None, "{body}");
+    assert_eq!(stored_upc(&pool, id).await.as_deref(), Some("0093624738626"));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_upc_longer_than_the_column_is_refused_even_confirmed(pool: DbPool) {
+    let (app, b) = admin(&pool).await;
+    let id = seed_title(&pool, "To edit").await;
+    let (_, body) = edit_upc(&app, &b, &pool, id, "12345678901234", Some("12345678901234")).await;
+    assert!(body.contains("at most 13 digits"), "{body}");
+    assert_eq!(stored_upc(&pool, id).await, None);
+    let (_, body) = create_by_hand(&app, &b, &pool, "Long", "1234 5678 9012 34", Some("12345678901234")).await;
+    assert!(body.contains("at most 13 digits"), "{body}");
+    assert!(upc_of_titles_named(&pool, "Long").await.is_empty());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_valid_isbn10_typed_as_upc_is_named(pool: DbPool) {
+    let (app, b) = admin(&pool).await;
+    let (retarget, body) = create_by_hand(&app, &b, &pool, "Isbn", "080442957X", None).await;
+    assert_eq!(retarget.as_deref(), Some("#upc-field-warning"), "{body}");
+    assert!(body.contains("valid ISBN-10"), "{body}");
+    assert!(upc_of_titles_named(&pool, "Isbn").await.is_empty());
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn the_edit_form_refuses_a_wrong_upc_a_check_digit(pool: DbPool) {
     let (app, b) = admin(&pool).await;
     let id = seed_title(&pool, "To edit").await;
@@ -184,6 +221,27 @@ async fn a_wrong_upc_a_picked_from_the_media_type_choice_gets_the_384_message(po
     assert!(body.contains("scan-with-type") && !body.contains("data-code-warning"), "{body}");
 
     let (_, body) = post(&app, &b, "/catalog/scan-with-type", "code=036000291453&media_type=cd").await;
+    assert!(body.contains(CHECKSUM_HINT), "{body}");
+    assert!(!body.contains("couldn't create the title"), "{body}");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_wrong_upc_a_scanned_with_a_preference_gets_the_384_message(pool: DbPool) {
+    let (app, b) = admin(&pool).await;
+    let res = app
+        .clone()
+        .oneshot(
+            Request::post("/catalog/scan")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", format!("session={}; media_type_preference=cd", b.cookie))
+                .header("X-CSRF-Token", &b.csrf)
+                .header("HX-Request", "true")
+                .body(Body::from("code=036000291453"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = body_string(res).await;
     assert!(body.contains(CHECKSUM_HINT), "{body}");
     assert!(!body.contains("couldn't create the title"), "{body}");
 }

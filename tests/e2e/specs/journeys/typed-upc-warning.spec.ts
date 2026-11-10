@@ -44,8 +44,12 @@ async function titleId(page: Page, name: string): Promise<string | null> {
   const response = await page.request.get(`/?q=${encodeURIComponent(name)}`, {
     headers: { "HX-Request": "true" },
   });
-  const match = (await response.text()).match(/href="\/title\/(\d+)"/);
-  return match ? match[1] : null;
+  // The search ranks loosely: only a link carrying this exact name counts.
+  const html = await response.text();
+  const at = html.indexOf(name);
+  if (at < 0) return null;
+  const links = [...html.slice(0, at).matchAll(/href="\/title\/(\d+)"/g)];
+  return links.length ? links[links.length - 1][1] : null;
 }
 
 async function openTitleForm(page: Page, name: string) {
@@ -88,7 +92,7 @@ test.describe("Story 17-4 — typed codes warned like scanned ones", () => {
     const id = await titleId(page, name);
     expect(id).not.toBeNull();
     await page.goto(`/title/${id}`);
-    await expect(page.locator("#title-metadata")).toContainText(nine);
+    await expect(page.locator("#title-metadata")).toContainText(`UPC: ${nine}`);
   });
 
   test("the title edit form warns on an irregular UPC, and a correction saves", async ({ page }) => {
@@ -119,9 +123,11 @@ test.describe("Story 17-4 — typed codes warned like scanned ones", () => {
     });
     await expect(page.locator("#edit-title-submit")).toBeFocused();
 
-    // Corrected: a valid barcode saves with no further question.
+    // Corrected: the warning goes as soon as the field changes, and a valid
+    // barcode saves with no further question.
     const valid = validEan13();
     await upc.fill(valid);
+    await expect(page.locator("#edit-upc-warning [data-code-warning]")).toHaveCount(0);
     await page.locator("#edit-title-submit").click();
     await expect(page.locator("#edit-upc")).toHaveCount(0, { timeout: 10000 });
     await page.reload();

@@ -148,6 +148,9 @@ pub enum CodeIrregularity {
     /// Story 17-4 — a character other than a digit. Only a hand-typed code
     /// can carry one: the scan classifies digits only as `upc`.
     NotDigits,
+    /// Story 17-4 — a valid ISBN-10 typed in the UPC field (the scan reads
+    /// it as an ISBN and never reaches this).
+    Isbn10,
 }
 
 /// EAN-8 check digit of the first 7 digits (pure; weights 3 and 1).
@@ -210,6 +213,9 @@ impl CodeIrregularity {
             CodeIrregularity::NotDigits => {
                 rust_i18n::t!("scan.irregular_not_digits", locale = loc).to_string()
             }
+            CodeIrregularity::Isbn10 => {
+                rust_i18n::t!("scan.irregular_isbn10", locale = loc).to_string()
+            }
         }
     }
 }
@@ -231,10 +237,34 @@ pub enum TypedUpcVerdict {
     Keep,
     /// Irregular and not confirmed yet: warn, store nothing.
     Confirm(CodeIrregularity),
-    /// A 12-digit UPC-A with a wrong check digit: refused (#384), as the
-    /// scan refuses it; no confirmation can keep it.
-    Refuse,
+    /// Refused: no confirmation can keep it.
+    Refuse(UpcRefusal),
 }
+
+/// Story 17-4 — why a typed UPC is refused outright.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpcRefusal {
+    /// A 12-digit UPC-A with a wrong check digit (#384), as the scan
+    /// refuses it.
+    CheckDigit,
+    /// More than 13 characters: `titles.upc` cannot hold it.
+    TooLong,
+}
+
+impl UpcRefusal {
+    /// The field hint (Rule #9).
+    pub fn message(self, loc: &str) -> String {
+        match self {
+            UpcRefusal::CheckDigit => {
+                rust_i18n::t!("error.upc.invalid_checksum", locale = loc).to_string()
+            }
+            UpcRefusal::TooLong => rust_i18n::t!("error.upc.too_long", locale = loc).to_string(),
+        }
+    }
+}
+
+/// The longest UPC `titles.upc` (`VARCHAR(13)`) holds.
+const UPC_MAX_CHARS: usize = 13;
 
 /// Story 17-4 (Rule #20, pure) — the verdict on a typed UPC, separators
 /// already removed. `confirmed` is the code the librarian ticked "keep as
@@ -242,10 +272,14 @@ pub enum TypedUpcVerdict {
 /// code. Only all-digit codes that `code_irregularity` passes are kept
 /// silently.
 pub fn typed_upc_verdict(upc: &str, confirmed: Option<&str>) -> TypedUpcVerdict {
-    let irregularity = if !upc.bytes().all(|b| b.is_ascii_digit()) {
+    let irregularity = if upc.chars().count() > UPC_MAX_CHARS {
+        return TypedUpcVerdict::Refuse(UpcRefusal::TooLong);
+    } else if crate::utils::isbn10_to_isbn13(upc).is_some() {
+        Some(CodeIrregularity::Isbn10)
+    } else if !upc.bytes().all(|b| b.is_ascii_digit()) {
         Some(CodeIrregularity::NotDigits)
     } else if upc.len() == 12 && !TitleService::validate_upc12_checksum(upc) {
-        return TypedUpcVerdict::Refuse;
+        return TypedUpcVerdict::Refuse(UpcRefusal::CheckDigit);
     } else {
         code_irregularity(upc)
     };
@@ -270,7 +304,8 @@ pub(crate) enum TypedUpcOutcome {
 /// stored without a check (as 17-3's unchanged ISBN). An irregular code
 /// answers with the scan's warning swapped into `#<slot_id>` (the response
 /// retargets there, so focus is not moved, Rule #21); a 12-digit code with a
-/// wrong check digit is refused with the #384 message.
+/// wrong check digit is refused with the #384 message, a code longer than
+/// the column with its own hint.
 pub(crate) fn check_typed_upc(
     typed: Option<&str>,
     stored: Option<&str>,
@@ -288,9 +323,7 @@ pub(crate) fn check_typed_upc(
     }
     match typed_upc_verdict(&upc, without_separators(confirmed).as_deref()) {
         TypedUpcVerdict::Keep => Ok(TypedUpcOutcome::Store(Some(upc))),
-        TypedUpcVerdict::Refuse => Err(crate::error::AppError::BadRequest(
-            TitleService::upc_checksum_refusal(&upc, loc).unwrap_or_default(),
-        )),
+        TypedUpcVerdict::Refuse(refusal) => Err(crate::error::AppError::BadRequest(refusal.message(loc))),
         TypedUpcVerdict::Confirm(irregularity) => Ok(TypedUpcOutcome::Warn(
             (
                 [("HX-Retarget", format!("#{slot_id}")), ("HX-Reswap", "innerHTML".to_string())],
@@ -573,6 +606,7 @@ mod tests {
             CodeIrregularity::Length(11),
             CodeIrregularity::CheckDigit,
             CodeIrregularity::NotDigits,
+            CodeIrregularity::Isbn10,
         ] {
             for loc in ["en", "fr", "de", "it"] {
                 for m in [i.message(loc), i.form_message(loc)] {
@@ -615,8 +649,44 @@ mod tests {
 
     #[test]
     fn a_wrong_upc_a_check_digit_is_refused_even_confirmed() {
-        assert_eq!(typed_upc_verdict("036000291453", None), TypedUpcVerdict::Refuse);
-        assert_eq!(typed_upc_verdict("036000291453", Some("036000291453")), TypedUpcVerdict::Refuse);
+        assert_eq!(typed_upc_verdict("036000291453", None), TypedUpcVerdict::Refuse(UpcRefusal::CheckDigit));
+        assert_eq!(typed_upc_verdict("036000291453", Some("036000291453")), TypedUpcVerdict::Refuse(UpcRefusal::CheckDigit));
+    }
+
+    #[test]
+    fn a_typed_upc_longer_than_the_column_is_refused() {
+        assert_eq!(typed_upc_verdict("12345678901234", None), TypedUpcVerdict::Refuse(UpcRefusal::TooLong));
+        assert_eq!(
+            typed_upc_verdict("12345678901234", Some("12345678901234")),
+            TypedUpcVerdict::Refuse(UpcRefusal::TooLong)
+        );
+        // 13 characters fit, even irregular ones.
+        assert_eq!(typed_upc_verdict("ééééééééééééé", None), TypedUpcVerdict::Confirm(CodeIrregularity::NotDigits));
+        for loc in ["en", "fr", "de", "it"] {
+            for r in [UpcRefusal::CheckDigit, UpcRefusal::TooLong] {
+                assert!(!r.message(loc).contains("error."), "{loc}: {r:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_valid_isbn10_typed_as_upc_is_named() {
+        assert_eq!(typed_upc_verdict("2070360245", None), TypedUpcVerdict::Confirm(CodeIrregularity::Isbn10));
+        assert_eq!(typed_upc_verdict("080442957X", None), TypedUpcVerdict::Confirm(CodeIrregularity::Isbn10));
+        // A failed ISBN-10 keeps the scan's 10-digit warning.
+        assert_eq!(typed_upc_verdict("2205025062", None), TypedUpcVerdict::Confirm(CodeIrregularity::TenDigits));
+    }
+
+    #[test]
+    fn the_upc_checksum_refusal_is_for_12_digit_codes_only() {
+        for loc in ["en", "fr", "de", "it"] {
+            let m = TitleService::upc_checksum_refusal("036000291453", loc).expect(loc);
+            assert!(!m.contains("error."), "{loc}: {m}");
+        }
+        assert_eq!(TitleService::upc_checksum_refusal("036000291452", "en"), None);
+        for code in ["0093624738627", "12345678", "220500218"] {
+            assert_eq!(TitleService::upc_checksum_refusal(code, "en"), None, "{code}");
+        }
     }
 
     #[test]

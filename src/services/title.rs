@@ -56,10 +56,6 @@ impl TitleService {
             && crate::utils::ean13_check_digit(isbn) == isbn[12..].parse::<u32>().ok()
     }
 
-    /// Validate a UPC-A checksum using the modulo-10 algorithm (#384).
-    /// UPC-A is 12 digits with weights 3 and 1 — the mirror of EAN-13's 1/3
-    /// (odd 1-indexed positions ×3, even ×1). Catches fat-fingered manual
-    /// UPC entries before they reach the provider chain.
     /// #384, story 17-4 — the refusal of a 12-digit UPC-A with a wrong
     /// check digit (Rule #9 field hint), `None` for any other code. Shared by
     /// the scan's creation and error message and the title forms.
@@ -68,6 +64,10 @@ impl TitleService {
             .then(|| rust_i18n::t!("error.upc.invalid_checksum", locale = loc).to_string())
     }
 
+    /// Validate a UPC-A checksum using the modulo-10 algorithm (#384).
+    /// UPC-A is 12 digits with weights 3 and 1 — the mirror of EAN-13's 1/3
+    /// (odd 1-indexed positions ×3, even ×1). Catches fat-fingered manual
+    /// UPC entries before they reach the provider chain.
     pub fn validate_upc12_checksum(upc: &str) -> bool {
         if upc.len() != 12 {
             return false;
