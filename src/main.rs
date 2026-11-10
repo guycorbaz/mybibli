@@ -309,6 +309,11 @@ async fn main() {
         );
     }
 
+    // Story 17-6 (#656): the MCP skills mybibli ships with, offered once
+    // per database (inactive; a name already taken or a default the admin
+    // deleted is never touched). Non-fatal; each failure is logged inside.
+    mybibli::services::default_skills::insert_defaults(&pool).await;
+
     // Load application settings from database
     let app_settings = AppSettings::load_from_db(&pool)
         .await

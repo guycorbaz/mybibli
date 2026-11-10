@@ -1142,6 +1142,7 @@ admin:
     show_body: "Anweisungen anzeigen"
     last_change_by: "von %{name}"
     last_change_unknown_author: "Autor unbekannt"
+    last_change_provided: "von mybibli bereitgestellt"
     btn_edit: "Bearbeiten"
     edit_aria: "Skill %{name} bearbeiten"
     btn_activate: "Aktivieren"

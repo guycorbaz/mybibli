@@ -1129,6 +1129,7 @@ admin:
     show_body: "Mostra le istruzioni"
     last_change_by: "da %{name}"
     last_change_unknown_author: "autore sconosciuto"
+    last_change_provided: "fornito da mybibli"
     btn_edit: "Modifica"
     edit_aria: "Modifica lo skill %{name}"
     btn_activate: "Attiva"

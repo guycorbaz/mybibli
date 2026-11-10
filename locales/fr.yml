@@ -1154,6 +1154,7 @@ admin:
     show_body: "Afficher les consignes"
     last_change_by: "par %{name}"
     last_change_unknown_author: "auteur inconnu"
+    last_change_provided: "fourni par mybibli"
     btn_edit: "Modifier"
     edit_aria: "Modifier la compétence %{name}"
     btn_activate: "Activer"

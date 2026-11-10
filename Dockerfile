@@ -8,6 +8,8 @@ COPY migrations/ ./migrations/
 COPY locales/ ./locales/
 COPY templates/ ./templates/
 COPY .sqlx/ ./.sqlx/
+# Story 17-6: default MCP skills, embedded in the binary with include_str!
+COPY skills/ ./skills/
 ENV SQLX_OFFLINE=true
 # #447 — the build's git commit, so the running binary can name itself in the
 # log. `.git` is deliberately NOT copied into the build context (it would
