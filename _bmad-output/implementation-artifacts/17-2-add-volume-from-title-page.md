@@ -1,6 +1,6 @@
 # Story 17.2: Add a volume from the title page
 
-Status: review
+Status: done
 
 GitHub issue: #652 (type:change-request). Covers: FR173, UX-DR43. Epic 17; ships in v1.27.0.
 
