@@ -268,3 +268,26 @@ async fn a_wrong_upc_a_scanned_with_a_preference_gets_the_384_message(pool: DbPo
     assert!(body.contains(CHECKSUM_HINT), "{body}");
     assert!(!body.contains("couldn't create the title"), "{body}");
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_edit_form_checks_against_the_media_type_being_saved(pool: DbPool) {
+    let (app, b) = admin(&pool).await;
+    let id = seed_title(&pool, "Book becoming a CD").await;
+    let genre = genre_id(&pool, "Roman").await;
+    let version: i32 = sqlx::query_scalar("SELECT version FROM titles WHERE id = ?")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    // Book → CD in the same submit: the CD's length warning, not the refusal.
+    let (retarget, body) = post(
+        &app,
+        &b,
+        &format!("/title/{id}"),
+        &format!("version={version}&title=Disc&genre_id={genre}&media_type=cd&upc=2070360245"),
+    )
+    .await;
+    assert_eq!(retarget.as_deref(), Some("#edit-upc-warning"), "{body}");
+    assert!(!body.contains("ISBN field"), "{body}");
+    assert_eq!(stored_upc(&pool, id).await, None);
+}
