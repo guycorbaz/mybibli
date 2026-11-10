@@ -291,6 +291,23 @@ const ITEM_SELECT: &str = "SELECT id, proposal_id, target_table, CAST(target_id 
 
 pub struct ProposalModel;
 
+/// A field of the `identity` snapshot of metadata and cover items that a
+/// non-hand write carries into pending items (whitelisted JSON paths).
+#[derive(Debug, Clone, Copy)]
+enum IdentityField {
+    Title,
+    Isbn,
+}
+
+impl IdentityField {
+    fn json_path(self) -> &'static str {
+        match self {
+            Self::Title => "$.identity.title",
+            Self::Isbn => "$.identity.isbn",
+        }
+    }
+}
+
 impl ProposalModel {
     fn proposal_from_row(r: &sqlx::mysql::MySqlRow) -> Result<ProposalRow, AppError> {
         let kind: String = r.try_get("kind")?;
@@ -613,6 +630,33 @@ impl ProposalModel {
         old: &str,
         new: &str,
     ) -> Result<u64, AppError> {
+        Self::carry_identity(conn, title_id, except_id, IdentityField::Title, old, new).await
+    }
+
+    /// Story 17-3 (#565) — after the boot repair rewrote a title's stored
+    /// ISBN to its ISBN-13 (same identifier, re-encoded), rewrite
+    /// `identity.isbn` from `old` to `new` in the live items of the pending
+    /// proposals on the title, so the repair does not outdate them
+    /// (`proposals::title_moved`). Same two-step lock scope as
+    /// [`Self::carry_identity_title`].
+    pub async fn carry_identity_isbn(
+        conn: &mut MySqlConnection,
+        title_id: u64,
+        old: &str,
+        new: &str,
+    ) -> Result<u64, AppError> {
+        Self::carry_identity(conn, title_id, 0, IdentityField::Isbn, old, new).await
+    }
+
+    async fn carry_identity(
+        conn: &mut MySqlConnection,
+        title_id: u64,
+        except_id: u64,
+        field: IdentityField,
+        old: &str,
+        new: &str,
+    ) -> Result<u64, AppError> {
+        let path = field.json_path();
         // Two steps (CI deadlock, story 12-6): a multi-table UPDATE …
         // JOIN proposals filtered on `status = 'pending'` share-locked
         // every pending proposal of the library through
@@ -635,9 +679,9 @@ impl ProposalModel {
         let placeholders = vec!["?"; ids.len()].join(", ");
         let sql = format!(
             "UPDATE proposal_items \
-             SET proposed_values = JSON_SET(proposed_values, '$.identity.title', ?) \
+             SET proposed_values = JSON_SET(proposed_values, '{path}', ?) \
              WHERE id IN ({placeholders}) AND deleted_at IS NULL \
-               AND JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.identity.title')) = ?"
+               AND JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '{path}')) = ?"
         );
         let mut q = sqlx::query(&sql).bind(new);
         for id in &ids {

@@ -63,6 +63,9 @@ pub async fn search_candidates(
         return Ok(Vec::new());
     }
     let compact = crate::utils::strip_isbn_separators(trimmed);
+    // Story 17-3 (#565): the exact match is the one ISBN rule's form (an
+    // ISBN-10 or a pasted `ISBN` prefix finds its title first).
+    let exact = crate::utils::isbn_lookup_form(trimmed);
     let sql = format!(
         "SELECT {CANDIDATE_COLUMNS} FROM titles t \
          WHERE t.deleted_at IS NULL AND t.id <> ? \
@@ -74,7 +77,7 @@ pub async fn search_candidates(
         .bind(exclude_title_id)
         .bind(crate::utils::like_contains_pattern(trimmed))
         .bind(crate::utils::like_contains_pattern(&compact))
-        .bind(&compact)
+        .bind(&exact)
         .fetch_all(pool)
         .await?;
     rows.iter().map(candidate_from_row).collect()

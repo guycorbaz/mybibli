@@ -228,27 +228,33 @@ impl TitleService {
         TitleModel::find_by_isbn(pool, isbn).await
     }
 
-    /// Create a title from manual form input.
-    pub async fn create_manual(pool: &DbPool, form: &TitleForm) -> Result<TitleModel, AppError> {
+    /// Create a title from manual form input. Story 17-3 (#565): the ISBN
+    /// goes through the one rule (`utils::normalize_isbn_input`) and is
+    /// refused when another live title holds it (as the edit form does).
+    pub async fn create_manual(
+        pool: &DbPool,
+        form: &TitleForm,
+        loc: &str,
+    ) -> Result<TitleModel, AppError> {
         if form.title.trim().is_empty() {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("error.title.required").to_string(),
+                rust_i18n::t!("error.title.required", locale = loc).to_string(),
             ));
         }
         if form.media_type.trim().is_empty() {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("error.media_type.required").to_string(),
+                rust_i18n::t!("error.media_type.required", locale = loc).to_string(),
             ));
         }
         const VALID_MEDIA_TYPES: &[&str] = &["book", "bd", "cd", "dvd", "magazine", "report"];
         if !VALID_MEDIA_TYPES.contains(&form.media_type.trim()) {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("error.media_type.required").to_string(),
+                rust_i18n::t!("error.media_type.required", locale = loc).to_string(),
             ));
         }
         if form.genre_id == 0 {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("error.genre.required").to_string(),
+                rust_i18n::t!("error.genre.required", locale = loc).to_string(),
             ));
         }
 
@@ -258,7 +264,7 @@ impl TitleService {
             || form.issue_number.is_some_and(|v| v < 0)
         {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("validation.negative_number").to_string(),
+                rust_i18n::t!("validation.negative_number", locale = loc).to_string(),
             ));
         }
 
@@ -287,12 +293,25 @@ impl TitleService {
                     Some(d)
                 } else {
                     return Err(AppError::BadRequest(
-                        rust_i18n::t!("validation.invalid_date_format").to_string(),
+                        rust_i18n::t!("validation.invalid_date_format", locale = loc).to_string(),
                     ));
                 }
             }
             None => None,
         };
+
+        let isbn = match form.isbn.as_deref().map(crate::utils::normalize_isbn_input) {
+            None | Some(Ok(None)) => None,
+            Some(Ok(Some(isbn))) => Some(isbn),
+            Some(Err(e)) => return Err(AppError::BadRequest(e.message(loc))),
+        };
+        if let Some(isbn) = &isbn
+            && TitleModel::find_by_isbn(pool, isbn).await?.is_some()
+        {
+            return Err(AppError::Conflict(
+                rust_i18n::t!("error.isbn.already_used", locale = loc).to_string(),
+            ));
+        }
 
         let new_title = NewTitle {
             title: form.title.trim().to_string(),
@@ -302,7 +321,7 @@ impl TitleService {
             subtitle: non_empty_option(&form.subtitle),
             publisher: non_empty_option(&form.publisher),
             publication_date,
-            isbn: non_empty_option(&form.isbn),
+            isbn,
             issn: non_empty_option(&form.issn),
             upc: non_empty_option(&form.upc),
             page_count: form.page_count,

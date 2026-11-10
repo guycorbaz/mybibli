@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-11-10 (story 17-3 ready-for-dev — one ISBN rule for every form, #565)
+# last_updated: 2026-11-10 (story 17-3 in-progress — one ISBN rule, awaiting the production ISBN export before review, #565)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -337,7 +337,7 @@ development_status:
   epic-17: in-progress
   17-1-v-code-any-case: done
   17-2-add-volume-from-title-page: done
-  17-3-one-isbn-rule: ready-for-dev
+  17-3-one-isbn-rule: in-progress
   17-4-typed-code-warnings: backlog
   17-5-title-id-search: done
   17-6-default-mcp-skills: done

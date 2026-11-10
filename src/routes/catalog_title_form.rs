@@ -130,7 +130,7 @@ pub async fn create_title(
 
     let pool = &state.pool;
 
-    match TitleService::create_manual(pool, &form).await {
+    match TitleService::create_manual(pool, &form, loc).await {
         Ok(title) => {
             tracing::info!(title_id = title.id, title = %title.title, "Manual title created");
 
@@ -175,7 +175,7 @@ pub async fn create_title(
         Err(e) => {
             tracing::error!(error = %e, "Manual title creation failed");
             let message = match &e {
-                AppError::BadRequest(msg) => msg.clone(),
+                AppError::BadRequest(msg) | AppError::Conflict(msg) => msg.clone(),
                 _ => rust_i18n::t!("error.title.creation_failed", locale = loc).to_string(),
             };
             Ok(Html(feedback_html("error", &message, "")).into_response())

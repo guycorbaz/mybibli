@@ -754,30 +754,29 @@ pub async fn update_title(
     let dewey_code = non_empty(&form.dewey_code);
     let age_rating = non_empty(&form.age_rating);
 
-    // CR #272 — identifier edit path. Normalize: strip spaces and dashes
-    // from ISBN so a "978-2-07-036024-6" pasted from a barcode reader
-    // gets accepted (the provider chain stores the canonical 13-digit
-    // form). Empty → None ("clear the column").
-    let isbn = form.isbn.as_deref().and_then(crate::utils::identifier_without_separators);
+    // CR #272 — identifier edit path. Story 17-3 (#565): the ISBN goes
+    // through the one rule (separators, `ISBN` prefix, ISBN-10 → ISBN-13,
+    // check digit); empty → None ("clear the column"). A stored value sent
+    // back unchanged round-trips even when it is no ISBN — fixing it is
+    // what the librarian is here for.
+    let isbn = match crate::utils::normalize_isbn_input(form.isbn.as_deref().unwrap_or("")) {
+        Ok(isbn) => isbn,
+        Err(e) => {
+            let typed = form.isbn.as_deref().and_then(crate::utils::identifier_without_separators);
+            let stored = old_title.isbn.as_deref().and_then(crate::utils::identifier_without_separators);
+            if typed.is_some() && typed == stored {
+                old_title.isbn.clone()
+            } else {
+                return Err(AppError::BadRequest(e.message(loc)));
+            }
+        }
+    };
     let issn = non_empty(&form.issn).map(|s| s.replace('-', ""));
     let upc = form.upc.as_deref().and_then(crate::utils::identifier_without_separators);
 
-    // ISBN-13 checksum guard. Only validate if the user actually
-    // changed the value (a corrupt existing ISBN should still
-    // round-trip — fixing it is what they're trying to do).
     if let Some(ref new_isbn) = isbn
         && new_isbn.as_str() != old_title.isbn.as_deref().unwrap_or("")
     {
-        if new_isbn.len() != 13 || !new_isbn.chars().all(|c| c.is_ascii_digit()) {
-            return Err(AppError::BadRequest(
-                rust_i18n::t!("error.isbn.invalid_format", locale = loc).to_string(),
-            ));
-        }
-        if !crate::services::title::TitleService::validate_isbn13_checksum(new_isbn) {
-            return Err(AppError::BadRequest(
-                rust_i18n::t!("error.isbn.invalid_checksum", locale = loc).to_string(),
-            ));
-        }
         // Collision guard — another title may already carry this ISBN
         // (the schema allows duplicates because re-scan is intentional,
         // but for the EDIT path we surface the conflict rather than

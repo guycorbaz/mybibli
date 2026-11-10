@@ -850,8 +850,13 @@ async fn a_tome_entered_for_a_title_already_in_place_or_stored_as_isbn10(pool: D
     .unwrap();
     assert_eq!(row.settled_title_id, Some(held));
     // A title whose ISBN was typed as an ISBN-10 is found when the tome is
-    // entered with the ISBN-13.
+    // entered with the ISBN-13 — story 17-3 (#565): through the boot repair
+    // of stored ISBNs, which leaves the ISBN-13 for the plain comparison.
     let ten = book(&pool, "Typed ten", Some("2-07-036024-5")).await;
+    mybibli::services::isbn_repair::repair_stored_isbns_once(&pool)
+        .await
+        .unwrap()
+        .expect("first run");
     let row = ExpectedTomeService::create(
         &pool,
         s,

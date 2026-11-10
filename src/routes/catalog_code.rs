@@ -70,11 +70,12 @@ pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
             normalized_code: None,
         };
     }
-    // Story 12-1 (#502): an ISBN typed with separators (`978-2-205-00121-1`,
-    // `2 205 00121 3`) is an ISBN, carried bare. Only an ISBN classification
-    // of the compact form is kept; anything else falls through to the
-    // classification of the input as typed.
-    let compact = crate::utils::compact_isbn(code);
+    // Story 12-1 (#502), 17-3 (#565): an ISBN typed with separators or an
+    // `ISBN` prefix (`978-2-205-00121-1`, `ISBN 2 205 00121 3`) is an ISBN,
+    // carried as its ISBN-13 (`utils::isbn_lookup_form`, the one rule). Only
+    // an ISBN classification of that form is kept; anything else falls
+    // through to the classification of the input as typed.
+    let compact = crate::utils::isbn_lookup_form(code);
     if compact != code {
         let isbn13 = if crate::utils::is_isbn13_shaped(&compact) {
             Some(compact)
@@ -358,6 +359,22 @@ mod tests {
         let d = detect_code_type("978-2-205-00121-9");
         assert_eq!(d.code_type, "isbn");
         assert_eq!(d.normalized_code.as_deref(), Some("9782205001219"));
+    }
+
+    // Story 17-3 (#565) — a pasted `ISBN` prefix.
+    #[test]
+    fn test_detect_code_type_isbn_prefix_is_removed() {
+        for (code, isbn13) in [
+            ("ISBN 978-2-07-036024-6", "9782070360246"),
+            ("ISBN-13: 9782070360246", "9782070360246"),
+            ("isbn 2-205-00121-3", "9782205001211"),
+            ("ISBN-10 2205001213", "9782205001211"),
+        ] {
+            let d = detect_code_type(code);
+            assert_eq!(d.code_type, "isbn", "{code}");
+            assert_eq!(d.normalized_code.as_deref(), Some(isbn13), "{code}");
+        }
+        assert_eq!(detect_code_type("ISBN 9772070360246").code_type, "unknown");
     }
 
     #[test]

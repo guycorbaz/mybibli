@@ -22,7 +22,6 @@ wishlist:
   notes_placeholder: "z. B. nur gebunden, gebraucht OK"
   lookup_button: "Suchen"
   confirm_add: "Zur Wunschliste hinzufügen"
-  isbn_invalid: "Ungültige ISBN — muss 13 Ziffern mit gültiger Prüfziffer enthalten."
   title_required: "Titel ist erforderlich."
   resolved_intro: "Bei den Metadaten-Anbietern gefunden:"
   no_metadata: "Keine Metadaten für diese ISBN gefunden. Wechseln Sie in den freien Modus, um das Buch manuell hinzuzufügen."
@@ -451,8 +450,8 @@ error:
     creation_failed: "Der Titel konnte nicht erstellt werden. Bitte versuchen Sie es erneut; wenn das Problem weiterhin besteht, wenden Sie sich an Ihren Administrator."
     required: Titel ist erforderlich
   isbn:
-    invalid_checksum: Ungültige ISBN-Prüfsumme
-    invalid_format: "Ungültiges ISBN-Format — muss 13 Ziffern enthalten"
+    invalid_checksum: "Ungültige ISBN: Die Prüfziffer stimmt nicht — bitte auf Tippfehler prüfen"
+    invalid_format: "Keine ISBN — 10 oder 13 Ziffern erwartet, z. B. 978-2-07-036024-6"
     already_used: "Diese ISBN wird bereits von einem anderen Titel verwendet — Duplikat wird nicht angelegt"
     not_found: ISBN nicht gefunden
   upc:

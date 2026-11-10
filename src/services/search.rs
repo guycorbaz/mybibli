@@ -190,9 +190,10 @@ impl SearchService {
             });
         }
 
-        // Story 12-1 (#502): an ISBN typed with separators is looked up
-        // bare; every fallback keeps the query as typed.
-        match detect_code(&crate::utils::compact_isbn(trimmed)) {
+        // Story 12-1 (#502), 17-3 (#565): an ISBN typed with separators or
+        // an `ISBN` prefix is looked up as its ISBN-13; every fallback
+        // keeps the query as typed.
+        match detect_code(&crate::utils::isbn_lookup_form(trimmed)) {
             CodeType::VCode(code) => {
                 tracing::info!(code = %code, "V-code lookup");
                 let result = VolumeModel::find_by_label_with_title(pool, &code).await?;
@@ -319,7 +320,7 @@ impl SearchService {
     ) -> Result<PaginatedList<SearchResult>, AppError> {
         let page = search.page.max(1);
         let trimmed = search.query.trim();
-        let exact: Option<Vec<TitleModel>> = match detect_code(&crate::utils::compact_isbn(trimmed)) {
+        let exact: Option<Vec<TitleModel>> = match detect_code(&crate::utils::isbn_lookup_form(trimmed)) {
             CodeType::VCode(code) => VolumeModel::find_by_label_with_title(pool, &code)
                 .await?
                 .map(|(_volume, title)| vec![title]),
@@ -516,7 +517,7 @@ mod tests {
     // Story 12-1 (#502): the web search compacts before `detect_code`.
     #[test]
     fn test_detect_compacted_isbn_with_separators() {
-        let detect = |q: &str| detect_code(&crate::utils::compact_isbn(q));
+        let detect = |q: &str| detect_code(&crate::utils::isbn_lookup_form(q));
         assert_eq!(
             detect("978-2-07-036024-6"),
             CodeType::Isbn("9782070360246".to_string())
@@ -526,6 +527,16 @@ mod tests {
             CodeType::Isbn("9780201633610".to_string())
         );
         assert_eq!(detect("Spider-Man 3"), CodeType::Text);
+        // Story 17-3 (#565): a pasted `ISBN` prefix.
+        assert_eq!(
+            detect("ISBN-13: 978-2-07-036024-6"),
+            CodeType::Isbn("9782070360246".to_string())
+        );
+        assert_eq!(
+            detect("ISBN 2-205-00121-3"),
+            CodeType::Isbn("9782205001211".to_string())
+        );
+        assert_eq!(detect("ISBN des mots"), CodeType::Text);
     }
 
     #[test]

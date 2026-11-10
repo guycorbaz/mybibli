@@ -1,6 +1,6 @@
 # Story 17.3: One ISBN rule for every form
 
-Status: ready-for-dev
+Status: in-progress
 
 GitHub issue: #565 (type:code-review-finding, deferred from story 12-1). Covers: FR174. Epic 17; ships in v1.27.0.
 
@@ -29,6 +29,7 @@ so that a later scan finds the title instead of creating a duplicate.
 - `Creating new title` logs the stored ISBN of every new title: 743 creations with an ISBN, **all 13 digits `978`/`979`**; 55 without ISBN. The 39 `Manual title created` lines all fall among those without ISBN.
 - 782 `Processing scan` lines: none with a separator or an `ISBN` prefix (only `V,/+`, story 17-1).
 - `Title metadata updated manually` (784) does not log the ISBN.
+- **`titles.isbn` is `VARCHAR(13)`** (initial schema; strict SQL mode), and the manual field had `maxlength="13"`: a hyphenated ISBN-13 (17 characters) could never be stored. What the old manual form could leave is 13 characters at most — an ISBN-10 with hyphens or spaces (`2-205-00121-3`), a bare ISBN-10 (`2205001213`, the case of the existing test `manual_creation_with_an_isbn10_settles`), a truncated paste, or anything else typed. The repair therefore mostly concerns ISBN-10s; the issue's `978-2-205-00121-1` example is refused by the database, not stored.
 - The first `Creating new title` is on 2026-10-26; titles up to ~id 280 predate the logs, so the stored values of older titles can only be read from a database export (`id, isbn, deleted`), which the project lead was asked for. Until it is read, the repair's effect on production is unknown (Rule #20).
 
 ## Decisions
@@ -53,13 +54,13 @@ so that a later scan finds the title instead of creating a duplicate.
 
 ## Tasks
 
-- [ ] `src/utils/isbn.rs`: `parse_isbn`, `normalize_isbn_input`, `isbn_lookup_form`, `IsbnError::message` + unit tests; ISBN helpers moved there.
-- [ ] Scan, search, manual creation (+ duplicate guard), edit, wish list, expected tomes, volume move: use it.
-- [ ] Templates: field constraints (D8).
-- [ ] Locales: reword the two hints, drop `wishlist.isbn_invalid` (en/fr/de/it).
-- [ ] `models/expected_tome.rs`: drop the SQL copy and the ISBN-10 form.
-- [ ] Repair service + model writes + `main.rs` call + DB integration + corpus test.
-- [ ] E2E spec.
+- [x] `src/utils/isbn.rs`: `parse_isbn`, `normalize_isbn_input`, `isbn_lookup_form`, `IsbnError::message` + unit tests (the older helpers stay in `utils.rs`, used by the new module).
+- [x] Scan, search, manual creation (+ duplicate guard), edit, wish list, expected tomes, volume move: use it.
+- [x] Templates: field constraints (D8).
+- [x] Locales: reword the two hints, drop `wishlist.isbn_invalid` (en/fr/de/it).
+- [x] `models/expected_tome.rs`: drop the SQL copy and the ISBN-10 form.
+- [x] Repair service + model writes + `main.rs` call + DB integration + corpus test.
+- [x] E2E spec.
 - [ ] Corpus run over the export (AC4).
 
 ## Dev Notes
@@ -76,4 +77,23 @@ Claude Opus 5.5
 
 ### Completion Notes List
 
+- Implementation, unit, DB integration and E2E done; targeted gates green (clippy `--all-targets`, `isbn_one_rule` + the expected-tome / search / scan / conversion / proposal / locale integration suites, E2E: the new spec plus catalog, wish list, expected tomes, edit, search and scan specs at 2 workers).
+- The existing test `a_tome_entered_for_a_title_already_in_place_or_stored_as_isbn10` relied on the SQL copy (D7): it now runs the boot repair first, which shows the copy unnecessary.
+- **Pending (AC4):** the production export (`~/travail/mybibli-isbn.csv`) was not available on 2026-11-10; the logs (see above) cover only titles created since 2026-10-26. Code review waits for the corpus run: `MYBIBLI_ISBN_CORPUS=~/travail/mybibli-isbn.csv SQLX_OFFLINE=true cargo test --lib production_corpus -- --ignored --nocapture`.
+
 ### File List
+
+- `src/utils/isbn.rs` (new) — the one rule: `parse_isbn`, `normalize_isbn_input`, `isbn_lookup_form`, `IsbnError` + unit tests; `src/utils.rs` re-exports.
+- `src/routes/catalog_code.rs` — scan classification through `isbn_lookup_form`; prefix tests.
+- `src/services/search.rs` — web / MCP search through `isbn_lookup_form`; prefix tests.
+- `src/services/title.rs`, `src/routes/catalog_title_form.rs` — manual creation: one rule, duplicate guard, request locale.
+- `src/routes/titles.rs` — title edit: one rule, unchanged stored value round-trips.
+- `src/routes/wishlist.rs` — preview and create: one rule.
+- `src/services/expected_tomes.rs` — `normalize_isbn` delegates to the rule; `isbn13_to_isbn10` / `stored_forms` removed.
+- `src/models/expected_tome.rs` — `live_titles_with_isbn` (plain `isbn = ?`), SQL separator copy removed.
+- `src/models/volume_move.rs` — exact-first match through `isbn_lookup_form`.
+- `src/models/isbn_repair.rs` (new), `src/services/isbn_repair.rs` (new), `src/models/proposal.rs` (`carry_identity_isbn`), `src/main.rs` — the run-once boot repair.
+- `templates/components/title_form.html`, `templates/fragments/title_edit_form.html`, `templates/pages/wishlist_new.html` — field constraints (D8).
+- `locales/{en,fr,de,it}.yml` — `error.isbn.invalid_format` / `invalid_checksum` reworded; `wishlist.isbn_invalid` removed.
+- `tests/isbn_one_rule.rs` (new), `tests/expected_tomes.rs` — DB integration.
+- `tests/e2e/specs/journeys/isbn-one-rule.spec.ts` (new, spec id `IR`).
