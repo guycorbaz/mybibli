@@ -1,6 +1,6 @@
 # Story 17.5: Find a title by its id
 
-Status: review
+Status: done
 
 GitHub issue: #653 (type:change-request). Covers: FR176, UX-DR44 (title id). Epic 17; ships in v1.27.0.
 
