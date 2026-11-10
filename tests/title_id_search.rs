@@ -100,10 +100,14 @@ async fn an_id_in_the_trash_or_unknown_is_a_miss(pool: DbPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn a_bare_number_stays_a_text_search(pool: DbPool) {
     let title = seed_title(&pool, "Pas de numéro").await;
+    let named = seed_title(&pool, &format!("Numéro {title}")).await;
     let Found::Ids(ids) = search(&pool, &title.to_string(), None).await else {
         panic!("a bare number is never an id");
     };
-    assert!(!ids.contains(&title));
+    // The text search finds the title whose name holds the digits, not
+    // the title whose id they are.
+    assert!(ids.contains(&named), "{ids:?}");
+    assert!(!ids.contains(&title), "{ids:?}");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -125,8 +129,23 @@ async fn the_home_search_explains_a_miss(pool: DbPool) {
     let unknown = title + 1000;
     let (status, body) = browser.get(&router, &format!("/?q=%23{unknown}")).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains(&format!("No title has the id #{unknown}")), "{body}");
+    assert!(body.contains(&format!("No title has the ID #{unknown}")), "{body}");
     assert!(!body.contains("Add this title"), "no call to action: {body}");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_anonymous_visitor_is_not_told_about_the_trash(pool: DbPool) {
+    let router = router(&pool);
+    let title = seed_title(&pool, "Titre supprimé (anonyme)").await;
+    SoftDeleteService::soft_delete(&pool, "titles", title).await.unwrap();
+
+    let browser = Browser::anonymous(&router).await;
+    let res = browser.send(&router, "GET", &format!("/?q=%23{title}&lang=en"), "", true).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = body_string(res).await;
+    assert!(!body.contains(&format!("#{title} is in the Trash")), "{body}");
+    assert!(!body.contains(&format!("#{title} est dans la corbeille")), "{body}");
+    assert!(body.contains(&format!("#{title}")), "the miss still names the id: {body}");
 }
 
 #[sqlx::test(migrations = "./migrations")]

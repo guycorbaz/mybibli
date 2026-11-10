@@ -63,7 +63,7 @@ empty:
   title_id_trash_heading: "Titolo nel cestino"
   title_id_trash_body: "Il titolo %{id} è nel cestino, quindi la ricerca non lo mostra. Un amministratore può ripristinarlo da Amministrazione → Cestino."
   title_id_unknown_heading: "Nessun titolo con questo ID"
-  title_id_unknown_body: "Nessun titolo ha l'ID %{id}: forse è stato eliminato definitivamente, o il numero è sbagliato. Controlla il numero, oppure cerca per titolo, autore o ISBN."
+  title_id_unknown_body: "Nessun titolo ha l'ID %{id}: forse è stato eliminato definitivamente, o il numero è sbagliato. Controlla il numero, oppure digita la ricerca senza # per cercare tra titoli, autori e ISBN."
   loans_heading: "Nessun prestito attivo"
   loans_body: "I prestiti appaiono qui quando un lettore preleva un esemplare."
   borrowers_heading: "Ancora nessun lettore"

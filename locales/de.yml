@@ -66,7 +66,7 @@ empty:
   title_id_trash_heading: "Titel im Papierkorb"
   title_id_trash_body: "Der Titel %{id} liegt im Papierkorb und wird deshalb von der Suche nicht angezeigt. Ein Administrator kann ihn unter Verwaltung → Papierkorb wiederherstellen."
   title_id_unknown_heading: "Kein Titel mit dieser ID"
-  title_id_unknown_body: "Kein Titel hat die ID %{id}: Er wurde vielleicht endgültig gelöscht, oder die Nummer ist falsch. Prüfen Sie die Nummer oder suchen Sie nach Titel, Autor oder ISBN."
+  title_id_unknown_body: "Kein Titel hat die ID %{id}: Er wurde vielleicht endgültig gelöscht, oder die Nummer ist falsch. Prüfen Sie die Nummer, oder geben Sie Ihre Suche ohne # ein, um in Titeln, Autoren und ISBN zu suchen."
   loans_heading: "Keine aktiven Ausleihen"
   loans_body: "Ausleihen erscheinen hier, sobald ein Entleiher ein Exemplar ausleiht."
   borrowers_heading: "Noch keine Entleiher"

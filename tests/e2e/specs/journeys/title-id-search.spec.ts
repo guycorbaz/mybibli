@@ -40,14 +40,14 @@ test.describe("Story 17-5 — find a title by its id", () => {
     // The title page shows the id the search accepts.
     await page.goto(`/title/${id}`);
     await expect(page.locator("#title-id")).toContainText(`#${id}`);
-    await expect(page.locator("#title-id")).toContainText(/Title id|Identifiant du titre/);
+    await expect(page.locator("#title-id")).toContainText(/Title ID|Identifiant du titre/);
 
     // Typed in the search field, the id lists that title alone.
     await searchHome(page, `#${id}`);
     const rows = page.locator("#browse-results table.browse-table tbody tr");
     await expect(rows.locator(`a[href="/title/${id}"]`).first()).toBeVisible({ timeout: 10000 });
     await expect(rows).toHaveCount(1);
-    await expect(page).toHaveURL(/\/(\?.*)?$/);
+    await expect(page).toHaveURL((url) => url.pathname === "/");
 
     // At scanner speed + Enter, the home scan opens it.
     await page.goto("/");
@@ -82,13 +82,14 @@ test.describe("Story 17-5 — find a title by its id", () => {
     await searchHome(page, "#9999999999");
     const results = page.locator("#browse-results");
     await expect(results).toContainText(
-      /No title has the id #9999999999|Aucun titre ne porte l'identifiant #9999999999/,
+      /No title has the ID #9999999999|Aucun titre ne porte l'identifiant #9999999999/,
       { timeout: 10000 },
     );
     await expect(results.locator('a[href^="/catalog/title/new"]')).toHaveCount(0);
 
-    // Without `#`, the same digits are an ordinary search.
-    await searchHome(page, "9999999999");
+    // Without `#`, digits (here neither an ISBN nor a code) are an ordinary search.
+    await searchHome(page, "987654321");
     await expect(results).toContainText(/No matches|Aucun résultat/, { timeout: 10000 });
+    await expect(results).not.toContainText(/No title has the ID|Aucun titre ne porte/);
   });
 });

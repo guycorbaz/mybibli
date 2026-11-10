@@ -420,7 +420,12 @@ pub async fn home(
             SearchOutcome::Results(r) => (Some(r), None),
             SearchOutcome::Redirect(url) => (None, Some(url)),
             SearchOutcome::TitleIdMiss(miss) => {
-                title_id_miss = Some(miss);
+                // The Trash is staff business: below Librarian a trashed
+                // id reads as unknown (no listing of deleted ids).
+                title_id_miss = Some(crate::services::title_id_search::TitleIdMiss {
+                    in_trash: miss.in_trash && session.role >= Role::Librarian,
+                    ..miss
+                });
                 (Some(PaginatedList::new(vec![], 1, 0, None, None, None)), None)
             }
         }
