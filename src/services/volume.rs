@@ -35,6 +35,24 @@ impl VolumeCreation {
 pub struct VolumeService;
 
 impl VolumeService {
+    /// Story 17-1 (#651, Rule #20) — the canonical V-code of `code` when it
+    /// is `v` or `V` followed by exactly 4 ASCII digits (`v0042` → `V0042`);
+    /// `None` for anything else, which is never rewritten. The one rule every
+    /// V-code reader goes through (catalog and home scans, loans, search).
+    pub fn normalize_vcode(code: &str) -> Option<String> {
+        let digits = code.strip_prefix(['v', 'V'])?;
+        (digits.len() == 4 && digits.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| format!("V{digits}"))
+    }
+
+    /// A volume label as typed in a field: trimmed, and canonical when it is
+    /// a V-code of either case (`normalize_vcode`); otherwise kept as typed so
+    /// the caller's own check names what is wrong.
+    pub fn label_from_input(input: &str) -> String {
+        let trimmed = input.trim();
+        Self::normalize_vcode(trimmed).unwrap_or_else(|| trimmed.to_string())
+    }
+
     /// Validate V-code format: uppercase V + exactly 4 digits, V0001-V9999.
     pub fn validate_vcode(label: &str) -> bool {
         if label.len() != 5 {
@@ -230,6 +248,31 @@ impl VolumeService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_vcode_accepts_either_case_of_v_and_four_ascii_digits() {
+        for (input, expected) in [("V0042", "V0042"), ("v0042", "V0042"), ("v9999", "V9999"), ("v0000", "V0000")] {
+            assert_eq!(VolumeService::normalize_vcode(input).as_deref(), Some(expected), "{input}");
+        }
+    }
+
+    #[test]
+    fn normalize_vcode_leaves_every_other_shape_alone() {
+        for input in [
+            "", "V", "v", "V123", "v12345", "V00001", "VABCD", "V12A4", "V,/+", "11338",
+            "L0042", "l0042", " V0042", "V0042 ", "W0042", "V٠١٢٣", "V００４２", "\u{200b}V0042", "vv0042",
+        ] {
+            assert_eq!(VolumeService::normalize_vcode(input), None, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn label_from_input_trims_and_canonicalises_v_codes_only() {
+        assert_eq!(VolumeService::label_from_input("  v0042 "), "V0042");
+        assert_eq!(VolumeService::label_from_input("V0042"), "V0042");
+        assert_eq!(VolumeService::label_from_input(" v12a4"), "v12a4");
+        assert_eq!(VolumeService::label_from_input("l0042"), "l0042");
+    }
 
     #[test]
     fn test_valid_vcode_v0001() {

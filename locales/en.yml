@@ -231,7 +231,7 @@ feedback:
   title_created_suggestion: "Scan a V-code to attach a volume, or scan another ISBN."
   title_exists: "This title is already in your catalog."
   title_exists_suggestion: "Scan a V-code to attach a volume."
-  code_unsupported: "Media type disambiguation not yet available. Use manual title creation for non-ISBN codes."
+  code_unsupported: "This code is not recognised. Expected an ISBN, an EAN or UPC barcode, a volume label (V followed by 4 digits, e.g. V0042) or a location label (L followed by 4 digits). Check the code, or create the title by hand with New title."
   isbn_invalid: "This code doesn't appear to be a valid ISBN. Please check the barcode and scan again."
   volume_created: "Volume %{label} attached to %{title}."
   volume_created_suggestion: "Scan L-code to shelve, or scan another V-code."

@@ -18,10 +18,12 @@ pub enum CodeType {
 
 /// Detect if the query is a code (V-code, L-code, ISBN) or plain text.
 pub fn detect_code(query: &str) -> CodeType {
+    // Story 17-1 (#651): the V-code arm shares the scan's one rule.
+    if let Some(vcode) = crate::services::volume::VolumeService::normalize_vcode(query.trim()) {
+        return CodeType::VCode(vcode);
+    }
     let q = query.trim().to_uppercase();
-    if q.len() == 5 && q.starts_with('V') && q[1..].chars().all(|c| c.is_ascii_digit()) {
-        CodeType::VCode(q)
-    } else if q.len() == 5 && q.starts_with('L') && q[1..].chars().all(|c| c.is_ascii_digit()) {
+    if q.len() == 5 && q.starts_with('L') && q[1..].chars().all(|c| c.is_ascii_digit()) {
         CodeType::LCode(q)
     } else if let Some(isbn13) = crate::utils::isbn10_to_isbn13(&q) {
         // Story 11-1 (#497): titles are stored under their ISBN-13.

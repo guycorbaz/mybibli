@@ -1,6 +1,6 @@
 # Story 17.1: A V-code is recognised whatever its case
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #651 (type:bug). Covers: FR172. Epic 17; ships in v1.27.0.
 
@@ -43,14 +43,22 @@ Plausible shapes reproduced locally (unit + DB integration tests): `v0042` → `
 
 ## Tasks
 
-- [ ] `VolumeService::normalize_vcode` + unit tests.
-- [ ] `detect_code_type`: V arm through `normalize_vcode`, near-V → `vcode`; unit tests.
-- [ ] `routes/loans.rs`, `services/search.rs`: use `normalize_vcode`.
-- [ ] Reword `feedback.code_unsupported` in en/fr/de/it.
-- [ ] DB integration test, E2E spec.
+- [x] `VolumeService::normalize_vcode` + unit tests.
+- [x] `detect_code_type`: V arm through `normalize_vcode`, near-V → `vcode`; unit tests.
+- [x] `routes/loans.rs`, `services/search.rs`: use `normalize_vcode`.
+- [x] Reword `feedback.code_unsupported` in en/fr/de/it.
+- [x] DB integration test, E2E spec.
 
 ## Dev Agent Record
 
 ### File List
+
+- `src/services/volume.rs` — `normalize_vcode`, `label_from_input` + unit tests.
+- `src/routes/catalog_code.rs` — V arm through `normalize_vcode`; near V-codes stay `vcode`; unit tests.
+- `src/routes/loans.rs` — loan form and loan scan use `label_from_input`.
+- `src/services/search.rs` — V-code arm uses `normalize_vcode`.
+- `locales/{en,fr,de,it}.yml` — `feedback.code_unsupported` reworded (Rule #9).
+- `tests/scan_vcode_case.rs` — DB integration (catalog scan, home scan, loan scan).
+- `tests/e2e/specs/journeys/vcode-any-case.spec.ts` — E2E journey.
 
 ### Change Log

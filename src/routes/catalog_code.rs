@@ -28,12 +28,18 @@ fn validate_issn_from_ean(code: &str) -> bool {
 pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
     use crate::models::media_type::{CodeType, MediaType};
 
-    if code.starts_with('V') && code.len() == 5 {
+    // Story 17-1 (#651): `v`/`V` + 4 ASCII digits is that V-code, carried as
+    // `V` + digits (one rule, `VolumeService::normalize_vcode`). Any other
+    // code starting with a `v` is a malformed volume label: still `vcode`, so
+    // the caller's `validate_vcode` refuses it naming the expected shape. No
+    // other code type starts with a V.
+    if code.starts_with(['v', 'V']) {
+        let canonical = crate::services::volume::VolumeService::normalize_vcode(code);
         return CodeDetection {
             code_type: "vcode",
             inferred_media_type: None,
             inferred_code_type: None,
-            normalized_code: None,
+            normalized_code: canonical.filter(|c| c != code),
         };
     }
     if code.starts_with('L') && code.len() == 5 {
@@ -196,6 +202,35 @@ mod tests {
     #[test]
     fn test_detect_code_type_vcode() {
         assert_eq!(detect_code_type("V0042").code_type, "vcode");
+    }
+
+    // Story 17-1 (#651) — a lowercase `v` is the same V-code, carried canonical.
+    #[test]
+    fn test_detect_code_type_lowercase_vcode_is_normalized() {
+        let d = detect_code_type("v0042");
+        assert_eq!(d.code_type, "vcode");
+        assert_eq!(d.normalized_code.as_deref(), Some("V0042"));
+        assert_eq!(detect_code_type("V0042").normalized_code, None);
+    }
+
+    // Story 17-1 (#651) — any other code starting with a `v` is a malformed
+    // volume label (refused naming the shape), never rewritten.
+    #[test]
+    fn test_detect_code_type_near_vcode_stays_vcode_unrewritten() {
+        for code in ["V12345", "v12", "V,/+", "V12A4", "vABCD", "V 0042", "V"] {
+            let d = detect_code_type(code);
+            assert_eq!(d.code_type, "vcode", "{code}");
+            assert_eq!(d.normalized_code, None, "{code}");
+            assert!(!crate::services::volume::VolumeService::validate_vcode(code), "{code}");
+        }
+    }
+
+    // Story 17-1 (#651) — the reported input: five digits, no V. Not guessed.
+    #[test]
+    fn test_detect_code_type_five_digits_is_unknown() {
+        let d = detect_code_type("11338");
+        assert_eq!(d.code_type, "unknown");
+        assert_eq!(d.normalized_code, None);
     }
 
     #[test]

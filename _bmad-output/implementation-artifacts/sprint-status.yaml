@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-11-10 (story 17-1 ready-for-dev — V-code any case, #651)
+# last_updated: 2026-11-10 (story 17-1 review — V-code any case, #651)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -335,7 +335,7 @@ development_status:
   # FRs: FR172-FR177 | UX-DRs: UX-DR43-UX-DR44. Release: v1.27.0 at epic close.
   # Sequencing: 17-1 -> 17-2 -> 17-3 -> 17-4 -> 17-5 -> 17-6 -> 17-7 (epic smoke, Rule #7) -> 17-8 -> retrospective -> release.
   epic-17: in-progress
-  17-1-v-code-any-case: ready-for-dev
+  17-1-v-code-any-case: review
   17-2-add-volume-from-title-page: backlog
   17-3-one-isbn-rule: backlog
   17-4-typed-code-warnings: backlog
