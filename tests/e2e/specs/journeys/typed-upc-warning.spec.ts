@@ -49,7 +49,7 @@ async function titleId(page: Page, name: string): Promise<string | null> {
   const at = html.indexOf(name);
   if (at < 0) return null;
   const links = [...html.slice(0, at).matchAll(/href="\/title\/(\d+)"/g)];
-  return links.length ? links[links.length - 1][1] : null;
+  return links.at(-1)?.[1] ?? null;
 }
 
 async function openTitleForm(page: Page, name: string) {
