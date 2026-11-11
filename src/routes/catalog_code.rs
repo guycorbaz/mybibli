@@ -309,7 +309,7 @@ pub(crate) enum TypedUpcOutcome {
     Store(Option<String>),
     /// Store nothing: send this response, which puts the warning and its
     /// confirmation — or the refusal (issue #676) — in the form's UPC slot.
-    Warn(axum::response::Response),
+    Respond(axum::response::Response),
 }
 
 /// Story 17-4 (#643 item 1) — the check of a title form's UPC field, shared
@@ -343,12 +343,12 @@ pub(crate) fn check_typed_upc(
         .is_ok_and(|m| m.is_print());
     match typed_upc_verdict(&upc, without_separators(confirmed).as_deref(), print) {
         TypedUpcVerdict::Keep => TypedUpcOutcome::Store(Some(upc)),
-        TypedUpcVerdict::Refuse(refusal) => TypedUpcOutcome::Warn(crate::middleware::htmx::field_refusal(
+        TypedUpcVerdict::Refuse(refusal) => TypedUpcOutcome::Respond(crate::middleware::htmx::field_refusal(
             axum::http::StatusCode::BAD_REQUEST,
             slot_id,
             &refusal.message(loc),
         )),
-        TypedUpcVerdict::Confirm(irregularity) => TypedUpcOutcome::Warn(
+        TypedUpcVerdict::Confirm(irregularity) => TypedUpcOutcome::Respond(
             (
                 [("HX-Retarget", format!("#{slot_id}")), ("HX-Reswap", "innerHTML".to_string())],
                 axum::response::Html(typed_upc_warning_html(irregularity, &upc, loc)),

@@ -65,6 +65,15 @@
         }
     }
 
+    // Issue #676 — a preview is about the ISBN it was looked up for: once
+    // the field changes, its card (and its Confirm, which would add that
+    // ISBN) no longer applies — above all next to a refusal of the new one.
+    document.addEventListener("input", function (e) {
+        if (!e.target || e.target.id !== "isbn-input") return;
+        var preview = document.getElementById("wishlist-preview");
+        if (preview && preview.firstChild) preview.innerHTML = "";
+    });
+
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", init);
     } else {

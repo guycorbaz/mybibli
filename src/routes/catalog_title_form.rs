@@ -141,7 +141,7 @@ pub async fn create_title(
         loc,
     ) {
         TypedUpcOutcome::Store(upc) => form.upc = upc,
-        TypedUpcOutcome::Warn(response) => return Ok(response),
+        TypedUpcOutcome::Respond(response) => return Ok(response),
     }
 
     match TitleService::create_manual(pool, &form, loc).await {

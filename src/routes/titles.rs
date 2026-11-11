@@ -791,7 +791,7 @@ pub async fn update_title(
         loc,
     ) {
         crate::routes::catalog_code::TypedUpcOutcome::Store(upc) => upc,
-        crate::routes::catalog_code::TypedUpcOutcome::Warn(response) => return Ok(response),
+        crate::routes::catalog_code::TypedUpcOutcome::Respond(response) => return Ok(response),
     };
 
     if let Some(ref new_isbn) = isbn

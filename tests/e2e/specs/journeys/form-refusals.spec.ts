@@ -16,6 +16,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { badUpcA, titleIdByName as titleId } from "../../helpers/catalog";
 
 const CHECK_DIGIT = /check digit does not match|clé de contrôle ne correspond pas/i;
 const ISBN_TAKEN = /Another title already uses this ISBN|Un autre titre utilise déjà cet ISBN/i;
@@ -25,27 +26,6 @@ const GENERIC = /Server error|Erreur serveur/i;
 function wrongCheckDigit(isbn: string): string {
   const last = Number(isbn.at(-1));
   return isbn.slice(0, -1) + String((last + 1) % 10);
-}
-
-/** A 12-digit UPC-A whose check digit is wrong. */
-function badUpcA(): string {
-  let body = "5";
-  while (body.length < 11) body += Math.floor(Math.random() * 10);
-  const sum = [...body].reduce((acc, c, i) => acc + Number(c) * (i % 2 === 0 ? 3 : 1), 0);
-  const valid = (10 - (sum % 10)) % 10;
-  return body + String((valid + 1) % 10);
-}
-
-/** The id of this spec's title named `name`, or null. */
-async function titleId(page: Page, name: string): Promise<string | null> {
-  const response = await page.request.get(`/?q=${encodeURIComponent(name)}`, {
-    headers: { "HX-Request": "true" },
-  });
-  const html = await response.text();
-  const at = html.indexOf(name);
-  if (at < 0) return null;
-  const links = [...html.slice(0, at).matchAll(/href="\/title\/(\d+)"/g)];
-  return links.at(-1)?.[1] ?? null;
 }
 
 /** Creates a book through the manual form and opens its edit form. */
@@ -127,7 +107,9 @@ test.describe("Issue #676 — form refusals show their message", () => {
 
     // Nothing was saved.
     const saved = await page.request.get(`/title/${id}/metadata`, { headers: { "HX-Request": "true" } });
+    expect(saved.status()).toBe(200);
     const html = await saved.text();
+    expect(html).toContain(name);
     expect(html).not.toContain(typo);
     expect(html).not.toContain(code);
     expect(html).not.toContain("typed before the refusal");
@@ -148,7 +130,7 @@ test.describe("Issue #676 — form refusals show their message", () => {
 
     await field.fill("12345");
     await field.press("Enter");
-    await expect(error).toContainText(/ISBN/, { timeout: 10000 });
+    await expect(error).toContainText(/10 or 13 digits|10 ou 13 chiffres/i, { timeout: 10000 });
     await expect(error).not.toContainText(CHECK_DIGIT);
     await expect(field).toHaveValue("12345");
 
@@ -156,7 +138,38 @@ test.describe("Issue #676 — form refusals show their message", () => {
     await field.fill(specIsbn("FR", 3));
     await expect(error).toBeEmpty();
     await field.press("Enter");
-    await expect(page.locator("#wishlist-preview")).toContainText(specIsbn("FR", 3), { timeout: 15000 });
+    const preview = page.locator("#wishlist-preview");
+    await expect(preview).toContainText(specIsbn("FR", 3), { timeout: 15000 });
     await expect(error).toBeEmpty();
+
+    // Typed over and refused: the earlier card (and its Confirm) is gone.
+    await field.fill(typo);
+    await expect(preview).toBeEmpty();
+    await field.press("Enter");
+    await expect(error).toContainText(CHECK_DIGIT, { timeout: 10000 });
+    await expect(preview).toBeEmpty();
+  });
+
+  test("the manual title form shows a refused UPC under the field", async ({ page }) => {
+    await loginAs(page, "librarian");
+    await page.goto("/catalog");
+    await page.locator("#new-title-btn").click();
+    const form = page.locator("#title-form-container form");
+    await expect(form).toBeVisible({ timeout: 10000 });
+    const name = `Manual refusal FR ${Date.now()}`;
+    await form.locator("#title-field").fill(name);
+    await form.locator("#media-type-field").selectOption("cd");
+    await form.locator("#genre-field").selectOption({ index: 1 });
+    await form.locator("#language-field").fill("fr");
+
+    const upc = form.locator("#upc-field");
+    const code = badUpcA();
+    await upc.fill(code);
+    await upc.press("Enter");
+    await expect(page.locator("#upc-field-warning")).toContainText(CHECK_DIGIT, { timeout: 10000 });
+    await expect(upc).toBeFocused();
+    await expect(upc).toHaveValue(code);
+    await expect(form.locator("#title-field")).toHaveValue(name);
+    expect(await titleId(page, name)).toBeNull();
   });
 });

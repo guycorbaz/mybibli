@@ -168,8 +168,10 @@ pub fn field_refusal_html(message: &str) -> String {
     )
 }
 
-/// Issue #676 — a form refusal shown next to the field it is about, the
-/// one mechanism of every form whose HTMX target is not that field.
+/// Issue #676 — a form refusal shown next to the field it is about: the
+/// title edit form (ISBN, UPC), the manual title form (UPC) and the wish
+/// list's "By ISBN" preview. A form whose own target is not the field
+/// adopts it by giving the field a slot.
 ///
 /// The body is the terse hint (Rule #9) for the empty slot `#<slot_id>`
 /// under the field (`<div id="…" data-field-slot aria-live="polite">`,
