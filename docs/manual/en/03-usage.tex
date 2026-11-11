@@ -178,7 +178,9 @@ The title page leaves your catalog scanning run alone: it neither
 changes the current title of the catalog page nor shelves the volume at
 its active location. The new volume has no location; shelve it from its
 page (section~\ref{sec:move-volume}) or by scanning its V-code on the
-catalog page after an L-code.
+catalog page after an L-code. On a title with no volume yet, the
+link to the catalog page is still there; the field makes it
+unnecessary.
 
 \subsection*{Typing codes by hand}
 \label{sec:typed-codes}
@@ -189,15 +191,19 @@ Since 1.27.0 they are the same everywhere mybibli reads that code.
 \begin{itemize}
   \item \textbf{V-codes in any case.} \texttt{v0042} is read as
         \texttt{V0042} --- on the catalog page, in the scan field of the
-        home page, on the title page and in the loan form. What is
+        home page, on the title page, in the loan form and in the
+        search. What is
         recognised is a \texttt{V} or \texttt{v} followed by exactly four
-        digits, nothing else. A code that looks like a V-code gone
-        wrong (\texttt{V12345}, \texttt{v12}, \texttt{V12A4}, or
+        digits (\texttt{V0001} to \texttt{V9999}), nothing else. On the
+        catalog page and the title page, a code that looks like a V-code
+        gone wrong (\texttt{V12345}, \texttt{v12}, \texttt{V12A4}, or
         \texttt{V,/+} read by a scanner in another keyboard layout) is
         refused with \emph{``Expected V followed by 4 digits (e.g.,
-        V0042)''}; nothing is created. A code mybibli does not recognise
-        at all now names the shapes it accepts (ISBN, EAN or UPC barcode,
-        V-code, L-code) and points to the \textbf{New title} button.
+        V0042)''}; nothing is created. On the catalog page, a code mybibli
+        does not recognise at all now names the shapes it accepts (ISBN, EAN or UPC barcode,
+        V-code, L-code) and points to the \textbf{New title} button;
+        the title page's field takes V-codes only and answers every
+        other code with the V-code shape.
   \item \textbf{One ISBN rule for every form.}\index{ISBN} The manual
         \emph{New title} form, the title edit form, the wish list
         \emph{By ISBN} and the expected tomes read an ISBN as the scan
@@ -206,12 +212,13 @@ Since 1.27.0 they are the same everywhere mybibli reads that code.
         without a colon) is dropped, and an ISBN-10 is stored as its
         ISBN-13: \texttt{ISBN 2-205-00121-3} is stored as
         \texttt{9782205001211}, the value a later scan of the barcode
-        finds. Anything else is refused under the field, without being
+        finds. Anything else is refused, without being
         rewritten: a value that is not 10 or 13 digits, an EAN-13 that
-        does not start with 978 or 979, or a wrong check digit (``check
-        for a typo''). The manual form also refuses an ISBN that another
-        title already holds, rather than making a duplicate. In the edit
-        form, an ISBN you leave unchanged is saved as it is stored.
+        does not start with 978 or 979, or a wrong check digit. The
+        manual form and the edit form also refuse an ISBN that another
+        title (not in the Trash) already holds, rather than making a
+        duplicate. In the edit form, an ISBN you leave unchanged is
+        saved as it is stored.
   \item \textbf{Product barcodes (UPC) typed in a form.} The UPC field
         of the manual form and of the edit form is checked like a scan
         (section~\ref{sec:catalog-scan}). Hyphens and spaces are
@@ -219,7 +226,8 @@ Since 1.27.0 they are the same everywhere mybibli reads that code.
         digit, or characters other than digits is not saved: the warning
         of the scan appears under the field with a box \textbf{Keep
         \emph{code} as entered}. Correct the code, or tick the box and
-        save again: the code is then kept exactly as typed. Three cases
+        save again: the code is then kept as typed, hyphens and spaces
+        aside. Three cases
         cannot be confirmed: a 12-digit code with a wrong check digit
         (the scan refuses it too), a code longer than 13 characters, and a
         valid ISBN-10 typed as the UPC of a book, comic, magazine or
@@ -250,6 +258,8 @@ The \texttt{/search} page accepts:
         other contributor roles are scored lower);
   \item \textbf{ISBN / EAN-13} — exact match;
   \item \textbf{V-code} or \textbf{L-code} — exact match;
+  \item \textbf{title number} typed as \texttt{\#990} — that title
+        alone (section~\ref{sec:title-id-search});
   \item \textbf{Dewey code} (for libraries that use Dewey).
 \end{itemize}
 
@@ -707,7 +717,8 @@ The \emph{Add to wish list} form has two modes:
 
 \begin{itemize}
   \item \textbf{By ISBN.} Scan or type the ISBN --- 13 or 10 digits,
-        hyphens and spaces allowed (section~\ref{sec:typed-codes}). mybibli
+        hyphens and spaces allowed (\emph{Typing codes by hand},
+        section~\ref{sec:typed-codes}). mybibli
         looks the book up through the same metadata provider chain
         the catalog uses, then shows a preview card (title, author,
         publisher, year, cover). Click \emph{Add to wish list} to

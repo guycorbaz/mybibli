@@ -1,6 +1,6 @@
 # Story 17.8: Documentation
 
-Status: ready-for-dev
+Status: review
 
 No GitHub issue. Covers: FR172–FR177 (documentation). Epic 17; ships in v1.27.0. Sprint-status key: `17-8-epic-17-documentation`.
 
@@ -32,12 +32,12 @@ so that it is documented as it works.
 
 ## Tasks
 
-- [ ] ch. 3 EN + FR (typed codes, title-page volume, `#id` search, wish list ISBN).
-- [ ] ch. 12 EN + FR (ISBN repair, default-skill markers).
-- [ ] ch. 13 EN + FR (default skills, title ids).
-- [ ] Glossary EN + FR (V-code).
-- [ ] `CLAUDE.md` Key Patterns.
-- [ ] Build PDFs; check warnings and references; commit.
+- [x] ch. 3 EN + FR (typed codes, title-page volume, `#id` search, wish list ISBN).
+- [x] ch. 12 EN + FR (ISBN repair, default-skill markers).
+- [x] ch. 13 EN + FR (default skills, title ids).
+- [x] Glossary EN + FR (V-code).
+- [x] `CLAUDE.md` Key Patterns.
+- [x] Build PDFs; check warnings and references; commit.
 
 ## Dev Notes
 
@@ -49,6 +49,25 @@ so that it is documented as it works.
 
 ### File List
 
+- `docs/manual/{en,fr}/03-usage.tex` — *Adding a volume from the title page*, *Typing codes by hand*, *Finding a title by its number*, home scan field, search inputs, wish list ISBN.
+- `docs/manual/{en,fr}/02-configuration.tex` — V-code format.
+- `docs/manual/{en,fr}/12-operations-debugging.tex` — the `data_repairs` entries of 1.27.0, *Stored ISBNs brought to the one rule* (log lines).
+- `docs/manual/{en,fr}/13-agents-proposals.tex` — *Default skills*, titles named by id, chapter intro and scope list.
+- `docs/manual/{en,fr}/99-glossary.tex` — V-code.
+- `docs/manual/mybibli-manual-{en,fr}.pdf` — rebuilt.
+- `CLAUDE.md` — Key Patterns for 17-1 … 17-5.
+
+### Build
+
+`docs/manual/build.sh` (flock + mem-guard): exit 0; no undefined reference; warnings (font shapes) and overfull boxes identical to a build of `origin/main` (EN 2 / 15, FR 3 / 11).
+
+### Review
+
+- **Round 1** (fact-check against the code with project access; acceptance audit against the spec). Medium, fixed: ISBN refusals were said to appear "under the field". Low, fixed: the edit form also refuses a duplicate ISBN and only a live title blocks it; `V0000` refused (range V0001–V9999); the near-V-code refusal scoped to the catalog page and the title page (the home `/scan` redirects to `/catalog`); refs to the unnumbered subsections name them; EN/FR parity ("texts in English"); ch. 2 V-code format, `#id` in the search inputs list, search among the V-code readers, the empty-state link of 17-2, the agent chapter's skills line. Checked: no new overfull box from the long log-line labels.
+- **Round 2** (combined pass on the fixes). Medium, fixed: "the message appears in the feedback list" was wrong for the expected-tome form. Low, fixed: EN/FR wording of the default-skills language sentence, French phrasing, the title page's field answers every non-V-code with the V-code shape.
+- **Round 3** (confirmation pass). Medium: the location claim was also wrong for the title edit form and the wish list — their 4xx refusals are not swapped by HTMX, so the librarian sees a generic error (edit form) or nothing (wish list). A code defect, not a documentation one: opened #676 (type:bug); the manual no longer says where the message appears. Low, fixed: a confirmed UPC is kept as typed *hyphens and spaces aside* (D5 of 17-4); the "not recognised" answer scoped to the catalog page.
+- **Round 4** (own pass over the final subsections, the changes since round 3 being removals and scoping): no Medium or higher.
+
 ### Change Log
 
-- 2026-11-11: story created.
+- 2026-11-11: story created; manual EN/FR, CLAUDE.md, PDFs; review rounds 1–4; #676 opened.
