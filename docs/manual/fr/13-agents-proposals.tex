@@ -22,6 +22,7 @@ Ce chapitre couvre :
   \item les outils que l'agent voit,
   \item l'examen des propositions : liste, détail, comparaison,
         modification, acceptation, refus,
+  \item les compétences, dont les quatre livrées avec mybibli,
   \item les tomes attendus et la wish list,
   \item où attendent les couvertures proposées, et comment elles
         sont nettoyées.
@@ -70,7 +71,8 @@ Avec une clé \emph{propositions}, un agent peut :
         de l'éditeur à la parution pour tenir lieu de prix d'achat, ou
         les deux --- en trouvant d'abord les volumes jamais estimés ou
         estimés il y a le plus longtemps ;
-  \item lire les \emph{compétences} que vous écrivez pour lui dans
+  \item lire les \emph{compétences} que vous écrivez pour lui, ou que
+        vous adaptez à partir des quatre livrées avec mybibli, dans
         \emph{Administration \textrightarrow{} Compétences}
         (section~\ref{sec:agents-skills}) ;
   \item consulter l'historique de ses propres propositions, avec vos
@@ -427,6 +429,12 @@ la date de l'estimation, ainsi que la devise par défaut de la
 bibliothèque --- la seule qu'une proposition de valeur puisse
 employer.
 
+L'agent désigne les titres par leur numéro, l'\texttt{id} que renvoient
+ces outils (« 990 est un doublon de 989 »). Depuis la 1.27.0, la page du
+titre affiche ce numéro, et \texttt{\#990} tapé dans le champ de
+recherche de la page d'accueil affiche ce titre
+(section~\ref{sec:title-id-search}).
+
 \subsubsection*{Propositions}
 
 \begin{description}[style=nextline]
@@ -765,6 +773,59 @@ Un agent qui suit une compétence ne peut toujours que lire et proposer,
 et chaque proposition vous attend toujours. Le corps n'est jamais
 affiché comme du HTML.
 \end{note}
+
+\subsection{Les compétences par défaut}
+\label{sec:agents-skills-defaults}
+
+Depuis la 1.27.0, mybibli est livré avec quatre compétences, toutes
+consacrées aux bandes dessinées (titres \texttt{bd}), à employer telles
+quelles ou comme modèles pour les vôtres :
+
+\begin{description}[style=nextline]
+  \item[\texttt{comics-covers}] Proposer la couverture de la bonne
+        édition pour les BD qui n'en ont pas.
+  \item[\texttt{comics-series-attach}] Proposer de rattacher des titres
+        à leur série existante, à leur position.
+  \item[\texttt{comics-series-create}] Proposer de créer une série
+        manquante avec les titres de la bibliothèque.
+  \item[\texttt{comics-title-spelling}] Proposer de corriger les fautes
+        d'orthographe manifestes dans les titres de BD.
+\end{description}
+
+Leur texte est en anglais, comme leur description affichée dans
+\emph{Administration \textrightarrow{} Compétences}. Chaque corps énonce
+la tâche en une phrase, puis les mêmes règles de base --- BD seulement,
+chaque proposition avec ses \texttt{sources}, consulter d'abord les
+propositions en attente et refusées, ne jamais répéter tel quel un appel
+refusé, signaler les cas douteux au lieu de proposer, travailler par
+lots d'une vingtaine --- et ce qu'il faut rapporter après chaque lot.
+Les textes sont les fichiers du dossier \texttt{skills/defaults/} du
+dépôt de mybibli ; ils montrent aussi comment rédiger une compétence.
+
+Elles sont ajoutées \textbf{une seule fois par base}, au premier
+démarrage d'une version qui les livre, et \textbf{inactives} : l'agent
+ne voit rien tant qu'un administrateur n'a pas ouvert
+\emph{Administration \textrightarrow{} Compétences}, lu le texte,
+adapté au besoin et activé la compétence. Tant qu'un administrateur ne
+l'a ni modifiée, ni activée, ni désactivée, sa colonne \emph{Dernière
+modification} indique \emph{fourni par mybibli}. Ensuite, la compétence
+est à vous :
+
+\begin{itemize}
+  \item une version ultérieure \textbf{ne la met jamais à jour}. Un
+        texte amélioré est livré comme nouvelle version de son fichier
+        et annoncé dans les notes de version ; recopiez-le dans votre
+        compétence si vous le voulez ;
+  \item une compétence par défaut que vous supprimez (ou purgez de la
+        corbeille) \textbf{ne revient jamais} ;
+  \item si vous avez déjà une compétence du même nom, vivante ou dans la
+        corbeille, la compétence par défaut est sautée et la vôtre n'est
+        pas touchée (le journal le dit,
+        section~\ref{sec:startup-repairs}) ;
+  \item une nouvelle compétence par défaut ajoutée par une version
+        ultérieure est ajoutée au premier démarrage de cette version,
+        inactive, comme celles-ci.
+\end{itemize}
 
 \section{Tomes attendus et wish list}
 \label{sec:expected-tomes}

@@ -195,7 +195,7 @@ docker compose cp mybibli:/var/log/mybibli/. ./logs-archive/
 \section{Background retries and start-up repairs}
 \label{sec:startup-repairs}
 
-Version 1.23.0 adds two start-up repairs and a background retry task
+Version 1.23.0 added two start-up repairs and a background retry task
 for metadata lookups. None of them needs configuration; this section says
 what they leave in the database and in the log.
 
@@ -274,6 +274,65 @@ provider answers runs before, on its own; doing it again is harmless.)
 Do not delete rows of \texttt{data\_repairs}: the repair would run a
 second time, on text it has already converted.
 \end{warning}
+
+1.27.0 adds two more uses of the register. The repair of stored ISBNs
+below is one entry,
+\texttt{17-\allowbreak 3-\allowbreak stored-\allowbreak isbn-\allowbreak one-\allowbreak rule}.
+Each default skill of the agent chapter has its own entry,
+\texttt{default-skill:\allowbreak <name>} (section~\ref{sec:agents-skills-defaults}):
+at the first start of 1.27.0 each one logs \texttt{Default MCP skill
+inserted (inactive)}, or, when a skill of yours already has that name,
+\texttt{Default MCP skill skipped: a skill with this name already exists
+(live or in the Trash)} --- your skill is left untouched. Either way the
+entry is written and the default is never offered again on that
+database. A failed insertion logs an \texttt{error}, writes no entry,
+and is retried at the next start.
+
+\subsection*{Stored ISBNs brought to the one rule}
+
+Before 1.27.0 the manual \emph{New title} form stored an ISBN as typed:
+an ISBN-10, with hyphens or spaces, or with an \texttt{ISBN} prefix ---
+a value a later scan of the barcode could not find. At the first start
+of 1.27.0, after the migrations and before the ISBN-10-as-UPC
+conversion below, mybibli reads every stored ISBN, titles in the Trash
+included, through the rule of \emph{Typing codes by hand}
+(section~\ref{sec:typed-codes}). A value the
+rule accepts and writes differently is replaced by its ISBN-13; a value
+already canonical, or that is no ISBN at all, is left as it is. The
+change is not counted as an edit: pending proposals on the title do
+not become outdated (their record of the title's ISBN follows).
+
+When two titles would end up with the same ISBN-13, the rule is:
+two live titles are both left unchanged, for you to resolve the
+duplicate; a title in the Trash never blocks the live one, which is
+rewritten; a title in the Trash is rewritten only when no other title,
+live or in the Trash, would share its new value. Every change can be
+read in the log of that first start:
+
+\begin{description}[style=nextline]
+  \item[\texttt{Stored ISBN rewritten to its ISBN-13}]
+        (\texttt{info}) one line per title, with \texttt{title\_id},
+        the old value (\texttt{old}), the new one (\texttt{isbn}) and
+        \texttt{trashed}.
+  \item[\texttt{Stored ISBN: another title would carry the same ISBN; left unchanged (see \#591)}]
+        (\texttt{warn}) one line per title left alone, with
+        \texttt{stored}, \texttt{isbn} and
+        \texttt{colliding\_title\_ids}. Find the duplicates by searching
+        the ISBN, keep one, and correct or delete the others by hand.
+  \item[\texttt{Stored ISBN: title changed meanwhile; left unchanged}]
+        (\texttt{info}) the title was saved between the read and the
+        write; rare at start-up.
+  \item[\texttt{Stored ISBN: startup repair to the one rule done (\#565)}]
+        (\texttt{info}) the summary: rewritten (of which in the Trash),
+        skipped as colliding, already canonical, not an ISBN, changed
+        meanwhile, and the proposal items whose ISBN followed.
+\end{description}
+
+\noindent Like the other one-time repairs, it then logs \texttt{Data
+repair applied} and never runs again; if it fails, an \texttt{error}
+line (\texttt{Stored ISBN: startup repair failed (non-fatal,
+continuing)}) says so, nothing is changed, and it runs again at the
+next start.
 
 \subsection*{ISBN-10 titles stored as UPC}
 

@@ -69,7 +69,9 @@ The home page is the dashboard. From top to bottom:
         prefix. An ISBN typed by hand may keep the hyphens or spaces
         printed on the book (\texttt{978-2-205-00121-1},
         \texttt{2 205 00121 3}): mybibli removes them and handles
-        the bare ISBN-13, at scan as in the search.
+        the bare ISBN-13, at scan as in the search. It also finds a
+        title by its number, typed as \texttt{\#990}
+        (section~\ref{sec:title-id-search}).
   \item \textbf{Indicators row.} Recent additions, overdue loans,
         series with gaps, unshelved volumes — each click jumps to
         the filtered list.
@@ -153,6 +155,89 @@ mybibli tells them apart instead of answering every one with an error:
         scan another L-code); a deleted active location is cleared.
 \end{itemize}
 
+\subsection*{Adding a volume from the title page}
+\label{sec:title-add-volume}
+
+Since 1.27.0 a second copy of a book you already catalogued does not
+need a detour through the catalog page. On the title page, the
+\emph{Volumes} section of a Librarian or an Admin carries a field
+\textbf{Add a volume by its V-code}: type or scan the label and press
+Enter. The volume is attached to this title, the list and the count of
+volumes update at once, and the field stays ready for the next label.
+Anonymous visitors do not see the field.
+
+The answers are those of the catalog page: a label that is not a V-code
+is refused with the expected shape; a label already recorded for this
+title gets an information message; a label held by another title gets a
+warning with a link to that volume, and nothing moves. When the title
+already has volumes, the same \emph{Add another copy?} dialog as on the
+catalog page asks for confirmation first. A label that belonged to a
+deleted volume is reused under the usual conditions.
+
+The title page leaves your catalog scanning run alone: it neither
+changes the current title of the catalog page nor shelves the volume at
+its active location. The new volume has no location; shelve it from its
+page (section~\ref{sec:move-volume}) or by scanning its V-code on the
+catalog page after an L-code. On a title with no volume yet, the
+link to the catalog page is still there; the field makes it
+unnecessary.
+
+\subsection*{Typing codes by hand}
+\label{sec:typed-codes}
+
+A code typed on the keyboard follows the same rules as a scanned one.
+Since 1.27.0 they are the same everywhere mybibli reads that code.
+
+\begin{itemize}
+  \item \textbf{V-codes in any case.} \texttt{v0042} is read as
+        \texttt{V0042} --- on the catalog page, in the scan field of the
+        home page, on the title page, in the loan form and in the
+        search. What is
+        recognised is a \texttt{V} or \texttt{v} followed by exactly four
+        digits (\texttt{V0001} to \texttt{V9999}), nothing else. On the
+        catalog page and the title page, a code that looks like a V-code
+        gone wrong (\texttt{V12345}, \texttt{v12}, \texttt{V12A4}, or
+        \texttt{V,/+} read by a scanner in another keyboard layout) is
+        refused with \emph{``Expected V followed by 4 digits (e.g.,
+        V0042)''}; nothing is created. On the catalog page, a code mybibli
+        does not recognise at all now names the shapes it accepts (ISBN, EAN or UPC barcode,
+        V-code, L-code) and points to the \textbf{New title} button;
+        the title page's field takes V-codes only and answers every
+        other code with the V-code shape.
+  \item \textbf{One ISBN rule for every form.}\index{ISBN} The manual
+        \emph{New title} form, the title edit form, the wish list
+        \emph{By ISBN} and the expected tomes read an ISBN as the scan
+        and the search do. Hyphens and spaces are removed, a leading
+        \texttt{ISBN}, \texttt{ISBN-10} or \texttt{ISBN-13} (with or
+        without a colon) is dropped, and an ISBN-10 is stored as its
+        ISBN-13: \texttt{ISBN 2-205-00121-3} is stored as
+        \texttt{9782205001211}, the value a later scan of the barcode
+        finds. Anything else is refused, without being
+        rewritten: a value that is not 10 or 13 digits, an EAN-13 that
+        does not start with 978 or 979, or a wrong check digit. The
+        manual form and the edit form also refuse an ISBN that another
+        title (not in the Trash) already holds, rather than making a
+        duplicate. In the edit form, an ISBN you leave unchanged is
+        saved as it is stored.
+  \item \textbf{Product barcodes (UPC) typed in a form.} The UPC field
+        of the manual form and of the edit form is checked like a scan
+        (section~\ref{sec:catalog-scan}). Hyphens and spaces are
+        removed. A code with a length no barcode has, a wrong check
+        digit, or characters other than digits is not saved: the warning
+        of the scan appears under the field with a box \textbf{Keep
+        \emph{code} as entered}. Correct the code, or tick the box and
+        save again: the code is then kept as typed, hyphens and spaces
+        aside. Three cases
+        cannot be confirmed: a 12-digit code with a wrong check digit
+        (the scan refuses it too), a code longer than 13 characters, and a
+        valid ISBN-10 typed as the UPC of a book, comic, magazine or
+        report --- it belongs in the ISBN field. A UPC you leave
+        unchanged in the edit form is saved without a check.
+\end{itemize}
+
+What was stored before 1.27.0 under the old rules is put right once,
+at the first start (section~\ref{sec:startup-repairs}).
+
 \subsection*{Printing fresh label sheets}
 
 Before printing a new sheet of V-code or L-code labels, check the
@@ -173,6 +258,8 @@ The \texttt{/search} page accepts:
         other contributor roles are scored lower);
   \item \textbf{ISBN / EAN-13} — exact match;
   \item \textbf{V-code} or \textbf{L-code} — exact match;
+  \item \textbf{title number} typed as \texttt{\#990} — that title
+        alone (section~\ref{sec:title-id-search});
   \item \textbf{Dewey code} (for libraries that use Dewey).
 \end{itemize}
 
@@ -186,6 +273,27 @@ You can ``search'' a single volume by scanning its V-code from any
 page that has the home-page scan field — that includes the home
 page, \texttt{/search} and \texttt{/loans}. Faster than typing.
 \end{tip}
+
+\subsection{Finding a title by its number}\label{sec:title-id-search}
+
+Every title has a number, its \emph{ID}. An AI agent names titles by
+this number (``990 is a duplicate of 989'', chapter~\ref{ch:agents}),
+and since 1.27.0 the title page shows it above the title, as
+\emph{Title ID \#990}. To reach a title from its number, type
+\texttt{\#} followed by the number in the search field of the home page:
+\texttt{\#990}. The title is listed alone, whatever filter is active ---
+as for an exact ISBN. Pressed Enter after a scanner burst, the same
+input opens the title page directly.
+
+Only \texttt{\#} followed by digits, with no space and no leading zero,
+is read as a number: a bare \texttt{990} or \texttt{1984} remains an
+ordinary search, since years and numbers are common in titles. When no
+title answers, the search says why instead of showing an empty list: a
+title in the Trash can be restored by an administrator from
+\emph{Administration \textrightarrow{} Trash}; otherwise the number is
+wrong or the title was permanently deleted. Visitors who are not signed
+in as a Librarian or an Admin are never told that a title is in the
+Trash.
 
 \subsection{Saved searches}\label{sec:saved-searches}
 
@@ -608,7 +716,9 @@ series page (section~\ref{sec:expected-tomes}).
 The \emph{Add to wish list} form has two modes:
 
 \begin{itemize}
-  \item \textbf{By ISBN.} Scan or type a 13-digit ISBN. mybibli
+  \item \textbf{By ISBN.} Scan or type the ISBN --- 13 or 10 digits,
+        hyphens and spaces allowed (\emph{Typing codes by hand},
+        section~\ref{sec:typed-codes}). mybibli
         looks the book up through the same metadata provider chain
         the catalog uses, then shows a preview card (title, author,
         publisher, year, cover). Click \emph{Add to wish list} to

@@ -211,7 +211,7 @@ docker compose cp mybibli:/var/log/mybibli/. ./logs-archive/
 \section{Nouvelles tentatives en arrière-plan et réparations au démarrage}
 \label{sec:startup-repairs}
 
-La version 1.23.0 ajoute deux réparations au démarrage et une tâche
+La version 1.23.0 a ajouté deux réparations au démarrage et une tâche
 d'arrière-plan qui relance les recherches de métadonnées. Aucune ne
 demande de configuration ; cette section dit ce qu'elles laissent dans
 la base de données et dans le journal.
@@ -295,6 +295,70 @@ suivant. (L'écartement des réponses mises en cache s'exécute avant,
 Ne supprimez pas de lignes de \texttt{data\_repairs} : la réparation
 s'exécuterait une seconde fois, sur un texte qu'elle a déjà converti.
 \end{warning}
+
+La 1.27.0 ajoute deux usages de ce registre. La réparation des ISBN
+enregistrés ci-dessous en est une entrée,
+\texttt{17-\allowbreak 3-\allowbreak stored-\allowbreak isbn-\allowbreak one-\allowbreak rule}.
+Chaque compétence par défaut du chapitre des agents a sa propre entrée,
+\texttt{default-skill:\allowbreak <nom>}
+(section~\ref{sec:agents-skills-defaults}) : au premier démarrage de la
+1.27.0, chacune journalise \texttt{Default MCP skill inserted
+(inactive)} ou, quand une de vos compétences porte déjà ce nom,
+\texttt{Default MCP skill skipped: a skill with this name already exists
+(live or in the Trash)} --- votre compétence n'est pas touchée. Dans les
+deux cas l'entrée est écrite et la compétence par défaut n'est plus
+jamais proposée sur cette base. Une insertion qui échoue journalise une
+ligne \texttt{error}, n'écrit pas d'entrée et est retentée au démarrage
+suivant.
+
+\subsection*{Les ISBN enregistrés ramenés à la règle unique}
+
+Avant la 1.27.0, le formulaire manuel \emph{Nouveau titre} enregistrait
+un ISBN tel que saisi : un ISBN-10, avec des tirets ou des espaces, ou
+précédé de \texttt{ISBN} --- une valeur qu'un scan ultérieur du
+code-barres ne pouvait pas retrouver. Au premier démarrage de la
+1.27.0, après les migrations et avant la conversion des ISBN-10
+enregistrés comme UPC ci-dessous, mybibli relit chaque ISBN enregistré,
+titres de la corbeille compris, avec la règle de \emph{Saisir des
+codes à la main} (section~\ref{sec:typed-codes}). Une valeur que la règle accepte et écrit
+autrement est remplacée par son ISBN-13 ; une valeur déjà canonique, ou
+qui n'est pas du tout un ISBN, reste telle quelle. Le changement ne
+compte pas comme une modification : les propositions en attente sur le
+titre ne deviennent pas périmées (l'ISBN qu'elles ont noté suit).
+
+Quand deux titres se retrouveraient avec le même ISBN-13, la règle est
+la suivante : deux titres vivants restent tous deux inchangés, pour que
+vous régliez le doublon ; un titre de la corbeille ne bloque jamais le
+titre vivant, qui est réécrit ; un titre de la corbeille n'est réécrit
+que si aucun autre titre, vivant ou dans la corbeille, ne partagerait sa
+nouvelle valeur. Chaque changement se lit dans le journal de ce premier
+démarrage :
+
+\begin{description}[style=nextline]
+  \item[\texttt{Stored ISBN rewritten to its ISBN-13}]
+        (\texttt{info}) une ligne par titre, avec \texttt{title\_id},
+        l'ancienne valeur (\texttt{old}), la nouvelle (\texttt{isbn}) et
+        \texttt{trashed}.
+  \item[\texttt{Stored ISBN: another title would carry the same ISBN; left unchanged (see \#591)}]
+        (\texttt{warn}) une ligne par titre laissé tel quel, avec
+        \texttt{stored}, \texttt{isbn} et
+        \texttt{colliding\_title\_ids}. Retrouvez les doublons en
+        cherchant l'ISBN, gardez-en un, corrigez ou supprimez les autres
+        à la main.
+  \item[\texttt{Stored ISBN: title changed meanwhile; left unchanged}]
+        (\texttt{info}) le titre a été enregistré entre la lecture et
+        l'écriture ; rare au démarrage.
+  \item[\texttt{Stored ISBN: startup repair to the one rule done (\#565)}]
+        (\texttt{info}) le résumé : réécrits (dont dans la corbeille),
+        sautés pour collision, déjà canoniques, pas des ISBN, modifiés
+        entre-temps, et les lignes de propositions dont l'ISBN a suivi.
+\end{description}
+
+\noindent Comme les autres réparations ponctuelles, elle journalise
+ensuite \texttt{Data repair applied} et ne s'exécute plus jamais ; si
+elle échoue, une ligne \texttt{error} (\texttt{Stored ISBN: startup
+repair failed (non-fatal, continuing)}) le signale, rien n'est modifié,
+et elle est relancée au démarrage suivant.
 
 \subsection*{Titres ISBN-10 enregistrés comme UPC}
 
