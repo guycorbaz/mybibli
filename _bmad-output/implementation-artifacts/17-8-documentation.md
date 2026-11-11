@@ -1,6 +1,6 @@
 # Story 17.8: Documentation
 
-Status: review
+Status: done
 
 No GitHub issue. Covers: FR172–FR177 (documentation). Epic 17; ships in v1.27.0. Sprint-status key: `17-8-epic-17-documentation`.
 
