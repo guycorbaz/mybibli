@@ -8,6 +8,7 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 
 ## Changelog
 
+- **2026-11-11** — Added **Epic 18: Maintenance** (#506, #599, #526, #681), with no new requirement and no new feature: two dependency updates, two fixes and the rmcp upgrade. Decided by the project lead on 2026-11-11 after a review of the dependency versions; ships as v1.28.0. Built-in backup (#657, #658, #663, #679) moves to Epic 19; the larger dependency upgrades (sqlx 0.9, rust-i18n 4, askama 0.16, reqwest 0.13, …) get their own epic later; htmx 4 waits until early 2027; the database engine question is on hold.
 - **2026-11-04** — Added **Epic 15: The agent's next tasks** (#564, #590, #614, #602), with new requirements FR161–FR166 and UX-DR40–UX-DR41. Decided by the project lead on 2026-11-04; ships as v1.25.0.
 - **2026-11-09** — Added **Epic 17: Everyday entry** (#651, #652, #565, #643 items 1–2, #653, #656), with new requirements FR172–FR177 and UX-DR43–UX-DR44. Decided by the project lead on 2026-11-09 from the usage notes of the first comics sessions; ships as v1.27.0. The comics shelving plan (#655) gets its own epic later.
 - **2026-11-06** — Added **Epic 16: What real use showed** (#597, #630, #639, #587, #638, #637), with new requirements FR167–FR171 and UX-DR42. Decided by the project lead the same day, after reading the v1.25.0 production logs and a first agent session on values.
@@ -438,7 +439,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR42 → Epic 16
 - UX-DR43, UX-DR44 → Epic 17
 
-**Coverage: 177/177 FRs, 48/48 NFRs, 31/31 ARs, 44/44 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04; Epic 15 added 2026-11-04; Epic 16 added 2026-11-06; Epic 17 added 2026-11-09.)
+**Coverage: 177/177 FRs, 48/48 NFRs, 31/31 ARs, 44/44 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04; Epic 15 added 2026-11-04; Epic 16 added 2026-11-06; Epic 17 added 2026-11-09; Epic 18 added 2026-11-11, no new requirement.)
 
 ## Epic List
 
@@ -3467,3 +3468,132 @@ So that it is documented as it works.
 **Then** it describes adding a volume from the title page, the V-code and ISBN entry rules, the typed-code warning, the search by id, and the default skills as models (with their names and purpose); the agent chapter is up to date
 **And** the PDFs are rebuilt; `CLAUDE.md` reflects the new patterns
 **And** release documentation (Foundation Rule #19, v1.27.0) is done at release time, not in this story
+
+### Epic 18: Maintenance
+
+A review of the dependency versions on 2026-11-11 found no vulnerability but thirteen `cargo audit` warnings (unmaintained, unsound, yanked), semver-compatible updates not taken, a CI still on Node 20, build images that follow `latest`, and the `Audit` workflow red on `main` since 2026-11-09 behind two ignores. This epic takes the safe part of that, plus two small fixes users can see, and adds no feature.
+
+**FRs:** none new
+**NFRs:** none new (NFR46 — rmcp pinned exactly — is kept: it is re-pinned on the new version)
+**UX-DRs:** none new
+**Issues:** #506, #599, #526, #681
+
+**Release.** v1.28.0 at the close of the epic, after its retrospective.
+
+**Key decisions (project lead, 2026-11-11).**
+- A small maintenance epic: one or two simple upgrades and one or two fixes, no new feature. It goes before built-in backup, which becomes Epic 19.
+- In: semver-compatible updates, pinned build images (#506), the rmcp upgrade (#681), #599, #526.
+- Out: the major upgrades (sqlx 0.9, rust-i18n 4, askama 0.16, reqwest 0.13, axum-extra 0.12, tower-http 0.7, rand 0.10, RustCrypto, nix, base64) — their own epic later; htmx 4 — waits until about February 2027; replacing the unmaintained `genpdf` — its own change request; the database engine and version (MariaDB 10.11 on the NAS, a dedicated container, PostgreSQL) — on hold; Renovate — kept aside.
+- RUSTSEC-2026-0459 (`libsqlite3-sys` through sqlx's unused SQLite driver) stays ignored until the sqlx upgrade; #681 stays open for that half.
+
+**Sequencing.** 18.1 → 18.2 → 18.3 → 18.4 → 18.5 → 18.6 (epic smoke, Foundation Rule #7) → 18.7 → retrospective → release v1.28.0.
+
+**Stories:**
+
+#### Story 18.1: Semver-compatible updates
+
+As the maintainer,
+I want every dependency on its latest compatible version,
+So that fixes published upstream reach mybibli without a code change.
+
+**Covers:** maintenance
+
+**Acceptance Criteria:**
+
+**Given** `Cargo.lock`, `package-lock.json` and `tests/e2e/package-lock.json`
+**Then** `cargo update` is applied and the remaining `cargo audit` warnings are listed in the story file, each with the crate that pulls it in
+**And** Tailwind (4.3.x), Playwright and `@axe-core/playwright` move to their latest compatible versions; `@types/node` follows the Node major used by CI
+**And** the vendored Chart.js moves to 4.5.1 (`static/js/vendor/chart.umd.js`); htmx stays on 2.x (latest 2.x patch if one is out)
+**And** the CI moves from Node 20 to Node 24; the pinned GitHub Actions are checked against their latest release, each SHA keeping its version comment
+**And** the full unit, DB integration and E2E suites are green (`CI=true npx playwright test --workers=2`); a visual check of the dashboard charts and of a page per Tailwind-heavy surface (sidebar, modal) is recorded
+
+#### Story 18.2: Pinned build images (closes #506)
+
+As the maintainer,
+I want two builds of the same commit to produce the same image,
+So that a dependency moves only when a commit says so.
+
+**Covers:** maintenance
+
+**Acceptance Criteria:**
+
+**Given** the `Dockerfile` and the compose files
+**Then** `rust`, `node` and `alpine` are pinned to explicit versions (Rust matching the toolchain used by CI), and the CSS stage installs Tailwind from a committed manifest + lockfile, or at the exact version the repository uses — not `latest`
+**And** the Rust toolchain is pinned the same way for local builds and CI (e.g. `rust-toolchain.toml`), or the story records why not
+**And** the image builds, starts and passes the E2E suite; the dependency inventory note (where each pinned version lives) is added to `CLAUDE.md` so the next upgrade finds every place
+
+#### Story 18.3: rmcp 3.9 and the audit ignores (#681)
+
+As the maintainer,
+I want the MCP server on a fixed rmcp and the Audit workflow green,
+So that a real advisory is no longer hidden behind a red badge.
+
+**Covers:** maintenance (NFR46 kept)
+
+**Acceptance Criteria:**
+
+**Given** `rmcp = "=3.8.0"`
+**Then** it is re-pinned exactly on the latest 3.x (≥ 3.9.0), still confined to `src/mcp/transport.rs` with the same features; any API change is absorbed there
+**And** RUSTSEC-2026-0462 is removed from `.cargo/audit.toml`; RUSTSEC-2026-0459 stays with its reason, and #681 is updated to say it waits for the sqlx upgrade
+**And** the MCP unit, integration and E2E suites are green under both protocol versions (`2025-11-25`, `2026-07-28`); the `Audit` workflow is green
+
+#### Story 18.4: The series API returns every series (closes #599)
+
+As a script or tool reading the API,
+I want `GET /api/v1/series` to return all the series,
+So that nothing past the 25th is silently missing.
+
+**Covers:** fix
+
+**Acceptance Criteria:**
+
+**Given** a library with more than 25 live series
+**Then** `GET /api/v1/series` returns all of them — either all at once or through an explicit, documented pagination (`page` + total); the choice is made in the story and documented in the API chapter of the manual
+**And** deleted series are never returned
+**And** unit and DB integration tests cover more than 25 series; the E2E asserts only on series the spec creates (Rule #23)
+
+#### Story 18.5: Errors visible on the series page (closes #526)
+
+As a librarian on a series page,
+I want an error to be shown when an action fails,
+So that a click that did nothing is never silent.
+
+**Covers:** fix
+
+**Acceptance Criteria:**
+
+**Given** the series page and an HTMX request from it whose handler fails with an `AppError` (the delete modal of a tome or of the series deleted in another tab, a CSRF rejection)
+**Then** the error message is shown on the page (a `#feedback-list` region, as on `/catalog`, or the page's own feedback region) and announced to assistive technologies
+**And** focus is not moved by the error (Rule #21)
+**And** the other pages answering errors to a missing `#feedback-list` are listed in the story file; each is fixed in this story or gets an issue
+**And** an E2E case reproduces the reported case (series deleted in another tab, then "Delete" clicked) and asserts the message
+
+#### Story 18.6: Epic 18 smoke test (Foundation Rule #7)
+
+As the project,
+I want one end-to-end journey from a blank browser over what the epic touched,
+So that the epic is proven done.
+
+**Covers:** Foundation Rule #7
+
+**Acceptance Criteria:**
+
+**Given** a blank browser with no injected cookie
+**When** the test runs
+**Then** it chains: `loginAs` → the dashboard with its charts → a series page where an action fails and its message is shown → the series created by the spec read back through `GET /api/v1/series` → an MCP `initialize` answered
+**And** no `waitForTimeout`; green under `CI=true npx playwright test --workers=2`; if this test fails, the epic is not done
+
+#### Story 18.7: Documentation
+
+As an operator,
+I want the documentation to match what is built,
+So that the next upgrade starts from an accurate picture.
+
+**Covers:** maintenance (documentation)
+
+**Acceptance Criteria:**
+
+**Given** the user manual (English and French) and `CLAUDE.md`
+**Then** the API chapter describes the series endpoint as fixed in 18.4, and the versions named in the documentation (Tailwind, Chart.js, Node, rmcp) are current
+**And** the PDFs are rebuilt
+**And** release documentation (Foundation Rule #19, v1.28.0) is done at release time, not in this story
