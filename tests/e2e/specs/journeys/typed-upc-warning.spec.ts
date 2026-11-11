@@ -16,6 +16,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { badUpcA, titleIdByName as titleId } from "../../helpers/catalog";
 
 /** `length` random digits, never starting like an ISBN or an ISSN prefix. */
 function digits(length: number): string {
@@ -29,27 +30,6 @@ function validEan13(): string {
   const body = digits(12);
   const sum = [...body].reduce((acc, c, i) => acc + Number(c) * (i % 2 === 0 ? 1 : 3), 0);
   return body + String((10 - (sum % 10)) % 10);
-}
-
-/** A 12-digit UPC-A whose check digit is wrong. */
-function badUpcA(): string {
-  const body = digits(11);
-  const sum = [...body].reduce((acc, c, i) => acc + Number(c) * (i % 2 === 0 ? 3 : 1), 0);
-  const valid = (10 - (sum % 10)) % 10;
-  return body + String((valid + 1) % 10);
-}
-
-/** The id of this spec's title named `name`, or null. */
-async function titleId(page: Page, name: string): Promise<string | null> {
-  const response = await page.request.get(`/?q=${encodeURIComponent(name)}`, {
-    headers: { "HX-Request": "true" },
-  });
-  // The search ranks loosely: only a link carrying this exact name counts.
-  const html = await response.text();
-  const at = html.indexOf(name);
-  if (at < 0) return null;
-  const links = [...html.slice(0, at).matchAll(/href="\/title\/(\d+)"/g)];
-  return links.at(-1)?.[1] ?? null;
 }
 
 async function openTitleForm(page: Page, name: string) {

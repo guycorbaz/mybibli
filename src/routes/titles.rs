@@ -1,5 +1,6 @@
 use askama::Template;
 use axum::extract::{OriginalUri, Path, State};
+use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
 use axum::{Extension, Form};
 
@@ -7,7 +8,7 @@ use axum::{Extension, Form};
 use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::Session;
-use crate::middleware::htmx::HxRequest;
+use crate::middleware::htmx::{HxRequest, field_refusal};
 use crate::middleware::locale::Locale;
 use crate::models::contributor::TitleContributorModel;
 use crate::models::genre::GenreModel;
@@ -718,6 +719,9 @@ pub(crate) fn should_clear_flag(accept: &Option<String>, changed: bool) -> bool 
     accept.is_some() && changed
 }
 
+/// Issue #676 — the slot under the edit form's ISBN field.
+const EDIT_ISBN_SLOT: &str = "edit-isbn-error";
+
 pub async fn update_title(
     State(state): State<AppState>,
     session: Session,
@@ -768,8 +772,11 @@ pub async fn update_title(
     let isbn = if typed.is_some() && typed == stored {
         old_title.isbn.clone()
     } else {
-        crate::utils::normalize_isbn_input(form.isbn.as_deref().unwrap_or(""))
-            .map_err(|e| AppError::BadRequest(e.message(loc)))?
+        // Issue #676 — the hint shows under the ISBN field.
+        match crate::utils::normalize_isbn_input(form.isbn.as_deref().unwrap_or("")) {
+            Ok(isbn) => isbn,
+            Err(e) => return Ok(field_refusal(StatusCode::BAD_REQUEST, EDIT_ISBN_SLOT, &e.message(loc))),
+        }
     };
     let issn = non_empty(&form.issn).map(|s| s.replace('-', ""));
     // Story 17-4 (#643 item 1) — a typed UPC gets the scan's warnings; an
@@ -782,9 +789,9 @@ pub async fn update_title(
         form.media_type.as_deref().map(str::trim).filter(|m| !m.is_empty()).unwrap_or(&old_title.media_type),
         "edit-upc-warning",
         loc,
-    )? {
+    ) {
         crate::routes::catalog_code::TypedUpcOutcome::Store(upc) => upc,
-        crate::routes::catalog_code::TypedUpcOutcome::Warn(response) => return Ok(response),
+        crate::routes::catalog_code::TypedUpcOutcome::Respond(response) => return Ok(response),
     };
 
     if let Some(ref new_isbn) = isbn
@@ -797,8 +804,10 @@ pub async fn update_title(
         if let Some(existing) = TitleModel::find_by_isbn(pool, new_isbn).await?
             && existing.id != id
         {
-            return Err(AppError::Conflict(
-                rust_i18n::t!("error.isbn.already_used", locale = loc).to_string(),
+            return Ok(field_refusal(
+                StatusCode::CONFLICT,
+                EDIT_ISBN_SLOT,
+                &rust_i18n::t!("error.isbn.already_used", locale = loc),
             ));
         }
     }

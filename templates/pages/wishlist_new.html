@@ -35,8 +35,10 @@
                 <label for="isbn-input" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_isbn }} *</label>
                 <input type="text" id="isbn-input" name="isbn" required
                        maxlength="40"
-                       autocomplete="off"
+                       autocomplete="off" aria-describedby="isbn-input-error"
                        class="mt-1 block w-full font-mono rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                {# Issue #676 — a refused ISBN's hint (`field_refusal`). #}
+                <div id="isbn-input-error" data-field-slot aria-live="polite"></div>
             </div>
             <div class="flex justify-end gap-2">
                 <a href="/wishlist"

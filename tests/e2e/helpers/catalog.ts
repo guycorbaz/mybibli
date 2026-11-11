@@ -68,3 +68,32 @@ export async function volumeIdByLabel(
   expect(id).toMatch(/^\d+$/);
   return id;
 }
+
+/**
+ * Story 17-4 / issue #676 — the id of the title named `name`, found through
+ * the home search fragment, or null. The search ranks loosely: only a link
+ * placed before this exact name counts, so give each title a unique name.
+ */
+export async function titleIdByName(page: Page, name: string): Promise<string | null> {
+  const response = await page.request.get(`/?q=${encodeURIComponent(name)}`, {
+    headers: { "HX-Request": "true" },
+  });
+  const html = await response.text();
+  const at = html.indexOf(name);
+  if (at < 0) return null;
+  const links = [...html.slice(0, at).matchAll(/href="\/title\/(\d+)"/g)];
+  return links.at(-1)?.[1] ?? null;
+}
+
+/**
+ * Story 17-4 / issue #676 — a random 12-digit UPC-A whose check digit is
+ * wrong (refused by every form, #384). Starts with 5: never an ISBN or
+ * ISSN prefix.
+ */
+export function badUpcA(): string {
+  let body = "5";
+  while (body.length < 11) body += Math.floor(Math.random() * 10);
+  const sum = [...body].reduce((acc, c, i) => acc + Number(c) * (i % 2 === 0 ? 3 : 1), 0);
+  const valid = (10 - (sum % 10)) % 10;
+  return body + String((valid + 1) % 10);
+}

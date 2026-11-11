@@ -158,6 +158,44 @@ impl IntoResponse for HtmxResponse {
     }
 }
 
+/// Issue #676 — the hint of a refused form field, as it shows in the
+/// field's slot. `message` is HTML-escaped here — callers MUST NOT
+/// pre-escape.
+pub fn field_refusal_html(message: &str) -> String {
+    format!(
+        r#"<p data-field-error class="mt-1 text-sm font-medium text-red-700 dark:text-red-300">{}</p>"#,
+        crate::utils::html_escape(message)
+    )
+}
+
+/// Issue #676 — a form refusal shown next to the field it is about: the
+/// title edit form (ISBN, UPC), the manual title form (UPC) and the wish
+/// list's "By ISBN" preview. A form whose own target is not the field
+/// adopts it by giving the field a slot.
+///
+/// The body is the terse hint (Rule #9) for the empty slot `#<slot_id>`
+/// under the field (`<div id="…" data-field-slot aria-live="polite">`,
+/// named by the field's `aria-describedby`). `HX-Retarget` + `HX-Reswap:
+/// innerHTML` put it there, so the form is not re-rendered: what was
+/// typed stays and focus is not moved (Rule #21). `HX-Trigger:
+/// validation-error` makes `static/js/csrf.js` swap a 400 / 409 body,
+/// which HTMX 2 drops by default (#91); the global `responseHandling` is
+/// left alone. `static/js/title-form.js` empties the slot as soon as the
+/// field changes. `slot_id` is a literal (no header injection by
+/// construction).
+pub fn field_refusal(status: axum::http::StatusCode, slot_id: &'static str, message: &str) -> Response {
+    (
+        status,
+        [
+            ("HX-Retarget", format!("#{slot_id}")),
+            ("HX-Reswap", "innerHTML".to_string()),
+            ("HX-Trigger", "validation-error".to_string()),
+        ],
+        Html(field_refusal_html(message)),
+    )
+        .into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,5 +350,25 @@ mod tests {
         }
         .into_response_with_hx_trigger("modal-close");
         assert_eq!(before.headers()["hx-trigger"], "modal-close");
+    }
+
+    /// Issue #676 — a field refusal keeps its status, lands in the field's
+    /// slot (not the form, not `#feedback-list`) and opts into the 4xx swap.
+    #[tokio::test]
+    async fn field_refusal_targets_the_slot_and_opts_into_the_swap() {
+        use axum::body::to_bytes;
+        use axum::http::StatusCode;
+        for status in [StatusCode::BAD_REQUEST, StatusCode::CONFLICT] {
+            let response = field_refusal(status, "edit-isbn-error", "Bad <ISBN>");
+            assert_eq!(response.status(), status);
+            assert_eq!(response.headers()["hx-retarget"], "#edit-isbn-error");
+            assert_eq!(response.headers()["hx-reswap"], "innerHTML");
+            assert_eq!(response.headers()["hx-trigger"], "validation-error");
+            let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+            let body = String::from_utf8(bytes.to_vec()).unwrap();
+            assert!(body.starts_with("<p data-field-error"), "{body}");
+            assert!(body.contains("Bad &lt;ISBN&gt;") || body.contains("Bad &#60;ISBN&#62;"), "{body}");
+            assert!(!body.contains("<ISBN>"), "the message is escaped: {body}");
+        }
     }
 }

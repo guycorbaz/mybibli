@@ -140,12 +140,8 @@ pub async fn create_title(
         "upc-field-warning",
         loc,
     ) {
-        Ok(TypedUpcOutcome::Store(upc)) => form.upc = upc,
-        Ok(TypedUpcOutcome::Warn(response)) => return Ok(response),
-        Err(AppError::BadRequest(message)) => {
-            return Ok(Html(feedback_html("error", &message, "")).into_response());
-        }
-        Err(e) => return Err(e),
+        TypedUpcOutcome::Store(upc) => form.upc = upc,
+        TypedUpcOutcome::Respond(response) => return Ok(response),
     }
 
     match TitleService::create_manual(pool, &form, loc).await {

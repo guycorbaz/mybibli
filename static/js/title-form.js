@@ -78,14 +78,17 @@
 
     // Story 17-4 — a UPC warning (and its "keep as entered" box) is about
     // the code it was shown for: once the librarian changes the field, it no
-    // longer applies. Delegated, for the creation and the edit form.
-    var UPC_WARNING_SLOTS = { "upc-field": "upc-field-warning", "edit-upc": "edit-upc-warning" };
+    // longer applies. Issue #676 — the same for a field refusal's hint. Any
+    // `[data-field-slot]` a field names in its `aria-describedby` is emptied
+    // when that field changes. Delegated, for every form of the app.
     document.addEventListener("input", function (e) {
-        var id = e.target && e.target.id;
-        if (!id || !Object.prototype.hasOwnProperty.call(UPC_WARNING_SLOTS, id)) return;
-        var slotId = UPC_WARNING_SLOTS[id];
-        var slot = document.getElementById(slotId);
-        if (slot && slot.firstChild) slot.innerHTML = "";
+        var field = e.target;
+        var ids = field && field.getAttribute ? field.getAttribute("aria-describedby") : null;
+        if (!ids) return;
+        ids.split(/\s+/).forEach(function (id) {
+            var slot = id ? document.getElementById(id) : null;
+            if (slot && slot.hasAttribute("data-field-slot") && slot.firstChild) slot.innerHTML = "";
+        });
     });
 
     function wireCancelButton(form) {
