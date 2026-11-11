@@ -277,30 +277,32 @@ sera jamais reproposée, même si ce volume a été supprimé depuis.
 
 \section{Rechercher dans la collection}\label{sec:search}
 
-La page \texttt{/search} accepte :
+Le champ de recherche en haut de la page d'accueil accepte :
 
 \begin{itemize}
-  \item \textbf{titre} complet ou partiel ;
-  \item \textbf{nom de contributeur} (matche l'auteur par défaut ;
-        les autres rôles de contributeur sont scorés moins fort) ;
-  \item \textbf{ISBN / EAN-13} — match exact ;
-  \item \textbf{code V} ou \textbf{code L} — match exact ;
-  \item \textbf{numéro de titre} tapé \texttt{\#990} — ce titre seul
-        (section~\ref{sec:title-id-search}) ;
-  \item \textbf{code Dewey} (pour les bibliothèques qui utilisent
-        Dewey).
+  \item des mots du \textbf{titre}, du sous-titre ou de la description ;
+  \item un \textbf{nom de contributeur}, quel que soit son rôle ;
+  \item un \textbf{ISBN} --- correspondance exacte, tapé avec ou sans
+        tirets ni espaces, en ISBN-10 ou en ISBN-13, avec ou sans
+        préfixe \texttt{ISBN} ;
+  \item un \textbf{code V} --- le titre de ce volume, correspondance
+        exacte ;
+  \item un \textbf{code L} --- ouvre la page de cet emplacement ;
+  \item un \textbf{numéro de titre} tapé \texttt{\#990} --- ce titre seul
+        (section~\ref{sec:title-id-search}).
 \end{itemize}
 
-Les résultats sont triés par pertinence. Cliquez un résultat pour
-ouvrir la page du titre ; cliquez un contributeur pour filtrer le
-catalogue sur ses œuvres ; cliquez le libellé d'un lieu pour voir
-chaque volume actuellement à cet endroit.
+Les résultats suivent l'ordre de tri choisi à côté du champ (par titre
+par défaut) et se combinent avec les filtres placés dessous. Cliquez un
+résultat pour ouvrir la page du titre ; cliquez un contributeur pour
+filtrer le catalogue sur ses œuvres ; cliquez le libellé d'un lieu pour
+voir chaque volume actuellement à cet endroit.
 
 \begin{tip}
-Vous pouvez « rechercher » un seul volume en scannant son code V
-depuis n'importe quelle page qui dispose du champ de scan d'accueil
-— y compris la page d'accueil, \texttt{/search} et \texttt{/loans}.
-Plus rapide que la frappe.
+Une douchette fonctionne dans ce même champ : un scan (une rafale de
+touches terminée par Entrée) ouvre directement la page de ce qu'il a lu
+--- le titre d'un ISBN, le volume d'un code V, l'emplacement d'un
+code L. Plus rapide que la frappe.
 \end{tip}
 
 \subsection{Retrouver un titre par son numéro}\label{sec:title-id-search}
@@ -386,10 +388,11 @@ endroits :
 \end{itemize}
 
 \begin{note}
-Trois précisions. Les jours sont découpés à minuit UTC, pas à minuit
-heure locale : en Suisse, un volume saisi entre minuit et 1~h (2~h en
-été) compte pour la veille, et les dates affichées sur les pages sont
-elles aussi des jours UTC. Un filtre d'indicateur (\emph{Catalogués
+Trois précisions. Les jours sont découpés à minuit dans le fuseau
+horaire de la bibliothèque (\emph{Administration \textrightarrow{}
+Système}, \texttt{Europe/Zurich} par défaut, section~\ref{sec:system}),
+et les dates affichées sur les pages sont elles aussi des jours de ce
+fuseau. Un filtre d'indicateur (\emph{Catalogués
 récemment}, \emph{Prêts en retard}, \dots) remplace le filtre de date, comme
 il remplace le texte recherché --- un seul filtre actif à la fois.
 Enfin, une recherche sur un ISBN ou un code V exact trouve son titre

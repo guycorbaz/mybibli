@@ -250,28 +250,31 @@ deleted since.
 
 \section{Searching the collection}\label{sec:search}
 
-The \texttt{/search} page accepts:
+The search field at the top of the home page accepts:
 
 \begin{itemize}
-  \item full or partial \textbf{title};
-  \item \textbf{contributor name} (matches on author by default;
-        other contributor roles are scored lower);
-  \item \textbf{ISBN / EAN-13} — exact match;
-  \item \textbf{V-code} or \textbf{L-code} — exact match;
-  \item \textbf{title number} typed as \texttt{\#990} — that title
-        alone (section~\ref{sec:title-id-search});
-  \item \textbf{Dewey code} (for libraries that use Dewey).
+  \item words of a \textbf{title}, subtitle or description;
+  \item a \textbf{contributor name}, whatever their role;
+  \item an \textbf{ISBN} --- exact match, typed with or without hyphens
+        or spaces, as an ISBN-10 or an ISBN-13, with or without an
+        \texttt{ISBN} prefix;
+  \item a \textbf{V-code} --- the title of that volume, exact match;
+  \item an \textbf{L-code} --- opens the page of that location;
+  \item a \textbf{title number} typed as \texttt{\#990} --- that title
+        alone (section~\ref{sec:title-id-search}).
 \end{itemize}
 
-Results are sorted by relevance. Click a result to open the
-title page; click a contributor to filter the catalog by their
-work; click a location label to see every volume currently in
-that location.
+Results follow the sort order chosen next to the field (by title by
+default) and combine with the filter chips below it. Click a result to
+open the title page; click a contributor to filter the catalog by their
+work; click a location label to see every volume currently in that
+location.
 
 \begin{tip}
-You can ``search'' a single volume by scanning its V-code from any
-page that has the home-page scan field — that includes the home
-page, \texttt{/search} and \texttt{/loans}. Faster than typing.
+A barcode scanner works in the same field: a scan (a burst of keys
+ended by Enter) opens the page of what it read directly --- the title
+of an ISBN, the volume of a V-code, the location of an L-code. Faster
+than typing.
 \end{tip}
 
 \subsection{Finding a title by its number}\label{sec:title-id-search}
@@ -347,10 +350,10 @@ same rule drives three places:
 \end{itemize}
 
 \begin{note}
-Three details. Days are cut at midnight UTC, not at local midnight:
-in Switzerland a volume entered between midnight and 1~a.m.\ (2~a.m.\
-in summer) counts for the previous day, and the page dates are UTC
-days too. An indicator filter (\emph{Recent cataloged}, \emph{Overdue loans},
+Three details. Days are cut at midnight in the library's time zone
+(\emph{Administration \textrightarrow{} System}, \texttt{Europe/Zurich}
+by default, section~\ref{sec:system}), and the dates on the pages are
+days of that zone too. An indicator filter (\emph{Recent cataloged}, \emph{Overdue loans},
 \dots) replaces the date filter, as it replaces the search text ---
 one active filter at a time. And a search for an exact ISBN or V-code
 finds its title whatever the date, as it ignores the genre filter.

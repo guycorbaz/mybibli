@@ -670,7 +670,7 @@ metadata:
     classification: Classement
     classification_help: "Le genre vous appartient : aucune récupération de métadonnées ne le modifie. Le code Dewey peut être proposé par une bibliothèque, et cesse de l'être dès que vous le corrigez vous-même."
     identifiers: Identifiants
-    identifiers_help: "L'ISBN-13 doit comporter 13 chiffres avec un checksum valide. ISSN et UPC sont acceptés tels quels. Laissez vide pour effacer un champ."
+    identifiers_help: "Un ISBN peut être tapé avec des tirets ou en ISBN-10 : il est enregistré en ISBN-13 une fois sa clé de contrôle vérifiée. Un ISSN est enregistré sans tirets. Un UPC est vérifié comme un code scanné : une clé de contrôle fausse est refusée, un code inhabituel vous demande de le confirmer. Laissez vide pour effacer un champ."
     isbn: ISBN
     issn: ISSN
     upc: UPC

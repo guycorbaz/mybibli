@@ -139,6 +139,70 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.27.0}\label{sec:whats-new-1.27.0}
+
+Version 1.27.0 closes epic 17, ``everyday entry''
+(\href{https://github.com/guycorbaz/mybibli/issues/651}{\#651},
+\href{https://github.com/guycorbaz/mybibli/issues/652}{\#652},
+\href{https://github.com/guycorbaz/mybibli/issues/565}{\#565},
+\href{https://github.com/guycorbaz/mybibli/issues/643}{\#643},
+\href{https://github.com/guycorbaz/mybibli/issues/653}{\#653},
+\href{https://github.com/guycorbaz/mybibli/issues/656}{\#656}).
+\emph{One additive migration} (a column of the \texttt{mcp\_skills}
+table), no new environment variable, no new volume --- back up first,
+pull the image, recreate the container (\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{Stored ISBNs brought to one rule.} At the first start, a
+        one-time repair rewrites every stored ISBN typed with hyphens,
+        spaces, an \texttt{ISBN} prefix or as an ISBN-10 into its
+        ISBN-13, so a later scan finds the title instead of creating a
+        duplicate. Each rewrite is logged at \texttt{info} level. A
+        title whose ISBN would collide with another live title is left
+        untouched and logged (\texttt{warn}); a title in the Trash never
+        blocks a live one (section~\ref{sec:startup-repairs}).
+  \item \textbf{One ISBN rule for every form.} The manual
+        \emph{New title} form, the title edit form, the wish list
+        \emph{By ISBN} and the expected tomes read an ISBN as the scan
+        does: separators and prefix removed, ISBN-10 stored as ISBN-13,
+        check digit verified (section~\ref{sec:typed-codes}).
+  \item \textbf{Typed UPCs checked like scanned ones.} A product barcode
+        typed in the manual form or the edit form gets the scan's
+        warning under the field, with a box to keep it as entered; a
+        12-digit code with a wrong check digit is refused with its own
+        message.
+  \item \textbf{Default skills for the agent.} Four skills about comics
+        (\texttt{comics-covers}, \texttt{comics-series-attach},
+        \texttt{comics-series-create}, \texttt{comics-title-spelling})
+        are inserted once per database, \textbf{inactive}: models an
+        admin may read, edit and activate in \emph{Administration
+        \textrightarrow{} Skills}. A later release never updates them,
+        and a deleted one never returns
+        (section~\ref{sec:agents-skills-defaults}).
+  \item \textbf{Add a volume from the title page.} A Librarian types or
+        scans a V-code in the \emph{Volumes} section of a title; no
+        detour through the catalog page
+        (section~\ref{sec:title-add-volume}).
+  \item \textbf{V-codes in any case.} \texttt{v0042} is read as
+        \texttt{V0042} everywhere; a hand-created title no longer
+        refuses its first volume.
+  \item \textbf{Find a title by its number.} \texttt{\#990} in the
+        search field lists that title alone, and the title page shows
+        its number (section~\ref{sec:title-id-search}).
+\end{itemize}
+
+\paragraph{Fix.} A refused ISBN or UPC in the title edit form and in
+the wish list now shows its message next to the field, instead of a
+generic error or nothing.
+
+\paragraph{After the upgrade.} Read the log of the first start: the
+lines \texttt{Stored ISBN rewritten to its ISBN-13} list what the
+repair changed, and \texttt{Stored ISBN: another title would carry the
+same ISBN} the duplicates left for you to resolve. Then open
+\emph{Administration \textrightarrow{} Skills} to read the four default
+skills; the agent sees none of them until you activate one. The MCP
+tools are unchanged (18).
+
 \section{What's new in 1.26.0}\label{sec:whats-new-1.26.0}
 
 Version 1.26.0 closes epic 16, ``what real use showed''

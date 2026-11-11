@@ -148,6 +148,75 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.27.0}\label{sec:whats-new-1.27.0}
+
+La version 1.27.0 clôt l'epic 17, « la saisie au quotidien »
+(\href{https://github.com/guycorbaz/mybibli/issues/651}{\#651},
+\href{https://github.com/guycorbaz/mybibli/issues/652}{\#652},
+\href{https://github.com/guycorbaz/mybibli/issues/565}{\#565},
+\href{https://github.com/guycorbaz/mybibli/issues/643}{\#643},
+\href{https://github.com/guycorbaz/mybibli/issues/653}{\#653},
+\href{https://github.com/guycorbaz/mybibli/issues/656}{\#656}).
+\emph{Une migration additive} (une colonne de la table
+\texttt{mcp\_skills}), aucune nouvelle variable d'environnement, aucun
+nouveau volume --- sauvegardez d'abord, récupérez l'image, recréez le
+conteneur (\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{Les ISBN enregistrés ramenés à une seule règle.} Au
+        premier démarrage, une réparation unique réécrit en ISBN-13
+        chaque ISBN enregistré avec des tirets, des espaces, un préfixe
+        \texttt{ISBN} ou sous forme d'ISBN-10, pour qu'un scan ultérieur
+        retrouve le titre au lieu de créer un doublon. Chaque réécriture
+        est journalisée au niveau \texttt{info}. Un titre dont l'ISBN
+        entrerait en collision avec celui d'un autre titre vivant est
+        laissé tel quel et journalisé (\texttt{warn}) ; un titre à la
+        corbeille ne bloque jamais un titre vivant
+        (section~\ref{sec:startup-repairs}).
+  \item \textbf{Une seule règle d'ISBN pour tous les formulaires.} Le
+        formulaire \emph{Nouveau titre}, le formulaire d'édition d'un
+        titre, la liste de souhaits \emph{Par ISBN} et les tomes attendus
+        lisent un ISBN comme le scan : séparateurs et préfixe retirés,
+        ISBN-10 enregistré en ISBN-13, clé de contrôle vérifiée
+        (section~\ref{sec:typed-codes}).
+  \item \textbf{Les UPC tapés vérifiés comme les UPC scannés.} Un
+        code-barres produit tapé dans le formulaire de création ou
+        d'édition reçoit l'avertissement du scan sous le champ, avec une
+        case pour le garder tel quel ; un code de 12 chiffres à la clé
+        de contrôle fausse est refusé avec son propre message.
+  \item \textbf{Des compétences par défaut pour l'agent.} Quatre
+        compétences sur les bandes dessinées (\texttt{comics-covers},
+        \texttt{comics-series-attach}, \texttt{comics-series-create},
+        \texttt{comics-title-spelling}) sont ajoutées une fois par base,
+        \textbf{inactives} : des modèles qu'un administrateur peut lire,
+        modifier et activer dans \emph{Administration \textrightarrow{}
+        Compétences}. Une version ultérieure ne les met jamais à jour,
+        et une compétence supprimée ne revient jamais
+        (section~\ref{sec:agents-skills-defaults}).
+  \item \textbf{Ajouter un volume depuis la page du titre.} Un
+        bibliothécaire tape ou scanne un code V dans la section
+        \emph{Volumes} d'un titre, sans repasser par la page de
+        catalogage (section~\ref{sec:title-add-volume}).
+  \item \textbf{Les codes V en minuscules.} \texttt{v0042} est lu
+        \texttt{V0042} partout ; un titre créé à la main ne refuse plus
+        son premier volume.
+  \item \textbf{Retrouver un titre par son numéro.} \texttt{\#990} dans
+        le champ de recherche liste ce titre seul, et la page du titre
+        affiche son numéro (section~\ref{sec:title-id-search}).
+\end{itemize}
+
+\paragraph{Correction.} Un ISBN ou un UPC refusé dans le formulaire
+d'édition d'un titre et dans la liste de souhaits affiche désormais son
+message à côté du champ, au lieu d'une erreur générique ou de rien.
+
+\paragraph{Après la mise à jour.} Lisez le journal du premier
+démarrage : les lignes \texttt{Stored ISBN rewritten to its ISBN-13}
+listent ce que la réparation a changé, et \texttt{Stored ISBN: another
+title would carry the same ISBN} les doublons laissés à votre décision.
+Ouvrez ensuite \emph{Administration \textrightarrow{} Compétences} pour
+lire les quatre compétences par défaut ; l'agent n'en voit aucune tant
+que vous n'en activez pas. Les outils MCP sont inchangés (18).
+
 \section{Nouveautés de la 1.26.0}\label{sec:whats-new-1.26.0}
 
 La version 1.26.0 clôt l'epic 16, « ce que l'usage a montré »
