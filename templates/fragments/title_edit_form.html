@@ -128,8 +128,10 @@
             <div>
                 <label for="edit-isbn" class="block text-xs font-medium text-stone-700 dark:text-stone-300">{{ label_isbn }}</label>
                 <input type="text" id="edit-isbn" name="isbn" value="{{ title.isbn.as_deref().unwrap_or_default() }}"
-                       autocomplete="off" maxlength="40"
+                       autocomplete="off" maxlength="40" aria-describedby="edit-isbn-error"
                        class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm font-mono">
+                {# Issue #676 — a refused ISBN's hint (`field_refusal`). #}
+                <div id="edit-isbn-error" data-field-slot aria-live="polite"></div>
             </div>
             <div>
                 <label for="edit-issn" class="block text-xs font-medium text-stone-700 dark:text-stone-300">{{ label_issn }}</label>
@@ -142,8 +144,9 @@
                 <input type="text" id="edit-upc" name="upc" value="{{ title.upc.as_deref().unwrap_or_default() }}"
                        autocomplete="off" inputmode="numeric" maxlength="40" aria-describedby="edit-upc-warning"
                        class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm font-mono">
-                {# Story 17-4 — the scan's warning for an irregular typed code. #}
-                <div id="edit-upc-warning" aria-live="polite"></div>
+                {# Story 17-4 — the scan's warning for an irregular typed code;
+                   issue #676 — or its refusal. #}
+                <div id="edit-upc-warning" data-field-slot aria-live="polite"></div>
             </div>
         </div>
         <p class="mt-2 text-xs text-stone-500 dark:text-stone-400">{{ label_identifiers_help }}</p>

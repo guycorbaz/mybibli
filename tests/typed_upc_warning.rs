@@ -184,7 +184,8 @@ async fn a_valid_isbn10_typed_as_upc_is_sent_to_the_isbn_field_for_a_book(pool: 
     // A book: refused even confirmed — it is the title's ISBN, and kept as
     // a UPC the boot conversion (13-3) would move it there anyway.
     let (retarget, body) = create_as(&app, &b, &pool, "book", "Isbn", "080442957X", Some("080442957X")).await;
-    assert_eq!(retarget, None, "{body}");
+    // Issue #676 — the refusal shows in the UPC field's slot.
+    assert_eq!(retarget.as_deref(), Some("#upc-field-warning"), "{body}");
     assert!(body.contains("ISBN field"), "{body}");
     assert!(upc_of_titles_named(&pool, "Isbn").await.is_empty());
 

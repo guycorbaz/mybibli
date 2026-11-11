@@ -308,7 +308,7 @@ pub(crate) enum TypedUpcOutcome {
     /// The value to write (`None` clears the column).
     Store(Option<String>),
     /// Store nothing: send this response, which puts the warning and its
-    /// confirmation in the form's UPC slot.
+    /// confirmation — or the refusal (issue #676) — in the form's UPC slot.
     Warn(axum::response::Response),
 }
 
@@ -319,37 +319,42 @@ pub(crate) enum TypedUpcOutcome {
 /// answers with the scan's warning swapped into `#<slot_id>` (the response
 /// retargets there, so focus is not moved, Rule #21); a 12-digit code with a
 /// wrong check digit is refused with the #384 message, a code longer than
-/// the column with its own hint.
+/// the column with its own hint — in the same slot, as a 400 field refusal
+/// (`middleware::htmx::field_refusal`, issue #676).
 pub(crate) fn check_typed_upc(
     typed: Option<&str>,
     stored: Option<&str>,
     confirmed: Option<&str>,
     media_type: &str,
-    slot_id: &str,
+    slot_id: &'static str,
     loc: &str,
-) -> Result<TypedUpcOutcome, crate::error::AppError> {
+) -> TypedUpcOutcome {
     use axum::response::IntoResponse;
     let without_separators = |v: Option<&str>| v.and_then(crate::utils::identifier_without_separators);
     let Some(upc) = without_separators(typed) else {
-        return Ok(TypedUpcOutcome::Store(None));
+        return TypedUpcOutcome::Store(None);
     };
     if without_separators(stored).is_some_and(|s| s.eq_ignore_ascii_case(&upc)) {
-        return Ok(TypedUpcOutcome::Store(stored.map(str::to_string)));
+        return TypedUpcOutcome::Store(stored.map(str::to_string));
     }
     let print = media_type
         .trim()
         .parse::<crate::models::media_type::MediaType>()
         .is_ok_and(|m| m.is_print());
     match typed_upc_verdict(&upc, without_separators(confirmed).as_deref(), print) {
-        TypedUpcVerdict::Keep => Ok(TypedUpcOutcome::Store(Some(upc))),
-        TypedUpcVerdict::Refuse(refusal) => Err(crate::error::AppError::BadRequest(refusal.message(loc))),
-        TypedUpcVerdict::Confirm(irregularity) => Ok(TypedUpcOutcome::Warn(
+        TypedUpcVerdict::Keep => TypedUpcOutcome::Store(Some(upc)),
+        TypedUpcVerdict::Refuse(refusal) => TypedUpcOutcome::Warn(crate::middleware::htmx::field_refusal(
+            axum::http::StatusCode::BAD_REQUEST,
+            slot_id,
+            &refusal.message(loc),
+        )),
+        TypedUpcVerdict::Confirm(irregularity) => TypedUpcOutcome::Warn(
             (
                 [("HX-Retarget", format!("#{slot_id}")), ("HX-Reswap", "innerHTML".to_string())],
                 axum::response::Html(typed_upc_warning_html(irregularity, &upc, loc)),
             )
                 .into_response(),
-        )),
+        ),
     }
 }
 

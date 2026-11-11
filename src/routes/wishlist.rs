@@ -192,9 +192,16 @@ pub async fn wishlist_preview_isbn(
     }
 
     // Story 17-3 (#565): the one ISBN rule; a blank field is a format error.
+    // Issue #676 — the hint shows under the ISBN field.
     let isbn = match crate::utils::parse_isbn(&form.isbn) {
         Ok(isbn) => isbn,
-        Err(e) => return Err(AppError::BadRequest(e.message(loc))),
+        Err(e) => {
+            return Ok(crate::middleware::htmx::field_refusal(
+                axum::http::StatusCode::BAD_REQUEST,
+                "isbn-input-error",
+                &e.message(loc),
+            ));
+        }
     };
     let isbn = isbn.as_str();
 
