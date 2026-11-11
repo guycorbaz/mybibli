@@ -1,6 +1,6 @@
 # Story 17.4: Typed codes warned like scanned ones
 
-Status: review
+Status: done
 
 GitHub issue: #643 (items 1 and 2 only; item 3 stays open). Covers: FR175. Epic 17; ships in v1.27.0.
 
@@ -60,6 +60,7 @@ Claude Opus 5.5
 ### Completion Notes List
 
 - The scan's warnings were split into a cause and an action sentence (`scan.irregular_action_scan` / `irregular_action_form`), so the form shows the same cause with the action that fits it ("correct it, or tick the box below").
+- Final gates on the final code (2026-11-11): `cargo clippy --all-targets -D warnings` clean; full `cargo test` with the DB integration tests 2717 passed, 0 failed, 1 ignored (locale parity included); `cargo sqlx prepare --check --workspace -- --all-targets` OK (no SQL change); `waitForTimeout` grep gate OK; full E2E `CI=true --workers=2`: 472 passed, 2 skipped, 0 failed.
 - The edit form's post-save display (`metadata_display_html`) does not show the UPC (existing, unrelated); the E2E reloads the page to read it.
 
 ### Review
