@@ -218,6 +218,7 @@ title:
     isbn: ISBN
     issn: ISSN
     upc: UPC
+    upc_keep: "Garder %{code} tel quel"
     page_count: Nombre de pages
     track_count: Nombre de pistes
     total_duration: "Durée totale (secondes)"
@@ -458,7 +459,9 @@ error:
     already_used: "Un autre titre utilise déjà cet ISBN — refus de créer un doublon"
     not_found: ISBN introuvable
   upc:
-    invalid_checksum: Checksum UPC invalide
+    invalid_checksum: "UPC invalide : la clé de contrôle ne correspond pas — vérifiez la saisie"
+    too_long: "Un UPC a au plus 13 chiffres — vérifiez qu'il n'y a pas un chiffre de trop"
+    isbn10: "C'est un ISBN-10, pas un code-barres de produit — saisissez-le dans le champ ISBN"
   genre:
     required: Le genre est obligatoire
   media_type:
@@ -706,10 +709,13 @@ media_type:
   report: Rapport
 scan:
   select_media_type: "Quel type de média ?"
-  irregular_nine_digits: "Ce code a 9 chiffres, ce qu'aucun code-barres n'a : c'est peut-être un ISBN-10 qui a perdu son dernier caractère, souvent un X. Vérifiez-le et scannez-le à nouveau, ou choisissez un type pour le garder tel quel."
-  irregular_ten_digits: "Ce code a 10 chiffres, mais sa clé de contrôle ne correspond pas à un ISBN-10 : il est peut-être mal lu ou mal saisi. Vérifiez-le et scannez-le à nouveau, ou choisissez un type pour le garder tel quel."
-  irregular_length: "Ce code a %{len} chiffres, alors qu'un code-barres en a 8, 12 ou 13 : il est peut-être mal lu ou mal saisi. Vérifiez-le et scannez-le à nouveau, ou choisissez un type pour le garder tel quel."
-  irregular_check_digit: "La clé de contrôle de ce code est fausse : un chiffre est peut-être mal lu ou mal saisi. Vérifiez-le et scannez-le à nouveau, ou choisissez un type pour le garder tel quel."
+  irregular_nine_digits: "Ce code a 9 chiffres, ce qu'aucun code-barres n'a : c'est peut-être un ISBN-10 qui a perdu son dernier caractère, souvent un X."
+  irregular_ten_digits: "Ce code a 10 chiffres, mais sa clé de contrôle ne correspond pas à un ISBN-10 : il est peut-être mal lu ou mal saisi."
+  irregular_length: "Ce code a %{len} chiffres, alors qu'un code-barres en a 8, 12 ou 13 : il est peut-être mal lu ou mal saisi."
+  irregular_check_digit: "La clé de contrôle de ce code est fausse : un chiffre est peut-être mal lu ou mal saisi."
+  irregular_not_digits: "Ce code contient d'autres caractères que des chiffres, alors qu'un code-barres n'a que des chiffres : il est peut-être mal saisi."
+  irregular_action_scan: "Vérifiez-le et scannez-le à nouveau, ou choisissez un type pour le garder tel quel."
+  irregular_action_form: "Corrigez-le, ou cochez la case ci-dessous pour le garder tel quel."
 cover:
   alt_text: "Couverture de %{title}"
   no_cover: "Pas de couverture disponible"

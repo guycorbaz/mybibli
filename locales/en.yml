@@ -216,6 +216,7 @@ title:
     isbn: ISBN
     issn: ISSN
     upc: UPC
+    upc_keep: "Keep %{code} as entered"
     page_count: Page count
     track_count: Track count
     total_duration: "Total duration (seconds)"
@@ -462,7 +463,9 @@ error:
     already_used: "Another title already uses this ISBN — refusing to create a duplicate"
     not_found: ISBN not found
   upc:
-    invalid_checksum: Invalid UPC checksum
+    invalid_checksum: "Invalid UPC: the check digit does not match — check for a typo"
+    too_long: "A UPC has at most 13 digits — check for an extra digit"
+    isbn10: "This is an ISBN-10, not a product barcode — enter it in the ISBN field"
   genre:
     required: Genre is required
   media_type:
@@ -708,10 +711,13 @@ media_type:
   report: Report
 scan:
   select_media_type: "What type of media is this?"
-  irregular_nine_digits: "This code has 9 digits, which no barcode has: it may be an ISBN-10 that lost its last character, often an X. Check it and scan it again, or choose a type to keep it as entered."
-  irregular_ten_digits: "This code has 10 digits, but its check digit is wrong for an ISBN-10: it may be misread or mistyped. Check it and scan it again, or choose a type to keep it as entered."
-  irregular_length: "This code has %{len} digits, while a barcode has 8, 12 or 13: it may be misread or mistyped. Check it and scan it again, or choose a type to keep it as entered."
-  irregular_check_digit: "The check digit of this code is wrong: a digit may be misread or mistyped. Check it and scan it again, or choose a type to keep it as entered."
+  irregular_nine_digits: "This code has 9 digits, which no barcode has: it may be an ISBN-10 that lost its last character, often an X."
+  irregular_ten_digits: "This code has 10 digits, but its check digit is wrong for an ISBN-10: it may be misread or mistyped."
+  irregular_length: "This code has %{len} digits, while a barcode has 8, 12 or 13: it may be misread or mistyped."
+  irregular_check_digit: "The check digit of this code is wrong: a digit may be misread or mistyped."
+  irregular_not_digits: "This code contains characters other than digits, while a barcode has digits only: it may be mistyped."
+  irregular_action_scan: "Check it and scan it again, or choose a type to keep it as entered."
+  irregular_action_form: "Correct it, or tick the box below to keep it as entered."
 cover:
   alt_text: "Cover of %{title}"
   no_cover: "No cover available"

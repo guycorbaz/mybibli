@@ -1167,7 +1167,7 @@ pub async fn handle_scan(
                         }
                         Err(e) => {
                             tracing::error!(error = %e, code = %code, "UPC scan failed");
-                            let message = rust_i18n::t!("error.title.creation_failed").to_string();
+                            let message = upc_creation_error_message(&code, loc);
                             Ok(Html(scan_error_feedback_html(&message, &code)).into_response())
                         }
                     }
@@ -1283,12 +1283,7 @@ fn media_type_selector_html(
 
     let select_label = rust_i18n::t!("scan.select_media_type", locale = loc).to_string();
     let warning_html = warning
-        .map(|w| {
-            format!(
-                r#"<p data-code-warning class="mt-1 text-sm font-medium text-amber-800 dark:text-amber-300">{}</p>"#,
-                html_escape(w)
-            )
-        })
+        .map(crate::routes::catalog_code::code_warning_html)
         .unwrap_or_default();
     let question_icon = r#"<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>"#;
     format!(
@@ -1401,10 +1396,18 @@ pub async fn handle_scan_with_type(
         }
         Err(e) => {
             tracing::error!(error = %e, code = %code, "UPC scan-with-type failed");
-            let message = rust_i18n::t!("error.title.creation_failed").to_string();
+            let message = upc_creation_error_message(&code, locale.0);
             Ok(Html(scan_error_feedback_html(&message, &code)).into_response())
         }
     }
+}
+
+/// Story 17-4 (#643 item 2, Rule #9) — the message of a failed UPC
+/// creation: the #384 refusal for a 12-digit code with a wrong check
+/// digit, the generic creation failure otherwise.
+fn upc_creation_error_message(code: &str, loc: &str) -> String {
+    TitleService::upc_checksum_refusal(code, loc)
+        .unwrap_or_else(|| rust_i18n::t!("error.title.creation_failed", locale = loc).to_string())
 }
 
 // ─── Delete handlers ─────────────────────────────────────────────

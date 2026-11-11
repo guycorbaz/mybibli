@@ -56,6 +56,19 @@ impl TitleService {
             && crate::utils::ean13_check_digit(isbn) == isbn[12..].parse::<u32>().ok()
     }
 
+    /// #384, story 17-4 — the refusal of a 12-digit UPC-A with a wrong
+    /// check digit (Rule #9 field hint), `None` for any other code. Shared by
+    /// the scan's creation and error message and the title forms.
+    pub fn upc_checksum_refusal(code: &str, loc: &str) -> Option<String> {
+        Self::is_bad_upc_a(code)
+            .then(|| rust_i18n::t!("error.upc.invalid_checksum", locale = loc).to_string())
+    }
+
+    /// #384 — a 12-character code that fails the UPC-A check digit.
+    pub fn is_bad_upc_a(code: &str) -> bool {
+        code.len() == 12 && !Self::validate_upc12_checksum(code)
+    }
+
     /// Validate a UPC-A checksum using the modulo-10 algorithm (#384).
     /// UPC-A is 12 digits with weights 3 and 1 — the mirror of EAN-13's 1/3
     /// (odd 1-indexed positions ×3, even ×1). Catches fat-fingered manual
@@ -175,12 +188,9 @@ impl TitleService {
         // a 13-digit EAN would reject valid product codes; those lengths keep
         // their pre-#384 (unvalidated) behaviour.
         if code_type == CodeType::Upc
-            && code.len() == 12
-            && !Self::validate_upc12_checksum(code)
+            && let Some(refusal) = Self::upc_checksum_refusal(code, &rust_i18n::locale())
         {
-            return Err(AppError::BadRequest(
-                rust_i18n::t!("error.upc.invalid_checksum").to_string(),
-            ));
+            return Err(AppError::BadRequest(refusal));
         }
 
         let genre_id = Self::find_default_genre_id(pool).await?;
@@ -565,6 +575,9 @@ pub struct TitleForm {
     pub issn: Option<String>,
     #[serde(default)]
     pub upc: Option<String>,
+    /// Story 17-4 — the irregular UPC the librarian chose to keep as entered.
+    #[serde(default)]
+    pub upc_confirmed: Option<String>,
     #[serde(
         default,
         deserialize_with = "crate::routes::series::deserialize_optional_i32"

@@ -76,6 +76,18 @@
         }
     });
 
+    // Story 17-4 — a UPC warning (and its "keep as entered" box) is about
+    // the code it was shown for: once the librarian changes the field, it no
+    // longer applies. Delegated, for the creation and the edit form.
+    var UPC_WARNING_SLOTS = { "upc-field": "upc-field-warning", "edit-upc": "edit-upc-warning" };
+    document.addEventListener("input", function (e) {
+        var id = e.target && e.target.id;
+        if (!id || !Object.prototype.hasOwnProperty.call(UPC_WARNING_SLOTS, id)) return;
+        var slotId = UPC_WARNING_SLOTS[id];
+        var slot = document.getElementById(slotId);
+        if (slot && slot.firstChild) slot.innerHTML = "";
+    });
+
     function wireCancelButton(form) {
         var btn = form.querySelector("#title-form-cancel");
         if (!btn || btn.dataset.wired === "true") return;
