@@ -36,6 +36,10 @@ cd tests/e2e && npm test
 # Flake gate (run before committing E2E changes) — enforced by CI in the e2e job
 grep -rE "waitForTimeout\(" tests/e2e/specs/ tests/e2e/helpers/ && exit 1 || true
 
+# Typecheck the E2E specs (run whenever a spec or helper under tests/e2e/ changes) — CI runs it
+# in the e2e job; story 17-4 lost a push to it (epic 17 retro A1)
+cd tests/e2e && npx tsc --noEmit
+
 # Database
 cargo sqlx prepare                   # Regenerate .sqlx/ offline cache after query changes
 cargo sqlx prepare --check --workspace -- --all-targets  # Verify cache matches source (pre-commit check)
@@ -71,7 +75,7 @@ These apply to ALL sessions without exception.
 
 1. **DRY** — No duplicated code. Shared utilities go in `src/utils.rs`.
 2. **Unit Tests** — All code must have unit tests, written alongside implementation. No code ships without corresponding unit tests. Bug fixes must include a regression test.
-3. **E2E Tests** — All features and bug fixes must have Playwright E2E tests covering the real user scenario. Must include a smoke test covering the real user journey (no cookie injection shortcuts). A feature without E2E coverage is not done.
+3. **E2E Tests** — All features and bug fixes must have Playwright E2E tests covering the real user scenario. Must include a smoke test covering the real user journey (no cookie injection shortcuts). A feature without E2E coverage is not done. A refusal is a user scenario: a story that adds or changes a form refusal ships an E2E case that submits the refused value and asserts the message next to the field (epic 17 retro A2 — #676, refusals HTMX never showed, was found by a documentation review, not by a test).
 4. **Code Language** — All code, comments, variables, and commit messages in English.
 5. **Gate Rule** — No milestone transition until ALL tests (unit + E2E) are green.
 6. **Code Review Loop** — After code review, if any Medium+ severity findings are discovered, re-run the review after fixes. Story is clean only when a full pass finds no Medium+ issues.
