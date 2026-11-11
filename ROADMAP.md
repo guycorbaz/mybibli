@@ -32,21 +32,76 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.26.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.26.0)**
-(2026-11-06) — what real use showed: amounts on the volume page,
-purchase prices proposed by the agent, covers sent as files, and a
-warning on a code that looks wrong. **Two additive migrations.** The
-section below has the detail; every release before it has its own
-section further down, and this is the file that carries them — the
-README quotes only the current release, and the website tells the same
-story for a different audience.
+**Current stable: [`v1.27.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.27.0)**
+(2026-11-11) — everyday entry: a volume added from the title page,
+V-codes in any case, one ISBN rule for every form with a one-time
+repair of the stored ISBNs, typed codes checked like scanned ones, a
+title found by its number, and default skills for the agent. **One
+additive migration.** The section below has the detail; every release
+before it has its own section further down, and this is the file that
+carries them — the README quotes only the current release, and the
+website tells the same story for a different audience.
 
-**Next:** the corrections drawn from the project lead's own use, unless
-a bug comes first. Later candidates, awaiting prioritisation: more
-proposable fields ([#589](https://github.com/guycorbaz/mybibli/issues/589)) and merging duplicates
+**Next:** epic 18 — built-in backup and restore of the database and
+the covers, scheduled and driven from the admin page
+([#657](https://github.com/guycorbaz/mybibli/issues/657)), with a consistency check between the covers on
+disk and the database ([#658](https://github.com/guycorbaz/mybibli/issues/658)), unless a bug comes first.
+Later candidates, awaiting prioritisation: a shelving plan for comics
+([#655](https://github.com/guycorbaz/mybibli/issues/655)), more proposable fields
+([#589](https://github.com/guycorbaz/mybibli/issues/589)) and merging duplicates
 ([#591](https://github.com/guycorbaz/mybibli/issues/591)). The base-path setting for reverse proxies
 ([#492](https://github.com/guycorbaz/mybibli/issues/492)) comes later. Everything else open lives in the issue
 tracker.
+
+## v1.27.0 — everyday entry *(shipped)*
+
+Shipped 2026-11-11. The closing release of epic 17
+([#651](https://github.com/guycorbaz/mybibli/issues/651), [#652](https://github.com/guycorbaz/mybibli/issues/652), [#565](https://github.com/guycorbaz/mybibli/issues/565), [#643](https://github.com/guycorbaz/mybibli/issues/643) items 1–2,
+[#653](https://github.com/guycorbaz/mybibli/issues/653), [#656](https://github.com/guycorbaz/mybibli/issues/656)), drawn from the usage notes of the first comics
+sessions on v1.26.0. **One additive migration** (a column of the
+`mcp_skills` table), no new environment variable, no new volume — back
+up first, pull the image and recreate the container
+(`docker compose up -d`).
+
+- **Stored ISBNs brought to one rule.** At the first start, a one-time
+  repair rewrites every stored ISBN typed with separators, an `ISBN`
+  prefix or as an ISBN-10 into its ISBN-13, so a later scan finds the
+  title instead of creating a duplicate. Each rewrite is logged at
+  `info` level. A title whose ISBN would collide with another live
+  title is left untouched and logged (`warn`); the Trash never blocks a
+  live title.
+- **One ISBN rule for every form.** The manual *New title* form, the
+  title edit form, the wish list *By ISBN* and the expected tomes read
+  an ISBN as the scan does: separators and prefix removed, ISBN-10
+  stored as ISBN-13, check digit verified.
+- **Typed UPCs checked like scanned ones.** A product barcode typed in
+  the manual form or the edit form gets the scan's warning under the
+  field, with a box to keep it as entered; a 12-digit code with a wrong
+  check digit is refused with its own message.
+- **Default skills for the agent.** Four skills about comics
+  (`comics-covers`, `comics-series-attach`, `comics-series-create`,
+  `comics-title-spelling`) are inserted once per database,
+  **inactive**: models an admin may read, edit and activate in
+  *Admin → Skills*. A later release never updates them, and a deleted
+  one never returns.
+- **Add a volume from the title page.** A librarian types or scans a
+  V-code in the *Volumes* section of a title, without going back to
+  `/catalog`.
+- **V-codes in any case.** `v0042` is read as `V0042` everywhere; a
+  hand-created title no longer refuses its first volume.
+- **Find a title by its number.** `#990` in the search field lists
+  title 990 alone (a scan opens it), and the title page shows its
+  number.
+- **Fix.** A refused ISBN or UPC in the title edit form and in the wish
+  list shows its message next to the field, instead of a generic error
+  or nothing ([#676](https://github.com/guycorbaz/mybibli/issues/676)).
+- **Under the hood.** A blank-browser epic smoke test chains a hand
+  created title with a hyphenated ISBN, a lowercase V-code added from
+  its page, a bare scan landing on the same title, a search by number
+  and a default skill in Admin → Skills. The E2E jobs run on
+  ubuntu-24.04 until Playwright is upgraded ([#660](https://github.com/guycorbaz/mybibli/issues/660)).
+- **Manual** (EN + FR): *What's new in 1.27.0* in chapter 8; chapters
+  3, 12 and 13 cover the new behaviour.
 
 ## v1.26.0 — what real use showed *(shipped)*
 

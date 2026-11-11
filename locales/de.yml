@@ -664,7 +664,7 @@ metadata:
     classification: Systematik
     classification_help: "Das Genre gehört Ihnen: kein Metadatenabruf ändert es. Die Dewey-Notation kann von einer Bibliothek vorgeschlagen werden und wird nicht mehr vorgeschlagen, sobald Sie sie selbst bearbeiten."
     identifiers: Kennungen
-    identifiers_help: "Die ISBN-13 muss 13 Ziffern mit gültiger Prüfsumme enthalten. ISSN / UPC werden unverändert übernommen. Leer lassen, um ein Feld zu löschen."
+    identifiers_help: "Eine ISBN kann mit Bindestrichen oder als ISBN-10 eingegeben werden: Sie wird nach Prüfung der Prüfziffer als ISBN-13 gespeichert. Eine ISSN wird ohne Bindestriche gespeichert. Ein UPC wird wie ein gescannter Code geprüft: Eine falsche Prüfziffer wird abgelehnt, bei einem ungewöhnlichen Code werden Sie um Bestätigung gebeten. Leer lassen, um ein Feld zu löschen."
     isbn: ISBN
     issn: ISSN
     upc: UPC

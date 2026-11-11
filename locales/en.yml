@@ -672,7 +672,7 @@ metadata:
     classification: Classification
     classification_help: "Genre is your own: no metadata fetch ever changes it. The Dewey code may be proposed by a library, and stops being proposed once you edit it yourself."
     identifiers: Identifiers
-    identifiers_help: "ISBN-13 must be 13 digits with a valid checksum. ISSN / UPC are accepted as-is. Leave blank to clear a field."
+    identifiers_help: "An ISBN may be typed with hyphens or as an ISBN-10: it is stored as an ISBN-13 once its check digit is verified. An ISSN is stored without hyphens. A UPC is checked like a scanned code: a wrong check digit is refused, an unusual code asks you to confirm it. Leave blank to clear a field."
     isbn: ISBN
     issn: ISSN
     upc: UPC
