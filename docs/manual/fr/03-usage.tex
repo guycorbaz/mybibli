@@ -76,7 +76,8 @@ La page d'accueil est le tableau de bord. De haut en bas :
         tirets ou les espaces imprimés sur le livre
         (\texttt{978-2-205-00121-1}, \texttt{2 205 00121 3}) :
         mybibli les retire et traite l'ISBN-13 nu, au scan comme
-        dans la recherche.
+        dans la recherche. Il retrouve aussi un titre par son numéro,
+        tapé \texttt{\#990} (section~\ref{sec:title-id-search}).
   \item \textbf{Bandeau d'indicateurs.} Ajouts récents, prêts en
         retard, séries avec lacunes, volumes non rangés — chaque
         clic ouvre la liste filtrée correspondante.
@@ -170,6 +171,92 @@ erreur :
         supprimé est abandonné.
 \end{itemize}
 
+\subsection*{Ajouter un volume depuis la page du titre}
+\label{sec:title-add-volume}
+
+Depuis la 1.27.0, un deuxième exemplaire d'un livre déjà catalogué ne
+demande plus de détour par la page de catalogage. Sur la page du titre,
+la section \emph{Volumes} d'un bibliothécaire ou d'un administrateur
+porte un champ \textbf{Ajouter un volume par son code V} : tapez ou
+scannez l'étiquette, puis appuyez sur Entrée. Le volume est rattaché à
+ce titre, la liste et le nombre de volumes se mettent à jour aussitôt,
+et le champ reste prêt pour l'étiquette suivante. Les visiteurs
+anonymes ne voient pas ce champ.
+
+Les réponses sont celles de la page de catalogage : une étiquette qui
+n'est pas un code V est refusée avec la forme attendue ; une étiquette
+déjà enregistrée pour ce titre reçoit un message d'information ; une
+étiquette portée par un autre titre reçoit un avertissement avec un
+lien vers ce volume, et rien ne bouge. Quand le titre a déjà des
+volumes, la même fenêtre \emph{Ajouter un autre exemplaire ?} que sur
+la page de catalogage demande d'abord confirmation. Une étiquette qui
+appartenait à un volume supprimé est réutilisée aux conditions
+habituelles.
+
+La page du titre laisse votre session de scan du catalogue tranquille :
+elle ne change pas le titre en cours de la page de catalogage et ne
+range pas le volume au lieu actif. Le nouveau volume n'a pas de lieu ;
+rangez-le depuis sa page (section~\ref{sec:move-volume}) ou en scannant
+son code V sur la page de catalogage après un code L.
+
+\subsection*{Saisir des codes à la main}
+\label{sec:typed-codes}
+
+Un code tapé au clavier suit les mêmes règles qu'un code scanné.
+Depuis la 1.27.0, ce sont les mêmes partout où mybibli lit ce code.
+
+\begin{itemize}
+  \item \textbf{Les codes V en minuscules comme en majuscules.}
+        \texttt{v0042} est lu \texttt{V0042} --- sur la page de
+        catalogage, dans le champ de scan de la page d'accueil, sur la
+        page du titre et dans le formulaire de prêt. Est reconnu un
+        \texttt{V} ou un \texttt{v} suivi d'exactement quatre chiffres,
+        rien d'autre. Un code qui ressemble à un code V mal formé
+        (\texttt{V12345}, \texttt{v12}, \texttt{V12A4}, ou
+        \texttt{V,/+} lu par une douchette réglée sur une autre
+        disposition de clavier) est refusé avec \emph{« Attendu : V
+        suivi de 4 chiffres (ex. V0042) »} ; rien n'est créé. Un code
+        que mybibli ne reconnaît pas du tout nomme désormais les formes
+        acceptées (ISBN, code-barres EAN ou UPC, code V, code L) et
+        renvoie au bouton \textbf{Nouveau titre}.
+  \item \textbf{Une seule règle d'ISBN pour tous les
+        formulaires.}\index{ISBN} Le formulaire manuel \emph{Nouveau
+        titre}, le formulaire de modification d'un titre, la wish list
+        \emph{Par ISBN} et les tomes attendus lisent un ISBN comme le
+        font le scan et la recherche. Les tirets et les espaces sont
+        retirés, un \texttt{ISBN}, \texttt{ISBN-10} ou \texttt{ISBN-13}
+        en tête (avec ou sans deux-points) est écarté, et un ISBN-10 est
+        enregistré sous son ISBN-13 : \texttt{ISBN 2-205-00121-3} est
+        enregistré \texttt{9782205001211}, la valeur que trouvera un
+        scan ultérieur du code-barres. Tout le reste est refusé sous le
+        champ, sans être réécrit : une valeur qui n'a pas 10 ou 13
+        chiffres, un EAN-13 qui ne commence pas par 978 ou 979, ou une
+        clé de contrôle fausse (« vérifiez la saisie »). Le formulaire
+        manuel refuse aussi un ISBN qu'un autre titre porte déjà, plutôt
+        que de créer un doublon. Dans le formulaire de modification, un
+        ISBN laissé tel quel est enregistré comme il est stocké.
+  \item \textbf{Les codes-barres de produit (UPC) saisis dans un
+        formulaire.} Le champ UPC du formulaire manuel et du formulaire
+        de modification est contrôlé comme un scan
+        (section~\ref{sec:catalog-scan}). Les tirets et les espaces sont
+        retirés. Un code d'une longueur qu'aucun code-barres n'a, avec
+        une clé de contrôle fausse ou avec d'autres caractères que des
+        chiffres n'est pas enregistré : l'avertissement du scan
+        s'affiche sous le champ, avec une case \textbf{Garder
+        \emph{code} tel quel}. Corrigez le code, ou cochez la case et
+        enregistrez à nouveau : le code est alors gardé exactement comme
+        saisi. Trois cas ne peuvent pas être confirmés : un code à
+        12 chiffres dont la clé est fausse (le scan le refuse aussi), un
+        code de plus de 13 caractères, et un ISBN-10 valide saisi comme
+        UPC d'un livre, d'une BD, d'un magazine ou d'un rapport --- sa
+        place est dans le champ ISBN. Un UPC laissé tel quel dans le
+        formulaire de modification est enregistré sans contrôle.
+\end{itemize}
+
+Ce qui avait été enregistré avant la 1.27.0 selon les anciennes règles
+est remis d'aplomb une fois, au premier démarrage
+(section~\ref{sec:startup-repairs}).
+
 \subsection*{Imprimer de nouvelles planches d'étiquettes}
 
 Avant d'imprimer une nouvelle planche d'étiquettes V ou L, consultez
@@ -205,6 +292,29 @@ depuis n'importe quelle page qui dispose du champ de scan d'accueil
 — y compris la page d'accueil, \texttt{/search} et \texttt{/loans}.
 Plus rapide que la frappe.
 \end{tip}
+
+\subsection{Retrouver un titre par son numéro}\label{sec:title-id-search}
+
+Chaque titre a un numéro, son \emph{identifiant}. Un agent IA désigne
+les titres par ce numéro (« 990 est un doublon de 989 »,
+chapitre~\ref{ch:agents}), et depuis la 1.27.0 la page du titre
+l'affiche au-dessus du titre : \emph{Identifiant du titre \#990}. Pour
+atteindre un titre depuis son numéro, tapez \texttt{\#} suivi du numéro
+dans le champ de recherche de la page d'accueil : \texttt{\#990}. Le
+titre est affiché seul, quel que soit le filtre actif --- comme pour un
+ISBN exact. Validée par Entrée après une rafale de douchette, la même
+saisie ouvre directement la page du titre.
+
+Seul un \texttt{\#} suivi de chiffres, sans espace ni zéro en tête, est
+lu comme un numéro : un \texttt{990} ou un \texttt{1984} nu reste une
+recherche ordinaire, car les années et les nombres sont fréquents dans
+les titres. Quand aucun titre ne répond, la recherche dit pourquoi au
+lieu d'afficher une liste vide : un titre dans la corbeille peut être
+restauré par un administrateur depuis \emph{Administration
+\textrightarrow{} Corbeille} ; sinon le numéro est erroné ou le titre a
+été supprimé définitivement. Les visiteurs qui ne sont pas connectés
+comme bibliothécaire ou administrateur n'apprennent jamais qu'un titre
+est dans la corbeille.
 
 \subsection{Recherches sauvegardées}\label{sec:saved-searches}
 
@@ -650,8 +760,9 @@ depuis la page de la série (section~\ref{sec:expected-tomes}).
 Le formulaire \emph{Ajouter à la wish list} propose deux modes~:
 
 \begin{itemize}
-  \item \textbf{Par ISBN.} Scannez ou saisissez un ISBN à 13
-        chiffres. mybibli interroge la même chaîne de fournisseurs
+  \item \textbf{Par ISBN.} Scannez ou saisissez l'ISBN --- 13 ou 10
+        chiffres, tirets et espaces admis
+        (section~\ref{sec:typed-codes}). mybibli interroge la même chaîne de fournisseurs
         de métadonnées que le catalogue, puis affiche une carte de
         prévisualisation (titre, auteur, éditeur, année,
         couverture). Cliquez sur \emph{Ajouter à la wish list}

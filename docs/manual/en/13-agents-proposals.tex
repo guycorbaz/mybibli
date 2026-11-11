@@ -21,6 +21,7 @@ This chapter walks through:
   \item the tools the agent sees,
   \item reviewing proposals: list, detail, comparison, edit, accept,
         reject,
+  \item skills, and the four that ship with mybibli,
   \item expected tomes and the wish list,
   \item where proposed covers wait, and how they are cleaned up.
 \end{itemize}
@@ -396,6 +397,11 @@ edition note, purchase price and current value with the date of the
 estimate, and the library's default currency --- the only currency a
 value proposal may use.
 
+The agent names titles by their number, the \texttt{id} these tools
+return (``990 is a duplicate of 989''). Since 1.27.0 the title page
+shows that number, and \texttt{\#990} typed in the search field of the
+home page lists that title (section~\ref{sec:title-id-search}).
+
 \subsubsection*{Proposing}
 
 \begin{description}[style=nextline]
@@ -699,6 +705,51 @@ A skill is text for the agent to read: it grants no permission. An
 agent following a skill can still only read and propose, and every
 proposal still waits for you. The body is never rendered as HTML.
 \end{note}
+
+\subsection{Default skills}
+\label{sec:agents-skills-defaults}
+
+Since 1.27.0 mybibli comes with four skills, all about comics
+(\texttt{bd} titles), to use as they are or as models for your own:
+
+\begin{description}[style=nextline]
+  \item[\texttt{comics-covers}] Propose the cover of the right edition
+        for comics without one.
+  \item[\texttt{comics-series-attach}] Propose to attach titles to
+        their existing series, at their position.
+  \item[\texttt{comics-series-create}] Propose to create a missing
+        series with the library's titles.
+  \item[\texttt{comics-title-spelling}] Propose corrections of clear
+        spelling mistakes in comic titles.
+\end{description}
+
+Each body states the task in one sentence, then the same ground rules
+--- comics only, every proposal with its \texttt{sources}, check the
+pending and rejected proposals first, never retry a refused call
+unchanged, list the doubtful cases instead of filing, work in batches of
+about twenty --- and what to report after each batch. The texts are
+the files of the \texttt{skills/defaults/} folder of the mybibli
+repository; they also show how a skill can be written.
+
+They are added \textbf{once per database}, at the first start of a
+version that ships them, and \textbf{inactive}: the agent sees nothing
+until an admin opens \emph{Administration \textrightarrow{} Skills},
+reads the text, adapts it if needed and activates it. Until an admin
+edits, activates or deactivates one, its \emph{last change} column
+reads \emph{provided by mybibli}. After that the skill is yours:
+
+\begin{itemize}
+  \item a later release \textbf{never updates} it. An improved text
+        ships as a new version of its file and is announced in the
+        release notes; copy it into your skill if you want it;
+  \item a default you delete (or purge from the Trash) \textbf{never
+        comes back};
+  \item if you already have a skill of the same name, live or in the
+        Trash, the default is skipped and yours is left untouched (the
+        log says so, section~\ref{sec:startup-repairs});
+  \item a new default added by a later release is added on that
+        release's first start, inactive, like these.
+\end{itemize}
 
 \section{Expected tomes and the wish list}
 \label{sec:expected-tomes}
