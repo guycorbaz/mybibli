@@ -78,7 +78,8 @@ const PILL_LABEL = /Pending proposals|Propositions en attente|Offene Vorschläge
 
 /**
  * The pending count shown on the current page (story 11-21): the sidebar
- * entry's accessible name ("Propositions, 3 en attente"), 0 when it
+ * entry's screen-reader count ("3 en attente", story 18-1 — part of the
+ * accessible name "Propositions 3 en attente", no aria-label), 0 when it
  * carries none. Checks the badge text matches (capped at 99+) and, on
  * the home page, that the dashboard pill shows the same number. The
  * count is library-wide: callers assert relatively.
@@ -86,17 +87,22 @@ const PILL_LABEL = /Pending proposals|Propositions en attente|Offene Vorschläge
 export async function shownPendingCount(page: Page): Promise<number> {
   const entry = page.locator(`${NAV} a[href="/proposals"]`);
   await expect(entry).toHaveCount(1);
-  const aria = await entry.getAttribute("aria-label");
+  const pending = entry.locator("[data-proposals-pending]");
   const badge = entry.locator("[data-proposals-badge]");
   const onHome = new URL(page.url()).pathname === "/";
   const pill = page.locator("#filter-tag-pending-proposals");
-  if (aria === null) {
+  if ((await pending.count()) === 0) {
     await expect(badge).toHaveCount(0);
     if (onHome) await expect(pill).toHaveCount(0);
     return 0;
   }
-  const n = Number(/(\d+)/.exec(aria)![1]);
-  expect(aria).toMatch(/^(Proposals|Propositions|Vorschläge|Proposte), \d+ /);
+  const text = (await pending.textContent()) ?? "";
+  expect(text).toMatch(/^\d+ (pending|en attente|ausstehend|in attesa)$/);
+  const n = Number(/(\d+)/.exec(text)![1]);
+  await expect(entry).not.toHaveAttribute("aria-label", /.*/);
+  await expect(entry).toHaveAccessibleName(
+    new RegExp(`^(Proposals|Propositions|Vorschläge|Proposte) ${n} `),
+  );
   await expect(badge).toHaveText(n > 99 ? "99+" : String(n));
   await expect(badge).toHaveAttribute("aria-hidden", "true");
   if (onHome) {

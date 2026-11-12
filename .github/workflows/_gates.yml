@@ -47,10 +47,10 @@ jobs:
       DATABASE_URL: mysql://root:root_test@127.0.0.1:3307/mybibli_rust_test
 
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch @ 2026-08-18
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch @ 2026-10-16
         with:
           # Required now that the action is pinned by SHA: with no
           # explicit input it derives the toolchain from the ref that
@@ -59,7 +59,7 @@ jobs:
           components: clippy
 
       - name: Cache cargo build
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --no-default-features --features mysql,rustls --locked
@@ -116,15 +116,15 @@ jobs:
       DATABASE_URL: mysql://root:root_test@127.0.0.1:3307/mybibli_rust_test
 
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch @ 2026-08-18
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch @ 2026-10-16
         with:
           toolchain: stable
 
       - name: Cache cargo build
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Run DB-backed integration tests
         # Auto-discover ALL integration test binaries (`--tests`) instead of a
@@ -144,7 +144,7 @@ jobs:
 
       - name: Upload MariaDB logs on failure
         if: failure() || cancelled()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mariadb-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/mariadb.log
@@ -153,23 +153,22 @@ jobs:
 
   e2e:
     name: Playwright E2E
-    # Pinned: ubuntu-latest moved to 26.04 (2026-11), where Playwright
-    # 1.59 cannot install Chromium ("does not support chromium on
-    # ubuntu26.04-x64"). Unpin when Playwright is upgraded.
-    runs-on: ubuntu-24.04
+    # Was pinned to ubuntu-24.04 while Playwright 1.59 could not install
+    # Chromium on 26.04; Playwright >= 1.61 supports 26.04 (story 18-1).
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node.js 20
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - name: Setup Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: tests/e2e/package-lock.json
 
       - name: Cache Playwright browsers
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
@@ -233,7 +232,7 @@ jobs:
 
       - name: Upload Playwright report on failure
         if: failure() || cancelled()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -244,7 +243,7 @@ jobs:
 
       - name: Upload compose logs on failure
         if: failure() || cancelled()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compose-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/compose-logs.txt
@@ -260,23 +259,22 @@ jobs:
   # every epic must have a smoke test running on every CI build.
   e2e-wizard:
     name: Playwright wizard E2E
-    # Pinned: ubuntu-latest moved to 26.04 (2026-11), where Playwright
-    # 1.59 cannot install Chromium ("does not support chromium on
-    # ubuntu26.04-x64"). Unpin when Playwright is upgraded.
-    runs-on: ubuntu-24.04
+    # Was pinned to ubuntu-24.04 while Playwright 1.59 could not install
+    # Chromium on 26.04; Playwright >= 1.61 supports 26.04 (story 18-1).
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node.js 20
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - name: Setup Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: tests/e2e/package-lock.json
 
       - name: Cache Playwright browsers
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
@@ -327,7 +325,7 @@ jobs:
 
       - name: Upload Playwright report on failure
         if: failure() || cancelled()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-wizard-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -338,7 +336,7 @@ jobs:
 
       - name: Upload compose logs on failure
         if: failure() || cancelled()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: wizard-compose-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/wizard-compose-logs.txt

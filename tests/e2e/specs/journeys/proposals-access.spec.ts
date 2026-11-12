@@ -81,7 +81,7 @@ test.describe("Story 11-21 — access to the proposals page", () => {
       const panelEntry = drawer.locator('a[href="/proposals"]');
       await expect(panelEntry).toBeVisible();
       await expect(panelEntry.locator("[data-proposals-badge]")).toBeVisible();
-      await expect(panelEntry).toHaveAttribute("aria-label", /\d+/);
+      await expect(panelEntry).toHaveAccessibleName(/\d+/);
       await page.setViewportSize({ width: 1280, height: 720 });
 
       // The entry leads to /proposals and is marked current there.

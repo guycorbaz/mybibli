@@ -1,6 +1,6 @@
 # Story 18.1: Semver-compatible updates
 
-Status: ready-for-dev
+Status: review
 
 No dedicated GitHub issue (dependency review of 2026-11-11). Covers: maintenance. Epic 18; ships in v1.28.0. Sprint-status key: `18-1-semver-compatible-updates`.
 
@@ -56,23 +56,23 @@ Dependency review of 2026-11-11 (`cargo outdated --root-deps-only`, `npm outdate
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Rust (AC1, AC2, AC6)
-  - [ ] `cargo update`; `cargo check`; `cargo clippy --all-targets -- -D warnings` (fix any new lint at its root, list it)
-  - [ ] `cargo sqlx prepare --check --workspace -- --all-targets`
-  - [ ] `cargo audit` → table of remaining warnings + `cargo tree -i` origin
-- [ ] T2 — npm (AC3)
-  - [ ] root: Tailwind 4.3.x, range `^4.3.5`, `npm install`; rebuild CSS, skim diff
-  - [ ] `tests/e2e`: Playwright, axe, `@types/node@^24`, `npm install`; `npx playwright install chromium`; `npx tsc --noEmit`
-- [ ] T3 — Vendored files (AC4)
-  - [ ] Chart.js 4.5.1 via `npm pack` in an empty scratch dir; copy; update comment in `home-stats-donut.js`
-  - [ ] htmx 2.0.11 via `npm pack`; copy; read 2.0.9–2.0.11 notes; re-verify `browse.css` indicator block
-- [ ] T4 — CI (AC5)
-  - [ ] Node 24 in `_gates.yml` (both jobs, step names too)
-  - [ ] Actions per D7 in all four workflows; majors' release notes read and recorded
-  - [ ] `ubuntu-24.04` pin decided (D6)
-- [ ] T5 — Gates (AC7)
-  - [ ] full unit + DB integration + E2E (2 workers) once on the final code
-  - [ ] manual visual check recorded
+- [x] T1 — Rust (AC1, AC2, AC6)
+  - [x] `cargo update`; `cargo check`; `cargo clippy --all-targets -- -D warnings` (fix any new lint at its root, list it)
+  - [x] `cargo sqlx prepare --check --workspace -- --all-targets`
+  - [x] `cargo audit` → table of remaining warnings + `cargo tree -i` origin
+- [x] T2 — npm (AC3)
+  - [x] root: Tailwind 4.3.x, range `^4.3.5`, `npm install`; rebuild CSS, skim diff
+  - [x] `tests/e2e`: Playwright, axe, `@types/node@^24`, `npm install`; `npx playwright install chromium`; `npx tsc --noEmit`
+- [x] T3 — Vendored files (AC4)
+  - [x] Chart.js 4.5.1 via `npm pack` in an empty scratch dir; copy; update comment in `home-stats-donut.js`
+  - [x] htmx 2.0.11 via `npm pack`; copy; read 2.0.9–2.0.11 notes; re-verify `browse.css` indicator block
+- [x] T4 — CI (AC5)
+  - [x] Node 24 in `_gates.yml` (both jobs, step names too)
+  - [x] Actions per D7 in all four workflows; majors' release notes read and recorded
+  - [x] `ubuntu-24.04` pin decided (D6)
+- [x] T5 — Gates (AC7)
+  - [x] full unit + DB integration + E2E (2 workers) once on the final code
+  - [x] manual visual check recorded
 
 ## Dev Notes
 
@@ -119,8 +119,50 @@ CSRF token via `htmx:configRequest` (`static/js/csrf.js`) and the `csrf-rejected
 
 ### Agent Model Used
 
+Claude Opus 5.5 (`claude-opus-5-5`)
+
 ### Debug Log References
+
+- `cargo update`: 171 packages; `Cargo.toml` unchanged. New transitive crates (`multiversion`, `core_detect`, `miniz_oxide` 0.9) come from `image` → `exr` 1.74.
+- First `cargo test --lib` run: 197 failures, all `#[sqlx::test]` connecting to the `.env` `DATABASE_URL` (port 3306 = another project's MariaDB). Re-run against `tests/docker-compose.rust-test.yml` (3307): green.
+- `tests/e2e/node_modules` was partly owned by `root` (an April `npm install` from Docker): `npm install` failed with EACCES. Moved aside to `~/.cache/mybibli-e2e-node_modules-root-old-2026-11-12` (not deleted; needs `sudo rm -rf` to remove) and reinstalled.
 
 ### Completion Notes List
 
+**T1 — Rust.** `cargo update` only. `cargo clippy --all-targets -- -D warnings` clean with no source change (AC6: no file under `src/`, `templates/`, `locales/` changed by the update itself — the one forced change is below). `cargo sqlx prepare --check --workspace -- --all-targets` passes against the migrated test DB.
+
+`cargo audit` after the update — no vulnerability; the four *unsound* warnings (tokio RUSTSEC-2026-0386, anyhow -0190, rustix -0486, event-listener -0221) and the yanked `spin` are gone. Remaining (8, all *unmaintained*, none silenced):
+
+| Crate | Advisory | Pulled in by | Where it goes |
+|---|---|---|---|
+| `basic-toml` | RUSTSEC-2026-0374 | `askama` 0.15 (derive) | askama 0.16 (major-upgrade epic) |
+| `encoding` | RUSTSEC-2021-0153 | `genpdf` → `printpdf` → `lopdf` | `genpdf` replacement CR |
+| `lzw` | RUSTSEC-2020-0144 | `genpdf` → `printpdf` → `lopdf` | `genpdf` replacement CR |
+| `rusttype` | RUSTSEC-2021-0140 | `genpdf`, `printpdf` | `genpdf` replacement CR |
+| `stb_truetype` | RUSTSEC-2020-0020 | `genpdf` → `rusttype` | `genpdf` replacement CR |
+| `stdweb` | RUSTSEC-2020-0056 | no edge on the host target (wasm-only branch of a dependency) | — |
+| `paste` | RUSTSEC-2024-0436 | `image` → `ravif` → `rav1e` | upstream (`image`) |
+| `unsafe-libyaml` | RUSTSEC-2024-0449 | `rust-i18n` 3 (`serde_yaml`), `serde_yaml_ng` (dev) | rust-i18n 4 (major-upgrade epic) |
+
+**T2 — npm.** `tests/e2e`: `@playwright/test` ^1.65.0 (1.65.0), `@axe-core/playwright` ^4.14.0, `@types/node` ^24.19.2, `typescript` range ^5.9.3 (5.9.3, unchanged). `npx tsc --noEmit` passes. Root `package.json` / `package-lock.json` are **git-ignored** (`.gitignore:11`, `:53`): Tailwind was upgraded locally to 4.3.5 but no tracked file records it — the Dockerfile installs whatever is latest. This is exactly #506; handled in 18-2. CSS comparison on the same source, Tailwind 4.2.2 vs 4.3.5 (minified): only candidate artefacts disappear (`.start`, `.end`, `.shadow/md`, `.shadow/sm` — words from the code, no template uses them as classes); `group-open:rotate-90` and `group-hover:opacity-100` are emitted with a rewritten selector of the same meaning (the 11-3 E2E asserting the computed `rotate` covers it).
+
+**T3 — vendored files.** From `npm pack` in an empty scratch directory (tarball integrity checked by npm): `chart.js@4.5.1` `dist/chart.umd.js` (same build as the 4.4.7 file: minified UMD + `sourceMappingURL` line) → `static/js/vendor/chart.umd.js`, SHA-256 `ecc3cd1e…7652a`, comment in `home-stats-donut.js` updated. `htmx.org@2.0.11` `dist/htmx.min.js` → `static/js/htmx.min.js`. htmx CHANGELOG 2.0.9–2.0.11 read: fixes to `HX-Location` replace, history path normalisation, empty `class=""` after utility classes, `hx-disabled-elt` keeping originally-disabled elements, OOB targets with a detached context element, `hasHeader()` substring match; new `<hx-partial>` (unused). None changes what mybibli relies on; the OOB fix can only help. The injected indicator CSS string is byte-identical between 2.0.8 and 2.0.11, so `static/css/browse.css:113-125` still mirrors it.
+
+**T4 — CI.** Node 20 → 24 in both Playwright jobs. Actions per D7, SHA dereferenced from the tag + `# vX.Y.Z` comment, all four workflows: checkout v7.0.1, setup-node v7.1.0, cache v6.1.0 (majors: release notes read — ESM migration and dependency bumps; checkout v7 blocks fork checkout on `pull_request_target` / `workflow_run`, unused here; no input we use changed), upload-artifact v7.0.2, deploy-pages v5.0.1, build-push-action v7.4.0, login-action v4.8.0, setup-buildx-action v4.4.1, rust-cache v2.9.3, rust-toolchain `stable` @ 2026-10-16. `release.yml` / `pages.yml` changes are exercised only at the v1.28.0 release. **D6:** Playwright supports Ubuntu 26.04 since 1.61 → the two Playwright jobs go back to `ubuntu-latest`, as the pin comment asked; all CI jobs now run on the same image.
+
+**Forced change (AC6) — the Proposals nav entry's accessible name.** The first full E2E run (476 tests, 2 workers) had 8 failures, all the same: `@axe-core/playwright` 4.14 applies `label-content-name-mismatch` (WCAG 2.5.3) and flags the Proposals entry whenever a proposal is pending — its `aria-label` "Proposals, 2 pending" did not contain the visible text, which is "Proposals" + the badge with no space ("Proposals2"), or "Proposals99+" past the cap. A real defect the newer axe reveals, not a flake. Probed on a static page with the real CSS, axe 4.14 and Playwright's name computation: an `sr-only` suffix with a leading comma yields "Proposals , 2 pending" (Chromium spaces around the absolutely positioned span); a comma-free suffix yields exactly "Proposals 2 pending" and passes axe. Applied: no `aria-label` on nav entries; `<span class="sr-only">{count} pending</span>` after the label; badge still `aria-hidden`. `utils::proposals_badge_aria` → `proposals_pending_sr`, `NavEntry::aria_label` → `pending_sr`, locale key `nav.proposals_pending_aria` → `nav.proposals_pending_sr` ("%{count} pending" / "en attente" / "ausstehend" / "in attesa", four locales), unit tests in `utils.rs`, `utils/nav.rs`, `routes/nav_sticky_tests.rs` (now also asserting no `aria-label` on the entry), the epic 14 smoke regex, `CLAUDE.md` navigation paragraph. Collapsed, the label span is `sr-only` too, so the name is unchanged.
+
+**T5 — Gates.** Full `cargo test --no-fail-fast` (unit + bins + integration, DB on 3307, `CARGO_BUILD_JOBS=2`, mem-guard): 2722 passed, 0 failed (before the nav change; after it: `cargo clippy --all-targets -D warnings` clean, `--lib` nav / proposals / templates_audit / `--test locale_parity` green). E2E (`./scripts/e2e-reset.sh` on 18080, `CI=true npx playwright test --workers=2`): run 1 — 8 failed (axe rule above); run 2 — 3 failed (helpers still reading the `aria-label`: `helpers/proposals.ts::shownPendingCount`, `sidebar.spec.ts`, `proposals-access.spec.ts` → now `data-proposals-pending` + `toHaveAccessibleName`), 1 flaky (`form-refusals.spec.ts`, passed on retry, untouched code); run 3 on the final code — **476 passed, 2 skipped, 0 failed, 0 flaky**. `npx tsc --noEmit` green.
+
+**Visual check (AC7)** — screenshots from Playwright against the E2E stack, OS dark preference emulated, real Collapse button: dashboard donut renders with Chart.js 4.5.1 (legend, centre text); dark theme cards and chips readable; collapsed sidebar shows the icon rail with pills. Rendering compared with the Tailwind 4.2.2 CSS on the same page: identical. Modals (htmx 2.0.11 + scanner guard) are covered by `admin-modal-lifecycle.spec.ts` and the modal specs, green.
+
 ### File List
+
+- `Cargo.lock`
+- `src/utils.rs`, `src/utils/nav.rs`, `src/routes/nav_sticky_tests.rs`, `templates/components/nav_entries.html`, `locales/{en,fr,de,it}.yml` (Proposals accessible name)
+- `tests/e2e/specs/journeys/epic14-smoke.spec.ts`
+- `CLAUDE.md`
+- `tests/e2e/package.json`, `tests/e2e/package-lock.json`
+- `static/js/vendor/chart.umd.js`, `static/js/htmx.min.js`, `static/js/home-stats-donut.js` (version comment)
+- `.github/workflows/_gates.yml`, `audit.yml`, `release.yml`, `pages.yml`
+- `_bmad-output/implementation-artifacts/18-1-semver-compatible-updates.md`, `sprint-status.yaml`

@@ -24,9 +24,9 @@ pub struct NavEntry {
     /// Proposals only: the badge text (`99+` cap) — see
     /// [`super::proposals_badge_text`].
     pub badge: Option<String>,
-    /// Proposals only: the accessible name with the exact count — see
-    /// [`super::proposals_badge_aria`].
-    pub aria_label: Option<String>,
+    /// Proposals only: the screen-reader-only text after the label, with
+    /// the exact count — see [`super::proposals_pending_sr`].
+    pub pending_sr: Option<String>,
 }
 
 /// The tooltip text of a collapsed entry: the label, then the badge in
@@ -56,7 +56,7 @@ pub fn nav_groups(
         label: rust_i18n::t!(label_key, locale = locale).to_string(),
         current: current_page == key,
         badge: None,
-        aria_label: None,
+        pending_sr: None,
     };
 
     let mut groups = vec![
@@ -74,10 +74,11 @@ pub fn nav_groups(
         // anonymous visitor must not learn the feature exists.
         // Story 11-21 (FR143, UX-DR32) — Proposals carries the pending
         // count: the badge is text (never colour alone) and the entry's
-        // accessible name states the exact count.
+        // accessible name (label + screen-reader text) states the exact
+        // count.
         let mut proposals = entry("proposals", "/proposals", "nav.proposals");
         proposals.badge = super::proposals_badge_text(pending_proposals);
-        proposals.aria_label = super::proposals_badge_aria(pending_proposals, locale);
+        proposals.pending_sr = super::proposals_pending_sr(pending_proposals, locale);
         groups.push(vec![
             entry("borrowers", "/borrowers", "nav.borrowers"),
             entry("loans", "/loans", "nav.loans"),
@@ -178,15 +179,12 @@ mod tests {
         let proposals = groups[2].last().unwrap();
         assert_eq!(proposals.key, "proposals");
         assert_eq!(proposals.badge.as_deref(), Some("99+"));
-        assert_eq!(
-            proposals.aria_label.as_deref(),
-            Some("Proposals, 150 pending")
-        );
+        assert_eq!(proposals.pending_sr.as_deref(), Some("150 pending"));
         assert_eq!(proposals.tooltip(), "Proposals (99+)");
 
         let groups = nav_groups("librarian", "home", "en", Some(0));
         let proposals = groups[2].last().unwrap();
-        assert!(proposals.badge.is_none() && proposals.aria_label.is_none());
+        assert!(proposals.badge.is_none() && proposals.pending_sr.is_none());
         assert_eq!(proposals.tooltip(), "Proposals");
     }
 }

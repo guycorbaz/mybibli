@@ -39,9 +39,10 @@ const CATALOG = /^(Catalog|Catalogue|Katalog|Catalogo)$/;
 const LOANS = /^(Loans|Prêts|Ausleihen|Prestiti)$/;
 const SERIES = /^(Series|Séries|Serien|Serie)$/;
 const LOCATIONS = /^(Locations|Emplacements|Standorte|Posizioni|Ubicazioni)$/;
-// With a pending proposal the entry's name carries the count (11-21).
+// With a pending proposal the entry's name carries the count (11-21):
+// visible label + screen-reader-only count, no aria-label (18-1).
 const PROPOSALS_PENDING =
-  /^(Proposals, \d+ pending|Propositions, \d+ en attente|Vorschläge, \d+ ausstehend|Proposte, \d+ in attesa)$/;
+  /^(Proposals \d+ pending|Propositions \d+ en attente|Vorschläge \d+ ausstehend|Proposte \d+ in attesa)$/;
 const COLLAPSE = /^(Collapse menu|Réduire le menu|Menü einklappen|Comprimi menu)$/;
 const LOG_OUT = /^(Log out|Déconnexion|Abmelden|Esci)$/;
 const LOG_IN = /^(Log in|Connexion|Anmelden|Accedi)$/;
