@@ -1,0 +1,56 @@
+# Story 18.4: The series API returns every series
+
+Status: in-progress
+
+GitHub issue: #599 (closes). Covers: fix. Epic 18; ships in v1.28.0. Sprint-status key: `18-4-series-api-returns-every-series`.
+
+## Story
+
+As a script or tool reading the API,
+I want `GET /api/v1/series` to return all the series,
+so that nothing past the 25th is silently missing.
+
+## Context
+
+`src/routes/api_v1.rs::list_series_endpoint` answers with `SeriesModel::active_list(pool, 1)` — page 1 (25 rows, `DEFAULT_PAGE_SIZE`) of the paginated list behind `/series` — with a comment "v1: return up to one page … Future patch". A library with more than 25 series loses every series after the 25th by name. The sibling reference-data endpoints (`/api/v1/genres` → `GenreModel::list_active`, `/api/v1/locations` → `LocationModel::find_all_tree`) already return complete arrays; the manual (ch. 11, "GET /api/v1/genres, /locations, /series") describes the three as reference data.
+
+## Decisions
+
+- **D1 — all at once, no pagination.** Same contract as genres / locations: a JSON array of every live series, ordered by name then id. Single-tenant library, reference data of a few hundred rows at most; adding a `page` parameter would change the response shape for existing scripts and diverge from the sibling endpoints. Response fields unchanged (`id`, `name`, `description`, `series_type`, `total_volume_count`).
+- **D2 — a dedicated model read.** `SeriesModel::list_active_all(pool)` — same columns and row mapping as `active_list` (`row_to_series`), `deleted_at IS NULL`, `ORDER BY name ASC, id ASC`, no `LIMIT`. `active_list` (the paginated `/series` page) is untouched.
+- **D3 — docs.** The manual API section (EN + FR) states that the three reference endpoints return every live row, unpaginated; the PDF rebuild is done once in 18-7.
+
+## Acceptance Criteria
+
+1. **AC1.** With more than 25 live series, `GET /api/v1/series` returns all of them, ordered by name; soft-deleted series are absent.
+2. **AC2.** The response fields and the array shape are unchanged; auth unchanged (`ApiKeyAuth`, any scope).
+3. **AC3.** DB integration test: 30 live series + 1 deleted → 30 returned, in name order, deleted one absent; plus a 401 without key.
+4. **AC4.** E2E: the spec creates 27 series under a per-run unique prefix (Rule #23), an admin creates a read key, `GET /api/v1/series` with it lists all 27; the key is revoked at the end.
+5. **AC5.** Manual EN + FR updated (D3).
+
+## Tasks / Subtasks
+
+- [ ] T1 — `SeriesModel::list_active_all` + endpoint (AC1, AC2)
+- [ ] T2 — `tests/api_v1_series.rs` (AC3)
+- [ ] T3 — E2E `tests/e2e/specs/journeys/api-series.spec.ts` (AC4)
+- [ ] T4 — manual ch. 11 EN + FR (AC5)
+- [ ] T5 — gates
+
+## Dev Notes
+
+- Pattern for > 25 series in E2E: `series-selector-recent-table.spec.ts` (`createSeries` via `page.request.post("/series")` with the CSRF token, `zzz-` prefix so a parallel spec's paginated `/series` list keeps its rows on page 1). API key: `helpers/api-keys.ts::createApiKey(page, "read")` / `revokeApiKey`.
+- Integration harness: `tests/api_v1_auth.rs` (`state_with_pool`, `seed_key`, router `oneshot`).
+- No new SQL macro (`sqlx::query` dynamic, like `active_list`) → no `.sqlx` change.
+- Gates: lighter test build if the station is loaded (`CARGO_PROFILE_{DEV,TEST}_DEBUG=line-tables-only`); E2E on 18080; one push after the 18-3 merge (done).
+
+### References
+
+- Issue #599; `src/routes/api_v1.rs:235-268`; `src/models/series.rs:132-178`; `docs/manual/{en,fr}/11-api-integrations.tex`
+
+## Dev Agent Record
+
+### Agent Model Used
+
+### Completion Notes List
+
+### File List

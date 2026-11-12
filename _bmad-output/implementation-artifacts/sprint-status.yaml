@@ -353,7 +353,7 @@ development_status:
   18-1-semver-compatible-updates: done
   18-2-pinned-build-images: done
   18-3-rmcp-upgrade-and-audit-ignores: done
-  18-4-series-api-returns-every-series: backlog
+  18-4-series-api-returns-every-series: in-progress
   18-5-errors-visible-on-series-page: backlog
   18-6-epic-18-smoke-test: backlog
   18-7-epic-18-documentation: backlog
