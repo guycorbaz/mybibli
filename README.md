@@ -192,8 +192,8 @@ in the **Development** section below — they do not belong in `.env`.
 ### Prerequisites
 
 - Docker + Docker Compose
-- Rust toolchain (rustup, Rust 2024 edition)
-- Node.js 20+ (for Playwright E2E tests)
+- Rust toolchain via rustup — the version is pinned in `rust-toolchain.toml` (Rust 2024 edition) and installed on first use
+- Node.js 24 (Tailwind build and Playwright E2E tests; the version CI and the Dockerfile use)
 
 ### Run the app locally
 

@@ -55,7 +55,8 @@ Two shapes of contribution are declined by default, so that you do not discover 
 Full instructions are in the [README](README.md#development). The short version:
 
 ```bash
-# Prerequisites: Docker + Compose, the Rust toolchain (2024 edition), Node.js 20+
+# Prerequisites: Docker + Compose, rustup (the Rust version is pinned in
+# rust-toolchain.toml and installed on first use), Node.js 24
 
 # Full stack — app, MariaDB, mock metadata providers
 cd tests/e2e && docker compose -f docker-compose.test.yml up --build
