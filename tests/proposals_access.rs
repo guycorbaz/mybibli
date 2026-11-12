@@ -58,6 +58,17 @@ fn badge_texts(html: &str) -> Vec<&str> {
 
 /// The sidebar entry's opening tag (the first `/proposals` link: the
 /// sidebar comes before the dashboard's indicator — story 14-1).
+/// Story 18-1 — the entry's accessible name is its label then this
+/// screen-reader-only count (no `aria-label`, WCAG 2.5.3): asserts the
+/// entry carries no `aria-label` and the label + count markup is there.
+fn assert_entry_names_count(html: &str, count: &str) {
+    assert!(!entry_tag(html).contains("aria-label"), "{}", entry_tag(html));
+    let expected = format!(
+        "<span class=\"sb-collapsed:sr-only\">Propositions</span> <span data-proposals-pending class=\"sr-only\">{count} en attente</span>"
+    );
+    assert!(html.contains(&expected), "missing {expected}");
+}
+
 fn entry_tag(html: &str) -> &str {
     let start = html
         .find("<a href=\"/proposals\"")
@@ -93,11 +104,7 @@ async fn a_pending_proposal_shows_the_badge_and_the_indicator(pool: DbPool) {
     file_metadata(&agent, b, "Deux").await;
 
     let (_, html) = lib.get(&agent.app, "/").await;
-    assert!(
-        entry_tag(&html).contains("aria-label=\"Propositions, 2 en attente\""),
-        "{}",
-        entry_tag(&html)
-    );
+    assert_entry_names_count(&html, "2");
     assert_eq!(
         html.matches("data-proposals-badge").count(),
         1,
@@ -109,7 +116,7 @@ async fn a_pending_proposal_shows_the_badge_and_the_indicator(pool: DbPool) {
 
     // Any page carries the badge, not only the dashboard.
     let (_, html) = lib.get(&agent.app, "/catalog").await;
-    assert!(entry_tag(&html).contains("Propositions, 2 en attente"));
+    assert_entry_names_count(&html, "2");
     assert!(!html.contains("filter-tag-pending-proposals"));
 }
 
@@ -193,7 +200,7 @@ async fn only_live_pending_proposals_count_even_without_lines(pool: DbPool) {
 
     let lib = librarian(&pool, &agent).await;
     let (_, html) = lib.get(&agent.app, "/").await;
-    assert!(entry_tag(&html).contains("Propositions, 1 en attente"));
+    assert_entry_names_count(&html, "1");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -215,7 +222,7 @@ async fn the_badge_caps_at_99_plus_and_the_name_keeps_the_count(pool: DbPool) {
     }
     let lib = librarian(&pool, &agent).await;
     let (_, html) = lib.get(&agent.app, "/").await;
-    assert!(entry_tag(&html).contains("Propositions, 105 en attente"));
+    assert_entry_names_count(&html, "105");
     assert_eq!(badge_texts(&html), ["99+"]);
     // The dashboard pill shows the exact number.
     assert!(html.contains("aria-label=\"Propositions en attente: 105\""));

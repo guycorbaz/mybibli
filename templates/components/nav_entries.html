@@ -12,7 +12,9 @@
    visible label then an `sr-only` span with the exact count (the badge
    caps at 99+, `utils::proposals_badge_text`) — never an `aria-label`,
    which would let the visible text drift out of the name (WCAG 2.5.3,
-   axe `label-content-name-mismatch`, story 18-1). Collapsed, the badge becomes a pill on
+   axe `label-content-name-mismatch`, story 18-1). The literal space
+   before that span keeps "Proposals 3 pending" in engines that join
+   inline children without one (Chromium adds it anyway). Collapsed, the badge becomes a pill on
    the icon, still text. #}
 {%- import "components/nav_macros.html" as nav -%}
 {%- for group in base.nav_groups %}
@@ -21,7 +23,7 @@
 {%- endif %}
 <ul role="list" class="flex flex-col gap-0.5">
 {%- for e in group %}
-<li><a href="{{ e.href }}"{% if e.current %} aria-current="page"{% endif %} class="{% call nav::item_class() %}{% endcall %} {% if e.current %}{% call nav::current_class() %}{% endcall %}{% else %}{% call nav::idle_class() %}{% endcall %}{% endif %}">{% call nav::icon(e.key) %}{% endcall %}<span class="sb-collapsed:sr-only">{{ e.label }}</span>{% if let Some(sr) = e.pending_sr %}<span data-proposals-pending class="sr-only">{{ sr }}</span>{% endif %}{% if let Some(badge) = e.badge %}<span data-proposals-badge aria-hidden="true" class="ml-auto inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 text-xs font-semibold tabular-nums sb-collapsed:absolute sb-collapsed:top-0 sb-collapsed:right-0.5 sb-collapsed:ml-0 sb-collapsed:min-w-[18px] sb-collapsed:h-[18px] sb-collapsed:px-1 sb-collapsed:text-[10px]">{{ badge }}</span>{% endif %}{% call nav::tooltip(e.tooltip()) %}{% endcall %}</a></li>
+<li><a href="{{ e.href }}"{% if e.current %} aria-current="page"{% endif %} class="{% call nav::item_class() %}{% endcall %} {% if e.current %}{% call nav::current_class() %}{% endcall %}{% else %}{% call nav::idle_class() %}{% endcall %}{% endif %}">{% call nav::icon(e.key) %}{% endcall %}<span class="sb-collapsed:sr-only">{{ e.label }}</span>{% if let Some(sr) = e.pending_sr %} <span data-proposals-pending class="sr-only">{{ sr }}</span>{% endif %}{% if let Some(badge) = e.badge %}<span data-proposals-badge aria-hidden="true" class="ml-auto inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 text-xs font-semibold tabular-nums sb-collapsed:absolute sb-collapsed:top-0 sb-collapsed:right-0.5 sb-collapsed:ml-0 sb-collapsed:min-w-[18px] sb-collapsed:h-[18px] sb-collapsed:px-1 sb-collapsed:text-[10px]">{{ badge }}</span>{% endif %}{% call nav::tooltip(e.tooltip()) %}{% endcall %}</a></li>
 {%- endfor %}
 </ul>
 {%- endfor %}

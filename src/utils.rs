@@ -671,7 +671,9 @@ pub fn proposals_badge_text(count: Option<u64>) -> Option<String> {
 /// never from an `aria-label`: an `aria-label` lets the visible text
 /// ("Proposals" + badge) drift out of the name, which axe 4.14 flags as
 /// `label-content-name-mismatch` (WCAG 2.5.3, story 18-1). No leading
-/// comma: Chromium puts a space around the `sr-only` span.
+/// comma: Chromium puts a space around the `sr-only` span, so ", 3"
+/// would read "Proposals , 3"; the template puts a literal space instead
+/// so other engines do not glue "Proposals3".
 pub fn proposals_pending_sr(count: Option<u64>, locale: &str) -> Option<String> {
     match count {
         None | Some(0) => None,
@@ -818,13 +820,27 @@ mod tests {
             proposals_pending_sr(Some(150), "fr").as_deref(),
             Some("150 en attente")
         );
-        for loc in ["en", "fr", "de", "it"] {
+        for (loc, expected) in [
+            ("en", "7 pending"),
+            ("fr", "7 en attente"),
+            ("de", "7 ausstehend"),
+            ("it", "7 in attesa"),
+        ] {
             let sr = proposals_pending_sr(Some(7), loc).unwrap();
-            assert!(sr.starts_with('7'), "{loc}: {sr}");
+            assert_eq!(sr, expected, "{loc}");
             // The label is not repeated: it is the visible text before it.
             let label = rust_i18n::t!("nav.proposals", locale = loc).to_string();
             assert!(!sr.contains(&label), "{loc}: {sr}");
         }
+    }
+
+    // ─── Story 11-1 (#497) — ISBN-10 → ISBN-13 ────────────────────
+
+    #[test]
+    fn isbn10_to_isbn13_converts_production_examples() {
+        assert_eq!(isbn10_to_isbn13("2205001213").as_deref(), Some("9782205001211"));
+        assert_eq!(isbn10_to_isbn13("2205011502").as_deref(), Some("9782205011500"));
+        assert_eq!(isbn10_to_isbn13("0201633612").as_deref(), Some("9780201633610"));
     }
 
     #[test]

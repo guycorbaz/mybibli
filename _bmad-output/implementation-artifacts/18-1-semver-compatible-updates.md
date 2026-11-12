@@ -1,6 +1,6 @@
 # Story 18.1: Semver-compatible updates
 
-Status: review
+Status: done
 
 No dedicated GitHub issue (dependency review of 2026-11-11). Covers: maintenance. Epic 18; ships in v1.28.0. Sprint-status key: `18-1-semver-compatible-updates`.
 
@@ -140,7 +140,7 @@ Claude Opus 5.5 (`claude-opus-5-5`)
 | `lzw` | RUSTSEC-2020-0144 | `genpdf` → `printpdf` → `lopdf` | `genpdf` replacement CR |
 | `rusttype` | RUSTSEC-2021-0140 | `genpdf`, `printpdf` | `genpdf` replacement CR |
 | `stb_truetype` | RUSTSEC-2020-0020 | `genpdf` → `rusttype` | `genpdf` replacement CR |
-| `stdweb` | RUSTSEC-2020-0056 | no edge on the host target (wasm-only branch of a dependency) | — |
+| `stdweb` | RUSTSEC-2020-0056 | `genpdf` → `printpdf` → `lopdf` → `time` 0.1 (wasm-only edge, `--target all`) | `genpdf` replacement CR |
 | `paste` | RUSTSEC-2024-0436 | `image` → `ravif` → `rav1e` | upstream (`image`) |
 | `unsafe-libyaml` | RUSTSEC-2024-0449 | `rust-i18n` 3 (`serde_yaml`), `serde_yaml_ng` (dev) | rust-i18n 4 (major-upgrade epic) |
 
@@ -159,10 +159,29 @@ Claude Opus 5.5 (`claude-opus-5-5`)
 ### File List
 
 - `Cargo.lock`
-- `src/utils.rs`, `src/utils/nav.rs`, `src/routes/nav_sticky_tests.rs`, `templates/components/nav_entries.html`, `locales/{en,fr,de,it}.yml` (Proposals accessible name)
-- `tests/e2e/specs/journeys/epic14-smoke.spec.ts`
+- `src/utils.rs`, `src/utils/nav.rs`, `src/routes/nav_sticky_tests.rs`, `tests/proposals_access.rs`, `templates/components/nav_entries.html`, `locales/{en,fr,de,it}.yml` (Proposals accessible name)
+- `tests/e2e/helpers/proposals.ts`, `tests/e2e/specs/journeys/{epic14-smoke,sidebar,proposals-access}.spec.ts`
 - `CLAUDE.md`
 - `tests/e2e/package.json`, `tests/e2e/package-lock.json`
 - `static/js/vendor/chart.umd.js`, `static/js/htmx.min.js`, `static/js/home-stats-donut.js` (version comment)
 - `.github/workflows/_gates.yml`, `audit.yml`, `release.yml`, `pages.yml`
 - `_bmad-output/implementation-artifacts/18-1-semver-compatible-updates.md`, `sprint-status.yaml`
+
+### Review Findings
+
+Code review 2026-11-12 (Blind Hunter, Edge Case Hunter, Acceptance Auditor; diff without lockfiles and the two vendored minified files).
+
+- [x] [Review][Patch] **Unrelated regression test deleted** (Medium, all three layers) — `isbn10_to_isbn13_converts_production_examples` (story 11-1, #497) was cut with the rewritten nav test in `src/utils.rs`. Restored verbatim.
+- [x] [Review][Patch] **Label/count space depended on Chromium** (Medium) — `<span>Proposals</span><span sr-only>` had no whitespace; another engine could name it "Proposals3 pending", the very defect being fixed. A literal space now precedes the span; probe (axe 4.14 + Playwright, expanded and collapsed): name "Proposals 150 pending", no violation. Render tests updated.
+- [x] [Review][Patch] **Full `cargo test` not re-run on the final code** (Medium, auditor) — re-run after the patches, see Gates below.
+- [x] [Review][Patch] **Unit test exact only for en/fr** (Low) — now exact for the four locales.
+- [x] [Review][Patch] **Record gaps** (Low) — File List completed, `stdweb` origin named, sprint-status header.
+- [x] [Review][Dismiss] Lockfile / Chart.js / htmx "missing" — they are committed; the review diff excluded them on purpose.
+- [x] [Review][Dismiss] Tooltip in the accessible name — `nav::tooltip` and the badge are `aria-hidden` (`nav_macros.html:45`).
+- [x] [Review][Dismiss] Old key / function used elsewhere — none left in `src/`, `templates/`, `static/js/`, `tests/e2e/`, `docs/` (edge hunter grep).
+- [x] [Review][Dismiss] `ubuntu-latest` floating — the pin's own comment asked to unpin once Playwright supports 26.04 (1.61); `playwright install --with-deps` runs on every job. Pinning policy is 18-2's subject.
+- [x] [Review][Dismiss] Major Action bumps inside a "compatible" story — D7 decided it; release notes read (no input we use changed; `fetch-depth: 0` unchanged in checkout v7). `release.yml` is exercised at the v1.28.0 release.
+- [x] [Review][Defer] Root Tailwind manifest not tracked (AC3 wording) — git-ignored; 18-2 (#506) records the Tailwind version in a tracked file.
+- [x] [Review][Dismiss] Nav accessible-name change inside a dependency story — forced by the axe upgrade (AC6), listed with its reason; E2E covers it (`sidebar`, `proposals-access`, `epic14-smoke`, axe on every page with a pending proposal).
+
+**Gates after the review patches (final code).** `cargo clippy --all-targets -D warnings` clean; `cargo sqlx prepare --check` green; full `cargo test --no-fail-fast` (DB on 3307): 2719 passed, 3 failed — all in `tests/proposals_access.rs`, still asserting the old `aria-label` "Propositions, N en attente" on rendered pages; rewritten through `assert_entry_names_count` (no `aria-label` on the entry, label + `data-proposals-pending` count markup), file re-run: 6 passed. E2E on the rebuilt stack, `CI=true --workers=2`: 476 passed, 2 skipped, 0 failed, 0 flaky; `npx tsc --noEmit` green. No Medium+ finding left: review clean.

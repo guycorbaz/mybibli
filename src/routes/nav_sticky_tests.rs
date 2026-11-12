@@ -723,7 +723,7 @@ mod tests {
             // then an sr-only count), never an aria-label (WCAG 2.5.3).
             assert!(
                 html.contains(
-                    "<span class=\"sb-collapsed:sr-only\">Proposals</span><span data-proposals-pending class=\"sr-only\">3 pending</span>"
+                    "<span class=\"sb-collapsed:sr-only\">Proposals</span> <span data-proposals-pending class=\"sr-only\">3 pending</span>"
                 ),
                 "{role}: accessible name states the count"
             );
@@ -756,7 +756,7 @@ mod tests {
         let badge = opening_tag(&html, "<span data-proposals-badge");
         assert!(badge.contains("aria-hidden=\"true\""), "{badge}");
         assert!(html.contains(">99+</span>"));
-        assert!(html.contains("<span data-proposals-pending class=\"sr-only\">250 pending</span>"));
+        assert!(html.contains(" <span data-proposals-pending class=\"sr-only\">250 pending</span>"));
     }
 
     #[test]
