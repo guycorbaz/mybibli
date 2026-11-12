@@ -139,6 +139,40 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.28.0}\label{sec:whats-new-1.28.0}
+
+Version 1.28.0 closes epic 18, ``maintenance''
+(\href{https://github.com/guycorbaz/mybibli/issues/506}{\#506},
+\href{https://github.com/guycorbaz/mybibli/issues/599}{\#599},
+\href{https://github.com/guycorbaz/mybibli/issues/526}{\#526},
+\href{https://github.com/guycorbaz/mybibli/issues/681}{\#681} in part),
+with no new feature. \emph{No migration}, no new environment variable,
+no new volume --- back up first, pull the image, recreate the container
+(\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{Every failed action explains itself.} When a button or a
+        form fails, the reason appears at the top of the page in your
+        language --- for example ``We couldn't find what you were
+        looking for'' for a record deleted in another tab --- where some
+        pages (a series, a borrower, a contributor, loans, the wish
+        list) showed nothing and the others a generic ``Server error''
+        with an HTTP code (section~\ref{sec:troubleshoot-action-silent}).
+  \item \textbf{The series API returns every series.}
+        \texttt{GET /api/v1/series} used to stop at the first 25 series;
+        it returns them all, by name, like the genres and locations
+        lists (chapter~\ref{ch:api}).
+  \item \textbf{Accessibility.} The \emph{Proposals} entry of the
+        sidebar announces its label and the exact pending count from
+        what it shows; red \emph{Delete} buttons keep their contrast
+        when hovered.
+  \item \textbf{Dependencies up to date, builds pinned.} Rust crates to
+        their latest compatible versions, the MCP library \texttt{rmcp}
+        3.9.0, Chart.js 4.5.1, htmx 2.0.11, Tailwind CSS 4.3.5; the image
+        is built from exact versions of Rust, Node.js and Alpine, so two
+        builds of one release use the same tools.
+\end{itemize}
+
 \section{What's new in 1.27.0}\label{sec:whats-new-1.27.0}
 
 Version 1.27.0 closes epic 17, ``everyday entry''
