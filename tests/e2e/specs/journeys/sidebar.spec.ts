@@ -455,14 +455,14 @@ test.describe("Story 14-1 — the sidebar on wide screens", () => {
       const badge = entry.locator("[data-proposals-badge]");
       await expect(badge).toBeVisible();
       await expect(badge).toHaveText(/^(\d+|99\+)$/);
-      await expect(entry).toHaveAttribute("aria-label", /\d+/);
+      await expect(entry).toHaveAccessibleName(/\d+/);
       // Expanded: right of the label.
       const label = entry.locator("span").first();
       expect((await badge.boundingBox())!.x).toBeGreaterThan((await label.boundingBox())!.x);
 
       await collapse(page);
       await expect(badge).toBeVisible();
-      await expect(entry).toHaveAttribute("aria-label", /\d+/);
+      await expect(entry).toHaveAccessibleName(/\d+/);
       const pill = (await badge.boundingBox())!;
       const icon = (await entry.locator("svg").boundingBox())!;
       expect(pill.x + pill.width).toBeLessThanOrEqual(COLLAPSED_PX);

@@ -177,7 +177,7 @@ nav:
   language_toggle_aria: Sprache wechseln
   # Story 11-21 (FR143) — nav entry + pending-count badge (accessible name).
   proposals: "Vorschläge"
-  proposals_pending_aria: "Vorschläge, %{count} ausstehend"
+  proposals_pending_sr: "%{count} ausstehend"
   # Story 14-1 (#547, UX-DR38) — sidebar: Home entry, collapse toggle
   # names, language row label.
   home: "Startseite"

@@ -719,9 +719,17 @@ mod tests {
             );
             assert_eq!(html.matches("data-proposals-badge").count(), 1, "{role}");
             assert!(html.contains(">3</span>"), "{role}: badge text");
+            // Story 18-1 — the name is built from the content (label,
+            // then an sr-only count), never an aria-label (WCAG 2.5.3).
             assert!(
-                html.contains("<a href=\"/proposals\" aria-label=\"Proposals, 3 pending\""),
+                html.contains(
+                    "<span class=\"sb-collapsed:sr-only\">Proposals</span> <span data-proposals-pending class=\"sr-only\">3 pending</span>"
+                ),
                 "{role}: accessible name states the count"
+            );
+            assert!(
+                !opening_tag(&html, "<a href=\"/proposals\"").contains("aria-label"),
+                "{role}: no aria-label on the entry"
             );
             // The entry sits before Admin / after Labels.
             let labels = html.find("<a href=\"/labels\"").unwrap();
@@ -739,7 +747,7 @@ mod tests {
         let html = render_with("admin", Some(0), "home");
         assert!(html.contains("<a href=\"/proposals\""), "entry stays");
         assert!(!html.contains("data-proposals-badge"));
-        assert!(!html.contains("aria-label=\"Proposals,"));
+        assert!(!html.contains("data-proposals-pending"));
     }
 
     #[test]
@@ -748,7 +756,7 @@ mod tests {
         let badge = opening_tag(&html, "<span data-proposals-badge");
         assert!(badge.contains("aria-hidden=\"true\""), "{badge}");
         assert!(html.contains(">99+</span>"));
-        assert!(html.contains("aria-label=\"Proposals, 250 pending\""));
+        assert!(html.contains(" <span data-proposals-pending class=\"sr-only\">250 pending</span>"));
     }
 
     #[test]

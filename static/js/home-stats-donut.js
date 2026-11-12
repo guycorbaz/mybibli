@@ -7,8 +7,8 @@
 // existing `/?filter=genre:N` filter route. CSP-clean: no inline
 // styles, no inline scripts, no eval.
 //
-// Chart.js vendored at `/static/js/vendor/chart.umd.js` (v4.4.7 UMD
-// build, SHA256 206b6e8bb00fc7bba2c7ee80ca41db3e9e05ba7be0aa35abeba9cfd5357f5d0e).
+// Chart.js vendored at `/static/js/vendor/chart.umd.js` (v4.5.1 UMD
+// build, SHA256 ecc3cd1eeb8c34d2178e3f59fd63ec5a3d84358c11730af0b9958dc886d7652a).
 
 (function () {
     "use strict";

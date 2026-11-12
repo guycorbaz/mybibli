@@ -665,13 +665,20 @@ pub fn proposals_badge_text(count: Option<u64>) -> Option<String> {
     }
 }
 
-/// The nav entry's accessible name when a badge shows: the visible label
-/// first (WCAG 2.5.3 label in name), then the exact count.
-pub fn proposals_badge_aria(count: Option<u64>, locale: &str) -> Option<String> {
+/// The screen-reader-only text that follows the nav entry's visible label
+/// when a badge shows: the exact count (the badge caps at 99+). The
+/// accessible name is built from the content — label, then this text —
+/// never from an `aria-label`: an `aria-label` lets the visible text
+/// ("Proposals" + badge) drift out of the name, which axe 4.14 flags as
+/// `label-content-name-mismatch` (WCAG 2.5.3, story 18-1). No leading
+/// comma: Chromium puts a space around the `sr-only` span, so ", 3"
+/// would read "Proposals , 3"; the template puts a literal space instead
+/// so other engines do not glue "Proposals3".
+pub fn proposals_pending_sr(count: Option<u64>, locale: &str) -> Option<String> {
     match count {
         None | Some(0) => None,
         Some(n) => Some(
-            rust_i18n::t!("nav.proposals_pending_aria", locale = locale, count = n).to_string(),
+            rust_i18n::t!("nav.proposals_pending_sr", locale = locale, count = n).to_string(),
         ),
     }
 }
@@ -791,8 +798,8 @@ mod tests {
     fn proposals_badge_hidden_at_zero_or_uncounted() {
         assert_eq!(proposals_badge_text(None), None);
         assert_eq!(proposals_badge_text(Some(0)), None);
-        assert_eq!(proposals_badge_aria(None, "en"), None);
-        assert_eq!(proposals_badge_aria(Some(0), "fr"), None);
+        assert_eq!(proposals_pending_sr(None, "en"), None);
+        assert_eq!(proposals_pending_sr(Some(0), "fr"), None);
     }
 
     #[test]
@@ -804,20 +811,26 @@ mod tests {
     }
 
     #[test]
-    fn proposals_badge_aria_states_the_exact_count_after_the_label() {
+    fn proposals_pending_sr_states_the_exact_count() {
         assert_eq!(
-            proposals_badge_aria(Some(3), "en").as_deref(),
-            Some("Proposals, 3 pending")
+            proposals_pending_sr(Some(3), "en").as_deref(),
+            Some("3 pending")
         );
         assert_eq!(
-            proposals_badge_aria(Some(150), "fr").as_deref(),
-            Some("Propositions, 150 en attente")
+            proposals_pending_sr(Some(150), "fr").as_deref(),
+            Some("150 en attente")
         );
-        for loc in ["en", "fr", "de", "it"] {
+        for (loc, expected) in [
+            ("en", "7 pending"),
+            ("fr", "7 en attente"),
+            ("de", "7 ausstehend"),
+            ("it", "7 in attesa"),
+        ] {
+            let sr = proposals_pending_sr(Some(7), loc).unwrap();
+            assert_eq!(sr, expected, "{loc}");
+            // The label is not repeated: it is the visible text before it.
             let label = rust_i18n::t!("nav.proposals", locale = loc).to_string();
-            let aria = proposals_badge_aria(Some(7), loc).unwrap();
-            assert!(aria.starts_with(&label), "{loc}: {aria}");
-            assert!(aria.contains('7'), "{loc}: {aria}");
+            assert!(!sr.contains(&label), "{loc}: {sr}");
         }
     }
 
