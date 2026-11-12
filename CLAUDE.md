@@ -73,8 +73,8 @@ Why: `systemd-oomd` kills the whole terminal cgroup — the Claude Code session 
 
 Every version that reaches a build is written in a tracked file (story 18-2, #506) — bump deliberately, in one change, and `tests/toolchain_pins.rs` checks the ones that must agree:
 
-- **Rust toolchain:** `rust-toolchain.toml` (exact `x.y.z`) = Dockerfile `FROM rust:<x.y.z>-alpine…` = `toolchain:` inputs in `.github/workflows/_gates.yml` (×2) and `audit.yml`.
-- **Docker stages:** `Dockerfile` — `rust`, `node`, `alpine`, exact tags on one Alpine minor; the `node` major = `node-version` in `_gates.yml`.
+- **Rust toolchain:** `rust-toolchain.toml` (exact `x.y.z`) = Dockerfile `FROM rust:<x.y.z>-alpine…` = `toolchain:` inputs of every workflow — except `audit.yml`, on `stable` on purpose (`RUSTUP_TOOLCHAIN`), since it builds only cargo-audit.
+- **Docker stages:** `Dockerfile` — `rust`, `node`, `alpine`, exact tags on one Alpine minor (tags, not digests: security rebuilds and `apk` updates still flow); the `node` major = `node-version` in `_gates.yml`.
 - **Tailwind:** root `package.json` (exact, no caret) + `package-lock.json`, installed by `npm ci` in the Dockerfile `css` stage and used by local `npx @tailwindcss/cli`.
 - **Rust crates:** `Cargo.toml` requirements + `Cargo.lock`; `rmcp` pinned `=x.y.z` (NFR46).
 - **E2E toolchain:** `tests/e2e/package.json` + `package-lock.json` (Playwright, axe, TypeScript, `@types/node` = CI Node major).

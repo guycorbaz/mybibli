@@ -44,13 +44,20 @@ jobs:
     name: cargo audit
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Deliberately `stable`, not the project's pinned Rust (story 18-2
+      # review): this job builds no project code, only cargo-audit, whose
+      # minimum Rust can move past our pin — the advisory scan must not go
+      # dark for that. RUSTUP_TOOLCHAIN (job env) overrides the repository's
+      # rust-toolchain.toml for every cargo call of the job.
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch @ 2026-10-16
         with:
-          toolchain: 1.99.1
+          toolchain: stable
 
       # cargo-audit is installed rather than pulled as a third-party
       # action: this job exists to reduce supply-chain exposure, so it

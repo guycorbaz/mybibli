@@ -1,5 +1,9 @@
 # Story 18-2 (#506) — every stage is pinned to an exact tag, all on the
-# same Alpine minor, so two builds of one commit produce the same image.
+# same Alpine minor, so two builds of one commit use the same compiler,
+# Node, Tailwind and base system release. Not bit-identical: a tag is
+# not a digest (Docker Hub rebuilds it for security fixes) and `apk add`
+# takes the current packages of Alpine 3.24 — both deliberately, so
+# security patches still reach the image.
 # The Rust version matches rust-toolchain.toml and the CI toolchain, the
 # Node major the CI's node-version (tests/toolchain_pins.rs checks both).
 # Bump them deliberately, together; see CLAUDE.md "Where versions live".

@@ -1,6 +1,6 @@
 # Story 18.2: Pinned build images
 
-Status: review
+Status: done
 
 GitHub issue: #506 (closes). Covers: maintenance. Epic 18; ships in v1.28.0. Sprint-status key: `18-2-pinned-build-images`.
 
@@ -69,7 +69,7 @@ Claude Opus 5.5 (`claude-opus-5-5`)
 ### Completion Notes List
 
 - **T1** — `Dockerfile`: `rust:1.99.1-alpine3.24`, `node:24.22.3-alpine3.24`, `alpine:3.24.4` (latest tags on Docker Hub, 2026-11-12), with a header comment on why and how to bump. The build log shows each resolved to its digest (`rust@sha256:44819b27…`, `node@sha256:116b800c…`, `alpine@sha256:f59abe65…`).
-- **T2** — `rust-toolchain.toml` (`1.99.1`, clippy + rustfmt, minimal profile); `toolchain: 1.99.1` in `_gates.yml` (both jobs, step renamed "Install Rust 1.99.1") and `audit.yml`. Locally rustup switched the repository to 1.99.1 (`rustup show active-toolchain` → "overridden by rust-toolchain.toml"). Note: the first automatic install left `clippy` registered but without binaries (`cargo clippy` → "not applicable to the toolchain"); `rustup component remove` + `add` fixed it — a one-off workstation glitch, not a repository issue.
+- **T2** — `rust-toolchain.toml` (`1.99.1`, clippy, minimal profile — rustfmt dropped in review); `toolchain: 1.99.1` in `_gates.yml` (both jobs, step renamed "Install Rust 1.99.1") and `audit.yml`. Locally rustup switched the repository to 1.99.1 (`rustup show active-toolchain` → "overridden by rust-toolchain.toml"). Note: the first automatic install left `clippy` registered but without binaries (`cargo clippy` → "not applicable to the toolchain"); `rustup component remove` + `add` fixed it — a one-off workstation glitch, not a repository issue.
 - **T3** — root `package.json` (exact `4.3.5` for both Tailwind packages, `private`) and `package-lock.json` tracked; `.gitignore`: `/package.json` line removed, `!/package-lock.json` added with a comment. Dockerfile `css` stage: `COPY package.json package-lock.json ./` + `RUN npm ci`; the build log shows `tailwindcss v4.3.5`.
 - **T4** — `tests/toolchain_pins.rs` (no DB): Rust version equal in `rust-toolchain.toml`, Dockerfile builder and every workflow `toolchain:` input; Node major of the `css` stage = `_gates.yml` `node-version`; every `FROM` has an exact `x.y.z` tag (no `latest`); Tailwind exact in `package.json` and installed by `npm ci`; parser helpers unit-tested. 5 passed.
 - **T5** — `CLAUDE.md` § "Where versions live".
@@ -82,3 +82,19 @@ Claude Opus 5.5 (`claude-opus-5-5`)
 - `tests/toolchain_pins.rs` (new)
 - `CLAUDE.md`
 - `_bmad-output/implementation-artifacts/18-2-pinned-build-images.md`, `sprint-status.yaml`
+
+### Review Findings
+
+Code review 2026-11-12 (Blind Hunter; Edge Case Hunter + Acceptance Auditor). No High.
+
+- [x] [Review][Patch] **"Two builds produce the same image" overstated** (Medium) — tags are not digests and `apk add` takes Alpine 3.24's current packages. Kept tags on purpose (D1: readable, security rebuilds flow); the Dockerfile comment and `CLAUDE.md` now say "same compiler, Node, Tailwind and base system release — not bit-identical".
+- [x] [Review][Patch] **Audit job frozen on the pinned Rust** (Medium) — it builds only cargo-audit, whose minimum Rust can pass our pin and silence the daily advisory scan. `audit.yml` back on `toolchain: stable` with job-level `RUSTUP_TOOLCHAIN: stable` (otherwise `rust-toolchain.toml` would still select 1.99.1 for `cargo install`), comment saying why; the pin test enforces that exception.
+- [x] [Review][Patch] **Pin test too lenient / brittle** (Low–Medium) — now checks one Alpine minor across all stages (a bare `-alpine` fails), x.y.z for every stage and for Tailwind (both packages equal, and equal to the lockfile), `RUN npm ci` as a real line; reads every workflow (any `dtolnay/rust-toolchain` without input fails); strips YAML inline comments and single quotes; accepts `--platform`, `@sha256` digests, lowercase `from`, `FROM <stage>`; Node CI value may be the major or the exact Dockerfile version. Helper cases unit-tested.
+- [x] [Review][Patch] **rustfmt in the toolchain components** (Low) — downloaded by every CI job for nothing (no formatter in this project); removed.
+- [x] [Review][Patch] sprint-status header (Low).
+- [x] [Review][Dismiss] musl native bindings missing from the lockfile — present (`@tailwindcss/oxide-linux-x64-musl`, `lightningcss-linux-x64-musl`); the image build ran `npm ci` and Tailwind 4.3.5.
+- [x] [Review][Dismiss] Untracked root `package.json` on other checkouts — only this workstation had one; the NAS runs the published image, not a checkout.
+- [x] [Review][Dismiss] No draft PR at story start — project lead's instruction (one push per story, 2026-10-29).
+- [x] [Review][Dismiss] `rust-version` in `Cargo.toml` — not used by the project; the toolchain file is the pin.
+
+**Gates after the review patches.** The patches change no application code and no image content (a Dockerfile comment, CI YAML, `rust-toolchain.toml` components, the test, `CLAUDE.md`): clippy `--all-targets -D warnings` clean, `cargo test --test toolchain_pins` 5 passed. Full suites ran on the code before them (2727 / 0 failed; E2E 475 + 1 flaky #685). Review clean.
