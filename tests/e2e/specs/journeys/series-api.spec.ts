@@ -48,7 +48,6 @@ test.describe("Story 18-4 — the series API returns every series (#599)", () =>
       const ours = body.map((s) => s.name).filter((n) => n.startsWith(`${prefix}-`));
       // All of them, in name order — the last one sorts after at least 26.
       expect(ours).toEqual(names);
-      expect(body.length).toBeGreaterThan(25);
       expect(body.find((s) => s.name === names[COUNT - 1])?.series_type).toBe("open");
     } finally {
       await page.goto("/admin?tab=api_keys");

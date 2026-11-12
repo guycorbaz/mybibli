@@ -67,6 +67,26 @@ async fn every_live_series_is_returned_past_the_first_page(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn namesakes_are_ordered_by_id(pool: DbPool) {
+    // No UNIQUE on series.name: two live namesakes keep a stable order.
+    let first = seed_series(&pool, "Homonyme").await;
+    let second = seed_series(&pool, "Homonyme").await;
+    seed_series(&pool, "Avant").await;
+    let key = seed_key(&pool, ApiKeyScope::Read).await;
+
+    let (_, body) = get_series(&pool, Some(&key)).await;
+    let ids: Vec<u64> = body
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|s| s["name"] == "Homonyme")
+        .map(|s| s["id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(ids, [first, second]);
+    assert_eq!(body[0]["name"], "Avant");
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn the_series_list_still_needs_a_key(pool: DbPool) {
     seed_series(&pool, "Sans clé").await;
     let (status, body) = get_series(&pool, None).await;

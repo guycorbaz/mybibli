@@ -51,6 +51,15 @@ impl fmt::Display for SeriesModel {
     }
 }
 
+/// The columns `row_to_series` reads, as the head of a `SELECT` (story
+/// 18-4 review, DRY): every full-row read of `series` starts with it, so
+/// a column added to the mapping is added to every query at once.
+macro_rules! series_select {
+    () => {
+        "SELECT id, name, description, series_type, total_volume_count, version FROM series "
+    };
+}
+
 fn row_to_series(row: sqlx::mysql::MySqlRow) -> Result<SeriesModel, sqlx::Error> {
     let type_str: String = row.try_get("series_type")?;
     let series_type = type_str.parse::<SeriesType>().unwrap_or_else(|_| {
@@ -116,8 +125,7 @@ impl SeriesModel {
         id: u64,
     ) -> Result<Option<SeriesModel>, AppError> {
         let row = sqlx::query(
-            "SELECT id, name, description, series_type, total_volume_count, version \
-             FROM series WHERE id = ? AND deleted_at IS NULL",
+            concat!(series_select!(), "WHERE id = ? AND deleted_at IS NULL"),
         )
         .bind(id)
         .fetch_optional(pool)
@@ -141,9 +149,10 @@ impl SeriesModel {
                 .await?;
 
         let rows = sqlx::query(
-            "SELECT id, name, description, series_type, total_volume_count, version \
-             FROM series WHERE deleted_at IS NULL \
-             ORDER BY name ASC LIMIT ? OFFSET ?",
+            concat!(
+                series_select!(),
+                "WHERE deleted_at IS NULL ORDER BY name ASC LIMIT ? OFFSET ?"
+            ),
         )
         .bind(DEFAULT_PAGE_SIZE)
         .bind(offset)
@@ -171,9 +180,10 @@ impl SeriesModel {
     /// behind the `/series` page.
     pub async fn list_active_all(pool: &DbPool) -> Result<Vec<SeriesModel>, AppError> {
         let rows = sqlx::query(
-            "SELECT id, name, description, series_type, total_volume_count, version \
-             FROM series WHERE deleted_at IS NULL \
-             ORDER BY name ASC, id ASC",
+            concat!(
+                series_select!(),
+                "WHERE deleted_at IS NULL ORDER BY name ASC, id ASC"
+            ),
         )
         .fetch_all(pool)
         .await?;
@@ -201,8 +211,7 @@ impl SeriesModel {
         name: &str,
     ) -> Result<Option<SeriesModel>, AppError> {
         let row = sqlx::query(
-            "SELECT id, name, description, series_type, total_volume_count, version \
-             FROM series WHERE name = ? AND deleted_at IS NULL",
+            concat!(series_select!(), "WHERE name = ? AND deleted_at IS NULL"),
         )
         .bind(name)
         .fetch_optional(pool)

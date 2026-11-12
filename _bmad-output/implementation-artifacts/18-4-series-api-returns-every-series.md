@@ -1,6 +1,6 @@
 # Story 18.4: The series API returns every series
 
-Status: in-progress
+Status: done
 
 GitHub issue: #599 (closes). Covers: fix. Epic 18; ships in v1.28.0. Sprint-status key: `18-4-series-api-returns-every-series`.
 
@@ -30,11 +30,11 @@ so that nothing past the 25th is silently missing.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `SeriesModel::list_active_all` + endpoint (AC1, AC2)
-- [ ] T2 — `tests/api_v1_series.rs` (AC3)
-- [ ] T3 — E2E `tests/e2e/specs/journeys/api-series.spec.ts` (AC4)
-- [ ] T4 — manual ch. 11 EN + FR (AC5)
-- [ ] T5 — gates
+- [x] T1 — `SeriesModel::list_active_all` + endpoint (AC1, AC2)
+- [x] T2 — `tests/api_v1_series.rs` (AC3)
+- [x] T3 — E2E `tests/e2e/specs/journeys/series-api.spec.ts` (AC4)
+- [x] T4 — manual ch. 11 EN + FR (AC5)
+- [x] T5 — gates
 
 ## Dev Notes
 
@@ -51,6 +51,30 @@ so that nothing past the 25th is silently missing.
 
 ### Agent Model Used
 
+Claude Opus 5.5 (`claude-opus-5-5`)
+
 ### Completion Notes List
 
+- **T1** — `SeriesModel::list_active_all` (same columns and `row_to_series` as `active_list`, `deleted_at IS NULL`, `ORDER BY name ASC, id ASC`, no limit); `list_series_endpoint` uses it. `active_list` untouched. Dynamic `sqlx::query` → no `.sqlx` change (`prepare --check` green).
+- **T2** — `tests/api_v1_series.rs` (shared `common::mcp::{router, seed_key}`, DRY): 30 live series inserted in reverse name order + one soft-deleted → the 30, in name order, fields unchanged; no key → 401 `missing_api_key`. **Regression proven:** with the old endpoint the first test fails with exactly 25 names ("Série 01" … "Série 25").
+- **T3** — E2E `series-api.spec.ts`: 27 series under a per-run `zzz-api-<base36 time>` prefix, read key created through the UI, `GET /api/v1/series` lists the spec's 27 in order, key revoked in `finally`. First named `api-series.spec.ts`: it then ran before `classification-fieldset`, `dewey-code` and `empty-states`, which assume no series exists (#528 — the last title-page submit button becomes "Add to series"; the empty `/series` list), and broke 5 tests. Renamed to sort after them (the existing D-11-11-6 convention, comment in the file); #528 itself stays open.
+- **T4** — manual ch. 11 EN + FR: the three reference endpoints return every live row, unpaginated, series by name; "since 1.28.0" for `/series`. PDFs rebuilt in 18-7.
+- **T5 — Gates.** clippy `--all-targets -D warnings` clean; `sqlx prepare --check` green; full `cargo test` with DB: 2729 passed, 0 failed; E2E on a fresh stack, `CI=true --workers=2`: 477 passed, 2 skipped, 0 failed, 0 flaky.
+
 ### File List
+
+- `src/models/series.rs` (+ `series_select!` column head shared by its four full-row reads), `src/routes/api_v1.rs`
+- `tests/api_v1_series.rs` (new), `tests/e2e/specs/journeys/series-api.spec.ts` (new)
+- `docs/manual/en/11-api-integrations.tex`, `docs/manual/fr/11-api-integrations.tex`
+- `_bmad-output/implementation-artifacts/18-4-series-api-returns-every-series.md`, `sprint-status.yaml`
+
+### Review Findings
+
+Code review 2026-11-12 (one reviewer, three passes: adversarial, edge cases, acceptance). No High, no Medium.
+
+- [x] [Review][Patch] Column list copied a third time (Low, Rule #1) — `series_select!()` macro (a literal, for `concat!`) heads the four full-row reads of `series` in `models/series.rs`.
+- [x] [Review][Patch] Library-wide length assertion in the E2E (Low, Rule #23 spirit) — removed; `toEqual(names)` on the spec's own rows carries the regression.
+- [x] [Review][Patch] `id` tie-break not exercised (Low) — `namesakes_are_ordered_by_id` (no UNIQUE on `series.name`).
+- [x] [Review][Dismiss] Story record out of date — it was being written while the review ran; T3 names `series-api.spec.ts`, the rename is explained.
+
+After the patches: clippy clean; every series integration test file (`api_v1_series`, `mcp_series_*`, `proposal_accept_series`, `proposal_series_update`, `series_delete_modal`, `series_list_all_names`) green, `--lib series` 110 passed; `tsc --noEmit` green. The E2E change only removes an assertion. Review clean.
