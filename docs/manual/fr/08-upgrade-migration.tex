@@ -148,6 +148,43 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.28.0}\label{sec:whats-new-1.28.0}
+
+La version 1.28.0 clôt l'epic 18, « maintenance »
+(\href{https://github.com/guycorbaz/mybibli/issues/506}{\#506},
+\href{https://github.com/guycorbaz/mybibli/issues/599}{\#599},
+\href{https://github.com/guycorbaz/mybibli/issues/526}{\#526},
+\href{https://github.com/guycorbaz/mybibli/issues/681}{\#681} en partie),
+sans nouvelle fonctionnalité. \emph{Aucune migration}, aucune nouvelle
+variable d'environnement, aucun nouveau volume --- sauvegardez d'abord,
+tirez l'image, recréez le conteneur (\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{Chaque action qui échoue dit pourquoi.} Quand un bouton
+        ou un formulaire échoue, la raison s'affiche en haut de la page
+        dans votre langue --- par exemple « Introuvable --- l'élément a
+        peut-être été déplacé ou supprimé » pour un élément supprimé
+        dans un autre onglet ---, là où certaines pages (une série, un
+        emprunteur, un contributeur, les prêts, la liste d'envies)
+        n'affichaient rien et les autres une « Erreur serveur »
+        générique avec un code HTTP
+        (section~\ref{sec:troubleshoot-action-silent}).
+  \item \textbf{L'API des séries renvoie toutes les séries.}
+        \texttt{GET /api/v1/series} s'arrêtait aux 25 premières séries ;
+        elle les renvoie toutes, par nom, comme les listes des genres et
+        des emplacements (chapitre~\ref{ch:api}).
+  \item \textbf{Accessibilité.} L'entrée \emph{Propositions} de la barre
+        latérale annonce son libellé et le nombre exact en attente à
+        partir de ce qu'elle affiche ; les boutons rouges
+        \emph{Supprimer} gardent leur contraste au survol.
+  \item \textbf{Dépendances à jour, constructions figées.} Crates Rust à
+        leurs dernières versions compatibles, bibliothèque MCP
+        \texttt{rmcp} 3.9.0, Chart.js 4.5.1, htmx 2.0.11, Tailwind CSS
+        4.3.5 ; l'image est construite à partir de versions exactes de
+        Rust, Node.js et Alpine, si bien que deux constructions d'une
+        même version utilisent les mêmes outils.
+\end{itemize}
+
 \section{Nouveautés de la 1.27.0}\label{sec:whats-new-1.27.0}
 
 La version 1.27.0 clôt l'epic 17, « la saisie au quotidien »

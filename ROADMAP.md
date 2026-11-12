@@ -32,26 +32,63 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.27.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.27.0)**
-(2026-11-11) — everyday entry: a volume added from the title page,
-V-codes in any case, one ISBN rule for every form with a one-time
-repair of the stored ISBNs, typed codes checked like scanned ones, a
-title found by its number, and default skills for the agent. **One
-additive migration.** The section below has the detail; every release
-before it has its own section further down, and this is the file that
-carries them — the README quotes only the current release, and the
-website tells the same story for a different audience.
+**Current stable: [`v1.28.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.28.0)**
+(2026-11-12) — maintenance: every failed action now explains itself,
+the series API returns every series, dependencies brought up to date
+and pinned. **No migration, no configuration change.** The section
+below has the detail; every release before it has its own section
+further down, and this is the file that carries them — the README
+quotes only the current release, and the website tells the same story
+for a different audience.
 
-**Next:** epic 18 — built-in backup and restore of the database and
+**Next:** epic 19 — built-in backup and restore of the database and
 the covers, scheduled and driven from the admin page
 ([#657](https://github.com/guycorbaz/mybibli/issues/657)), with a consistency check between the covers on
 disk and the database ([#658](https://github.com/guycorbaz/mybibli/issues/658)), unless a bug comes first.
-Later candidates, awaiting prioritisation: a shelving plan for comics
-([#655](https://github.com/guycorbaz/mybibli/issues/655)), more proposable fields
+Then the major dependency upgrades (sqlx 0.9 first) and, around
+February 2027, htmx 4. Later candidates, awaiting prioritisation: a
+shelving plan for comics ([#655](https://github.com/guycorbaz/mybibli/issues/655)), more proposable fields
 ([#589](https://github.com/guycorbaz/mybibli/issues/589)) and merging duplicates
 ([#591](https://github.com/guycorbaz/mybibli/issues/591)). The base-path setting for reverse proxies
 ([#492](https://github.com/guycorbaz/mybibli/issues/492)) comes later. Everything else open lives in the issue
 tracker.
+
+## v1.28.0 — maintenance *(shipped)*
+
+Shipped 2026-11-12. The closing release of epic 18
+([#506](https://github.com/guycorbaz/mybibli/issues/506), [#599](https://github.com/guycorbaz/mybibli/issues/599), [#526](https://github.com/guycorbaz/mybibli/issues/526), [#681](https://github.com/guycorbaz/mybibli/issues/681) in part), a
+maintenance epic with no new feature. **No migration**, no new
+environment variable, no new volume — back up first, pull the image and
+recreate the container (`docker compose up -d`).
+
+- **Every failed action explains itself.** When a button or a form
+  fails, the reason appears at the top of the page in your language —
+  "We couldn't find what you were looking for" for a record deleted in
+  another tab, "'BD' already exists" for a duplicate genre — where some
+  pages (a series, a borrower, a contributor, loans, the wish list)
+  showed nothing at all and the others a generic "Server error (404)"
+  ([#526](https://github.com/guycorbaz/mybibli/issues/526)).
+- **The series API returns every series.** `GET /api/v1/series` used to
+  stop at the first 25 series; it now returns them all, by name, like
+  the genres and locations lists ([#599](https://github.com/guycorbaz/mybibli/issues/599)).
+- **Accessibility.** The *Proposals* entry of the sidebar announces its
+  label and the exact pending count from what it shows (WCAG 2.5.3);
+  red *Delete* buttons keep AA contrast when hovered.
+- **Dependencies up to date.** Rust crates to their latest compatible
+  versions (the four *unsound* advisories gone), the MCP library
+  `rmcp` 3.9.0 (one advisory ignore removed), Chart.js 4.5.1, htmx
+  2.0.11, Tailwind CSS 4.3.5; CI on Node.js 24.
+- **Pinned builds.** The image is built from exact versions of Rust
+  (1.99.1), Node.js and Alpine, and Tailwind from a tracked lockfile, so
+  two builds of one commit use the same tools
+  ([#506](https://github.com/guycorbaz/mybibli/issues/506)).
+- **Under the hood.** A blank-browser epic smoke test chains the
+  dashboard chart, a visible error on a series page, the series API and
+  an MCP `initialize`. The E2E jobs are back on `ubuntu-latest`
+  (Playwright 1.65, [#660](https://github.com/guycorbaz/mybibli/issues/660)).
+- **Manual** (EN + FR): *What's new in 1.28.0* in chapter 8; chapter 10
+  has a new entry, *An action does nothing*; chapter 11 states that the
+  reference lists are unpaginated.
 
 ## v1.27.0 — everyday entry *(shipped)*
 
