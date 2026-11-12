@@ -153,6 +153,11 @@ données que votre script va modifier.
 Données de référence. À utiliser quand un LLM a besoin de connaître
 les genres existants avant de suggérer un \texttt{genre\_id}.
 
+Chacune renvoie toutes les lignes actives dans un seul tableau JSON,
+sans pagination ; les séries sont triées par nom. Depuis la 1.28.0,
+c'est aussi vrai pour \texttt{/series}, qui s'arrêtait auparavant aux
+25 premières séries.
+
 \subsection{GET /api/v1/dewey/\{prefix\}}
 
 Recherche par bucket. Passez un préfixe Dewey partiel (par ex.

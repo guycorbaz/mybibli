@@ -165,6 +165,25 @@ impl SeriesModel {
         ))
     }
 
+    /// Every live series, ordered by name then id, unpaginated (#599,
+    /// story 18-4): the `/api/v1/series` reference list, like the genres
+    /// and locations endpoints. `active_list` stays the paginated read
+    /// behind the `/series` page.
+    pub async fn list_active_all(pool: &DbPool) -> Result<Vec<SeriesModel>, AppError> {
+        let rows = sqlx::query(
+            "SELECT id, name, description, series_type, total_volume_count, version \
+             FROM series WHERE deleted_at IS NULL \
+             ORDER BY name ASC, id ASC",
+        )
+        .fetch_all(pool)
+        .await?;
+        let items = rows
+            .into_iter()
+            .map(row_to_series)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(items)
+    }
+
     /// Every live series as `(id, name)`, ordered by name, unpaginated
     /// (#576): feeds the title page's series selector, which must offer
     /// all series, not page 1 of `active_list`.

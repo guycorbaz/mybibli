@@ -247,12 +247,12 @@ pub async fn list_series_endpoint(
     State(state): State<AppState>,
     ApiKeyAuth(_ctx): ApiKeyAuth,
 ) -> Result<Json<Vec<ApiSeries>>, AppError> {
-    // v1: return up to one page (handled by SeriesModel::active_list).
-    // Future patch: walk all pages or accept a page query param.
-    let paginated = SeriesModel::active_list(&state.pool, 1).await?;
+    // #599 (story 18-4) — every live series, unpaginated, like the
+    // genres and locations reference lists (it used to answer page 1 of
+    // the `/series` list: 25 rows).
+    let series = SeriesModel::list_active_all(&state.pool).await?;
     Ok(Json(
-        paginated
-            .items
+        series
             .into_iter()
             .map(|s| ApiSeries {
                 id: s.id,
