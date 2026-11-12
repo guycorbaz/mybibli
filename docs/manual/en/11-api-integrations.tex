@@ -146,6 +146,10 @@ keep it next to the data your script will edit.
 Reference data. Use these when an LLM needs to know which genres
 exist before it suggests a \texttt{genre\_id}.
 
+Each returns every live row in one JSON array, unpaginated; series
+are ordered by name. Since 1.28.0 this holds for
+\texttt{/series} too: it used to stop at the first 25 series.
+
 \subsection{GET /api/v1/dewey/\{prefix\}}
 
 Bucket lookup. Pass a partial Dewey prefix (e.g.
