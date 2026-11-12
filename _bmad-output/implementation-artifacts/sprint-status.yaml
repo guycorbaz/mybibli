@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-11-12 (epic 18 in progress — 18-1 done.)
+# last_updated: 2026-11-12 (epic 18 in progress — 18-1 done, 18-2 ready-for-dev.)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -351,7 +351,7 @@ development_status:
   # Sequencing: 18-1 -> 18-2 -> 18-3 -> 18-4 -> 18-5 -> 18-6 (epic smoke, Rule #7) -> 18-7 -> retrospective -> release.
   epic-18: in-progress
   18-1-semver-compatible-updates: done
-  18-2-pinned-build-images: backlog
+  18-2-pinned-build-images: ready-for-dev
   18-3-rmcp-upgrade-and-audit-ignores: backlog
   18-4-series-api-returns-every-series: backlog
   18-5-errors-visible-on-series-page: backlog
