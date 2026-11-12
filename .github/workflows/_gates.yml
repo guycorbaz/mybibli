@@ -49,13 +49,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Rust stable
+      - name: Install Rust 1.99.1
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch @ 2026-10-16
         with:
           # Required now that the action is pinned by SHA: with no
           # explicit input it derives the toolchain from the ref that
-          # called it, which is no longer a branch name.
-          toolchain: stable
+          # called it, which is no longer a branch name. The version is
+          # rust-toolchain.toml's (story 18-2, tests/toolchain_pins.rs).
+          toolchain: 1.99.1
           components: clippy
 
       - name: Cache cargo build
@@ -118,10 +119,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Rust stable
+      - name: Install Rust 1.99.1
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch @ 2026-10-16
         with:
-          toolchain: stable
+          toolchain: 1.99.1
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3

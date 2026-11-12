@@ -69,6 +69,19 @@ mem-guard --status                   # slots in use, oomd policy, recent OOM kil
 
 Why: `systemd-oomd` kills the whole terminal cgroup — the Claude Code session included — when memory pressure on the user slice exceeds 50 % for 20 s. Two sessions died that way on 2026-10-27 (a full `cargo test` in a fresh worktree while another project was building). Under `mem-guard` a peak kills the command (exit 137) and the session survives. Fast, light commands (`cargo check`, a single targeted test, `cargo fmt`) need no guard. Without user systemd (CI), the tool runs the command unguarded.
 
+### Where versions live
+
+Every version that reaches a build is written in a tracked file (story 18-2, #506) — bump deliberately, in one change, and `tests/toolchain_pins.rs` checks the ones that must agree:
+
+- **Rust toolchain:** `rust-toolchain.toml` (exact `x.y.z`) = Dockerfile `FROM rust:<x.y.z>-alpine…` = `toolchain:` inputs of every workflow — except `audit.yml`, on `stable` on purpose (`RUSTUP_TOOLCHAIN`), since it builds only cargo-audit.
+- **Docker stages:** `Dockerfile` — `rust`, `node`, `alpine`, exact tags on one Alpine minor (tags, not digests: security rebuilds and `apk` updates still flow); the `node` major = `node-version` in `_gates.yml`.
+- **Tailwind:** root `package.json` (exact, no caret) + `package-lock.json`, installed by `npm ci` in the Dockerfile `css` stage and used by local `npx @tailwindcss/cli`.
+- **Rust crates:** `Cargo.toml` requirements + `Cargo.lock`; `rmcp` pinned `=x.y.z` (NFR46).
+- **E2E toolchain:** `tests/e2e/package.json` + `package-lock.json` (Playwright, axe, TypeScript, `@types/node` = CI Node major).
+- **Vendored browser files:** `static/js/htmx.min.js` (htmx 2.x; 4.x deferred), `static/js/vendor/chart.umd.js` (version + SHA-256 in `static/js/home-stats-donut.js`); replace them from `npm pack`, never from a CDN by hand.
+- **GitHub Actions:** SHA pin + `# vX.Y.Z` comment in every workflow.
+- **Not bumped with the rest:** `mariadb:10.11` in the compose files (database engine/version question on hold), `python:3.12-slim` (E2E mock server only).
+
 ## Foundation Rules
 
 These apply to ALL sessions without exception.

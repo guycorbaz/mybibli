@@ -10,6 +10,9 @@
 node_modules/
 package-lock.json
 !tests/e2e/package-lock.json
+# Story 18-2 (#506) — the root manifest + lockfile pin Tailwind for the
+# Dockerfile css stage (npm ci); tracked since then.
+!/package-lock.json
 
 # IDE
 .vscode/
@@ -49,8 +52,6 @@ static/css/output.css
 # Build artifacts
 *.log
 
-# Tailwind build (root level, not tests/)
-/package.json
 .claude/scheduled_tasks.lock
 
 # Marketing — drafts, ideas, channel notes, outreach trackers.

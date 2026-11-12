@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "description": "Tailwind CSS build for static/css/output.css (Dockerfile css stage, story 18-2). Exact versions: bump deliberately.",
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.5",
+    "tailwindcss": "4.3.5"
+  }
+}
