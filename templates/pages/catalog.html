@@ -2,6 +2,9 @@
 
 {% block title %}{{ catalog_title }} — mybibli{% endblock %}
 
+{# Story 18-5 — this page places its own #feedback-list. #}
+{% block feedback_region %}{% endblock %}
+
 {% block content %}
 <div class="max-w-5xl mx-auto px-4 lg:px-8 py-6 flex flex-col gap-4">
     <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ catalog_title }}</h1>

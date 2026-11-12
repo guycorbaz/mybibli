@@ -3,6 +3,9 @@
 
 {% block title %}{{ volume.label }} — mybibli{% endblock %}
 
+{# Story 18-5 — this page places its own #feedback-list. #}
+{% block feedback_region %}{% endblock %}
+
 {% block content %}
 <div class="max-w-3xl mx-auto px-4 lg:px-8 py-6">
     {# Story 13-8 — feedback of the volume actions (the move's success entry). #}

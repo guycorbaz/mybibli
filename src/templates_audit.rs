@@ -723,59 +723,106 @@ fn rust_emitted_post_forms_include_csrf_token() {
     }
 }
 
-/// #325 — guards against the v1.7.2 regression where a page-template
-/// referenced `hx-target="#feedback-list"` without declaring the matching
-/// `<div id="feedback-list">` slot. HTMX raises `htmx:targetError` on
-/// submission and the action silently fails from the user's POV.
-///
-/// Scoped to `templates/pages/*.html`. Components/fragments are exempt:
-/// they're rendered INTO a page that owns the slot.
-#[test]
-fn pages_using_feedback_list_target_declare_slot() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let pages_dir = root.join("templates").join("pages");
+/// What a page template says about the feedback region (story 18-5).
+#[derive(Debug, PartialEq)]
+enum FeedbackRegionIssue {
+    /// Extends the base layout, overrides `feedback_region`, declares none.
+    None,
+    /// Extends the base layout, declares its own, keeps the default too.
+    Duplicate,
+    /// Another layout, targets `#feedback-list`, declares none (#325).
+    TargetWithoutSlot,
+}
 
-    let target_re =
-        Regex::new(r#"(?is)hx-target\s*=\s*["']#feedback-list["']"#).unwrap();
-    let slot_re = Regex::new(r#"(?is)\bid\s*=\s*["']feedback-list["']"#).unwrap();
+/// Story 18-5 (#526) — exactly one `#feedback-list` per page. Pages on
+/// `layouts/base.html` get the layout's default region unless they place
+/// their own and override `{% block feedback_region %}` with nothing;
+/// pages on other layouts that target the region must declare it (#325).
+fn feedback_region_issue(page: &str) -> Option<FeedbackRegionIssue> {
+    // HTML and Askama comments both hide markup.
+    let content = Regex::new(r"(?s)\{#.*?#\}")
+        .unwrap()
+        .replace_all(&strip_html_comments(page), " ")
+        .into_owned();
+    let declares = Regex::new(r#"(?is)\bid\s*=\s*["']feedback-list["']"#)
+        .unwrap()
+        .is_match(&content);
+    let on_base = content.contains(r#"{% extends "layouts/base.html" %}"#);
+    if on_base {
+        let overrides = content.contains("{% block feedback_region %}");
+        return match (declares, overrides) {
+            (true, false) => Some(FeedbackRegionIssue::Duplicate),
+            (false, true) => Some(FeedbackRegionIssue::None),
+            _ => None,
+        };
+    }
+    let targets = Regex::new(r#"(?is)hx-target\s*=\s*["']#feedback-list["']"#)
+        .unwrap()
+        .is_match(&content);
+    (targets && !declares).then_some(FeedbackRegionIssue::TargetWithoutSlot)
+}
+
+/// Story 18-5 (#526, extends #325) — every page has exactly one
+/// `#feedback-list`: every `AppError` and the CSRF rejection retarget
+/// there, so a page without one turns every failed HTMX action silent,
+/// and a page with two has a duplicate id.
+#[test]
+fn every_base_page_has_one_feedback_region() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let base = fs::read_to_string(root.join("templates/layouts/base.html")).unwrap();
+    let base = strip_html_comments(&base);
+    assert!(
+        base.contains("{% block feedback_region %}") && base.contains(r#"id="feedback-list""#),
+        "layouts/base.html must hold the default feedback region"
+    );
 
     let mut violations: Vec<String> = Vec::new();
-    visit(&pages_dir, &mut |path| {
+    visit(&root.join("templates").join("pages"), &mut |path| {
         if path.extension().and_then(|e| e.to_str()) != Some("html") {
             return;
         }
-        let raw = match fs::read_to_string(path) {
-            Ok(s) => s,
-            Err(_) => return,
-        };
-        let content = strip_html_comments(&raw);
-        if !target_re.is_match(&content) {
-            return;
+        let Ok(raw) = fs::read_to_string(path) else { return };
+        if let Some(issue) = feedback_region_issue(&raw) {
+            let rel = path.strip_prefix(&root).unwrap_or(path);
+            violations.push(format!("  {} — {issue:?}", rel.display()));
         }
-        if slot_re.is_match(&content) {
-            return;
-        }
-        let rel = path.strip_prefix(&root).unwrap_or(path);
-        let rel_str = rel
-            .to_string_lossy()
-            .replace(std::path::MAIN_SEPARATOR, "/");
-        violations.push(format!(
-            "  {} — references hx-target=\"#feedback-list\" but does not declare \
-             id=\"feedback-list\"",
-            rel_str
-        ));
     });
+    assert!(
+        violations.is_empty(),
+        "feedback region audit failed (#526 / #325): a page on the base layout \
+         either keeps the layout's region or overrides `{{% block feedback_region %}}` \
+         and declares its own `<div id=\"feedback-list\">`; a page on another \
+         layout that targets #feedback-list declares it.\n{}",
+        violations.join("\n")
+    );
+}
 
-    if !violations.is_empty() {
-        let header = "feedback-list slot audit failed (#325):\n\
-                      Every page template that uses hx-target=\"#feedback-list\" \
-                      (directly or via a button/form on that page) must declare \
-                      `<div id=\"feedback-list\">` somewhere in the page. \
-                      Without the slot, HTMX raises htmx:targetError on submission \
-                      and the action silently fails.\n";
-        let report = format!("{}{}", header, violations.join("\n"));
-        panic!("{report}");
-    }
+#[test]
+fn feedback_region_issue_reads_the_four_shapes() {
+    let base = "{% extends \"layouts/base.html\" %}\n";
+    let slot = r#"<div id="feedback-list"></div>"#;
+    let block = "{% block feedback_region %}{% endblock %}";
+    assert_eq!(feedback_region_issue(&format!("{base}<p>x</p>")), None);
+    assert_eq!(feedback_region_issue(&format!("{base}{block}{slot}")), None);
+    assert_eq!(
+        feedback_region_issue(&format!("{base}{block}<p>x</p>")),
+        Some(FeedbackRegionIssue::None)
+    );
+    assert_eq!(
+        feedback_region_issue(&format!("{base}{slot}")),
+        Some(FeedbackRegionIssue::Duplicate)
+    );
+    // A commented-out slot does not count.
+    assert_eq!(
+        feedback_region_issue(&format!("{base}{block}{{# {slot} #}}")),
+        Some(FeedbackRegionIssue::None)
+    );
+    let other = r##"<button hx-target="#feedback-list">"##;
+    assert_eq!(
+        feedback_region_issue(other),
+        Some(FeedbackRegionIssue::TargetWithoutSlot)
+    );
+    assert_eq!(feedback_region_issue(&format!("{other}{slot}")), None);
 }
 
 // ─── Fix #24 (v1.7.9) — strip_html_comments + SVG masking ─────────
