@@ -1,6 +1,6 @@
 # Story 18.3: rmcp 3.9 and the audit ignores
 
-Status: ready-for-dev
+Status: done
 
 GitHub issue: #681 (the rmcp half; the sqlx half stays open). Covers: maintenance (NFR46 kept). Epic 18; ships in v1.28.0. Sprint-status key: `18-3-rmcp-upgrade-and-audit-ignores`.
 
@@ -33,11 +33,11 @@ rmcp 3.9.0 (2026-11-05) release notes, server-relevant items: stricter HTTP medi
 
 ## Tasks / Subtasks
 
-- [ ] T1 — bump rmcp, `cargo update -p rmcp` (AC1)
-- [ ] T2 — adapt `src/mcp/transport.rs` if needed (AC1, D2)
-- [ ] T3 — `.cargo/audit.toml` (AC2)
-- [ ] T4 — MCP suites, then full gates (AC3, AC4)
-- [ ] T5 — #681 comment (AC5)
+- [x] T1 — bump rmcp, `cargo update -p rmcp` (AC1)
+- [x] T2 — adapt `src/mcp/transport.rs` if needed (AC1, D2)
+- [x] T3 — `.cargo/audit.toml` (AC2)
+- [x] T4 — MCP suites, then full gates (AC3, AC4)
+- [x] T5 — #681 comment (AC5)
 
 ## Dev Notes
 
@@ -53,6 +53,21 @@ rmcp 3.9.0 (2026-11-05) release notes, server-relevant items: stricter HTTP medi
 
 ### Agent Model Used
 
+Claude Opus 5.5 (`claude-opus-5-5`)
+
 ### Completion Notes List
 
+- **T1/T2** — `rmcp = "=3.9.0"` (same features, default features off); `cargo update -p rmcp` brings `sha2` 0.11 / `digest` 0.11 / `hybrid-array` as rmcp's own new dependencies (sha2 0.10 stays for mybibli). **No source change**: rmcp 3.9 compiles against `src/mcp/transport.rs` as is; clippy `--all-targets -D warnings` clean. rmcp still named only in `transport.rs` (the confinement unit test is in the suite).
+- **T3** — RUSTSEC-2026-0462 removed from `.cargo/audit.toml`; RUSTSEC-2026-0459 kept, its comment now points at the sqlx 0.9 upgrade of the major-upgrade epic. `cargo audit`: no vulnerability.
+- **D3 (`Accept` strictness)** — nothing to align: the MCP integration tests (`tests/mcp_*.rs`, `tests/common/mcp.rs`) and the MCP E2E specs pass unchanged under 3.9.
+- **T4 — Gates.** `cargo sqlx prepare --check` green. First full `cargo test` killed by systemd-oomd at 13:27 (station-wide pressure 75 %, a kesh job killed at the same time) — exit 137, not a test failure; re-run once alone, killed again by oomd while linking the test binaries (10 G peak, swap already loaded by another project); third run with a lighter build — `cargo test --no-run` on one job with `CARGO_PROFILE_{DEV,TEST}_DEBUG=line-tables-only`, then the run — **2727 passed, 0 failed**. E2E on the rebuilt stack, `CI=true --workers=2`: 475 passed, 1 flaky (`shelving.spec.ts:193`, known #499), 2 skipped.
+- **T5** — #681 commented; stays open for RUSTSEC-2026-0459.
+
 ### File List
+
+- `Cargo.toml`, `Cargo.lock`, `.cargo/audit.toml`, `CLAUDE.md` (MCP layer: `=3.9.0`)
+- `_bmad-output/implementation-artifacts/18-3-rmcp-upgrade-and-audit-ignores.md`, `sprint-status.yaml`
+
+### Review Findings
+
+Code review 2026-11-12, inline (the diff is one `Cargo.toml` line, one removed audit ignore and a comment; a three-layer review would have nothing to bite): rmcp features unchanged; confinement test green; no stale `=3.8.0` left except `CLAUDE.md` — fixed; the remaining ignore's comment is accurate (`cargo tree --target all -i libsqlite3-sys -e all` still empty). No finding of any severity. Review clean.
