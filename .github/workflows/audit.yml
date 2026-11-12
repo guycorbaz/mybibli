@@ -50,7 +50,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch @ 2026-10-16
         with:
-          toolchain: stable
+          toolchain: 1.99.1
 
       # cargo-audit is installed rather than pulled as a third-party
       # action: this job exists to reduce supply-chain exposure, so it

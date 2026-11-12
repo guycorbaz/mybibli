@@ -1,0 +1,8 @@
+# Story 18-2 (#506) — the one Rust version of the project: local builds
+# (rustup honours this file), CI (`dtolnay/rust-toolchain` `toolchain:`)
+# and the Dockerfile builder image use the same one; tests/toolchain_pins.rs
+# fails when they differ. Bump all three together.
+[toolchain]
+channel = "1.99.1"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

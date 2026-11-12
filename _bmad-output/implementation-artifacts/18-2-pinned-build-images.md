@@ -1,6 +1,6 @@
 # Story 18.2: Pinned build images
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #506 (closes). Covers: maintenance. Epic 18; ships in v1.28.0. Sprint-status key: `18-2-pinned-build-images`.
 
@@ -38,12 +38,12 @@ Out of scope: the MariaDB image (`mariadb:10.11` — the database question is on
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Dockerfile stages pinned (AC1)
-- [ ] T2 — `rust-toolchain.toml`; CI toolchain inputs (AC2)
-- [ ] T3 — root `package.json` + lockfile tracked, exact Tailwind; `npm ci` in the `css` stage; `.gitignore` (AC3)
-- [ ] T4 — alignment test (AC4)
-- [ ] T5 — `CLAUDE.md` inventory (AC5)
-- [ ] T6 — gates: clippy, unit, image build, E2E (AC6)
+- [x] T1 — Dockerfile stages pinned (AC1)
+- [x] T2 — `rust-toolchain.toml`; CI toolchain inputs (AC2)
+- [x] T3 — root `package.json` + lockfile tracked, exact Tailwind; `npm ci` in the `css` stage; `.gitignore` (AC3)
+- [x] T4 — alignment test (AC4)
+- [x] T5 — `CLAUDE.md` inventory (AC5)
+- [x] T6 — gates: clippy, unit, image build, E2E (AC6)
 
 ## Dev Notes
 
@@ -64,6 +64,21 @@ Out of scope: the MariaDB image (`mariadb:10.11` — the database question is on
 
 ### Agent Model Used
 
+Claude Opus 5.5 (`claude-opus-5-5`)
+
 ### Completion Notes List
 
+- **T1** — `Dockerfile`: `rust:1.99.1-alpine3.24`, `node:24.22.3-alpine3.24`, `alpine:3.24.4` (latest tags on Docker Hub, 2026-11-12), with a header comment on why and how to bump. The build log shows each resolved to its digest (`rust@sha256:44819b27…`, `node@sha256:116b800c…`, `alpine@sha256:f59abe65…`).
+- **T2** — `rust-toolchain.toml` (`1.99.1`, clippy + rustfmt, minimal profile); `toolchain: 1.99.1` in `_gates.yml` (both jobs, step renamed "Install Rust 1.99.1") and `audit.yml`. Locally rustup switched the repository to 1.99.1 (`rustup show active-toolchain` → "overridden by rust-toolchain.toml"). Note: the first automatic install left `clippy` registered but without binaries (`cargo clippy` → "not applicable to the toolchain"); `rustup component remove` + `add` fixed it — a one-off workstation glitch, not a repository issue.
+- **T3** — root `package.json` (exact `4.3.5` for both Tailwind packages, `private`) and `package-lock.json` tracked; `.gitignore`: `/package.json` line removed, `!/package-lock.json` added with a comment. Dockerfile `css` stage: `COPY package.json package-lock.json ./` + `RUN npm ci`; the build log shows `tailwindcss v4.3.5`.
+- **T4** — `tests/toolchain_pins.rs` (no DB): Rust version equal in `rust-toolchain.toml`, Dockerfile builder and every workflow `toolchain:` input; Node major of the `css` stage = `_gates.yml` `node-version`; every `FROM` has an exact `x.y.z` tag (no `latest`); Tailwind exact in `package.json` and installed by `npm ci`; parser helpers unit-tested. 5 passed.
+- **T5** — `CLAUDE.md` § "Where versions live".
+- **T6 — Gates.** clippy `--all-targets -D warnings` clean under 1.99.1; `cargo sqlx prepare --check` green; full `cargo test --no-fail-fast` (DB on 3307): 2727 passed, 0 failed; image rebuilt by `./scripts/e2e-reset.sh` from the pinned Dockerfile; E2E `CI=true --workers=2`: 475 passed, 1 flaky, 2 skipped. The flaky test is `form-refusals.spec.ts:54` (also flaky once on the 18-1 branch; untouched code) → issue #685 (`type:known-failure`).
+
 ### File List
+
+- `Dockerfile`, `rust-toolchain.toml` (new), `package.json` (new), `package-lock.json` (new), `.gitignore`
+- `.github/workflows/_gates.yml`, `.github/workflows/audit.yml`
+- `tests/toolchain_pins.rs` (new)
+- `CLAUDE.md`
+- `_bmad-output/implementation-artifacts/18-2-pinned-build-images.md`, `sprint-status.yaml`

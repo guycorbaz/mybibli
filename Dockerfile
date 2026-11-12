@@ -1,5 +1,11 @@
+# Story 18-2 (#506) — every stage is pinned to an exact tag, all on the
+# same Alpine minor, so two builds of one commit produce the same image.
+# The Rust version matches rust-toolchain.toml and the CI toolchain, the
+# Node major the CI's node-version (tests/toolchain_pins.rs checks both).
+# Bump them deliberately, together; see CLAUDE.md "Where versions live".
+
 # Stage 1: Build Rust binary
-FROM rust:alpine AS builder
+FROM rust:1.99.1-alpine3.24 AS builder
 RUN apk add musl-dev pkgconf openssl-dev openssl-libs-static
 WORKDIR /app
 COPY Cargo.toml Cargo.lock* ./
@@ -21,9 +27,12 @@ ENV MYBIBLI_BUILD_SHA=$MYBIBLI_BUILD_SHA
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Stage 2: Generate CSS
-FROM node:alpine AS css
+FROM node:24.22.3-alpine3.24 AS css
 WORKDIR /app
-RUN npm install tailwindcss @tailwindcss/cli
+# #506 — Tailwind at the exact version of the tracked root package.json
+# + package-lock.json, never "whatever npm resolves today".
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY static/css/input.css ./static/css/
 COPY templates/ ./templates/
 # Story 14-1 — the first-party JS modules build class strings too (the
@@ -33,7 +42,7 @@ COPY static/js/ ./static/js/
 RUN npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify
 
 # Stage 3: Runtime
-FROM alpine:latest
+FROM alpine:3.24.4
 RUN apk add --no-cache ca-certificates
 # CR #301 (v1.7.0): pre-create the log directory inside the image so a
 # fresh deployment doesn't need `mkdir -p` permission at runtime — the
