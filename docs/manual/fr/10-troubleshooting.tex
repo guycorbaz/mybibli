@@ -56,6 +56,19 @@ fréquente : vous avez tiré un tag d'image qui n'existe pas (faute
 de frappe) et Docker est retombé sur un vieux tag obsolète.
 \texttt{docker compose pull} puis redémarrez.
 
+\section{Une action ne fait rien}\label{sec:troubleshoot-action-silent}
+
+\subsection*{Symptôme : un bouton ou un formulaire semble sans effet}
+
+Depuis la 1.28.0, chaque page a une zone de messages en haut de son
+contenu : quand une action échoue, la raison s'y affiche dans votre
+langue (par exemple « Introuvable — l'élément a peut-être été déplacé
+ou supprimé » quand il a été supprimé dans un autre onglet), et les
+lecteurs d'écran l'annoncent. Remontez la page si l'action se trouvait
+en bas d'une longue page. Si rien n'apparaît du tout, rechargez la
+page : votre session a peut-être expiré, ou la connexion a été coupée
+(un avis plein écran l'indique alors).
+
 \section{Impossible de se connecter}
 
 \subsection*{Symptôme : « Invalid credentials » sur une installation 1.0.x neuve}
