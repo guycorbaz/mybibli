@@ -92,6 +92,41 @@ test.describe("Story 8-4 — Admin Reference Data", () => {
     ).toHaveCount(0, { timeout: 10000 });
   });
 
+  // Story 18-5 (#526) — a refused Add shows the server's message (not the
+  // generic "Server error (409)"), and the slot stays open with the name
+  // typed (HTMX still treats the answer as an error: inline-form.js does
+  // not close it). Rule #3: a refusal is a user scenario.
+  test("adding a genre that exists shows the server's refusal and keeps the form", async ({
+    page,
+  }) => {
+    await loginAs(page, "admin");
+    await page.goto("/admin?tab=reference_data");
+    const genre = uniqueSlug("RD-Taken");
+    const openAdd = page.getByRole("button", { name: /Add genre|Ajouter un genre/i });
+    const addSlot = page.locator("#admin-ref-genres-add");
+    const nameInput = addSlot.locator('input[name="name"]');
+
+    await openAdd.click();
+    await nameInput.fill(genre);
+    await addSlot.getByRole("button", { name: /Save|Enregistrer/i }).click();
+    await expect(
+      page.locator("#admin-ref-genres-list").getByText(genre, { exact: true }),
+    ).toBeVisible({ timeout: 10000 });
+
+    if (!(await addSlot.isVisible())) await openAdd.click();
+    await nameInput.fill(genre);
+    await addSlot.getByRole("button", { name: /Save|Enregistrer/i }).click();
+
+    const feedback = page.locator("#feedback-list");
+    await expect(feedback.locator(".feedback-entry").first()).toContainText(
+      new RegExp(`${genre}.*(already exists|existe déjà)`),
+      { timeout: 10000 },
+    );
+    await expect(feedback).not.toContainText(/Server error|Erreur serveur/i);
+    await expect(addSlot).toBeVisible();
+    await expect(nameInput).toHaveValue(genre);
+  });
+
   test("LocationNodeType rename cascades into storage_locations", async ({
     page,
   }) => {

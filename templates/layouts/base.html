@@ -65,6 +65,18 @@
        scroll-margin applies to every scroll container, so inner vertical
        scrollers reset it with `**:scroll-mt-0!`. #}
     <main id="main-content" class="scroll-mt-12 md:scroll-mt-14 lg:scroll-mt-0 **:scroll-mt-12 md:**:scroll-mt-14 lg:**:scroll-mt-0">
+        {# Story 18-5 (#526) — the default feedback region. Every AppError
+           and the CSRF rejection retarget to #feedback-list; a page without
+           one made every failed HTMX action silent. A page that places its
+           own region overrides this block with nothing — exactly one per
+           page, enforced by templates_audit::every_base_page_has_one_feedback_region.
+           Empty, it takes no height (`empty:`), and stays in the
+           accessibility tree so the live region announces what lands. #}
+        {% block feedback_region %}
+        <div class="max-w-4xl mx-auto px-4">
+            <div id="feedback-list" aria-live="polite" aria-relevant="additions" class="space-y-2 pt-4 empty:pt-0"></div>
+        </div>
+        {% endblock %}
         {% block content %}{% endblock %}
     </main>
     <footer class="text-center text-xs text-stone-600 dark:text-stone-400 py-3">
