@@ -151,6 +151,34 @@ test.describe("Story 17-2 — add a volume from the title page", () => {
     await expect(field).toBeFocused();
     await page.unroute(`**/title/${titleId}/volumes`);
 
+    // Story 18-5 — an AppError answer (HX-Retarget #feedback-list + one
+    // feedback entry): its own message shows instead of the generic line,
+    // and the code still comes back (HTMX keeps it an error, so the
+    // restore runs).
+    const label2 = singleLabel();
+    const serverEntry =
+      '<div class="p-3 border-l-4 rounded-r feedback-entry" role="status" data-feedback-variant="error">' +
+      '<p>Server-side refusal 18-5</p></div>';
+    await page.route(`**/title/${titleId}/volumes`, (route) =>
+      route.fulfill({
+        status: 400,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "HX-Retarget": "#feedback-list",
+          "HX-Reswap": "beforeend",
+        },
+        body: serverEntry,
+      }),
+    );
+    await field.fill("");
+    await simulateScan(page, FIELD, label2);
+    await expect(errors.first()).toContainText("Server-side refusal 18-5", { timeout: 10000 });
+    await expect(errors).toHaveCount(2);
+    await expect(page.locator("#feedback-list")).not.toContainText(/Server error \(400\)|Erreur serveur \(400\)/);
+    await expect(field).toHaveValue(label2);
+    await expect(field).toBeFocused();
+    await page.unroute(`**/title/${titleId}/volumes`);
+
     // Another control's request fails while something else holds focus:
     // the field is neither refilled nor focused (Rule #21).
     await field.fill("");
@@ -163,7 +191,7 @@ test.describe("Story 17-2 — add a volume from the title page", () => {
         { target: "#title-feedback" },
       );
     }, titleId);
-    await expect(errors).toHaveCount(2, { timeout: 10000 });
+    await expect(errors).toHaveCount(3, { timeout: 10000 });
     await expect(field).toHaveValue("");
     await expect(other).toBeFocused();
   });

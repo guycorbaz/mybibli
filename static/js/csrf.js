@@ -68,28 +68,6 @@
             evt.detail.isError = false;
         }
 
-        // Story 18-5 (#526) — an AppError answer: the server addressed a
-        // FeedbackEntry to `#feedback-list` (HX-Retarget, set by
-        // `AppError::IntoResponse` on every variant). HTMX 2.0 drops 4xx /
-        // 5xx bodies by default, so the retarget never applied and pages
-        // fell back to mybibli.js's generic "Server error (N)" line, losing
-        // the localized message the server wrote. Positive shape only: an
-        // error status, that exact retarget, a feedback entry in the body,
-        // and the region on the page. Modal Confirm errors keep their own
-        // path (ModalConfirmRetargetGuard strips the retarget). With
-        // `isError = false` the generic responseError line is not added.
-        if (
-            xhr.status >= 400 &&
-            !evt.detail.shouldSwap &&
-            xhr.getResponseHeader("HX-Retarget") === "#feedback-list" &&
-            typeof xhr.responseText === "string" &&
-            xhr.responseText.indexOf("feedback-entry") !== -1 &&
-            document.getElementById("feedback-list")
-        ) {
-            evt.detail.shouldSwap = true;
-            evt.detail.isError = false;
-        }
-
         // #37 — long-lived tabs detect a server-side session-row mint
         // (anonymous-session purge, soft-delete cleanup, expired-auth
         // cleanup post-#41) via `HX-Trigger: csrf-rotated` paired with

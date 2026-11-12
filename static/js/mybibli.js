@@ -152,8 +152,18 @@
             } catch (err) {
                 template = "";
             }
-            var message = template.replace("%{status}", String(status));
-            injectErrorFeedback(message);
+            // Story 18-5 (#526) — an AppError answer carries its own
+            // localized FeedbackEntry, addressed to #feedback-list; show it
+            // instead of the generic line. HTMX keeps treating the
+            // response as an error (no swap, no history, `failed` for
+            // afterRequest listeners, every responseError listener runs).
+            var entry = serverFeedbackEntry(e.detail.xhr);
+            if (entry) {
+                injectServerFeedback(entry);
+            } else {
+                var message = template.replace("%{status}", String(status));
+                injectErrorFeedback(message);
+            }
             restoreScanField(e);
         });
 
@@ -164,6 +174,31 @@
         // automatic recovery polling. Without removal, a network drop on
         // the catalog page would surface 3 concurrent "Connection lost"
         // UIs (overlay + this FeedbackEntry + search.js's red banner).
+    }
+
+    // Positive shape only: the server addressed the answer to
+    // #feedback-list (HX-Retarget, set by AppError::IntoResponse; stripped
+    // for modal Confirm requests, which show errors in the modal) and its
+    // body is exactly one `.feedback-entry` element. Anything else → null,
+    // and the caller falls back to the generic line.
+    function serverFeedbackEntry(xhr) {
+        if (!xhr || xhr.getResponseHeader("HX-Retarget") !== "#feedback-list") return null;
+        var body = typeof xhr.responseText === "string" ? xhr.responseText.trim() : "";
+        if (!body) return null;
+        var tpl = document.createElement("template");
+        tpl.innerHTML = body;
+        var content = tpl.content;
+        var el = content.firstElementChild;
+        if (content.childElementCount !== 1 || !el || !el.classList.contains("feedback-entry")) return null;
+        return el;
+    }
+
+    function injectServerFeedback(entry) {
+        var list = document.getElementById("feedback-list");
+        if (!list) return;
+        // Newest first, like the generic line and the catalog's scan results.
+        list.insertBefore(entry, list.firstChild);
+        if (window.htmx && typeof window.htmx.process === "function") window.htmx.process(entry);
     }
 
     function injectErrorFeedback(message) {

@@ -7,9 +7,10 @@
  * another tab, then "Delete" clicked on the stale page — the delete modal
  * request answers "not found", which must land next to the page content,
  * with no dialog opened and focus left on the button (Rule #21). And it
- * must be the server's message: HTMX drops 4xx bodies, so csrf.js opts an
- * AppError answer (HX-Retarget #feedback-list + a feedback entry) into the
- * swap; before that, only the generic "Server error (404)" line showed.
+ * must be the server's message: HTMX drops 4xx bodies, so mybibli.js's
+ * responseError handler inserts an AppError answer (HX-Retarget
+ * #feedback-list + one feedback entry); before that, only the generic
+ * "Server error (404)" line showed.
  *
  * From a blank browser; the spec uses its own series (Rule #23). It creates
  * a series, so its file name sorts after the specs that assume none exists
