@@ -1,4 +1,12 @@
-@import "tailwindcss";
+/*
+ * #695 review — `source(none)`: no automatic source detection. A local run
+ * from the repo root would otherwise scan every directory while the Docker
+ * `css` stage only sees what it copies; with an explicit list, both builds
+ * read exactly the sources declared below (`tests/tailwind_sources.rs`
+ * checks each one is copied into that stage).
+ */
+@import "tailwindcss" source(none);
+@source "../../templates";
 
 /*
  * Story 14-1 — class strings built in first-party JS (the session-timeout
@@ -12,6 +20,19 @@
 @source "../js";
 @source not "../js/htmx.min.js";
 @source not "../js/vendor";
+
+/*
+ * #695 — HTML built in Rust carries utility classes too (the /locations
+ * tree rows, feedback entries, …). A local build run from the repo root
+ * found them through automatic source detection; the Docker CSS stage,
+ * whose context held only templates/ and static/js/, did not, so
+ * `group-hover:opacity-100` was missing from the shipped output.css and the
+ * tree's controls never showed. Sourced explicitly, and copied into that
+ * stage (`tests/tailwind_sources.rs` checks both agree).
+ */
+@source "../../src";
+@source not "../../src/templates_audit.rs";
+@source not "../../src/**/*_tests.rs";
 
 /*
  * Story 14-1 review — `dark:` follows the `dark` class that

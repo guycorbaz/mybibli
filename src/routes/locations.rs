@@ -180,6 +180,18 @@ fn render_node_html(
     render_node_at_depth(node, html, node_types, next_lcode, 0, can_edit, loc, csrf_token);
 }
 
+/// #695 — the row's add / edit / delete controls. They used to be
+/// `opacity-0` until hover: invisible on a touch screen (no hover) and while
+/// keyboard-focused, and — `group-hover:opacity-100` living only in this Rust
+/// string, which the Docker CSS stage never scanned — invisible everywhere in
+/// the shipped image. Now always shown, dimmed to 75 % (the glyphs are colour
+/// emoji, whose colours CSS does not set: dimmed, never hidden), at full
+/// opacity on row hover, on keyboard focus anywhere in the row and whenever a
+/// touch pointer is present (`any-pointer-coarse`, hybrid devices included). The classes are only
+/// generated because `static/css/input.css` sources `src/` (checked by
+/// `tests/tailwind_sources.rs`).
+pub(crate) const TREE_ROW_CONTROLS_CLASS: &str = "ml-auto flex items-center gap-1 opacity-75 group-hover:opacity-100 group-focus-within:opacity-100 any-pointer-coarse:opacity-100 transition-opacity";
+
 #[allow(clippy::too_many_arguments)]
 fn render_node_at_depth(
     node: &TreeNode,
@@ -253,7 +265,7 @@ fn render_node_at_depth(
     let (mutation_controls, child_form) = if can_edit {
         (
             format!(
-                r#"<span class="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                r#"<span class="{TREE_ROW_CONTROLS_CLASS}">
 <button type="button" data-locations-toggle="{form_id}" class="p-1 text-stone-600 dark:text-stone-400 hover:text-green-600 dark:hover:text-green-400" aria-label="Add child under {name}">➕</button>
 <a href="/locations/{id}/edit" class="p-1 text-stone-600 dark:text-stone-400 hover:text-indigo-600 dark:hover:text-indigo-400" aria-label="Edit {name}">✏️</a>
 <button type="button" hx-delete="/locations/{id}" hx-confirm="Delete {name} ({label})?" hx-target="closest [role=treeitem]" hx-swap="outerHTML" class="p-1 text-stone-600 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400" aria-label="Delete {name}">🗑️</button>
@@ -337,7 +349,9 @@ fn render_node_at_depth(
 
     if has_children {
         html.push_str(&format!(
-            r#"<div class="tree-children" id="tree-children-{id}">"#,
+            // A nested `treeitem` must sit in a `group` (ARIA tree pattern;
+            // axe `aria-required-parent`).
+            r#"<div class="tree-children" role="group" id="tree-children-{id}">"#,
             id = node.location.id,
         ));
         for child in &node.children {
@@ -636,6 +650,24 @@ mod tests {
     use super::*;
     use askama::Template;
 
+    /// A non-organizational location (test fixture).
+    fn loc(id: u64, parent_id: Option<u64>, name: &str, node_type: &str, label: &str) -> LocationModel {
+        LocationModel {
+            id,
+            parent_id,
+            name: name.to_string(),
+            node_type: node_type.to_string(),
+            label: label.to_string(),
+            is_organizational: false,
+        }
+    }
+
+    /// The tree of one root location "Salon", rendered with the given rights and token.
+    fn render_salon(id: u64, can_edit: bool, csrf_token: &str) -> String {
+        let tree = build_tree(&[loc(id, None, "Salon", "room", "L0001")], &HashMap::new());
+        render_tree_html(&tree, &[(1, "room".to_string())], "L0002", can_edit, "en", csrf_token)
+    }
+
     /// Fix #296 — `<select name="parent_id"><option value="">None</option>...
     /// </select>` sends `parent_id=` (empty string) when the user picks the
     /// root-location option. The `deserialize_optional_u64` wiring on
@@ -682,14 +714,7 @@ mod tests {
 
     #[test]
     fn test_build_tree_single_root() {
-        let locations = vec![LocationModel {
-            id: 1,
-            parent_id: None,
-            name: "Maison".to_string(),
-            node_type: "Room".to_string(),
-            label: "L0001".to_string(),
-            is_organizational: false,
-        }];
+        let locations = vec![loc(1, None, "Maison", "Room", "L0001")];
         let tree = build_tree(&locations, &HashMap::new());
         assert_eq!(tree.len(), 1);
         assert_eq!(tree[0].location.name, "Maison");
@@ -699,30 +724,9 @@ mod tests {
     #[test]
     fn test_build_tree_nested() {
         let locations = vec![
-            LocationModel {
-                id: 1,
-                parent_id: None,
-                name: "Maison".to_string(),
-                node_type: "Room".to_string(),
-                label: "L0001".to_string(),
-                is_organizational: false,
-            },
-            LocationModel {
-                id: 2,
-                parent_id: Some(1),
-                name: "Salon".to_string(),
-                node_type: "Room".to_string(),
-                label: "L0002".to_string(),
-                is_organizational: false,
-            },
-            LocationModel {
-                id: 3,
-                parent_id: Some(2),
-                name: "Étagère 1".to_string(),
-                node_type: "Shelf".to_string(),
-                label: "L0003".to_string(),
-                is_organizational: false,
-            },
+            loc(1, None, "Maison", "Room", "L0001"),
+            loc(2, Some(1), "Salon", "Room", "L0002"),
+            loc(3, Some(2), "Étagère 1", "Shelf", "L0003"),
         ];
         let mut counts = HashMap::new();
         counts.insert(3, 5u64);
@@ -743,24 +747,8 @@ mod tests {
     /// produced by Rust code. Keep this test until #48 lands.
     #[test]
     fn render_tree_html_includes_csrf_token_in_inline_form() {
-        let locations = vec![LocationModel {
-            id: 42,
-            parent_id: None,
-            name: "Salon".to_string(),
-            node_type: "room".to_string(),
-            label: "L0001".to_string(),
-            is_organizational: false,
-        }];
-        let tree = build_tree(&locations, &HashMap::new());
         let token = "test-csrf-token-abcdef0123456789";
-        let html = render_tree_html(
-            &tree,
-            &[(1, "room".to_string())],
-            "L0002",
-            /* can_edit */ true,
-            "en",
-            token,
-        );
+        let html = render_salon(42, true, token);
         let needle = format!(r#"<input type="hidden" name="_csrf_token" value="{token}">"#);
         assert!(
             html.contains(&needle),
@@ -769,27 +757,29 @@ mod tests {
         );
     }
 
+    /// #695 — the add / edit / delete controls are never hidden at rest:
+    /// dimmed, and full opacity on row hover, focus or a coarse pointer.
+    #[test]
+    fn tree_row_controls_are_visible_at_rest() {
+        let html = render_salon(42, true, "t");
+        assert!(html.contains(&format!(r#"<span class="{TREE_ROW_CONTROLS_CLASS}">"#)));
+        let classes: Vec<&str> = TREE_ROW_CONTROLS_CLASS.split_whitespace().collect();
+        assert!(!classes.contains(&"opacity-0"), "controls must not be invisible at rest");
+        for needed in [
+            "opacity-75",
+            "group-hover:opacity-100",
+            "group-focus-within:opacity-100",
+            "any-pointer-coarse:opacity-100",
+        ] {
+            assert!(classes.contains(&needed), "missing {needed}");
+        }
+    }
+
     /// When the viewer cannot edit, no form is rendered — the CSRF token
     /// should NOT leak into the read-only HTML.
     #[test]
     fn render_tree_html_omits_csrf_token_when_read_only() {
-        let locations = vec![LocationModel {
-            id: 42,
-            parent_id: None,
-            name: "Salon".to_string(),
-            node_type: "room".to_string(),
-            label: "L0001".to_string(),
-            is_organizational: false,
-        }];
-        let tree = build_tree(&locations, &HashMap::new());
-        let html = render_tree_html(
-            &tree,
-            &[(1, "room".to_string())],
-            "L0002",
-            /* can_edit */ false,
-            "en",
-            "should-not-appear",
-        );
+        let html = render_salon(42, false, "should-not-appear");
         assert!(
             !html.contains("_csrf_token"),
             "no form, no token: read-only tree leaked CSRF token in HTML"
@@ -807,23 +797,7 @@ mod tests {
     /// goes through html_escape").
     #[test]
     fn render_tree_html_escapes_csrf_token() {
-        let locations = vec![LocationModel {
-            id: 1,
-            parent_id: None,
-            name: "Salon".to_string(),
-            node_type: "room".to_string(),
-            label: "L0001".to_string(),
-            is_organizational: false,
-        }];
-        let tree = build_tree(&locations, &HashMap::new());
-        let html = render_tree_html(
-            &tree,
-            &[(1, "room".to_string())],
-            "L0002",
-            true,
-            "en",
-            r#"a"b<c>"#,
-        );
+        let html = render_salon(1, true, r#"a"b<c>"#);
         assert!(html.contains(r#"value="a&quot;b&lt;c&gt;""#));
         assert!(!html.contains(r#"value="a"b<c>""#));
     }
@@ -835,22 +809,8 @@ mod tests {
     #[test]
     fn render_tree_html_emits_toggle_and_children_container_for_parents() {
         let locations = vec![
-            LocationModel {
-                id: 1,
-                parent_id: None,
-                name: "Salon".to_string(),
-                node_type: "room".to_string(),
-                label: "L0001".to_string(),
-                is_organizational: false,
-            },
-            LocationModel {
-                id: 2,
-                parent_id: Some(1),
-                name: "Étagère".to_string(),
-                node_type: "shelf".to_string(),
-                label: "L0002".to_string(),
-                is_organizational: false,
-            },
+            loc(1, None, "Salon", "room", "L0001"),
+            loc(2, Some(1), "Étagère", "shelf", "L0002"),
         ];
         let tree = build_tree(&locations, &HashMap::new());
         let html = render_tree_html(
@@ -869,9 +829,16 @@ mod tests {
             "parent's toggle should target its children container"
         );
         assert!(
-            html.contains(r#"id="tree-children-1""#),
-            "parent should wrap its children in a tree-children container"
+            html.contains(r#"<div class="tree-children" role="group" id="tree-children-1">"#),
+            "parent should wrap its children in a tree-children group"
         );
+        // The expansion state lives on the toggle button only (disclosure):
+        // the tree has no roving focus, so a treeitem state would be
+        // announced twice and go stale when the last child is deleted.
+        for tag in html.split('<').filter(|t| t.contains(r#"role="treeitem""#)) {
+            let tag = tag.split('>').next().unwrap_or(tag);
+            assert!(!tag.contains("aria-expanded"), "treeitem carries aria-expanded: {tag}");
+        }
 
         // The leaf (id=2) has no children → no toggle button, no container.
         assert!(
@@ -888,14 +855,7 @@ mod tests {
     fn test_location_detail_template_renders() {
         let template = LocationDetailTemplate {
             base: crate::utils::test_base_context("anonymous", "location", crate::config::AppSettings::default().session_timeout_secs),
-            location: LocationModel {
-                id: 1,
-                parent_id: None,
-                name: "Salon".to_string(),
-                node_type: "room".to_string(),
-                label: "L0001".to_string(),
-                is_organizational: false,
-            },
+            location: loc(1, None, "Salon", "room", "L0001"),
             breadcrumb_segments: vec![(1, "Salon".to_string())],
             volumes: crate::models::PaginatedList::new(vec![], 1, 0, None, None, None),
             contents_title: "Shelf contents".to_string(),

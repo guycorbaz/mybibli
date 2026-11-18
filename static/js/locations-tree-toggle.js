@@ -56,18 +56,20 @@
         return toggle.querySelector(".tree-toggle-icon");
     }
 
-    function collapse(toggle, target) {
-        target.classList.add("hidden");
-        toggle.setAttribute("aria-expanded", "false");
+    // The expansion state is stated on the toggle button (disclosure).
+    function setExpanded(toggle, target, expanded) {
+        target.classList.toggle("hidden", !expanded);
+        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
         const icon = findIconSpan(toggle);
-        if (icon) icon.textContent = ICON_COLLAPSED;
+        if (icon) icon.textContent = expanded ? ICON_EXPANDED : ICON_COLLAPSED;
+    }
+
+    function collapse(toggle, target) {
+        setExpanded(toggle, target, false);
     }
 
     function expand(toggle, target) {
-        target.classList.remove("hidden");
-        toggle.setAttribute("aria-expanded", "true");
-        const icon = findIconSpan(toggle);
-        if (icon) icon.textContent = ICON_EXPANDED;
+        setExpanded(toggle, target, true);
     }
 
     function nodeIdFromTargetId(targetId) {
