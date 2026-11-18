@@ -14,6 +14,17 @@
 @source not "../js/vendor";
 
 /*
+ * #695 — HTML built in Rust carries utility classes too (the /locations
+ * tree rows, feedback entries, …). A local build run from the repo root
+ * found them through automatic source detection; the Docker CSS stage,
+ * whose context held only templates/ and static/js/, did not, so
+ * `group-hover:opacity-100` was missing from the shipped output.css and the
+ * tree's controls never showed. Sourced explicitly, and copied into that
+ * stage (`tests/tailwind_sources.rs` checks both agree).
+ */
+@source "../../src";
+
+/*
  * Story 14-1 review — `dark:` follows the `dark` class that
  * static/js/theme.js puts on <html> before first paint (the stored choice,
  * else the OS preference), so the theme toggle switches every utility.

@@ -199,6 +199,38 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     expect(options).toContain("Box");
   });
 
+  // #695 regression — the row's add / edit / delete controls are visible at
+  // rest (dimmed), at full opacity on hover and on keyboard focus. Computed
+  // opacity, because Playwright's toBeVisible() treats opacity 0 as visible —
+  // and the E2E stack is the Docker image, where the bug lived.
+  test("tree row controls are visible at rest, full on hover and focus", async ({ page }) => {
+    await page.goto("/locations");
+    await page.locator("summary").filter({ hasText: /add root/i }).click();
+    await page.locator("#new-name").fill("LO-Controls695");
+    await page.locator("#new-lcode").fill("L5695");
+    await page.locator("#add-root-submit").click();
+    await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
+
+    const row = page
+      .locator('[role="treeitem"] > div')
+      .filter({ hasText: "LO-Controls695" })
+      .first();
+    const editLink = row.locator('a[aria-label="Edit LO-Controls695"]');
+    const controls = editLink.locator("xpath=..");
+    const opacity = () => controls.evaluate((el) => Number(getComputedStyle(el).opacity));
+
+    await page.mouse.move(0, 0);
+    await expect.poll(opacity).toBeGreaterThan(0.3);
+    await expect.poll(opacity).toBeLessThan(1);
+
+    await row.hover();
+    await expect.poll(opacity).toBe(1);
+
+    await page.mouse.move(0, 0);
+    await editLink.focus();
+    await expect.poll(opacity).toBe(1);
+  });
+
   // AC4/AC5: Delete guards tested via API (HTMX delete returns error HTML)
   // These are harder to test in E2E without seeded data with volumes/children,
   // but the unit tests cover the service logic. The E2E verifies the UI flow.

@@ -11,13 +11,12 @@
 //! `stable` (it builds only cargo-audit, whose minimum Rust may move past
 //! our pin) and says so with `RUSTUP_TOOLCHAIN: stable`.
 
+mod common;
+
 use std::fs;
 use std::path::Path;
 
-fn read(rel: &str) -> String {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(rel);
-    fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
-}
+use common::repo::read;
 
 /// Every workflow file, by repository-relative path.
 fn workflows() -> Vec<(String, String)> {

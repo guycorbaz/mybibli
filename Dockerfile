@@ -43,6 +43,8 @@ COPY templates/ ./templates/
 # session and connection toasts): Tailwind must see them, as it does in a
 # local build run from the repo root. Sourced explicitly in input.css.
 COPY static/js/ ./static/js/
+# #695 — and so does HTML built in Rust (the /locations tree rows).
+COPY src/ ./src/
 RUN npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify
 
 # Stage 3: Runtime
