@@ -67,7 +67,7 @@ Found while preparing the story:
 - `#feedback-list` exists on every base page since story 18-5 (`templates_audit::every_base_page_has_one_feedback_region`).
 - Existing E2E to update: `locations.spec.ts:159` (accepts the browser `confirm()`), `:328` (#457 case clicks `button[hx-delete^="/locations/"]`), `:202` (#695 visibility — Librarian now sees two controls, Admin three). Use the "really seen" check only if 19-2's helper has landed; otherwise keep the computed-opacity assertion already there.
 - Rule #23: assert only on locations the spec creates. Rule #21: focus after the modal closes.
-- A3 practice (retro v1.28.1): D2 (where the success message lands, the row disappearing), D3 (refusal inside the modal) and D4 (delete hidden from Librarians) change what users see — confirmed by the project lead before the first review pass.
+- A3 practice (retro v1.28.1): D2 (where the success message lands, the row disappearing), D3 (refusal inside the modal) and D4 (delete hidden from Librarians) change what users see — **confirmed by the project lead on 2026-11-18** (D1 modal, D2 success entry + row removed, D3 refusal inside the modal, D4 delete hidden from Librarians).
 - `mem-guard` for every heavy command; one sub-agent at a time (station shared with kesh).
 
 ### References
