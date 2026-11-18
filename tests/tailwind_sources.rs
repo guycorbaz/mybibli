@@ -38,9 +38,12 @@ fn tailwind_sources(css: &str) -> Vec<String> {
         .collect()
 }
 
-/// The sources of the shell-form `COPY` lines of the Dockerfile stage named
-/// `css` (options such as `--chown=` skipped, trailing `/` and leading `./`
-/// removed; `.` stays `.`).
+/// The paths the shell-form `COPY` lines of the Dockerfile stage named `css`
+/// put **at the same place** in the stage as in the repository — what
+/// Tailwind, run from the stage's working directory, can read under its
+/// repository-relative `@source` paths. `COPY src/ ./src/` counts as `src`;
+/// `COPY src/ ./rust/` counts for nothing; `COPY . .` as `.` (options such
+/// as `--chown=` skipped, trailing `/` and leading `./` removed).
 fn css_stage_copies(dockerfile: &str) -> Vec<String> {
     let mut in_css = false;
     let mut out = Vec::new();
@@ -50,15 +53,23 @@ fn css_stage_copies(dockerfile: &str) -> Vec<String> {
             continue;
         }
         if in_css && let Some(rest) = line.strip_prefix("COPY ") {
-            let args: Vec<&str> = rest.split_whitespace().filter(|a| !a.starts_with("--")).collect();
-            for src in args.iter().rev().skip(1) {
-                let src = src.trim_end_matches('/');
-                let src = src.strip_prefix("./").unwrap_or(src);
-                out.push(if src.is_empty() { ".".to_string() } else { src.to_string() });
+            let args: Vec<String> = rest
+                .split_whitespace()
+                .filter(|a| !a.starts_with("--"))
+                .map(normalize)
+                .collect();
+            if let Some((dst, srcs)) = args.split_last() {
+                out.extend(srcs.iter().filter(|s| *s == dst).cloned());
             }
         }
     }
     out
+}
+
+fn normalize(path: &str) -> String {
+    let p = path.trim_end_matches('/');
+    let p = p.strip_prefix("./").unwrap_or(p);
+    if p.is_empty() || p == "." { ".".to_string() } else { p.to_string() }
 }
 
 /// Whether a source path is inside one of the copied paths.
@@ -97,8 +108,9 @@ fn source_resolution_and_stage_parsing() {
         tailwind_sources("@source \"../js\";\n@source not \"../js/vendor\";\n@source \"../../src\";"),
         vec!["static/js".to_string(), "src".to_string()]
     );
-    let df = "FROM rust AS builder\nCOPY src/ ./src/\nFROM node AS css\nCOPY templates/ ./templates/\nCOPY --chown=node a ./b/ ./\nFROM alpine\nCOPY x/ ./x/";
-    assert_eq!(css_stage_copies(df), vec!["templates", "b", "a"]);
+    let df = "FROM rust AS builder\nCOPY src/ ./src/\nFROM node AS css\nCOPY templates/ ./templates/\nCOPY --chown=node static/js/ ./static/js/\nCOPY src/ ./rust/\nCOPY package.json package-lock.json ./\nFROM alpine\nCOPY x/ ./x/";
+    assert_eq!(css_stage_copies(df), vec!["templates", "static/js"]);
+    assert_eq!(css_stage_copies("FROM node AS css\nCOPY . ."), vec!["."]);
     let copies = vec!["static/js".to_string(), "src".to_string()];
     assert!(is_copied("static/js/foo.js", &copies));
     assert!(is_copied("src", &copies));

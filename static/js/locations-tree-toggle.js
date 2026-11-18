@@ -56,14 +56,10 @@
         return toggle.querySelector(".tree-toggle-icon");
     }
 
-    // #695 review — the expansion state is stated on the toggle and on its
-    // treeitem (ARIA tree pattern, with the `role="group"` children).
+    // The expansion state is stated on the toggle button (disclosure).
     function setExpanded(toggle, target, expanded) {
         target.classList.toggle("hidden", !expanded);
-        const value = expanded ? "true" : "false";
-        toggle.setAttribute("aria-expanded", value);
-        const item = toggle.closest('[role="treeitem"]');
-        if (item) item.setAttribute("aria-expanded", value);
+        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
         const icon = findIconSpan(toggle);
         if (icon) icon.textContent = expanded ? ICON_EXPANDED : ICON_COLLAPSED;
     }

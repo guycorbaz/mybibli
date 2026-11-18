@@ -31,6 +31,8 @@
  * stage (`tests/tailwind_sources.rs` checks both agree).
  */
 @source "../../src";
+@source not "../../src/templates_audit.rs";
+@source not "../../src/**/*_tests.rs";
 
 /*
  * Story 14-1 review — `dark:` follows the `dark` class that

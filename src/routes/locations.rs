@@ -330,11 +330,8 @@ fn render_node_at_depth(
         r#"<span class="w-6" aria-hidden="true"></span>"#.to_string()
     };
 
-    // ARIA tree pattern: a parent treeitem states whether its group is
-    // shown; `locations-tree-toggle.js` keeps it in step with the toggle.
-    let expanded_attr = if has_children { r#" aria-expanded="true""# } else { "" };
     html.push_str(&format!(
-        r#"<div role="treeitem"{expanded_attr} class="{indent_class}" data-tree-node-id="{id}">
+        r#"<div role="treeitem" class="{indent_class}" data-tree-node-id="{id}">
 <div class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 group">
 {toggle_html}
 <a href="/location/{id}" class="flex items-center gap-2 flex-1 min-w-0 no-underline">
@@ -834,14 +831,10 @@ mod tests {
             html.contains(r#"<div class="tree-children" role="group" id="tree-children-1">"#),
             "parent should wrap its children in a tree-children group"
         );
-        assert!(
-            html.contains(r#"<div role="treeitem" aria-expanded="true" class="tree-indent-0" data-tree-node-id="1">"#),
-            "a parent treeitem states its expansion"
-        );
-        assert!(
-            html.contains(r#"<div role="treeitem" class="tree-indent-1" data-tree-node-id="2">"#),
-            "a leaf treeitem carries no aria-expanded"
-        );
+        // The expansion state lives on the toggle button only (disclosure):
+        // the tree has no roving focus, so a treeitem state would be
+        // announced twice and go stale when the last child is deleted.
+        assert!(!html.contains(r#"role="treeitem" aria-expanded"#));
 
         // The leaf (id=2) has no children → no toggle button, no container.
         assert!(

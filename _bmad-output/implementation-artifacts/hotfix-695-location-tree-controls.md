@@ -16,14 +16,15 @@ The controls are built in Rust (`src/routes/locations.rs::render_node_at_depth`)
 
 ## Decisions
 
-- **D1 — declared sources only, the same everywhere.** `input.css` imports Tailwind with `source(none)` and declares `templates`, `static/js` and `src` (`@source "../../src"` new); the `css` stage gains `COPY src/ ./src/`. A local build and the image now read the same set (measured: identical class lists). `tests/tailwind_sources.rs` checks `source(none)`, the three sources, and that every positive `@source` path is inside a path the `css` stage copies — the next source added cannot repeat the bug.
+- **D1 — declared sources only, the same everywhere.** `input.css` imports Tailwind with `source(none)` and declares `templates`, `static/js` and `src` (`@source "../../src"` new); the `css` stage gains `COPY src/ ./src/`. A local build and the image now read the same set (measured: identical class lists). `tests/tailwind_sources.rs` checks `source(none)`, the three sources, and that every positive `@source` path is inside a path the `css` stage copies **to the same place** (source = destination: Tailwind reads the stage's tree) — the next source added cannot repeat the bug.
 - **D2 — controls always shown, dimmed** (user's choice, 2026-11-18): `opacity-75` (review: 60 % put `text-stone-600` under 3:1, WCAG 1.4.11), full opacity on row hover (`group-hover:`), on keyboard focus anywhere in the row (`group-focus-within:`) and on a coarse pointer (`pointer-coarse:`). The class list is `locations::TREE_ROW_CONTROLS_CLASS`.
 - **D3 — side effect accepted.** Building the CSS with `src/` adds 52 selectors to the image's `output.css` (measured by building the old and new stage contexts). Those that matter are classes Rust-built HTML already carried and never got in the image — feedback entry colours (`bg-green-50`, `border-green-500`, `bg-yellow-50`, …), the title page cover height (`h-72`), hover colours of the tree controls, `no-underline` on tree rows. The layout-looking ones (`md:fixed`, `md:overflow-y-auto`, `overflow-scroll`, `collapse`, `ml-100`) come from comments and test strings; no element carries them.
 
 - **D4 — feedback suggestion contrast (found by the full E2E run).** With the colours of D3 in the image, a feedback entry's suggestion line (`text-stone-500` on `bg-blue-50`) fell to 4.4:1 (axe, contributor form). It moves to `text-stone-600` in both renderers (`utils::feedback_html_action`, `components/feedback_entry.html`).
 - **D5 — `role="group"` on the tree's children container.** A nested `treeitem` sat in a plain `div` (axe `aria-required-parent`), visible only when the database holds nested locations at the time the accessibility spec runs. One attribute on the same component; the unit test pins it.
 
-- **D6 — ARIA tree state (review).** With `role="group"` in place, a parent `treeitem` carries `aria-expanded`, kept in step with its toggle by `locations-tree-toggle.js` (one `setExpanded`).
+- **D6 — expansion state on the toggle only (review passes 1–2).** Pass 1 asked for `aria-expanded` on parent treeitems; pass 2 showed that without roving focus it is announced twice and goes stale when the last child is deleted. Kept as a disclosure: `aria-expanded` on the toggle button (one `setExpanded` in `locations-tree-toggle.js`); the full tree pattern → #700.
+- **D7 — Rust test files are not Tailwind sources.** `@source not` excludes `src/templates_audit.rs` and `src/**/*_tests.rs` (class names quoted in assertions, e.g. `md:fixed`).
 
 ## Acceptance Criteria
 
@@ -44,6 +45,7 @@ The controls are built in Rust (`src/routes/locations.rs::render_node_at_depth`)
 
 - Out of scope: the tree's delete button still carries an `hx-confirm=` and English `aria-label`s built in Rust (`templates_audit` only scans templates) → #698.
 - Review (high, 10 candidates): fixed 1 (`source(none)`), 2 (75 %), 4 (`aria-expanded`), 5 (`group-focus-within`), 6 (`#[path]` include of `repo.rs` only), 7 (option flags, prefix matching), 9 (wait for the row, not the URL), 10 (no comment line in sprint-status); 3 → #698; kept 8 (utilities generated from Rust comments match no element; the `css` layer rebuilding on a Rust edit costs seconds).
+- Review pass 2 (high, 8 candidates): fixed 1 (COPY destination checked), 3–4 (D6, → #700), 5 (`toolchain_pins` includes `repo.rs` only), 7 (D7); 6 (feedback markup in four copies) → #701; 2 (the delete control, now visible, still uses `hx-confirm` and English labels) → #698, decision for the release; kept 8 (JSON-form `COPY` / renamed stage fail loudly, never pass silently).
 - DRY: the location test fixtures of `locations.rs` go through `loc(…)` / `render_salon(…)`.
 
 ## Dev Agent Record
