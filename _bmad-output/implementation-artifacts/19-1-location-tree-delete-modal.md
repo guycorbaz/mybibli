@@ -1,6 +1,6 @@
 # Story 19.1: Location tree delete through the modal (closes #698)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -90,6 +90,8 @@ Claude Opus 5.5 (`claude-opus-5-5`)
 ### Debug Log References
 
 ### Completion Notes List
+
+- Gates on the final code (2026-11-18): full `cargo test` 108 binaries, 2 774 passed, 0 failed; `cargo clippy --all-targets -D warnings` clean; flake gate clean; Playwright `CI=true --workers=2` on a fresh stack: 488 passed, 2 skipped, 0 flaky.
 
 ### File List
 
