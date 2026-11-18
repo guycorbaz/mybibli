@@ -52,7 +52,11 @@ fn css_stage_copies(dockerfile: &str) -> Vec<String> {
             in_css = line.ends_with(" AS css") || line.ends_with(" as css");
             continue;
         }
-        if in_css && let Some(rest) = line.strip_prefix("COPY ") {
+        // `--from=<stage>` copies another stage's files, not the context's.
+        if in_css
+            && let Some(rest) = line.strip_prefix("COPY ")
+            && !rest.split_whitespace().any(|a| a.starts_with("--from"))
+        {
             let args: Vec<String> = rest
                 .split_whitespace()
                 .filter(|a| !a.starts_with("--"))
@@ -111,6 +115,7 @@ fn source_resolution_and_stage_parsing() {
     let df = "FROM rust AS builder\nCOPY src/ ./src/\nFROM node AS css\nCOPY templates/ ./templates/\nCOPY --chown=node static/js/ ./static/js/\nCOPY src/ ./rust/\nCOPY package.json package-lock.json ./\nFROM alpine\nCOPY x/ ./x/";
     assert_eq!(css_stage_copies(df), vec!["templates", "static/js"]);
     assert_eq!(css_stage_copies("FROM node AS css\nCOPY . ."), vec!["."]);
+    assert!(css_stage_copies("FROM node AS css\nCOPY --from=builder src/ ./src/").is_empty());
     let copies = vec!["static/js".to_string(), "src".to_string()];
     assert!(is_copied("static/js/foo.js", &copies));
     assert!(is_copied("src", &copies));

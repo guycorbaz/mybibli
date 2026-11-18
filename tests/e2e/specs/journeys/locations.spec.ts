@@ -205,7 +205,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
   // and the E2E stack is the Docker image, where the bug lived.
   test("tree row controls are visible at rest, full on hover and focus", async ({ page }) => {
     await page.goto("/locations");
-    await page.locator("summary").filter({ hasText: /add root/i }).click();
+    await page.locator("summary").filter({ hasText: /add root|ajouter/i }).click();
     await page.locator("#new-name").fill("LO-Controls695");
     await page.locator("#new-lcode").fill("L5695");
     await page.locator("#add-root-submit").click();

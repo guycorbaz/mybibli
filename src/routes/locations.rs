@@ -835,7 +835,10 @@ mod tests {
         // The expansion state lives on the toggle button only (disclosure):
         // the tree has no roving focus, so a treeitem state would be
         // announced twice and go stale when the last child is deleted.
-        assert!(!html.contains(r#"role="treeitem" aria-expanded"#));
+        for tag in html.split('<').filter(|t| t.contains(r#"role="treeitem""#)) {
+            let tag = tag.split('>').next().unwrap_or(tag);
+            assert!(!tag.contains("aria-expanded"), "treeitem carries aria-expanded: {tag}");
+        }
 
         // The leaf (id=2) has no children → no toggle button, no container.
         assert!(
