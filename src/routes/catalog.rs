@@ -67,9 +67,10 @@ pub(crate) fn context_banner_html(
 
 /// Error feedback with [Retry] and [Edit manually] action buttons.
 /// Used only for scan-related errors where retry makes sense.
-fn scan_error_feedback_html(message: &str, scan_code: &str) -> String {
-    let retry_label = html_escape(rust_i18n::t!("feedback.retry").as_ref());
-    let edit_label = html_escape(rust_i18n::t!("feedback.edit_manually").as_ref());
+fn scan_error_feedback_html(message: &str, scan_code: &str, loc: &str) -> String {
+    let retry_label = html_escape(rust_i18n::t!("feedback.retry", locale = loc).as_ref());
+    let edit_label = html_escape(rust_i18n::t!("feedback.edit_manually", locale = loc).as_ref());
+    let dismiss_label = html_escape(rust_i18n::t!("feedback.dismiss_aria", locale = loc).as_ref());
     let escaped_msg = html_escape(message);
     let escaped_code = html_escape(scan_code);
     let hx_vals = format!(r#"{{"code":"{}"}}"#, escaped_code);
@@ -88,7 +89,9 @@ fn scan_error_feedback_html(message: &str, scan_code: &str) -> String {
     // Dismiss button: `data-action="dismiss-feedback"` (handled by mybibli.js
     // delegated listener) instead of an inline `onclick` — strict CSP blocks
     // inline handlers even when the HTML was assembled in the backend.
-    html.push_str("</a></div></div><button type=\"button\" class=\"text-stone-500 dark:text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1\" aria-label=\"Dismiss\" data-action=\"dismiss-feedback\"><svg class=\"w-4 h-4\" viewBox=\"0 0 20 20\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z\" /></svg></button></div></div>");
+    html.push_str("</a></div></div><button type=\"button\" class=\"text-stone-500 dark:text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1\" aria-label=\"");
+    html.push_str(&dismiss_label);
+    html.push_str("\" data-action=\"dismiss-feedback\"><svg class=\"w-4 h-4\" viewBox=\"0 0 20 20\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z\" /></svg></button></div></div>");
     html
 }
 
@@ -472,7 +475,7 @@ pub async fn handle_scan(
                     Err(e) => {
                         tracing::error!(error = %e, code = %code, "ISBN scan failed");
                         let message = rust_i18n::t!("error.title.creation_failed").to_string();
-                        Ok(Html(scan_error_feedback_html(&message, &code)).into_response())
+                        Ok(Html(scan_error_feedback_html(&message, &code, loc)).into_response())
                     }
                 }
             }
@@ -1071,7 +1074,7 @@ pub async fn handle_scan(
                     Err(e) => {
                         tracing::error!(error = %e, code = %code, "ISSN scan failed");
                         let message = rust_i18n::t!("error.title.creation_failed").to_string();
-                        Ok(Html(scan_error_feedback_html(&message, &code)).into_response())
+                        Ok(Html(scan_error_feedback_html(&message, &code, loc)).into_response())
                     }
                 }
             }
@@ -1168,7 +1171,7 @@ pub async fn handle_scan(
                         Err(e) => {
                             tracing::error!(error = %e, code = %code, "UPC scan failed");
                             let message = upc_creation_error_message(&code, loc);
-                            Ok(Html(scan_error_feedback_html(&message, &code)).into_response())
+                            Ok(Html(scan_error_feedback_html(&message, &code, loc)).into_response())
                         }
                     }
                 } else {
@@ -1397,7 +1400,7 @@ pub async fn handle_scan_with_type(
         Err(e) => {
             tracing::error!(error = %e, code = %code, "UPC scan-with-type failed");
             let message = upc_creation_error_message(&code, locale.0);
-            Ok(Html(scan_error_feedback_html(&message, &code)).into_response())
+            Ok(Html(scan_error_feedback_html(&message, &code, locale.0)).into_response())
         }
     }
 }

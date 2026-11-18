@@ -564,6 +564,10 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
             "/locations/{id}",
             axum::routing::post(locations::update_location).delete(locations::delete_location),
         )
+        .route(
+            "/locations/{id}/delete-modal",
+            axum::routing::get(locations::delete_modal),
+        )
         // Admin (story 8-1) — 5-tab shell. Every handler's first line is
         // `require_role(Role::Admin)?`; librarians → 403, anonymous → 303
         // → /login?next=%2Fadmin. Routes live at the top level (not under

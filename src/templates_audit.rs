@@ -39,14 +39,9 @@ const ALLOWED_HX_CONFIRM_SITES: &[(&str, usize)] = &[];
 /// from Rust `format!()` calls in `src/**/*.rs`. Same fail-closed
 /// contract as `ALLOWED_HX_CONFIRM_SITES`: any NEW Rust-emitted
 /// `hx-confirm=` must be migrated to the UX-DR8 Modal component before
-/// landing.
-///
-/// Grandfathered entry: `src/routes/locations.rs` carries one
-/// hx-confirm= in the location-tree delete-row button (inherited gap,
-/// pre-existing before Story 9-12). Migration to UX-DR8 Modal is
-/// tracked as a follow-up — until then, this entry locks-in the count
-/// so the gap can't widen.
-const ALLOWED_HX_CONFIRM_RUST_SITES: &[(&str, usize)] = &[("src/routes/locations.rs", 1)];
+/// landing. Empty since story 19-1 (#698) moved the location tree's
+/// delete to the modal — the steady state, like the template allowlist.
+const ALLOWED_HX_CONFIRM_RUST_SITES: &[(&str, usize)] = &[];
 
 /// Issue #424 — sites where `text-stone-400` legitimately applies in LIGHT
 /// mode, with the count locked so the exception cannot widen silently.
@@ -288,6 +283,154 @@ fn visit(dir: &Path, f: &mut impl FnMut(&Path)) {
             f(&path);
         }
     }
+}
+
+/// Story 19-1 (#698, retro v1.28.1 A2) — literal accessible names left in
+/// Rust-built markup, with their exact count. `src/utils.rs`: the dismiss
+/// button of `feedback_html_action`, which has no request locale (127
+/// callers) — localized when the four feedback renderers merge (#701).
+const ALLOWED_LITERAL_NAMES_RUST_SITES: &[(&str, usize)] = &[("src/utils.rs", 1)];
+
+/// The production part of a Rust source file, for the audits of
+/// Rust-built markup (story 19-1): everything before the unit-test module
+/// (a `#[cfg(test)]` line followed by a `mod` declaration, `pub(crate) mod` included — a `#[cfg(test)]` on a
+/// single item does not end production code), with line comments blanked
+/// (doc comments quote markup on purpose). A file that is test-only
+/// (`#![cfg(test)]`) has no production part. Line count is preserved.
+fn production_code(raw: &str) -> String {
+    if raw.lines().any(|l| l.trim() == "#![cfg(test)]") {
+        return String::new();
+    }
+    let lines: Vec<&str> = raw.lines().collect();
+    let mut out = Vec::with_capacity(lines.len());
+    for (i, line) in lines.iter().enumerate() {
+        if line.trim() == "#[cfg(test)]" {
+            let next = lines[i + 1..].iter().map(|l| l.trim()).find(|l| !l.is_empty());
+            if next.is_some_and(|l| l.starts_with("mod ") || l.contains(" mod ") || l.starts_with("pub mod ")) {
+                break;
+            }
+        }
+        out.push(if line.trim_start().starts_with("//") { "" } else { line });
+    }
+    out.join("\n")
+}
+
+/// Production Rust sources under `src/` (story 19-1): `(repo-relative path,
+/// production code)`, the audit itself and `*_tests.rs` files left out.
+fn production_rust_sources(root: &Path) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    visit(&root.join("src"), &mut |path| {
+        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        if path.extension().and_then(|e| e.to_str()) != Some("rs")
+            || name == "templates_audit.rs"
+            || name.ends_with("_tests.rs")
+        {
+            return;
+        }
+        let Ok(raw) = fs::read_to_string(path) else { return };
+        let rel = path
+            .strip_prefix(root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/");
+        out.push((rel, production_code(&raw)));
+    });
+    out.sort();
+    out
+}
+
+/// `style="`, `on<event>="` in Rust-built markup (escaped or raw string).
+fn inline_style_or_handler_re() -> Regex {
+    Regex::new(r#"\b(style|on[a-z]+)\s*=\s*\\?["']"#).unwrap()
+}
+
+/// A literal (not interpolated) accessible name or hint in Rust-built markup:
+/// the value starts with a letter. HTML spelling only (no space around `=`),
+/// so Rust code such as `let title = "…"` is not taken for markup.
+fn literal_accessible_name_re() -> Regex {
+    Regex::new(r#"\b(aria-label|title|alt|placeholder)=\\?["'][A-Za-z]"#).unwrap()
+}
+
+/// Story 19-1 (#698, retro v1.28.1 A2) — the CSP rule of
+/// `no_inline_markup_in_templates`, for markup built in Rust: no inline
+/// `style=` and no inline event handler, anywhere in production code.
+#[test]
+fn rust_markup_has_no_inline_style_or_handlers() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let re = inline_style_or_handler_re();
+    let mut violations = Vec::new();
+    for (path, code) in production_rust_sources(&root) {
+        for (n, line) in code.lines().enumerate() {
+            if let Some(m) = re.find(line) {
+                violations.push(format!("  {path}:{}: `{}`", n + 1, m.as_str()));
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "CSP-blocking inline style / handler in Rust-built markup (use a class, \
+         or a `data-action` handled by a JS module):\n{}",
+        violations.join("\n")
+    );
+}
+
+/// Story 19-1 (#698) — accessible names and hints built in Rust go through
+/// `t!()` in the request locale: a literal `aria-label`, `title`, `alt` or
+/// `placeholder` value fails, except the counted sites of
+/// `ALLOWED_LITERAL_NAMES_RUST_SITES`.
+#[test]
+fn rust_markup_accessible_names_are_localized() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let re = literal_accessible_name_re();
+    let mut violations = Vec::new();
+    let mut seen: std::collections::BTreeMap<String, usize> = Default::default();
+    for (path, code) in production_rust_sources(&root) {
+        let n = re.find_iter(&code).count();
+        if n > 0 {
+            seen.insert(path, n);
+        }
+    }
+    for (path, n) in &seen {
+        match ALLOWED_LITERAL_NAMES_RUST_SITES.iter().find(|(p, _)| p == path) {
+            Some((_, expected)) if expected == n => {}
+            Some((_, expected)) => violations.push(format!("  {path}: {n} literal name(s), expected {expected}")),
+            None => violations.push(format!("  {path}: {n} literal name(s) — use t!() in the request locale")),
+        }
+    }
+    for (path, _) in ALLOWED_LITERAL_NAMES_RUST_SITES {
+        if !seen.contains_key(*path) {
+            violations.push(format!("  {path}: allowlisted, none found — remove the stale entry"));
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "Literal accessible names in Rust-built markup (#698):\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_code_stops_at_the_test_module_only() {
+    let raw = "fn a() {}\n#[cfg(test)]\nconst X: &str = \"aria-label=\\\"Kept\";\n// style=\"x\"\n#[cfg(test)]\n\nmod tests {\n    // aria-label=\"Gone\"\n}\n";
+    let code = production_code(raw);
+    assert!(code.contains("Kept"), "a #[cfg(test)] item does not end production code");
+    assert!(!code.contains("style="), "line comments are blanked");
+    assert!(!code.contains("Gone"), "the test module is left out");
+    assert_eq!(production_code("#![cfg(test)]\nfn f() {}\n"), "");
+}
+
+#[test]
+fn rust_markup_patterns_match_markup_not_code() {
+    let names = literal_accessible_name_re();
+    assert!(names.is_match(r#"<nav aria-label="Pagination">"#));
+    assert!(names.is_match(r#"<nav aria-label=\"Pagination\">"#));
+    assert!(!names.is_match(r#"<nav aria-label="{label}">"#));
+    assert!(!names.is_match(r#"let title = "Foo";"#));
+    let inline = inline_style_or_handler_re();
+    assert!(inline.is_match(r#"<div style="color:red">"#));
+    assert!(inline.is_match(r#"<button onclick=\"x()\">"#));
+    assert!(!inline.is_match(r#"<button data-action="dismiss">"#));
+    assert!(!inline.is_match("let style = Style::new();"));
 }
 
 #[test]

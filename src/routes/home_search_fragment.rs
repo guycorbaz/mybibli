@@ -93,9 +93,7 @@ pub(super) fn render_search_fragment(
                 is_librarian,
                 loc,
             ));
-            html.push_str(
-                "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>",
-            );
+            html.push_str(&empty_pagination_nav(loc));
         }
     }
 
@@ -172,12 +170,12 @@ fn render_pagination_oob(
     loc: &str,
 ) -> String {
     if paginated.total_pages <= 1 {
-        return "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>"
-            .to_string();
+        return empty_pagination_nav(loc);
     }
 
-    let mut html = String::from(
-        "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\" class=\"flex items-center justify-center gap-2 mt-4\">",
+    let mut html = format!(
+        "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"{}\" class=\"flex items-center justify-center gap-2 mt-4\">",
+        pagination_aria(loc)
     );
 
     let build_url = |p: u32| -> String {
@@ -328,6 +326,19 @@ fn render_empty_state(
         tracing::error!("search_empty_state render failed: {e}");
         "<div>render error</div>".to_string()
     })
+}
+
+/// The pagination landmark's accessible name, escaped (#698 audit).
+fn pagination_aria(loc: &str) -> String {
+    crate::utils::html_escape(rust_i18n::t!("pagination.aria_label", locale = loc).as_ref())
+}
+
+/// The empty `#pagination` OOB swap (no page links).
+fn empty_pagination_nav(loc: &str) -> String {
+    format!(
+        "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"{}\"></nav>",
+        pagination_aria(loc)
+    )
 }
 
 #[cfg(test)]

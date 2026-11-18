@@ -1,0 +1,21 @@
+{# Story 19-1 (#698) — location delete confirmation: the shared UX-DR8
+   `modal` macro, `delete` variant (scanner-guard watches it, unlike the
+   native `hx-confirm` it replaces). Confirm sends DELETE; the answer is a
+   feedback entry for `#feedback-list` plus an OOB removal of the tree row,
+   and `HX-Trigger-After-Swap: modal-close`. A refusal (children, volumes)
+   lands in the modal's error region. CSP-clean. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "delete",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "DELETE",
+    csrf_token,
+    "#feedback-list",
+    "afterbegin",
+    0,
+    "",
+) %}{% endcall %}

@@ -34,8 +34,9 @@ Found while preparing the story:
   - new `rust_markup_has_no_inline_style_or_handlers`: a `style="` or an `on<event>="` attribute in a string literal of production Rust code fails;
   - new `rust_markup_accessible_names_are_localized`: an `aria-label`, `title`, `alt` or `placeholder` attribute whose literal value starts with a letter (i.e. not interpolated) in production Rust code fails; allowlist empty.
   - "Production Rust code" = every `src/**/*.rs` except `templates_audit.rs`, `*_tests.rs`, and the text after a file's first `#[cfg(test)]` (the project convention puts the test module last; a unit test pins that a `#[cfg(test)]` before production code would be reported, not silently skipped — or the story documents the chosen cut).
-  - The existing hits are fixed in this story (D7).
-- **D7 — the other hard-coded names.** `Pagination`, `Dismiss` (three feedback renderers) and `Contributors` go through `t!()` in the request locale (existing keys reused where one exists, e.g. a dismiss label, else new keys in the four files). Merging the four feedback renderers is #701, not this story.
+  - The existing hits are fixed in this story (D7), except the one counted site above.
+  - The test-module cut is a `#[cfg(test)]` followed by a `mod` declaration (`pub(crate) mod` included); a `#[cfg(test)]` on a single item does not end production code (`modal_confirm_retarget_guard.rs` has one).
+- **D7 — the other hard-coded names.** `Pagination` (`pagination.aria_label`), `Contributors` (`title_detail.contributors`) and `Dismiss` in the catalog scan error and the pending-updates failure entries (new `feedback.dismiss_aria`) go through `t!()` in the request locale; the scan error's Retry / Edit labels too (they had no locale either). **Changed in dev:** `utils::feedback_html_action`'s dismiss has no request locale (127 `feedback_html` callers) — it stays, counted, in `ALLOWED_LITERAL_NAMES_RUST_SITES` and is localized when the feedback renderers merge (#701).
 
 ## Acceptance Criteria
 
@@ -49,16 +50,16 @@ Found while preparing the story:
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `delete_modal` handler + route + `location_delete_modal.html` (AC1, D1)
-- [ ] T2 — `delete_location`: feedback entry + OOB removal + `modal-close`; `tree-node-{id}` id (AC1, D2)
-- [ ] T3 — `LocationService::delete_location` takes the locale (AC3, D3)
-- [ ] T4 — `can_delete` (Admin) in the renderer and its callers (AC4, D4)
-- [ ] T5 — locale keys ×4 (AC5, D5, D7)
-- [ ] T6 — audit: empty Rust allowlist, two new tests, production-code cut (AC6, D6)
-- [ ] T7 — D7 sites through `t!()` (AC6)
-- [ ] T8 — unit tests (AC7)
-- [ ] T9 — E2E in `locations.spec.ts`: modal delete (replaces the `confirm()` case and the `hx-delete` click of the #457 case), scanner burst, refusal in the modal, Librarian sees no delete, FR labels (AC1–AC5)
-- [ ] T10 — CLAUDE.md: the modal scanner-guard paragraph names the Rust-markup audit; the `hx-confirm` "allowlist frozen empty" sentence covers Rust too
+- [x] T1 — `delete_modal` handler + route + `location_delete_modal.html` (AC1, D1)
+- [x] T2 — `delete_location`: feedback entry + OOB removal + `modal-close`; `tree-node-{id}` id (AC1, D2)
+- [x] T3 — `LocationService::delete_location` takes the locale (AC3, D3)
+- [x] T4 — `can_delete` (Admin) in the renderer and its callers (AC4, D4)
+- [x] T5 — locale keys ×4 (AC5, D5, D7)
+- [x] T6 — audit: empty Rust allowlist, two new tests, production-code cut (AC6, D6)
+- [x] T7 — D7 sites through `t!()` (AC6)
+- [x] T8 — unit tests (AC7)
+- [x] T9 — E2E in `locations.spec.ts`: modal delete (replaces the `confirm()` case and the `hx-delete` click of the #457 case), scanner burst, refusal in the modal, Librarian sees no delete, FR labels (AC1–AC5)
+- [x] T10 — CLAUDE.md: the modal scanner-guard paragraph names the Rust-markup audit; the `hx-confirm` "allowlist frozen empty" sentence covers Rust too
 - [ ] T11 — gates
 
 ## Dev Notes
@@ -80,8 +81,17 @@ Found while preparing the story:
 
 ### Agent Model Used
 
+Claude Opus 5.5 (`claude-opus-5-5`)
+
 ### Debug Log References
 
 ### Completion Notes List
 
 ### File List
+
+- `src/routes/locations.rs`, `src/routes/mod.rs`, `src/services/locations.rs`, `templates/fragments/location_delete_modal.html` (new)
+- `src/templates_audit.rs`
+- `src/routes/catalog.rs`, `src/routes/catalog_contributors.rs`, `src/routes/home_search_fragment.rs`, `src/middleware/pending_updates.rs`
+- `locales/{en,fr,de,it}.yml`
+- `tests/e2e/specs/journeys/locations.spec.ts`
+- `CLAUDE.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`
