@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-11-12 (epic 18 done — 7/7 stories merged; retrospective epic-18-retro-2026-11-12.md; release v1.28.0.)
+# last_updated: 2026-11-18 (epic 19 planned — fewer bugs and built-in backup; patch v1.28.1 retrospective patch-v1-28-1-retro-2026-11-18.md.)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -360,3 +360,23 @@ development_status:
   epic-18-retrospective: done
   hotfix-695-location-tree-controls: done
   hotfix-696-anonymous-sessions-and-client-address: done
+  patch-v1-28-1-retrospective: done
+
+  # ─── Epic 19: Fewer bugs, and built-in backup ──────────────────────
+  # Planned 2026-11-18 by the project lead. Part A (bugs): #698, #685, #499, #554, #528, #674, #663, #541, #519, #689, #538, #708.
+  # Part B (backup): #657, #658. FRs: FR178-FR182 | NFR49 | UX-DRs: UX-DR45, UX-DR46. Release: v1.29.0 at epic close.
+  # Sequencing: 19-1 -> 19-2 -> 19-3 -> 19-4 -> 19-5 -> 19-6 -> 19-7 -> 19-8 -> 19-9 -> 19-10 (epic smoke, Rule #7) -> 19-11 -> retrospective -> release.
+  # Couplings: 19-5 and 19-7 share the Health tab; 19-7 and 19-8 need 19-6.
+  epic-19: backlog
+  19-1-location-tree-delete-modal: backlog
+  19-2-stable-e2e-suite: backlog
+  19-3-simultaneous-actions: backlog
+  19-4-what-the-user-reads: backlog
+  19-5-production-watching: backlog
+  19-6-writing-a-backup: backlog
+  19-7-scheduled-backups-and-rotation: backlog
+  19-8-restoring-a-backup: backlog
+  19-9-cover-database-consistency: backlog
+  19-10-epic-19-smoke-test: backlog
+  19-11-epic-19-documentation: backlog
+  epic-19-retrospective: optional

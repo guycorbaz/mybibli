@@ -8,6 +8,7 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 
 ## Changelog
 
+- **2026-11-18** — Added **Epic 19: Fewer bugs, and built-in backup** (#698, #685, #499, #554, #528, #674, #663 items 1–3, #541, #519, #689, #538, #708, #657, #658), with new requirements FR178–FR182, NFR49 and UX-DR45–UX-DR46. Decided by the project lead on 2026-11-18, after the v1.28.1 patch and its retrospective: one user feature (built-in backup and restore) and fewer bugs — both fixing open ones and producing fewer. Ships as v1.29.0.
 - **2026-11-11** — Added **Epic 18: Maintenance** (#506, #599, #526, #681), with no new requirement and no new feature: two dependency updates, two fixes and the rmcp upgrade. Decided by the project lead on 2026-11-11 after a review of the dependency versions; ships as v1.28.0. Built-in backup (#657, #658, #663, #679) moves to Epic 19; the larger dependency upgrades (sqlx 0.9, rust-i18n 4, askama 0.16, reqwest 0.13, …) get their own epic later; htmx 4 waits until early 2027; the database engine question is on hold.
 - **2026-11-04** — Added **Epic 15: The agent's next tasks** (#564, #590, #614, #602), with new requirements FR161–FR166 and UX-DR40–UX-DR41. Decided by the project lead on 2026-11-04; ships as v1.25.0.
 - **2026-11-09** — Added **Epic 17: Everyday entry** (#651, #652, #565, #643 items 1–2, #653, #656), with new requirements FR172–FR177 and UX-DR43–UX-DR44. Decided by the project lead on 2026-11-09 from the usage notes of the first comics sessions; ships as v1.27.0. The comics shelving plan (#655) gets its own epic later.
@@ -203,6 +204,11 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - FR175: A UPC typed in the manual title form or the title edit form gets the same irregular-code warning as a scanned one; a 12-digit code with a wrong check digit is refused with its specific message whichever path created it
 - FR176: A librarian can find a title by its id from the search field, and the id is shown on the title page
 - FR177: mybibli ships default MCP skills, inserted inactive once per database and never over a skill the admin holds under the same name; the first ones guide the agent through tidying comics (covers, series creation, series attachment, title spelling)
+- FR178: An Admin sees on the Health tab, without reading the logs, how often the instance met slow database statements, connection-pool timeouts and refused requests (CSRF, API key), since start and over the last 24 hours, with the most frequent client addresses
+- FR179: mybibli writes complete backups (database and covers) into a `backups/` folder mounted next to `docker-compose.yml`, on an interval an Admin sets in Admin → System, and skips a backup when nothing changed since the previous one; each backup carries a checksum, the instance id and the mybibli version / migration level, and is a standard dump that can be loaded outside the instance (the Rule #20 corpus)
+- FR180: Backups rotate — hourly ones kept 24 hours, then the last of each day (instance time zone) kept 14 days — and rotation deletes only backups this instance wrote; a backup from another instance is kept until it has been restored; when the folder is not mounted, mybibli writes no backup, keeps running and warns on the Health tab
+- FR181: An Admin restores a backup present in the folder from the admin page: the checksum is verified before anything is touched, a safety backup of the current state is written first, the application refuses other requests during the restore and logs every user out afterwards; a backup from a newer version is refused, an older one is upgraded by the migrations
+- FR182: An Admin finds and repairs cover / database mismatches — cover files no title owns (live or in the Trash) are deleted, titles pointing to a missing local file have their cover cleared and a re-download queued — after reviewing the list and confirming
 
 ### NonFunctional Requirements
 
@@ -254,6 +260,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - NFR46: `rmcp` is pinned to `=3.8.0` and confined to `src/mcp/`; it is upgraded only for a security advisory or at the pre-release checkpoint
 - NFR47: Everything an agent submits is untrusted data: source URLs are accepted only with an `http` or `https` scheme and validated at filing time; proposed values are never rendered as HTML
 - NFR48: Staged covers are purged when their proposal is decided (accepted covers are moved, the others deleted) and when a proposal goes stale or its API key is revoked, reusing the auto-purge mechanism of story 8-7
+- NFR49: A backup holds password hashes, API-key hashes and provider keys: it is written with owner-only permissions, never inside the container's writable layer, and a round-trip test (back up → wipe → restore → compare) runs in CI before every release
 
 ### Additional Requirements
 
@@ -337,6 +344,8 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR42: Scan warning for an irregular code: the existing media-type choice carries a warning naming what is wrong (length, check digit), and nothing is created until the librarian chooses
 - UX-DR43: Title page "Add a volume" field in the volumes section: V-code input for Librarian and above, same feedback as the catalog scan, focus kept in the field after a success for a scanner batch (Rule #21)
 - UX-DR44: Title id shown on the title page; default skills marked "provided by mybibli" in Admin → Skills
+- UX-DR45: Health tab: a "Production watching" panel (FR178 counters, warning colour above a threshold) and a backup status line (last backup, next one, folder missing warning)
+- UX-DR46: Admin → Backups tab: the backups present in the folder with date, origin (this instance / another one), version and size; restore and cover repair go through the UX-DR8 modal with explicit confirmation
 
 ### FR Coverage Map
 
@@ -404,6 +413,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 | FR161-FR166 | 15 | Instance time zone, MCP skills, series modification proposals, volume value proposals, value coverage |
 | FR167-FR171 | 16 | Amounts on the volume page, purchase price proposals, cover upload, scan warning, retry log level |
 | FR172-FR177 | 17 | Lowercase V-code, add a volume from the title page, one ISBN rule, typed-code warnings, title id search, default skills |
+| FR178-FR182 | 19 | Production watching, backups written and rotated, restore, cover / database consistency |
 | FR153-FR160 | 13 | Date added, move a volume, anomaly marks (by hand and proposed), tome number and hint, owned title fills an expected tome, full location paths |
 
 **NFR Distribution:**
@@ -412,6 +422,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - NFR11 → Epic 4
 - NFR13, NFR15 → Epic 7
 - NFR37, NFR39, NFR41 → Epic 8
+- NFR49 → Epic 19
 - NFR8, NFR21, NFR25, NFR29 → Cross-cutting (verified per epic)
 
 **AR Distribution:**
@@ -438,8 +449,9 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR40, UX-DR41 → Epic 15
 - UX-DR42 → Epic 16
 - UX-DR43, UX-DR44 → Epic 17
+- UX-DR45, UX-DR46 → Epic 19
 
-**Coverage: 177/177 FRs, 48/48 NFRs, 31/31 ARs, 44/44 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04; Epic 15 added 2026-11-04; Epic 16 added 2026-11-06; Epic 17 added 2026-11-09; Epic 18 added 2026-11-11, no new requirement.)
+**Coverage: 182/182 FRs, 49/49 NFRs, 31/31 ARs, 46/46 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04; Epic 15 added 2026-11-04; Epic 16 added 2026-11-06; Epic 17 added 2026-11-09; Epic 18 added 2026-11-11, no new requirement; Epic 19 added 2026-11-18.)
 
 ## Epic List
 
@@ -3597,3 +3609,211 @@ So that the next upgrade starts from an accurate picture.
 **Then** the API chapter describes the series endpoint as fixed in 18.4, and the versions named in the documentation (Tailwind, Chart.js, Node, rmcp) are current
 **And** the PDFs are rebuilt
 **And** release documentation (Foundation Rule #19, v1.28.0) is done at release time, not in this story
+
+### Epic 19: Fewer bugs, and built-in backup
+
+On 2026-11-09 the production database was erased by a mishandling and restored from the NAS nightly backup, losing a day of entries; mybibli has no backup of its own (#657) and the covers volume no longer matches the database (#658). On 2026-11-18 two production bugs needed a patch (v1.28.1): one had been in the image unseen by every E2E run, the other ran eleven days before anyone read the logs. This epic brings the backup the project lead asked for, and spends its first half on bugs — fixing the ones that matter and changing what lets them through.
+
+**FRs:** FR178–FR182
+**NFRs:** NFR49 (NFR3 CSP, NFR12 a11y unchanged)
+**UX-DRs:** UX-DR45, UX-DR46
+**Issues:** #698, #685, #499, #554, #528, #674, #663 (items 1–3), #541, #519, #689, #538, #679 (items 6–7), #708, #657, #658
+
+**Release.** v1.29.0 at the close of the epic, after its retrospective.
+
+**Key decisions (project lead, 2026-11-18).**
+- One user feature: built-in backup and restore (#657) with the cover / database consistency tool (#658). The decisions recorded on #657 (folder never created by mybibli, fixed v1 rotation, restore only of a backup present in the folder, safety backup, checksum, foreign backup kept until restored, usable as the Rule #20 corpus) are the specification.
+- "Fewer bugs" means both: fix open ones (part A) and produce fewer — retrospective v1.28.1 actions A1 (E2E checks a control is really seen), A2 (the template audit also covers HTML built in Rust), A4 (Rule #19 checklist) — and catch the ones that reach production sooner (#708).
+- #698 is the first story (patch v1.28.1 retrospective, Q2): the location tree's delete is now visible, and a scanner's Enter can confirm its native dialog.
+- Practice A3 (patch v1.28.1 retrospective): when a story changes what a user sees on a refusal or an error, the behaviour is settled with the project lead in the story's decisions before the first review pass.
+- Error copy promised by earlier retrospectives goes in 19.4: `admin.reference_data.name_taken` and its siblings (epic 18, Q2), `error.isbn.already_used` with a link to the other title (epic 17, Q3; #679 item 7).
+- Out: the other deferred Low findings (#630, #632, #661, #665, #667, #669, #672, #679 other items, …), the major dependency upgrades and #681's sqlx half (own epic), the comics shelving plan (#655), duplicate merging (#591), the base path (#492).
+
+**Sequencing.** Part A: 19.1 → 19.2 → 19.3 → 19.4 → 19.5; part B: 19.6 → 19.7 → 19.8 → 19.9; then 19.10 (epic smoke, Foundation Rule #7) → 19.11 → retrospective → release v1.29.0.
+
+**Couplings (Rule #24).** 19.5 and 19.7 both add to the Health tab (`admin_health`, the Health panel template): 19.7 starts from `main` after 19.5's merge. 19.7 and 19.8 need 19.6's backup format and writer. 19.9 and 19.6 both read the covers folder; only 19.9 deletes, and only files of the shape `<digits>.jpg`. 19.2 changes shared E2E helpers: stories after it rebase before their E2E gate.
+
+**Stories:**
+
+#### Story 19.1: Location tree delete through the modal (closes #698)
+
+As a librarian on `/locations`,
+I want deleting a location to ask for confirmation in my language, in the application's own dialog,
+So that a scanner's Enter cannot delete a location and the labels I hear are mine.
+
+**Covers:** fix (#698), retrospective v1.28.1 A2
+
+**Acceptance Criteria:**
+
+**Given** a location row in the tree
+**When** its delete control is used
+**Then** confirmation goes through the UX-DR8 modal in `#modal-slot` (like series, borrower and contributor deletion) — no `hx-confirm=` remains — so scanner-guard protects it
+**And** the confirm text and the three control labels (add child, edit, delete) go through `t!()` in the four locale files
+**And** the audit covers HTML built in Rust: an `hx-confirm=`, a `style="…"` or an inline `on…=` handler in a Rust string literal under `src/` fails `templates_audit` (or a dedicated test), with an allowlist that is empty
+**And** an E2E case deletes a location from the tree through the modal, and one checks a scanner burst while the modal is open does not confirm it
+
+#### Story 19.2: A stable E2E suite
+
+As the project,
+I want the E2E suite to fail only when something is broken,
+So that a red run is believed and a hidden defect is not waved through as "flaky".
+
+**Covers:** fix (#685, #499, #554, #528, #674), retrospective v1.28.1 A1
+
+**Acceptance Criteria:**
+
+**Given** the known intermittent failures #685 (`form-refusals`), #499 (`shelving` undo), #554 (key revocation 500, highest V-code), the series-order dependency #528 and the V-code bands / typing threshold of #674
+**Then** each is reproduced (`--repeat-each` under `CI=true --workers=2`) and fixed at its cause — a real application defect found this way is fixed or filed, never retried away
+**And** `empty-states`, `dewey-code` and `classification-fieldset` no longer depend on running before the specs that create series (stable ids on the save buttons, assertions on the spec's own scope — Rule #23); the file-name ordering convention is removed
+**And** a shared helper asserts a control is really seen (computed `opacity` and `visibility`, not only `toBeVisible`), used by the location tree case and documented in the E2E patterns of `CLAUDE.md`
+**And** the CI E2E jobs print the application log (`docker compose logs`) when a test fails
+**And** three consecutive full runs under `CI=true --workers=2` on a fresh stack have no flaky test
+
+#### Story 19.3: Simultaneous actions on volumes and contributors
+
+As a librarian,
+I want two actions racing each other to leave the catalog consistent,
+So that no volume lives on a deleted title and no contributor exists twice.
+
+**Covers:** fix (#663 items 1–3, #541)
+
+**Acceptance Criteria:**
+
+**Given** a volume being added while its title is deleted (#663 item 2)
+**Then** the two serialise: the insert transaction share-locks the title row by primary key (Rule #22), so either the volume is added and the delete is refused, or the title is deleted and the add answers "title gone"; a lock-scope regression test is written with the query
+**And** the same new V-code posted twice for one title answers the "already recorded" information, not "label taken" (#663 item 1)
+**And** on `/catalog`, a title deleted between the context check and the insert clears the context banner and guide strip (#663 item 3)
+**And** two concurrent creations of one contributor name leave one contributor (#541), by a unique constraint or a locking read named in the story
+**And** DB integration tests reproduce each race (two connections) and fail on the old code
+
+#### Story 19.4: What the user reads
+
+As a librarian,
+I want the numbers, errors and focus on screen to be right,
+So that I trust what the page tells me.
+
+**Covers:** fix (#519, #689, #538, #679 items 6–7), Rule #9 copy promised by the epic 17 and 18 retrospectives
+
+**Acceptance Criteria:**
+
+**Given** the `/series` list
+**Then** its owned / gaps columns use the same rule as the dashboard, the series page and the MCP tools (distinct positions within 1..=total), computed without one query per row (#519)
+**And** an error answered to a control low on a long page is visible without moving focus (#689 item 1; e.g. the entry scrolled into view, or a fixed region), and replace-mode OOB updates of `#feedback-list` keep `aria-live` (#689 item 3)
+**And** after a successful proposal rejection, focus returns to an element of the list (Rule #21), not `<body>` (#538)
+**And** `admin.reference_data.name_taken` and its siblings say what to do (choose another name or reactivate the existing one), `error.isbn.already_used` names and links the title that holds the ISBN and reads correctly on the edit form, and the two title-edit refusals still answered as "Server error (400)" become field refusals (#679 items 6–7) — four locale files, each reviewed against the Rule #9 guide
+**And** each fix has a unit or integration test and an E2E case
+
+#### Story 19.5: Production watching at a glance (closes #708)
+
+As the operator,
+I want to see from time to time how the instance is doing, without reading the logs,
+So that a misbehaving client or a slow database is noticed in days, not weeks.
+
+**Covers:** FR178, UX-DR45 (watching panel)
+
+**Acceptance Criteria:**
+
+**Given** the Admin → Health tab
+**Then** a panel shows, since start and over the last 24 hours: slow database statements, connection-pool timeouts, CSRF refusals and API-key refusals, with the three most frequent client addresses of the refusals (`middleware::client_addr`)
+**And** the counts are kept in memory (no table, no write per request) and reset on restart, which the panel says
+**And** a count above a threshold set in the story shows in a warning colour, with its text (not colour only)
+**And** counting adds no database query to a request; unit tests cover the 24-hour window and the top-addresses ordering; an E2E case provokes a CSRF refusal and sees it counted
+
+#### Story 19.6: Writing a backup
+
+As the operator,
+I want mybibli to write a complete, checkable backup on request,
+So that the library can be recovered — or loaded elsewhere — without restoring all of MariaDB.
+
+**Covers:** FR179 (format and writer), NFR49
+
+**Acceptance Criteria:**
+
+**Given** a `backups/` folder mounted into the container
+**When** an Admin asks for a backup (button on the Backups tab) or the code calls the writer
+**Then** one backup is written: database content and the covers folder (`.staging` excluded), in a standard format that can be loaded into a MariaDB outside the instance (documented), with a manifest carrying the instance id, the mybibli version, the last migration and a checksum of the whole
+**And** the file name follows a pattern that identifies this instance's backups (used by rotation, Rule #20 positive shape); the file is written under a temporary name, then renamed; permissions are owner-only
+**And** the folder is never created by mybibli: missing → the request is refused with a clear message and nothing is written inside the container
+**And** a round-trip test (back up → wipe → restore → compare every table and every cover) runs in CI (NFR49)
+**And** writing a backup does not block catalog use (consistent snapshot without a global lock held for the whole write — the mechanism is chosen in the story)
+
+#### Story 19.7: Scheduled backups and rotation
+
+As the operator,
+I want backups to happen on their own and old ones to go away,
+So that I always have a recent copy without filling the disk.
+
+**Covers:** FR179 (schedule), FR180, UX-DR45 (backup status)
+
+**Acceptance Criteria:**
+
+**Given** an interval set in Admin → System (a new K/V setting, whitelisted)
+**Then** a background task writes a backup on that interval, skipping it when nothing changed since the previous one
+**And** rotation keeps hourly backups 24 hours, then the last backup of each day (instance time zone) 14 days, and deletes only files matching this instance's pattern and id; a foreign backup is never deleted before it has been restored
+**And** a missing folder means no backup, no crash, and a warning on the Health tab; the Health tab shows the last and next backup
+**And** unit tests cover the rotation choice over a synthetic set of names (DST day included) and the skip-when-unchanged rule
+
+#### Story 19.8: Restoring a backup
+
+As an Admin,
+I want to restore a backup present in the folder from the admin page,
+So that a mistake or a lost day is undone without touching the NAS.
+
+**Covers:** FR181, UX-DR46
+
+**Acceptance Criteria:**
+
+**Given** the Admin → Backups tab listing the backups present (date, this instance / another one, version, size)
+**When** the Admin restores one through the UX-DR8 modal with explicit confirmation
+**Then** its checksum is verified before anything is touched (a damaged or truncated file is refused); a backup from a newer version is refused; a file the container cannot read is reported with a clear message
+**And** a safety backup of the current state is written first
+**And** during the restore other requests are refused with a maintenance answer; afterwards the migrations bring an older backup up to date, every session is ended, and the covers match the restored database
+**And** a restored foreign backup returns to normal handling as the story decides (#657)
+**And** DB integration tests cover refusal of a damaged / newer backup and a full restore; an E2E case restores a backup written earlier in the spec and finds the spec's title back
+
+#### Story 19.9: Cover / database consistency (closes #658)
+
+As an Admin,
+I want to find and repair covers that do not match the database,
+So that no title points to a missing image and no stray file stays on disk.
+
+**Covers:** FR182, UX-DR46
+
+**Acceptance Criteria:**
+
+**Given** the covers folder and the database
+**Then** a check lists orphan files (`<digits>.jpg` at the folder root with no title, live or in the Trash) and titles whose local cover file is missing — it never considers `.staging/` or any other name (Rule #20)
+**And** after the list is shown and confirmed in the UX-DR8 modal, orphans are deleted and missing covers cleared with a re-download queued
+**And** each run writes an `admin_audit` row with its counts
+**And** unit tests cover the name shape; an integration test builds both kinds of mismatch and repairs them; an E2E case runs the check
+
+#### Story 19.10: Epic 19 smoke test (Foundation Rule #7)
+
+As the project,
+I want one end-to-end journey from a blank browser over what the epic built,
+So that the epic is proven done.
+
+**Covers:** Foundation Rule #7
+
+**Acceptance Criteria:**
+
+**Given** a blank browser with no injected cookie
+**When** the test runs
+**Then** it chains: `loginAs` → a title created by the spec → a backup written from the Backups tab → the title deleted → the backup restored through the modal → login again → the title back, its cover shown → the Health tab shows the backup and the watching panel
+**And** no `waitForTimeout`; green under `CI=true npx playwright test --workers=2`; if this test fails, the epic is not done
+
+#### Story 19.11: Documentation
+
+As an operator who is not an IT specialist,
+I want the manual to explain backup and restore step by step,
+So that I can set it up and use it on the day I need it.
+
+**Covers:** FR178–FR182 (documentation), retrospective v1.28.1 A4
+
+**Acceptance Criteria:**
+
+**Given** the user manual (English and French)
+**Then** it explains the `./backups` mount for new and existing installs (with the `docker-compose.yml` line), the schedule and rotation, a step-by-step restore, moving a backup to another NAS, loading a backup into a test database (Rule #20 corpus), the permissions of the folder and the sensitivity of its content, the Health-tab watching panel and the cover check
+**And** `docker-compose.yml` and `.env.example` carry the mount; the PDFs are rebuilt
+**And** Rule #19 in `CLAUDE.md` names the manual's environment-variable table and the "current release" sentence of `website/roadmap.html` (A4)
+**And** release documentation (Foundation Rule #19, v1.29.0, including the upgrade note on the new mount) is done at release time, not in this story
