@@ -283,9 +283,17 @@ fn render_node_at_depth(
             let delete_lbl = crate::utils::html_escape(
                 rust_i18n::t!("location.tree.delete_named", locale = loc, name = raw_name).as_ref(),
             );
+            // Rule #21 — after the delete, the row (and this trigger) is gone:
+            // modal.js then focuses the parent row's link, or the "add root"
+            // summary for a root location.
+            let focus_fallback = match node.location.parent_id {
+                Some(parent) => format!(r#"#tree-node-{parent} > div > a[href="/location/{parent}"]"#),
+                None => "#add-root-summary".to_string(),
+            };
             format!(
-                "\n<button type=\"button\" hx-get=\"/locations/{id}/delete-modal\" hx-target=\"#modal-slot\" hx-swap=\"innerHTML\" data-modal-trigger aria-haspopup=\"dialog\" aria-expanded=\"false\" class=\"p-1 text-stone-600 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400\" aria-label=\"{delete_lbl}\">🗑️</button>",
+                "\n<button type=\"button\" hx-get=\"/locations/{id}/delete-modal\" hx-target=\"#modal-slot\" hx-swap=\"innerHTML\" data-modal-trigger data-modal-focus-fallback=\"{fallback}\" aria-haspopup=\"dialog\" aria-expanded=\"false\" class=\"p-1 text-stone-600 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400\" aria-label=\"{delete_lbl}\">🗑️</button>",
                 id = node.location.id,
+                fallback = crate::utils::html_escape(&focus_fallback),
             )
         } else {
             String::new()
@@ -671,7 +679,7 @@ pub async fn delete_modal(
     }
 
     let Some(location) = LocationModel::find_by_id(&state.pool, id).await? else {
-        return Ok(crate::routes::build_already_deleted_response(loc, "#feedback-list"));
+        return Ok(already_gone_response(id, loc, AlreadyGoneAt::ModalOpen));
     };
 
     // Raw values through `t!()`; Askama escapes `{{ title }}` in the macro.
@@ -714,10 +722,46 @@ pub async fn delete_location(
     session.require_role(Role::Admin, locale.0)?;
     let loc = locale.0;
 
-    LocationService::delete_location(&state.pool, id, loc).await?;
+    match LocationService::delete_location(&state.pool, id, loc).await {
+        Ok(()) => {}
+        // Deleted meanwhile (another tab): say so and drop the stale row.
+        Err(AppError::NotFound(_)) => {
+            return Ok(already_gone_response(id, loc, AlreadyGoneAt::Confirm));
+        }
+        Err(e) => return Err(e),
+    }
 
     let message = rust_i18n::t!("location.deleted", locale = loc).to_string();
     Ok(delete_success_response(id, &message))
+}
+
+/// Where a location already deleted by another session is noticed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AlreadyGoneAt {
+    /// Opening the modal (`hx-target` is `#modal-slot`: retarget the entry).
+    ModalOpen,
+    /// The modal's Confirm (already aimed at `#feedback-list`; close the modal).
+    Confirm,
+}
+
+/// The "deleted by another session" entry, added on top of `#feedback-list`
+/// (never replacing the entries already there), with the stale row removed.
+fn already_gone_response(id: u64, loc: &str, at: AlreadyGoneAt) -> axum::response::Response {
+    let message =
+        rust_i18n::t!("error.already_deleted_by_another_session", locale = loc).to_string();
+    let mut main = crate::utils::feedback_html("error", &message, "");
+    main.push_str(&format!(r#"<div id="tree-node-{id}" hx-swap-oob="delete"></div>"#));
+    let resp = crate::middleware::htmx::HtmxResponse { main, oob: Vec::new() };
+    match at {
+        AlreadyGoneAt::Confirm => resp.into_response_with_hx_trigger_after_swap("modal-close"),
+        AlreadyGoneAt::ModalOpen => {
+            let mut r = resp.into_response();
+            let headers = r.headers_mut();
+            headers.insert("HX-Retarget", axum::http::HeaderValue::from_static("#feedback-list"));
+            headers.insert("HX-Reswap", axum::http::HeaderValue::from_static("afterbegin"));
+            r
+        }
+    }
 }
 
 /// The success answer of [`delete_location`], split out for its unit test.
@@ -974,7 +1018,7 @@ mod tests {
         let admin = render_salon(42, ADMIN, "t");
         assert!(!admin.contains("hx-confirm"));
         assert!(!admin.contains("hx-delete"));
-        assert!(admin.contains(r##"hx-get="/locations/42/delete-modal" hx-target="#modal-slot" hx-swap="innerHTML" data-modal-trigger aria-haspopup="dialog""##));
+        assert!(admin.contains(r##"hx-get="/locations/42/delete-modal" hx-target="#modal-slot" hx-swap="innerHTML" data-modal-trigger data-modal-focus-fallback="#add-root-summary" aria-haspopup="dialog""##));
         assert!(admin.contains(r#"id="tree-node-42""#));
 
         let librarian = render_salon(42, LIBRARIAN, "t");
@@ -1007,8 +1051,7 @@ mod tests {
             resp.headers().get("hx-trigger-after-swap").unwrap(),
             "modal-close"
         );
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-        let body = String::from_utf8(body.to_vec()).unwrap();
+        let body = body_of(resp).await;
         assert!(body.contains("feedback-entry"));
         assert!(body.contains(r#"data-feedback-variant="success""#));
         assert!(body.contains("Location deleted."));
@@ -1033,6 +1076,44 @@ mod tests {
         assert!(html.contains(r#"hx-delete="/locations/42""#), "{html}");
         assert!(html.contains("#feedback-list"));
         assert!(!html.contains("hx-confirm"));
+    }
+
+    /// Rule #21 — a child row's delete names its parent's link as the focus
+    /// fallback (the row and its trigger leave with the delete).
+    #[test]
+    fn child_delete_falls_back_to_the_parent_link() {
+        let tree = build_tree(
+            &[loc(1, None, "Salon", "room", "L0001"), loc(2, Some(1), "Étagère", "shelf", "L0002")],
+            &HashMap::new(),
+        );
+        let html = render_tree_html(&tree, &[], "L0003", ADMIN, "en", "t");
+        assert!(html.contains(
+            r##"data-modal-focus-fallback="#tree-node-1 &gt; div &gt; a[href=&quot;/location/1&quot;]""##
+        ));
+    }
+
+    async fn body_of(resp: axum::response::Response) -> String {
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    /// Review 19-1 — a location already deleted elsewhere: the entry is added
+    /// on top of `#feedback-list` (not replacing it), in the request locale,
+    /// and the stale row is removed; at Confirm the modal closes.
+    #[tokio::test]
+    async fn already_gone_answers_add_an_entry_and_drop_the_row() {
+        let open = already_gone_response(9, "fr", AlreadyGoneAt::ModalOpen);
+        assert_eq!(open.headers().get("HX-Retarget").unwrap(), "#feedback-list");
+        assert_eq!(open.headers().get("HX-Reswap").unwrap(), "afterbegin");
+        assert!(open.headers().get("hx-trigger-after-swap").is_none());
+        let body = body_of(open).await;
+        assert!(body.contains(r#"<div id="tree-node-9" hx-swap-oob="delete"></div>"#));
+        let fr = rust_i18n::t!("error.already_deleted_by_another_session", locale = "fr").to_string();
+        assert!(body.contains(&crate::utils::html_escape(&fr)), "{body}");
+
+        let confirm = already_gone_response(9, "en", AlreadyGoneAt::Confirm);
+        assert!(confirm.headers().get("HX-Retarget").is_none());
+        assert_eq!(confirm.headers().get("hx-trigger-after-swap").unwrap(), "modal-close");
     }
 
     #[test]

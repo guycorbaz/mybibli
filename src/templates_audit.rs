@@ -292,25 +292,39 @@ fn visit(dir: &Path, f: &mut impl FnMut(&Path)) {
 const ALLOWED_LITERAL_NAMES_RUST_SITES: &[(&str, usize)] = &[("src/utils.rs", 1)];
 
 /// The production part of a Rust source file, for the audits of
-/// Rust-built markup (story 19-1): everything before the unit-test module
-/// (a `#[cfg(test)]` line followed by a `mod` declaration, `pub(crate) mod` included — a `#[cfg(test)]` on a
-/// single item does not end production code), with line comments blanked
-/// (doc comments quote markup on purpose). A file that is test-only
-/// (`#![cfg(test)]`) has no production part. Line count is preserved.
+/// Rust-built markup (story 19-1): the file up to its inline unit-test
+/// module (`#[cfg(test)]` followed by `mod … {` — the project puts it last),
+/// with line comments blanked (doc comments quote markup on purpose). A
+/// `#[cfg(test)]` on an item, or on an out-of-line module declaration
+/// (`mod foo_tests;`, whose file is skipped by name), does not end
+/// production code — only those lines are left out. A test-only file
+/// (`#![cfg(test)]`) has no production part.
 fn production_code(raw: &str) -> String {
     if raw.lines().any(|l| l.trim() == "#![cfg(test)]") {
         return String::new();
     }
     let lines: Vec<&str> = raw.lines().collect();
     let mut out = Vec::with_capacity(lines.len());
-    for (i, line) in lines.iter().enumerate() {
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
         if line.trim() == "#[cfg(test)]" {
-            let next = lines[i + 1..].iter().map(|l| l.trim()).find(|l| !l.is_empty());
-            if next.is_some_and(|l| l.starts_with("mod ") || l.contains(" mod ") || l.starts_with("pub mod ")) {
-                break;
+            let next = lines[i + 1..].iter().position(|l| !l.trim().is_empty()).map(|k| i + 1 + k);
+            if let Some(j) = next {
+                let decl = lines[j].trim();
+                let is_mod = decl.starts_with("mod ") || decl.contains(" mod ");
+                if is_mod && decl.contains('{') {
+                    break;
+                }
+                if is_mod && decl.ends_with(';') {
+                    out.extend(std::iter::repeat_n("", j + 1 - i));
+                    i = j + 1;
+                    continue;
+                }
             }
         }
         out.push(if line.trim_start().starts_with("//") { "" } else { line });
+        i += 1;
     }
     out.join("\n")
 }
@@ -339,16 +353,20 @@ fn production_rust_sources(root: &Path) -> Vec<(String, String)> {
     out
 }
 
-/// `style="`, `on<event>="` in Rust-built markup (escaped or raw string).
+/// `style="`, `on<event>="` in Rust-built markup (escaped or raw string,
+/// any case). HTML spelling only — the attribute after a space or a quote,
+/// no space around `=` — so Rust code (`let style = "…"`) and `data-…`
+/// attributes are not taken for it.
 fn inline_style_or_handler_re() -> Regex {
-    Regex::new(r#"\b(style|on[a-z]+)\s*=\s*\\?["']"#).unwrap()
+    Regex::new(r#"(?i)(?:^|[\s"'\\])(style|on[a-z]+)=\\?["']"#).unwrap()
 }
 
 /// A literal (not interpolated) accessible name or hint in Rust-built markup:
-/// the value starts with a letter. HTML spelling only (no space around `=`),
-/// so Rust code such as `let title = "…"` is not taken for markup.
+/// the value starts with a letter, accented ones included. Same HTML-spelling
+/// rule as above. A value that starts with an interpolation and goes on with
+/// literal words (`"{n} volumes"`) is not caught.
 fn literal_accessible_name_re() -> Regex {
-    Regex::new(r#"\b(aria-label|title|alt|placeholder)=\\?["'][A-Za-z]"#).unwrap()
+    Regex::new(r#"(?i)(?:^|[\s"'\\])(aria-label|title|alt|placeholder)=\\?["']\p{L}"#).unwrap()
 }
 
 /// Story 19-1 (#698, retro v1.28.1 A2) — the CSP rule of
@@ -417,6 +435,10 @@ fn production_code_stops_at_the_test_module_only() {
     assert!(!code.contains("style="), "line comments are blanked");
     assert!(!code.contains("Gone"), "the test module is left out");
     assert_eq!(production_code("#![cfg(test)]\nfn f() {}\n"), "");
+    // An out-of-line test module declared at the top does not hide the rest.
+    let decl = production_code("#[cfg(test)]\nmod foo_tests;\nfn prod() { \"aria-label=\\\"X\\\"\" }\n");
+    assert!(decl.contains("aria-label"), "{decl}");
+    assert!(!decl.contains("foo_tests"));
 }
 
 #[test]
@@ -426,11 +448,18 @@ fn rust_markup_patterns_match_markup_not_code() {
     assert!(names.is_match(r#"<nav aria-label=\"Pagination\">"#));
     assert!(!names.is_match(r#"<nav aria-label="{label}">"#));
     assert!(!names.is_match(r#"let title = "Foo";"#));
+    assert!(!names.is_match(r#"<div data-title="Foo">"#));
+    assert!(names.is_match(r#"<img alt="Échec">"#));
+    assert!(names.is_match(r#"<button ARIA-LABEL="Close">"#));
     let inline = inline_style_or_handler_re();
     assert!(inline.is_match(r#"<div style="color:red">"#));
     assert!(inline.is_match(r#"<button onclick=\"x()\">"#));
     assert!(!inline.is_match(r#"<button data-action="dismiss">"#));
     assert!(!inline.is_match("let style = Style::new();"));
+    assert!(!inline.is_match(r#"let one = "x";"#));
+    assert!(inline.is_match(r#"<button onClick="x()">"#));
+    assert!(inline.is_match(r#"<div STYLE='x'>"#));
+    assert!(!inline.is_match(r#"<div data-onload="x">"#));
 }
 
 #[test]

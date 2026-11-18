@@ -136,6 +136,16 @@
 
         document.body.addEventListener("htmx:responseError", function (e) {
             if (!document.getElementById("feedback-list")) return;
+            // Story 19-1 — a modal Confirm's error is shown inside the open
+            // modal (modal.js, `[data-modal-error]`; the server-side
+            // ModalConfirmRetargetGuard strips the retarget): no second,
+            // generic line behind the modal.
+            var cfg = e.detail.requestConfig || {};
+            var sentHeaders = cfg.headers || {};
+            if (sentHeaders["X-Modal-Confirm"] === "true"
+                && window.mybibliModal && window.mybibliModal.isOpen()) {
+                return;
+            }
             var target = e.detail.target;
             if (target) target.classList.add("htmx-opacity-reset");
 

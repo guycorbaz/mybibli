@@ -474,7 +474,7 @@ pub async fn handle_scan(
                     }
                     Err(e) => {
                         tracing::error!(error = %e, code = %code, "ISBN scan failed");
-                        let message = rust_i18n::t!("error.title.creation_failed").to_string();
+                        let message = rust_i18n::t!("error.title.creation_failed", locale = loc).to_string();
                         Ok(Html(scan_error_feedback_html(&message, &code, loc)).into_response())
                     }
                 }
@@ -1073,7 +1073,7 @@ pub async fn handle_scan(
                     }
                     Err(e) => {
                         tracing::error!(error = %e, code = %code, "ISSN scan failed");
-                        let message = rust_i18n::t!("error.title.creation_failed").to_string();
+                        let message = rust_i18n::t!("error.title.creation_failed", locale = loc).to_string();
                         Ok(Html(scan_error_feedback_html(&message, &code, loc)).into_response())
                     }
                 }

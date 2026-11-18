@@ -185,6 +185,17 @@
             if (!opts || !opts.skipFocusRestore) {
                 if (document.contains(s.triggerEl)) {
                     try { s.triggerEl.focus(); } catch (_) { /* ignore */ }
+                } else {
+                    // Story 19-1 (Rule #21) — the trigger left with what the
+                    // Confirm removed (e.g. a deleted tree row): focus the
+                    // element its `data-modal-focus-fallback` selector names
+                    // (read on the detached trigger), if still on the page.
+                    var sel = s.triggerEl.getAttribute("data-modal-focus-fallback");
+                    var fallback = null;
+                    try { fallback = sel ? document.querySelector(sel) : null; } catch (_) { fallback = null; }
+                    if (fallback) {
+                        try { fallback.focus(); } catch (_) { /* ignore */ }
+                    }
                 }
             }
         }

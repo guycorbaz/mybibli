@@ -70,6 +70,7 @@ Found while preparing the story:
 - Rule #23: assert only on locations the spec creates. Rule #21: focus after the modal closes.
 - A3 practice (retro v1.28.1): D2 (where the success message lands, the row disappearing), D3 (refusal inside the modal) and D4 (delete hidden from Librarians) change what users see — **confirmed by the project lead on 2026-11-18** (D1 modal, D2 success entry + row removed, D3 refusal inside the modal, D4 delete hidden from Librarians).
 - `mem-guard` for every heavy command; one sub-agent at a time (station shared with kesh).
+- Review pass 1 (one reviewer, 10 findings): fixed 1 (the production-code cut stopped at `#[cfg(test)] mod x;` declarations at the top of `routes/mod.rs`, `lib.rs`, `i18n/mod.rs` — now only an inline `mod … {` ends it), 2 (a modal Confirm's error also added the generic "Server error (N)" line behind the modal — `mybibli.js` skips it while the modal is open; applies to every Pattern A modal), 3 (focus after the delete fell to `<body>` — `modal.js` reads a `data-modal-focus-fallback` selector on the detached trigger: parent row's link, or `#add-root-summary` for a root), 4 (handler tests: `tests/location_delete_modal.rs`, refusal locale pinned in FR and EN), 5 (a location deleted meanwhile: entry added `afterbegin`, never wiping `#feedback-list`, stale row removed, modal closed at Confirm), 6 (scanner E2E records DELETE requests), 7 (audit regexes: HTML spelling only, any case, accented first letter, `data-*` excluded), 9 (scan error message in the request locale); kept 8 (`feedback.dismiss_aria` duplicates `session.dismiss_aria` — the feedback renderers' merge #701 settles the key) and 10 (a parent keeps its toggle over an empty group after its last child is deleted, until reload — cosmetic, as before #698).
 
 ### References
 
@@ -93,5 +94,6 @@ Claude Opus 5.5 (`claude-opus-5-5`)
 - `src/templates_audit.rs`
 - `src/routes/catalog.rs`, `src/routes/catalog_contributors.rs`, `src/routes/home_search_fragment.rs`, `src/middleware/pending_updates.rs`
 - `locales/{en,fr,de,it}.yml`
-- `tests/e2e/specs/journeys/locations.spec.ts`
+- `tests/e2e/specs/journeys/locations.spec.ts`, `tests/location_delete_modal.rs` (new)
+- `static/js/modal.js`, `static/js/mybibli.js`, `templates/pages/locations.html`
 - `CLAUDE.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`

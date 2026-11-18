@@ -182,18 +182,27 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.keyboard.press("Tab");
     const confirmBtn = page.locator("[data-modal-confirm]");
     await expect(confirmBtn).toBeFocused({ timeout: 2000 });
+    const deletes: string[] = [];
+    page.on("request", (r) => {
+      if (r.method() === "DELETE" && r.url().includes("/locations/")) deletes.push(r.url());
+    });
     await simulateScan(page, "body", "9782070360246");
     await expect(dialog).toBeVisible({ timeout: 1000 });
-    await expect(row).toBeVisible();
+    await expect(confirmBtn).toBeFocused();
+    expect(deletes, "the scanner's Enter must not send the delete").toHaveLength(0);
 
     await confirmBtn.click();
     await expect(dialog).toHaveCount(0, { timeout: 5000 });
+    expect(deletes).toHaveLength(1);
     await expect(page.locator('[role="treeitem"]').filter({ hasText: "LO-ToDelete" })).toHaveCount(0, {
       timeout: 5000,
     });
     await expect(page.locator("#feedback-list .feedback-entry").first()).toContainText(
       /Location deleted|Emplacement supprimé/,
     );
+    // Rule #21 — the trigger left with the row: focus goes to the
+    // "add root location" summary (a root row's fallback), not <body>.
+    await expect(page.locator("#add-root-summary")).toBeFocused();
   });
 
   // #698 — a refusal (child locations) shows inside the open modal, in the
@@ -227,8 +236,19 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
       { timeout: 5000 },
     );
     await expect(dialog).toBeVisible();
+    // Shown once, in the modal — no generic "Server error" line behind it.
+    await expect(page.locator("#feedback-list")).not.toContainText(/Server error|Erreur serveur/i);
     await page.keyboard.press("Escape");
     await expect(parent).toBeVisible();
+
+    // Deleting the child: focus falls back to the parent row's link (Rule #21).
+    const childRow = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-Child" }).first();
+    await childRow.locator("button[data-modal-trigger]").click();
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await page.locator("[data-modal-confirm]").click();
+    await expect(dialog).toHaveCount(0, { timeout: 5000 });
+    await expect(page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Child" })).toHaveCount(0);
+    await expect(parentRow.locator('a[href^="/location/"]')).toBeFocused();
   });
 
   // #698 — a Librarian adds and edits, but only an Admin may delete: no dead
