@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { waitForDuplicateScanWindow } from "../../helpers/scanner";
+import { specVcode } from "../../helpers/vcode";
 
 /**
  * #440 — cataloging several CDs in a row.
@@ -24,7 +25,6 @@ import { waitForDuplicateScanWindow } from "../../helpers/scanner";
  */
 const CD_FIRST = "0093624700012";
 const CD_SECOND = "0093624700029";
-const VOLUME_LABEL = "V0440";
 
 async function scan(page: import("@playwright/test").Page, code: string) {
   const scanField = page.locator("[data-mybibli-scan-field]");
@@ -40,6 +40,7 @@ test.describe("Cataloging consecutive CDs (#440)", () => {
   test("the second CD becomes the active title, and its volume attaches to it", async ({
     page,
   }) => {
+    const VOLUME_LABEL = specVcode("CQ", 0);
     // ── First CD: goes through the MediaTypeSelector ──────────────────
     await scan(page, CD_FIRST);
 

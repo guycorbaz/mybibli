@@ -4,7 +4,7 @@
  *
  * Spec ID "RT" for ISBNs. Series names carry a per-run unique prefix and
  * are looked up by that name only: the series table is shared with every
- * other spec and is never assumed empty (#528).
+ * other spec and is never assumed empty (Rule #23).
  */
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";

@@ -23,6 +23,7 @@ import { test, expect, Page, ConsoleMessage } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume, createBorrower, createLoan } from "../../helpers/loans";
+import { specVcode } from "../../helpers/vcode";
 
 const SPEC_ID = "CS";
 
@@ -141,11 +142,7 @@ test.describe("Story 7-4 — CSP headers", () => {
     await loginAs(page, "librarian");
 
     const isbn = specIsbn(SPEC_ID, 1);
-    // V-code is `V` + exactly 4 digits (`^V\d{4}$`). Use the last 4 digits
-    // of `Date.now()` to keep the value unique across spec runs without
-    // colliding with V-code ranges used by other specs (which pick from
-    // V0001–V0099 / V0100–V0199 etc.). 7xxx is the CS spec range.
-    const volumeLabel = `V7${Date.now().toString().slice(-3)}`;
+    const volumeLabel = specVcode(SPEC_ID, 0);
     const borrowerName = `CS-Borrower-${Date.now()}`;
 
     await scanTitleAndVolume(page, isbn, volumeLabel);

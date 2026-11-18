@@ -18,6 +18,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { specVcode } from "../../helpers/vcode";
 
 async function catalogTitle(
   page: import("@playwright/test").Page,
@@ -78,6 +79,7 @@ test.describe("Recovering a V-code label (#441, #442)", () => {
   test("#441 — scanning a V-code after the active title was deleted says so plainly", async ({
     page,
   }) => {
+    const vcode = specVcode("VR", 0);
     const isbn = specIsbn("VR", 1);
 
     await page.goto("/catalog");
@@ -95,7 +97,7 @@ test.describe("Recovering a V-code label (#441, #442)", () => {
     // Back to the scan field, with the session still pointing at the dead title.
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
-    await scanField.fill("V0441");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
 
     const feedback = page.locator(".feedback-entry").first();
@@ -111,9 +113,9 @@ test.describe("Recovering a V-code label (#441, #442)", () => {
   test("#442 — a deleted volume's label can be re-stuck on another book", async ({
     page,
   }) => {
+    const label = specVcode("VR", 1);
     const firstIsbn = specIsbn("VR", 2);
     const secondIsbn = specIsbn("VR", 3);
-    const label = "V0442";
 
     // Catalog the first book and give it the label.
     await page.goto("/catalog");

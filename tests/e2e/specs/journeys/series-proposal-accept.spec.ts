@@ -18,9 +18,7 @@
  * accepts → the series page shows the title at position 2 and no
  * expected tome left.
  *
- * Spec ID "SA". The file name sorts after `classification-fieldset`,
- * `dewey-code` and `empty-states`, which assume no series exists
- * (D-11-11-6, #528). Series names carry a per-run stamp.
+ * Spec ID "SA". Series names carry a per-run stamp.
  */
 import { test, expect, request as playwrightRequest, Page, APIRequestContext } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";

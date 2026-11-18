@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { specVcode } from "../../helpers/vcode";
 
 const VALID_ISBN = specIsbn("XC", 1);
 
@@ -13,6 +14,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
   test("delete a volume → it disappears from catalog", async ({
     page,
   }) => {
+    const vcode = specVcode("XC", 0);
     await page.goto("/catalog");
 
     const scanField = page.locator("#scan-field");
@@ -26,7 +28,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
     });
 
     // Create a volume
-    await scanField.fill("V0098");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
     const volFeedback = page.locator(
       '.feedback-entry[data-feedback-variant="success"]'

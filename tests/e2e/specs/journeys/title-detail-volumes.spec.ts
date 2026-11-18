@@ -17,6 +17,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { specVcode } from "../../helpers/vcode";
 
 test.describe("CR #209 — per-volume table on /title/:id", () => {
   test("two volumes render in the table; deleting one drops it from the table", async ({
@@ -28,11 +29,10 @@ test.describe("CR #209 — per-volume table on /title/:id", () => {
     // against an un-reset DB) starts from a fresh title instead of hitting
     // the "title already exists" / duplicate-V-code paths. ISBN seq band
     // 10000+ is this spec's own namespace (specId "VL" isolates it from
-    // other specs); V-code band V6000–V6998 is unused by any other spec.
+    // other specs); the V-codes come from the spec's `specVcode` block.
     const ISBN = specIsbn("VL", 10000 + Math.floor(Math.random() * 89999));
-    const vBase = 6000 + Math.floor(Math.random() * 998);
-    const V_KEEP = `V${vBase}`; // ASC sort puts V_KEEP before V_DROP
-    const V_DROP = `V${vBase + 1}`;
+    const V_KEEP = specVcode("VL", 0); // ASC sort puts V_KEEP before V_DROP
+    const V_DROP = specVcode("VL", 1);
 
     // Step 1: catalog the title via scan, then scan two distinct V-codes.
     await page.goto("/catalog");
@@ -45,7 +45,7 @@ test.describe("CR #209 — per-volume table on /title/:id", () => {
     await scanField.fill(V_KEEP);
     await scanField.press("Enter");
     await expect(
-      page.locator(".feedback-entry").filter({ hasText: V_KEEP }),
+      page.locator('.feedback-entry[data-feedback-variant="success"]').filter({ hasText: V_KEEP }),
     ).toBeVisible({ timeout: 10000 });
     await scanField.fill(V_DROP);
     await scanField.press("Enter");
@@ -64,7 +64,7 @@ test.describe("CR #209 — per-volume table on /title/:id", () => {
     await expect(phantomConfirm).toBeVisible({ timeout: 10000 });
     await phantomConfirm.click();
     await expect(
-      page.locator(".feedback-entry").filter({ hasText: V_DROP }),
+      page.locator('.feedback-entry[data-feedback-variant="success"]').filter({ hasText: V_DROP }),
     ).toBeVisible({ timeout: 10000 });
 
     // Step 2: navigate to the title-detail page via home search.

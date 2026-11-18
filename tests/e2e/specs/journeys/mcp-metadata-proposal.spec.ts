@@ -11,8 +11,7 @@
  * revoked.
  *
  * Spec ID "MD" for ISBNs; unique key label; assertions only on rows this
- * test creates. Creates no series, so it does not depend on file order
- * (#528).
+ * test creates.
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";

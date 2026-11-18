@@ -13,8 +13,8 @@
  *
  * Cleanup: the key is revoked.
  *
- * Random 10-digit code; V-code band V9000–V9499 (home.spec.ts draws at random
- * from V1000–V9999, so a collision is rare but possible);
+ * Random 10-digit code; V-codes from the `specVcode`
+ * block "E6";
  * assertions only on rows this test creates (Rule #23).
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
@@ -24,6 +24,7 @@ import { volumeIdByLabel } from "../../helpers/catalog";
 import { createApiKey } from "../../helpers/api-keys";
 import { mcpCallTool } from "../../helpers/mcp";
 import { acceptFromDetail, revokeProposeKey } from "../../helpers/proposals";
+import { specVcode } from "../../helpers/vcode";
 
 const SOURCE = "https://example.org/epic16";
 /** A valid 1×1 RGBA PNG. */
@@ -58,7 +59,7 @@ test.describe("Epic 16 smoke — what real use showed", () => {
     await page.locator(`button[role="radio"][hx-vals*="${code}"]`, { hasText: /Book|Livre/ }).click();
     await expect(page.locator(".feedback-skeleton").last()).toBeVisible();
 
-    const vcode = `V${9000 + Math.floor(Math.random() * 500)}`;
+    const vcode = specVcode("E6", 0);
     await field.fill(vcode);
     await field.press("Enter");
     await expect(page.locator(".feedback-entry").first()).toContainText(new RegExp(vcode, "i"), {

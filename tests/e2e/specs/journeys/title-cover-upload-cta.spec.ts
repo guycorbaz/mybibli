@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume } from "../../helpers/loans";
+import { specVcode } from "../../helpers/vcode";
 
 // CR #350 — make the manual cover-upload affordance more visible (FR/CH/DE
 // publisher gap pivot). A title scanned with a generated ISBN resolves to
@@ -16,9 +17,10 @@ test.describe("Cover-upload affordance (#350)", () => {
   test("librarian: cover-less title detail shows prominent CTA + explainer; click opens modal", async ({
     page,
   }) => {
+    const vcode = specVcode("UC", 0);
     await loginAs(page, "librarian");
     const isbn = specIsbn("UC", 1);
-    await scanTitleAndVolume(page, isbn, "V0350");
+    await scanTitleAndVolume(page, isbn, vcode);
 
     // ISBN search returns the single matching title in #browse-results. Read
     // its detail href and navigate directly — the card markup carries a
@@ -45,11 +47,12 @@ test.describe("Cover-upload affordance (#350)", () => {
   test("admin: Health tab links to the no-cover review list when titles remain uncovered", async ({
     page,
   }) => {
+    const vcode = specVcode("UC", 1);
     await loginAs(page, "admin");
     // A cover-less title WITH an identifier counts toward the bulk-refetch
     // "missing covers" total, so the review CTA renders.
     const isbn = specIsbn("UC", 2);
-    await scanTitleAndVolume(page, isbn, "V0351");
+    await scanTitleAndVolume(page, isbn, vcode);
 
     await page.goto("/admin?tab=health");
     const reviewLink = page.getByRole("link", { name: REVIEW_CTA });

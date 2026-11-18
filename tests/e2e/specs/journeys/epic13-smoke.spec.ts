@@ -23,12 +23,8 @@
  *   the seq follows the clock in seconds (`% 9000`), so runs less than
  *   2.5 h apart never share it; the second ISBN, `specIsbn("E3", seconds
  *   % 100000)`, repeats only after ~28 h;
- * - the V-code is in V2000–V3999, which no spec hardcodes nor derives a
- *   band in, following the clock in seconds (`% 2000`: runs less than
- *   33 min apart never share it). The suite-wide per-test generators of
- *   loans.spec.ts / home-search.spec.ts (V0000–V9999) and home.spec.ts
- *   (V1000–V9999) can still draw it, as they can any code: a rare,
- *   transient clash every spec already lives with;
+ * - the V-code comes from the spec's `specVcode` block (fresh slot on a
+ *   retry; a re-run on an un-reset stack needs `./scripts/e2e-reset.sh`);
  * - the two L-codes are drawn in bucket 8 (`specLcode(8, …)`, used by no
  *   other spec) among the codes /locations does not already list, so a
  *   re-run never meets an earlier run's locations.
@@ -45,6 +41,7 @@ import { createLabel } from "../../helpers/labels";
 import { mcpCallTool } from "../../helpers/mcp";
 import { acceptFromDetail } from "../../helpers/proposals";
 import { simulateScan } from "../../helpers/scanner";
+import { specVcode } from "../../helpers/vcode";
 
 const SPEC = "E3";
 // Seconds stamp, kept small enough for specIsbn's five-digit sequence.
@@ -134,7 +131,7 @@ test.describe("Epic 13 smoke — catalogue corrections, end to end", () => {
 
     const markerIsbn = specIsbn("TN", 91000 + (SECONDS % 9000));
     const otherIsbn = specIsbn(SPEC, RUN);
-    const vcode = `V${2000 + (SECONDS % 2000)}`;
+    const vcode = specVcode(SPEC, 0);
     const [rootCode, shelfCode] = await freeLcodePair(page);
     const root = `E3-House-${SECONDS}`;
     const shelf = `E3-Shelf-${SECONDS}`;

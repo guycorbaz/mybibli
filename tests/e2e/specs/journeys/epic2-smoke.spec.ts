@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { createLocation } from "../../helpers/locations";
+import { specVcode } from "../../helpers/vcode";
 
 const TEST_ISBN = specIsbn("ES", 1);
 
@@ -9,6 +10,7 @@ test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
   test("login → create location → scan ISBN → scan V-code → scan L-code → verify shelved → verify home page", async ({
     page,
   }) => {
+    const vcode = specVcode("ES", 0);
     // Step 1: Login (blank browser, no cookies)
     await loginAs(page);
 
@@ -25,7 +27,7 @@ test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
     await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 
     // Step 4: Scan V-code → volume created
-    await scanField.fill("V0077");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
     await expect(page.locator('.feedback-entry[data-feedback-variant="success"]').first()).toBeVisible({ timeout: 5000 });
 
@@ -45,7 +47,7 @@ test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
 
     if (!hasShelvedFeedback) {
       // Re-scan V-code then L-code (volume context may have been cleared by ISBN scan)
-      await scanField.fill("V0077");
+      await scanField.fill(vcode);
       await scanField.press("Enter");
       await expect(page.locator('.feedback-entry[data-feedback-variant="success"]').first()).toBeVisible({ timeout: 5000 });
       await scanField.fill(lcode);
@@ -82,6 +84,7 @@ test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
   test("batch shelving: scan L-code first → then V-codes auto-shelve", async ({
     page,
   }) => {
+    const vcode = specVcode("ES", 1);
     await loginAs(page);
 
     const lcode = await createLocation(page, "ES-BatchShelf", "L2002");
@@ -100,9 +103,9 @@ test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
     await expect(page.locator("#feedback-list .feedback-entry").first()).toBeVisible({ timeout: 5000 });
 
     // Scan V-code → should auto-shelve at active location
-    await scanField.fill("V0088");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
-    await expect(page.locator("#feedback-list")).toContainText(/V0088/i, {
+    await expect(page.locator("#feedback-list")).toContainText(new RegExp(vcode, "i"), {
       timeout: 5000,
     });
 

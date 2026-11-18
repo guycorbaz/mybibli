@@ -1,6 +1,7 @@
 import { test, expect, Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { createBorrower } from "../../helpers/loans";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 /**
  * Issue #478 — the Trash panel's Restore journey.
@@ -10,9 +11,8 @@ import { createBorrower } from "../../helpers/loans";
  * — no restore, no error, no feedback entry. Nothing in the suite noticed,
  * because `TrashService::restore` was only ever called from `#[cfg(test)]`.
  *
- * The journey uses a **borrower**, not a series, on purpose: restoring
- * leaves the entity live, and `empty-states.spec.ts` asserts that the
- * /series list is empty. A live borrower collides with nothing.
+ * The journey uses a **borrower**: a live borrower with a unique name
+ * collides with nothing.
  */
 
 /** Create a borrower, soft-delete it through its modal, return the name. */
@@ -35,6 +35,9 @@ async function seedDeletedBorrower(page: Page, slug: string): Promise<string> {
   return name;
 }
 
+const restoreButton = (row: ReturnType<Page["locator"]>) =>
+  row.getByRole("button", { name: /^(restore|restaurer)$/i });
+
 /** Open the Trash tab filtered to borrowers and return the row for `name`. */
 async function openTrashRow(page: Page, name: string) {
   await page.goto("/admin?tab=trash", { waitUntil: "domcontentloaded" });
@@ -43,12 +46,17 @@ async function openTrashRow(page: Page, name: string) {
   ).toBeVisible({ timeout: 10000 });
   await page.locator("#filter-entity-type").selectOption("borrowers");
   const row = page.locator("tbody tr").filter({ hasText: name });
-  await expect(row).toBeVisible({ timeout: 10000 });
+  // Story 19-2 — the unfiltered panel already lists the row (newest first):
+  // wait for the filtered panel's swap (its buttons carry
+  // entity_type=borrowers) and for HTMX to wire it, or a Restore clicked on
+  // the old panel races the filter swap and its answer lands in a detached
+  // node (the row "stays").
+  await expect(restoreButton(row)).toHaveAttribute("hx-post", /entity_type=borrowers/, {
+    timeout: 10000,
+  });
+  await expectHtmxProcessed(page.locator("#admin-trash-panel"));
   return row;
 }
-
-const restoreButton = (row: ReturnType<Page["locator"]>) =>
-  row.getByRole("button", { name: /^(restore|restaurer)$/i });
 
 test.describe("Issue #478: restore from the Trash", () => {
   test.beforeEach(async ({ page }) => {

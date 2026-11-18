@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { createLocation } from "../../helpers/locations";
+import { specVcode } from "../../helpers/vcode";
 
 const COUNTER_ISBN = specIsbn("CV", 2);
 
@@ -29,6 +30,7 @@ test.describe("Volume Management", () => {
   test("scan ISBN then V-code creates volume with success feedback", async ({
     page,
   }) => {
+    const vcode = specVcode("CV", 0);
     const isbn = specIsbn("CV", 3);
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
@@ -39,7 +41,7 @@ test.describe("Volume Management", () => {
     await page.waitForSelector(".feedback-skeleton, .feedback-entry");
 
     // Then scan V-code
-    await scanField.fill("V0042");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
 
     const successEntry = page.locator(
@@ -55,6 +57,7 @@ test.describe("Volume Management", () => {
   // AC2 (#585): re-scanning the ISBN + label pair of a volume already
   // recorded for this title is an info, never an error.
   test("scan same ISBN and V-code again shows info, not an error", async ({ page }) => {
+    const vcode = specVcode("CV", 1);
     const isbn = specIsbn("CV", 4);
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
@@ -64,7 +67,7 @@ test.describe("Volume Management", () => {
     await page.waitForSelector(".feedback-skeleton, .feedback-entry");
 
     // Create first volume
-    await scanField.fill("V0043");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
     await page.waitForSelector(
       '.feedback-entry[data-feedback-variant="success"]',
@@ -78,13 +81,13 @@ test.describe("Volume Management", () => {
         .locator('.feedback-entry[data-feedback-variant="info"]')
         .filter({ hasText: /already in your catalog|déjà dans votre catalogue/i }),
     ).toBeVisible({ timeout: 5000 });
-    await scanField.fill("V0043");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
 
     await expect(
       page
         .locator('.feedback-entry[data-feedback-variant="info"]')
-        .filter({ hasText: /V0043/ }),
+        .filter({ hasText: new RegExp(vcode) }),
     ).toBeVisible({ timeout: 5000 });
     await expect(
       page.locator('.feedback-entry[data-feedback-variant="error"]'),
@@ -99,7 +102,8 @@ test.describe("Volume Management", () => {
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
-    // Scan V-code without setting a title first
+    // Scan V-code without setting a title first (block 0 of `specVcode`:
+    // no spec creates V0099)
     await scanField.fill("V0099");
     await scanField.press("Enter");
 
@@ -150,6 +154,8 @@ test.describe("Volume Management", () => {
   test("scan ISBN then two V-codes shows banner with 2 vol", async ({
     page,
   }) => {
+    const first = specVcode("CV", 2);
+    const second = specVcode("CV", 3);
     const isbn = specIsbn("CV", 5);
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
@@ -158,15 +164,15 @@ test.describe("Volume Management", () => {
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry");
 
-    await scanField.fill("V0044");
+    await scanField.fill(first);
     await scanField.press("Enter");
     await page.waitForSelector(
       '.feedback-entry[data-feedback-variant="success"]',
     );
 
-    await scanField.fill("V0045");
+    await scanField.fill(second);
     await scanField.press("Enter");
-    // 2nd volume on a title that already has V0044 → confirm modal opens.
+    // 2nd volume on a title that already has the first → confirm modal opens.
     await dismissPhantomConfirm(page);
 
     const banner = page.locator("#context-banner");
@@ -175,6 +181,7 @@ test.describe("Volume Management", () => {
 
   // AC8: Session counter increments
   test("session counter increments on volume creation", async ({ page }) => {
+    const vcode = specVcode("CV", 4);
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
@@ -183,7 +190,7 @@ test.describe("Volume Management", () => {
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry");
 
-    await scanField.fill("V0046");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
     await page.waitForSelector(
       '.feedback-entry[data-feedback-variant="success"]',
@@ -194,6 +201,7 @@ test.describe("Volume Management", () => {
 
   // AC6: L-code assigns location (needs location data in DB)
   test("scan V-code then L-code shelves volume", async ({ page }) => {
+    const vcode = specVcode("CV", 5);
     const isbn = specIsbn("CV", 6);
     // Create a location and capture its L-code dynamically
     const lcode = await createLocation(page, "CV-ShelveLoc", "L3001");
@@ -206,7 +214,7 @@ test.describe("Volume Management", () => {
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry");
 
-    await scanField.fill("V0047");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
     await page.waitForSelector(
       '.feedback-entry[data-feedback-variant="success"]',
@@ -255,6 +263,7 @@ test.describe("Volume accessibility", () => {
   test("catalog page passes accessibility checks after volume operations", async ({
     page,
   }) => {
+    const vcode = specVcode("CV", 6);
     let AxeBuilder;
     try {
       AxeBuilder = (await import("@axe-core/playwright")).default;
@@ -271,7 +280,7 @@ test.describe("Volume accessibility", () => {
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry");
 
-    await scanField.fill("V0048");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
     await page.waitForSelector(
       '.feedback-entry[data-feedback-variant="success"]',

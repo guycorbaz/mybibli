@@ -17,7 +17,7 @@
  * pill rendered by the SAME response.
  *
  * Spec ID "NB" for ISBNs; the proposal targets this spec's own title, so
- * its rejection blocks nothing elsewhere. Creates no series (#528).
+ * its rejection blocks nothing elsewhere.
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";

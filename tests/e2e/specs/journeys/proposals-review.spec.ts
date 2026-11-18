@@ -17,7 +17,7 @@
  * discarded).
  *
  * Spec ID "PR" for ISBNs; every proposal targets this spec's own title,
- * so its rejections block nothing elsewhere. Creates no series (#528).
+ * so its rejections block nothing elsewhere.
  * The resubmission delay is stack-global: this spec only needs it to be
  * non-zero (11-15's spec moves it between 45 and 90).
  */

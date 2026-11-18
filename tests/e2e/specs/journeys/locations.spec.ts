@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { simulateScan } from "../../helpers/scanner";
+import { effectiveOpacity, expectReallySeen } from "../../helpers/visibility";
 
 test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
   test.beforeEach(async ({ page }) => {
@@ -384,9 +385,10 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
   });
 
   // #695 regression — the row's add / edit / delete controls are visible at
-  // rest (dimmed), at full opacity on hover and on keyboard focus. Computed
-  // opacity, because Playwright's toBeVisible() treats opacity 0 as visible —
-  // and the E2E stack is the Docker image, where the bug lived.
+  // rest (dimmed), at full opacity on hover and on keyboard focus. Effective
+  // opacity (helpers/visibility.ts), because Playwright's toBeVisible()
+  // treats opacity 0 as visible — and the E2E stack is the Docker image,
+  // where the bug lived.
   test("tree row controls are visible at rest, full on hover and focus", async ({ page }) => {
     await page.goto("/locations");
     await page.locator("summary").filter({ hasText: /add root|ajouter/i }).click();
@@ -402,10 +404,10 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     // Wait for the created row (the URL is /locations before and after).
     await expect(editLink).toHaveCount(1, { timeout: 5000 });
     const controls = editLink.locator("xpath=..");
-    const opacity = () => controls.evaluate((el) => Number(getComputedStyle(el).opacity));
+    const opacity = () => effectiveOpacity(controls);
 
     await page.mouse.move(0, 0);
-    await expect.poll(opacity).toBeGreaterThan(0.3);
+    await expectReallySeen(controls);
     await expect.poll(opacity).toBeLessThan(1);
 
     await row.hover();

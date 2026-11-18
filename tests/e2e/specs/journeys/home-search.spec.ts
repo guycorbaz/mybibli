@@ -4,19 +4,19 @@ import { specIsbn } from "../../helpers/isbn";
 import { simulateScan, simulateTyping } from "../../helpers/scanner";
 import { scanTitleAndVolume } from "../../helpers/loans";
 import { createLocation } from "../../helpers/locations";
+import { specVcode } from "../../helpers/vcode";
 
 const SPEC_ID = "HS";
 
 /**
- * Per-test unique CHAR(5) label generator (V0001 … V0999 …).
- * Combines a process-local counter with `Date.now() % 1000` so two
+ * Per-test unique CHAR(5) L-code generator (L0001 … L0999 …).
+ * Combines a process-local counter with `Date.now() % 100` so two
  * parallel tests in the same wall-clock millisecond can't collide on
- * the UNIQUE constraint of `volumes.label` / `storage_locations.label`.
- * Story-9-9 review fix — the prior `Date.now() % 10000` formula was
- * collision-prone under `fullyParallel: true`.
+ * the UNIQUE constraint of `storage_locations.label`. V-codes come from
+ * the spec's `specVcode` block instead (story 19-2).
  */
 let labelCounter = 0;
-function uniqueLabel(prefix: "V" | "L"): string {
+function uniqueLabel(prefix: "L"): string {
   labelCounter = (labelCounter + 1) % 100;
   const counterPart = labelCounter.toString().padStart(2, "0");
   const timePart = (Date.now() % 100).toString().padStart(2, "0");
@@ -201,11 +201,8 @@ test.describe("Home page scanner detection — scan to navigate", () => {
   });
 
   test("scanning a known V-code redirects to /volume/<id>", async ({ page }) => {
-    // Per story-9-8 catch + 9-9 review fix — V-code derived from
-    // `uniqueLabel("V")` which combines a per-test counter with
-    // `Date.now() % 1000` so two parallel tests in the same wall-clock
-    // ms can't collide on the UNIQUE constraint of `volumes.label`.
-    const vcode = uniqueLabel("V");
+    // The V-code comes from the spec's `specVcode` block.
+    const vcode = specVcode(SPEC_ID, 0);
     const isbn = specIsbn(SPEC_ID, 1);
 
     // Seed: create a title + volume with the unique V-code via the catalog
@@ -223,8 +220,8 @@ test.describe("Home page scanner detection — scan to navigate", () => {
   test("scanning a known L-code redirects to /location/<id>", async ({
     page,
   }) => {
-    // L-code via `uniqueLabel("L")` for the same parallel-collision
-    // resistance as V-codes. CHAR(5) constrained.
+    // L-code via `uniqueLabel("L")` for parallel-collision resistance.
+    // CHAR(5) constrained.
     const lcode = uniqueLabel("L");
     const locationName = `HS-9-9 Shelf ${Date.now()}`;
 

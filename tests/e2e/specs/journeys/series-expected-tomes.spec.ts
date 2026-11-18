@@ -7,13 +7,6 @@ import { specIsbn } from "../../helpers/isbn";
 // specId "XT" is unique to this spec. ISBN sequences and series names carry
 // a run stamp so a rerun on a non-reset stack never meets an earlier run's
 // wishlist item or title.
-//
-// File name: this spec creates series, and several earlier specs assume
-// no series exists yet (empty-states.spec.ts expects an empty /series;
-// dewey-code / classification-fieldset click the LAST submit button of a
-// title page, which becomes "Add to series" once a series exists). Like
-// series.spec.ts, it is named to run after them in the alphabetical
-// schedule (D-11-11-6).
 
 const RUN = Math.floor(Date.now() / 1000) % 20000;
 const isbnFor = (k: number) => specIsbn("XT", RUN * 4 + k);

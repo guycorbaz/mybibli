@@ -3,6 +3,7 @@ import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume } from "../../helpers/loans";
 import { createLocation } from "../../helpers/locations";
+import { specVcode } from "../../helpers/vcode";
 
 /**
  * Issue #489 — Admin → Health shows the last V-code / L-code in use and
@@ -19,9 +20,8 @@ import { createLocation } from "../../helpers/locations";
  * displayed "next" is exactly highest + 1.
  */
 const ISBN = specIsbn("HL", 1);
-// Unique across the suite (grep before changing): V-codes in the 66xx
-// range and L-codes in the 7xxx bucket are used by no other spec.
-const VCODE = "V6689";
+// V-codes come from the spec's `specVcode` block; L-codes in the 7xxx
+// bucket are used by no other spec (grep before changing).
 const LCODE = "L7489";
 
 const WATERMARK =
@@ -63,6 +63,7 @@ test.describe("Issue #489 — Health tab label watermarks", () => {
   test("shows the highest V-code and L-code with the next free number", async ({
     page,
   }) => {
+    const VCODE = specVcode("HL", 0);
     await ensureLocation(page, "HL-Watermark", LCODE);
     await scanTitleAndVolume(page, ISBN, VCODE);
 
@@ -90,7 +91,7 @@ test.describe("Issue #489 — Health tab label watermarks", () => {
     // A printed sticker outlives the row: once the volume is soft-deleted,
     // the reported highest must not drop below the code it carried.
     const isbn = specIsbn("HL", 2);
-    const vcode = "V6690";
+    const vcode = specVcode("HL", 1);
     await scanTitleAndVolume(page, isbn, vcode);
 
     await page.goto("/admin?tab=health");

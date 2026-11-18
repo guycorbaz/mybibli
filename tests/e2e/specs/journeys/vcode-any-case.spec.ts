@@ -8,17 +8,20 @@
  * media-type message), and an unrecognised code names the accepted shapes;
  * focus stays in the scan field throughout (Rule #21).
  *
- * Data: the title name and the V-codes are this spec's own (range V9500–V9899,
- * random); assertions only on the rows this test creates (Rule #23).
+ * Data: the title name is this spec's own, the V-code comes from its
+ * `specVcode` block ("VY"); assertions only on the rows this test creates
+ * (Rule #23).
  */
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { simulateScan, simulateTyping } from "../../helpers/scanner";
+import { specVcode } from "../../helpers/vcode";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 async function createTitleByHand(page: Page, name: string): Promise<void> {
   await page.locator("#new-title-btn").click();
   const form = page.locator("#title-form-container form");
-  await expect(form).toBeVisible({ timeout: 10000 });
+  await expectHtmxProcessed(form);
   await form.locator("#title-field").fill(name);
   await form.locator("#media-type-field").selectOption("book");
   await page.waitForSelector("#page-count-field", { timeout: 10000 });
@@ -41,8 +44,8 @@ test.describe("Story 17-1 — V-code any case", () => {
     const name = `La planète de l'angoisse VK ${Date.now()}`;
     await createTitleByHand(page, name);
 
-    const digits = String(9500 + Math.floor(Math.random() * 400));
-    const label = `V${digits}`;
+    const label = specVcode("VY", 0);
+    const digits = label.slice(1);
     await simulateTyping(page, "#scan-field", `v${digits}`);
     await page.keyboard.press("Enter");
 

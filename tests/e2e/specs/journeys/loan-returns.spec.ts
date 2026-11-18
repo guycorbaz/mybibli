@@ -8,6 +8,7 @@ import {
   scanTitleAndVolume,
 } from "../../helpers/loans";
 import { simulateScan } from "../../helpers/scanner";
+import { specVcode } from "../../helpers/vcode";
 
 // CR #300: per-test unique ISBNs — each test gets a fresh title so the
 // V-code scan never hits the phantom-volume confirmation modal.
@@ -31,42 +32,44 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
   // AC1: Return a loan
   test("return a loan → loan disappears from list", async ({ page }) => {
-    await setupLoan(page, specIsbn("LR", 3), "V0070", "LR-Return Borrower");
+    const vcode = specVcode("LR", 0);
+    await setupLoan(page, specIsbn("LR", 3), vcode, "LR-Return Borrower");
 
     // Loan is already visible in /loans (createLoan leaves us on the loans page
     // with the row asserted). Perform the return via the canonical helper.
-    await returnLoanFromLoansPage(page, "V0070");
+    await returnLoanFromLoansPage(page, vcode);
 
     // Re-fetch /loans from scratch to prove the row is gone after a full render
     await page.goto("/loans");
-    await expect(page.locator("#loans-table-body")).not.toContainText("V0070", {
+    await expect(page.locator("#loans-table-body")).not.toContainText(vcode, {
       timeout: 5000,
     });
   });
 
   // AC4: Volume deletion guard
   test("try to delete volume on loan → blocked with error", async ({ page }) => {
-    await setupLoan(page, specIsbn("LR", 4), "V0071", "LR-Delete Guard Borrower");
+    const vcode = specVcode("LR", 1);
+    await setupLoan(page, specIsbn("LR", 4), vcode, "LR-Delete Guard Borrower");
 
     // Verify loan is live
     await page.goto("/loans");
-    await expect(page.locator("#loans-table-body")).toContainText("V0071", {
+    await expect(page.locator("#loans-table-body")).toContainText(vcode, {
       timeout: 5000,
     });
 
     // Try to delete the volume via catalog scan
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
-    await scanField.fill("V0071");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
     // Wait for scan feedback to confirm the volume was looked up
     await expect(page.locator(".feedback-entry").first()).toContainText(
-      /V0071/i,
+      new RegExp(vcode, "i"),
       { timeout: 5000 },
     );
 
     // Navigate to volume detail if visible, then attempt deletion
-    const volumeLink = page.locator('a:has-text("V0071")').first();
+    const volumeLink = page.locator(`a:has-text("${vcode}")`).first();
     if (await volumeLink.isVisible({ timeout: 3000 }).catch(() => false)) {
       await volumeLink.click();
       // Wait for the volume detail heading to render
@@ -92,13 +95,14 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
   // AC3: Overdue highlighting (styling check for a fresh loan — no threshold change)
   test("overdue loan shows red styling and badge", async ({ page }) => {
-    await setupLoan(page, specIsbn("LR", 5), "V0074", "LR-Overdue Borrower");
+    const vcode = specVcode("LR", 2);
+    await setupLoan(page, specIsbn("LR", 5), vcode, "LR-Overdue Borrower");
 
     // Brand-new loan (0 days) should NOT be overdue with the default threshold
     await page.goto("/loans");
     const loanRow = page
       .locator("#loans-table-body tr")
-      .filter({ hasText: "V0074" });
+      .filter({ hasText: vcode });
     await expect(loanRow).toBeVisible({ timeout: 5000 });
 
     // Duration cell must NOT have red text or overdue badge
@@ -124,12 +128,13 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
   // AC6: Scan V-code → return from scan result card
   test("scan V-code → return from scan result", async ({ page }) => {
-    await setupLoan(page, specIsbn("LR", 6), "V0072", "LR-Scan Return Borrower");
+    const vcode = specVcode("LR", 3);
+    await setupLoan(page, specIsbn("LR", 6), vcode, "LR-Scan Return Borrower");
 
     await page.goto("/loans");
     const scanField = page.locator("#loan-scan-field");
     await scanField.click();
-    await scanField.fill("V0072");
+    await scanField.fill(vcode);
     // Trigger scan via HTMX directly (hx-trigger on keydown may not fire from Playwright)
     await page.evaluate(() => {
       const field = document.getElementById("loan-scan-field") as HTMLInputElement;
@@ -140,7 +145,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
     });
 
     // Scan result should show with Return button
-    await expect(page.locator("#scan-result")).toContainText("V0072", {
+    await expect(page.locator("#scan-result")).toContainText(vcode, {
       timeout: 5000,
     });
     const returnBtn = page.locator(
@@ -160,7 +165,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
     // Verify loan is gone from the list
     await page.goto("/loans");
-    await expect(page.locator("#loans-table-body")).not.toContainText("V0072", {
+    await expect(page.locator("#loans-table-body")).not.toContainText(vcode, {
       timeout: 5000,
     });
   });
@@ -170,12 +175,13 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
   // burst against `body` MUST NOT leak Enter through to Cancel (which would
   // close the modal). Mirror of the 9-10 PR #129 fix pattern.
   test("scanner-guard suppresses scanner burst while modal open", async ({ page }) => {
-    await setupLoan(page, specIsbn("LR", 7), "V0075", "LR-Scanner Guard Borrower");
+    const vcode = specVcode("LR", 4);
+    await setupLoan(page, specIsbn("LR", 7), vcode, "LR-Scanner Guard Borrower");
 
     await page.goto("/loans");
     const loanRow = page
       .locator("#loans-table-body tr")
-      .filter({ hasText: /\bV0075\b/i });
+      .filter({ hasText: new RegExp(`\\b${vcode}\\b`, "i") });
     const returnBtn = loanRow
       .locator('button:has-text("Return"), button:has-text("Retourner")')
       .first();
@@ -204,22 +210,23 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
   // Smoke test: full loan lifecycle
   test("smoke: login → create loan → return loan → verify lifecycle", async ({ context, page }) => {
+    const vcode = specVcode("LR", 5);
     await context.clearCookies();
 
     // Real login via shared helper (Foundation Rule #7 — no cookie injection)
     await loginAs(page);
 
     // Create title + volume + borrower + loan via canonical helpers
-    await scanTitleAndVolume(page, specIsbn("LR", 8), "V0073");
+    await scanTitleAndVolume(page, specIsbn("LR", 8), vcode);
     await createBorrower(page, "LR-Smoke Return Borrower");
-    await createLoan(page, "V0073", "LR-Smoke Return Borrower");
+    await createLoan(page, vcode, "LR-Smoke Return Borrower");
 
     // Return the loan
-    await returnLoanFromLoansPage(page, "V0073");
+    await returnLoanFromLoansPage(page, vcode);
 
     // Verify the row is gone after a fresh fetch
     await page.goto("/loans");
-    await expect(page.locator("#loans-table-body")).not.toContainText("V0073", {
+    await expect(page.locator("#loans-table-body")).not.toContainText(vcode, {
       timeout: 5000,
     });
   });

@@ -7,6 +7,7 @@ import {
   scanTitleAndVolume,
 } from "../../helpers/loans";
 import { titleIdFromSkeleton, volumeIdByLabel } from "../../helpers/catalog";
+import { specVcode } from "../../helpers/vcode";
 
 // CR #300: per-test unique ISBNs — each test gets a fresh title so the
 // V-code scan never hits the phantom-volume confirmation modal.
@@ -31,9 +32,10 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
   // AC2: Register a loan
   test("register a loan → verify loan appears in list", async ({ page }) => {
-    await scanTitleAndVolume(page, specIsbn("LN", 3), "V0060");
+    const vcode = specVcode("LN", 0);
+    await scanTitleAndVolume(page, specIsbn("LN", 3), vcode);
     await createBorrower(page, "LN-Loan Test Borrower");
-    await createLoan(page, "V0060", "LN-Loan Test Borrower");
+    await createLoan(page, vcode, "LN-Loan Test Borrower");
 
     // createLoan leaves the page on /loans with the row asserted. Double-check
     // the row also shows the borrower name.
@@ -44,12 +46,13 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
   // AC3: Prevent loan of non-loanable volume
   test("attempt to lend non-loanable volume → verify error", async ({ page }) => {
-    await scanTitleAndVolume(page, specIsbn("LN", 4), "V0063");
+    const vcode = specVcode("LN", 1);
+    await scanTitleAndVolume(page, specIsbn("LN", 4), vcode);
 
     // Resolve the volume id deterministically from the title detail page's
     // volume link, instead of brute-force scanning /volume/{1..N} (#22).
     const titleId = await titleIdFromSkeleton(page);
-    const volumeId = await volumeIdByLabel(page, titleId, "V0063");
+    const volumeId = await volumeIdByLabel(page, titleId, vcode);
 
     // Set the volume condition to the damaged (non-loanable) state. Select by
     // the value of whichever option's label matches in either language rather
@@ -85,7 +88,7 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     // Attempt to lend the non-loanable volume — should be blocked
     await page.goto("/loans");
     await page.getByText(/New loan|Nouveau prêt/i).click();
-    await page.locator("#loan-volume-label").fill("V0063");
+    await page.locator("#loan-volume-label").fill(vcode);
     await page.locator("#loan-borrower-search").fill("LN-NonLoanable");
     await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
     const match = page
@@ -110,14 +113,15 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
   // AC4: Prevent double loan
   test("attempt to lend volume already on loan → verify error", async ({ page }) => {
-    await scanTitleAndVolume(page, specIsbn("LN", 5), "V0061");
+    const vcode = specVcode("LN", 2);
+    await scanTitleAndVolume(page, specIsbn("LN", 5), vcode);
     await createBorrower(page, "LN-Double Loan Borrower");
 
     // Register first loan (idempotent — may already be on loan from a prior
     // partial run if the DB wasn't wiped, but the assertion accepts both)
     await page.goto("/loans");
     await page.getByText(/New loan|Nouveau prêt/i).click();
-    await page.locator("#loan-volume-label").fill("V0061");
+    await page.locator("#loan-volume-label").fill(vcode);
     await page.locator("#loan-borrower-search").fill("LN-Double");
     await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
     const match1 = page
@@ -133,14 +137,14 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     );
     await page.locator("#loan-create-form button[type='submit']").click();
     await expect(page.locator("#loan-feedback")).toContainText(
-      /created|créé|V0061|already on loan|déjà en prêt/i,
+      new RegExp(`created|créé|${vcode}|already on loan|déjà en prêt`, "i"),
       { timeout: 10000 },
     );
 
     // Attempt another loan on same volume — should always fail
     await page.goto("/loans");
     await page.getByText(/New loan|Nouveau prêt/i).click();
-    await page.locator("#loan-volume-label").fill("V0061");
+    await page.locator("#loan-volume-label").fill(vcode);
     await page.locator("#loan-borrower-search").fill("LN-Double");
     await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
     const match2 = page
@@ -170,9 +174,10 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     const scanField = page.locator("#loan-scan-field");
     await expect(scanField).toBeVisible({ timeout: 3000 });
 
-    // Scan a non-existent V-code via HTMX
+    // Scan a V-code no spec creates: `specVcode` never hands out block 0
+    // (V0000–V0199), so V0199 exists on no stack the suite has run against.
     await scanField.click();
-    await scanField.fill("V9999");
+    await scanField.fill("V0199");
     await page.evaluate(() => {
       const field = document.getElementById("loan-scan-field") as HTMLInputElement;
       htmx.ajax("GET", "/loans/scan?code=" + encodeURIComponent(field.value), {
@@ -196,9 +201,10 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     await loginAs(page);
 
     // Create the loan chain via canonical helpers
-    await scanTitleAndVolume(page, specIsbn("LN", 6), "V0062");
+    const vcode = specVcode("LN", 3);
+    await scanTitleAndVolume(page, specIsbn("LN", 6), vcode);
     await createBorrower(page, "LN-Smoke Loan Borrower");
-    await createLoan(page, "V0062", "LN-Smoke Loan Borrower");
+    await createLoan(page, vcode, "LN-Smoke Loan Borrower");
 
     // Verify in list — createLoan already asserts the row; double-check borrower
     await expect(page.locator("#loans-table-body")).toContainText(
@@ -210,9 +216,10 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
   // Bug: dynamic sqlx::query() could not decode MariaDB TIMESTAMP into NaiveDateTime.
   // Fix: CAST(loaned_at AS DATETIME) in all dynamic loan queries.
   test("regression: loans page renders with active loan (TIMESTAMP fix)", async ({ page }) => {
-    await scanTitleAndVolume(page, specIsbn("LN", 7), "V0090");
+    const vcode = specVcode("LN", 4);
+    await scanTitleAndVolume(page, specIsbn("LN", 7), vcode);
     await createBorrower(page, "LN-TIMESTAMP Borrower");
-    await createLoan(page, "V0090", "LN-TIMESTAMP Borrower");
+    await createLoan(page, vcode, "LN-TIMESTAMP Borrower");
 
     // Verify the page rendered fully (not a 500 error page) with borrower and
     // duration columns — this is what the TIMESTAMP decoding regression check
@@ -233,20 +240,6 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 // librarian sees "On loan to {borrower} since {date}" with a clickable
 // link to /borrower/:id. AC8 LOAD-BEARING SECURITY contract: the
 // borrower's name MUST NOT appear ANYWHERE in the anonymous render.
-// Story 9-8 — per-test unique CHAR(5) V-code generator. Combines a
-// process-local counter with `Date.now() % 100` so two parallel tests
-// in the same wall-clock millisecond can't collide on the
-// `volumes.label` UNIQUE constraint. Code-review fix vs the prior
-// `Date.now() % 10000` formula which collided with sibling specs'
-// hardcoded V-codes (V0042, V0070, V0099) under fullyParallel: true.
-let vcodeCounter = 0;
-function uniqueVcode(): string {
-  vcodeCounter = (vcodeCounter + 1) % 100;
-  const counter = vcodeCounter.toString().padStart(2, "0");
-  const time = (Date.now() % 100).toString().padStart(2, "0");
-  return `V${counter}${time}`;
-}
-
 test.describe("Volume detail — loan status role-aware (FR59)", () => {
   test("anonymous sees 'On loan' without borrower name; librarian sees borrower link", async ({
     browser,
@@ -258,13 +251,11 @@ test.describe("Volume detail — loan status role-aware (FR59)", () => {
     // induced collisions:
     // - borrowerName: a duplicate name would trigger strict-mode
     //   "resolved to N elements" in createBorrower's link assertion.
-    // - volumeLabel: V-codes are CHAR(5) UNIQUE; uniqueVcode()
-    //   combines a per-test counter + Date.now() % 100 (code-review
-    //   fix — was Date.now() % 10000, collision-prone vs sibling specs'
-    //   hardcoded V0042/V0070/V0099 under fullyParallel: true).
+    // - volumeLabel: from this spec's `specVcode` block, which moves to a
+    //   fresh slot on a retry.
     const uniq = Date.now();
     const borrowerName = `LN-9-8 Alice Tremblay ${uniq}`;
-    const volumeLabel = uniqueVcode();
+    const volumeLabel = specVcode("LN", 5);
     // #458: randomised in the 10000+ band (the fixed seq 8 made retries and
     // repeat runs hit the pre-existing title, where the V-code scan takes
     // the phantom-volume modal path instead of the fresh-title path this

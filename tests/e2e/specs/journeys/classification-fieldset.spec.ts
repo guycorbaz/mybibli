@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 /**
  * CR #206 — the title-edit form groups genre and Dewey into a Classification
@@ -37,7 +38,7 @@ test.describe("Classification fieldset (CR #206)", () => {
     await page
       .getByRole("button", { name: /Edit metadata|Modifier les métadonnées/i })
       .click();
-    await expect(page.locator("#title-edit-form")).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(page.locator("#title-edit-form"));
   }
 
   test("genre and Dewey sit inside the Classification fieldset, publication date does not", async ({
@@ -95,7 +96,7 @@ test.describe("Classification fieldset (CR #206)", () => {
       if (!val) await pageCount.fill("0");
     }
 
-    await page.locator('main button[type="submit"]').last().click();
+    await page.locator("#edit-title-submit").click();
 
     // Both values survive the HTMX swap back into the metadata panel.
     await expect(page.locator("#title-metadata")).toContainText("621.381", {

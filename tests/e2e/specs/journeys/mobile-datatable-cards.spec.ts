@@ -17,6 +17,7 @@ import {
   createLoan,
 } from "../../helpers/loans";
 import { specIsbn } from "../../helpers/isbn";
+import { specVcode } from "../../helpers/vcode";
 
 const MOBILE_VIEWPORT = { width: 375, height: 667 };
 
@@ -30,7 +31,7 @@ test.describe("Story 10-3 — mobile DataTable card mode", () => {
   }) => {
     // Seed: borrower + title + volume + loan.
     const isbn = specIsbn("MC", 1);
-    const volumeLabel = "V8001";
+    const volumeLabel = specVcode("MC", 0);
     const borrowerName = "MC-Loans-User-1";
     await scanTitleAndVolume(page, isbn, volumeLabel);
     await createBorrower(page, borrowerName);
@@ -71,7 +72,7 @@ test.describe("Story 10-3 — mobile DataTable card mode", () => {
   }) => {
     // Seed: borrower + title + volume + loan
     const isbn = specIsbn("MC", 3);
-    const volumeLabel = "V8003";
+    const volumeLabel = specVcode("MC", 1);
     const borrowerName = "MC-Borrower-Detail-User-3";
     await scanTitleAndVolume(page, isbn, volumeLabel);
     await createBorrower(page, borrowerName);

@@ -59,6 +59,10 @@ export async function volumeIdByLabel(
   const link = page
     .locator('a[href^="/volume/"]')
     .filter({ hasText: new RegExp(`^\\s*${label}\\s*$`) });
+  // Story 19-2 — fail fast with the reason, not a 90 s test timeout.
+  await expect(link, `title ${titleId} detail page must list ${label}`).not.toHaveCount(0, {
+    timeout: 10000,
+  });
   const href = await link.first().getAttribute("href");
   expect(
     href,

@@ -9,10 +9,8 @@
  * on both title pages.
  *
  * Rule #7 style: a blank browser and a real login (loginAs), no injected
- * cookie. Spec ID "MV"; ISBN seq randomised. V-codes come from a clock
- * counter in V0480–V0579 — disjoint from home.spec.ts (`Date.now()`-derived,
- * ≥ V1000), location-full-path.spec.ts (V0600–V0999) and the fixed codes of
- * other specs — so a retry against an un-reset DB starts fresh.
+ * cookie. Spec ID "MV"; ISBN seq randomised. V-codes come from the spec's
+ * `specVcode` block, which moves to a fresh slot on a retry.
  */
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
@@ -20,6 +18,7 @@ import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume } from "../../helpers/loans";
 import { simulateScan } from "../../helpers/scanner";
+import { specVcode } from "../../helpers/vcode";
 
 const DIALOG = "#modal-slot dialog[open]";
 
@@ -54,13 +53,13 @@ async function openVolume(page: Page, titleHref: string, label: string) {
   await expect(page).toHaveURL(/\/volume\/\d+$/);
 }
 
-/** `vBase` + a clock counter (0–49): V0480–V0529 or V0530–V0579. */
-function seed(vBase: number) {
+/** Two fresh ISBNs and the `specVcode` label number `seq`. */
+function seed(seq: number) {
   const n = 10000 + Math.floor(Math.random() * 89000);
   return {
     isbnFrom: specIsbn("MV", n),
     isbnTo: specIsbn("MV", n + 1),
-    label: `V0${vBase + (Date.now() % 50)}`,
+    label: specVcode("MV", seq),
   };
 }
 
@@ -68,7 +67,7 @@ test.describe("Move a volume to another title (#580)", () => {
   test("a librarian moves a volume through the modal; both title pages follow", async ({
     page,
   }) => {
-    const { isbnFrom, isbnTo, label } = seed(480);
+    const { isbnFrom, isbnTo, label } = seed(0);
     await loginAs(page, "librarian");
 
     await scanTitleAndVolume(page, isbnFrom, label);
@@ -124,7 +123,7 @@ test.describe("Move a volume to another title (#580)", () => {
   test("confirming without a picked title explains why, and the modal stays open", async ({
     page,
   }) => {
-    const { isbnFrom, label } = seed(530);
+    const { isbnFrom, label } = seed(1);
     await loginAs(page, "librarian");
     await scanTitleAndVolume(page, isbnFrom, label);
     const fromHref = await titlePath(page, isbnFrom);

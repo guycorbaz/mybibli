@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume } from "../../helpers/loans";
+import { specVcode } from "../../helpers/vcode";
 
 /**
  * CR #443 tranche 2 — applying labels to titles and volumes.
@@ -88,7 +89,7 @@ test.describe("CR #443 — labels on titles and volumes", () => {
     // volume — the case my hand-rolled version silently hung on under
     // parallel load.
     const isbn = specIsbn("EL", 2);
-    const vcode = `V9${crypto.randomUUID().replace(/\D/g, "").slice(0, 3).padEnd(3, "0")}`;
+    const vcode = specVcode("EL", 0);
     await scanTitleAndVolume(page, isbn, vcode);
 
     await page.goto(`/?q=${isbn}`);

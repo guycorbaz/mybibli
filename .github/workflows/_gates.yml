@@ -193,6 +193,12 @@ jobs:
             exit 1
           fi
 
+      # Story 19-2 (#674) — a spec that creates a volume takes its V-code
+      # from `specVcode` (one block per spec); a hard-coded one fails here.
+      - name: Grep gate — no hard-coded created V-code in specs
+        working-directory: tests/e2e
+        run: ./vcode-literals.sh
+
       # Fix #106 — story 9-2 added `#recent-additions` above
       # `#browse-results` on the home page. Both render
       # `<a href="/title/N">` blocks. Any spec using
@@ -221,6 +227,16 @@ jobs:
       - name: Run Playwright suite
         working-directory: tests/e2e
         run: npm test
+
+      # Story 19-2 (D2) — when Playwright does not pass (a flaky test
+      # included: it fails the job since 19-2), print the application log
+      # in the job log, before the stack is stopped (`down -v` drops it).
+      - name: Print application log on failure
+        if: failure()
+        run: |
+          echo "::group::mybibli application log"
+          docker compose -f tests/e2e/docker-compose.test.yml logs --no-color --timestamps mybibli || true
+          echo "::endgroup::"
 
       - name: Collect compose logs
         if: always()
@@ -307,6 +323,16 @@ jobs:
         env:
           MYBIBLI_SETUP_E2E: "1"
         run: npx playwright test specs/journeys/setup-wizard.spec.ts
+
+      - name: Print application log on failure
+        if: failure()
+        run: |
+          echo "::group::mybibli application log"
+          docker compose \
+            -f tests/e2e/docker-compose.test.yml \
+            -f tests/e2e/docker-compose.wizard.yml \
+            logs --no-color --timestamps mybibli || true
+          echo "::endgroup::"
 
       - name: Collect compose logs
         if: always()

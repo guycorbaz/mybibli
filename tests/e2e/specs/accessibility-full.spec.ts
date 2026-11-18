@@ -153,8 +153,7 @@ test.describe("Issue #424 — populated home + locations WCAG 2.2 AA", () => {
       //    (`L` + 4 digits, L0000 rejected) and each delete now permanently
       //    retires one. A spec that created and deleted a shelf on every run
       //    would burn codes for nothing. Leaving one behind is harmless — no
-      //    sibling spec asserts an empty locations tree, unlike `/series`,
-      //    which `empty-states.spec.ts` does check.
+      //    sibling spec asserts an empty locations tree.
       await page.goto("/locations");
       const existing = page
         .locator('[role="treeitem"]')
@@ -339,12 +338,8 @@ test.describe("Story 10-5 — entity-detail routes WCAG 2.2 AA", () => {
   });
 
   test.afterAll(async ({ browser }) => {
-    // Soft-delete the seeded entities so sibling specs that assume an
-    // empty list (empty-states.spec.ts on /series in particular) don't
-    // flake when they happen to run after this describe. The cleanup is
-    // best-effort — parallel sibling tests can still race against the
-    // beforeAll window. The empty-states spec docstring already
-    // acknowledges this isolation fragility.
+    // Soft-delete the seeded entities so a re-run on a non-reset stack
+    // does not accumulate them. Best-effort: no spec depends on it.
     if (Object.keys(ids).length === 0) return;
     const ctx = await browser.newContext();
     const page = await ctx.newPage();

@@ -2,6 +2,8 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { createLocation } from "../../helpers/locations";
+import { expectHtmxProcessed } from "../../helpers/htmx";
+import { specVcode } from "../../helpers/vcode";
 
 test.describe("Dewey Code Management (Story 5-8)", () => {
   test.beforeEach(async ({ page }) => {
@@ -42,6 +44,7 @@ test.describe("Dewey Code Management (Story 5-8)", () => {
       })
       .click();
     await expect(page.locator("#edit-dewey")).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(page.locator("#title-edit-form"));
 
     // Fill Dewey code
     await page.locator("#edit-dewey").fill("843.914");
@@ -53,8 +56,9 @@ test.describe("Dewey Code Management (Story 5-8)", () => {
       if (!val) await pageCount.fill("0");
     }
 
-    // Click Save via type=submit (canonical pattern from metadata-editing.spec.ts)
-    await page.locator('main button[type="submit"]').last().click();
+    // Save by its stable id (#528): `.last()` became "Add to series" once
+    // any series existed.
+    await page.locator("#edit-title-submit").click();
 
     // Verify Dewey appears in metadata display after HTMX swap
     await expect(page.locator("#title-metadata")).toContainText("843.914", {
@@ -119,6 +123,7 @@ test.describe("Dewey Code Management (Story 5-8)", () => {
         })
         .click();
       await expect(page.locator("#edit-dewey")).toBeVisible({ timeout: 5000 });
+      await expectHtmxProcessed(page.locator("#title-edit-form"));
       await page.locator("#edit-dewey").fill(dewey);
       const pc = page.locator("#edit-page-count");
       if (await pc.isVisible({ timeout: 500 }).catch(() => false)) {
@@ -131,20 +136,20 @@ test.describe("Dewey Code Management (Story 5-8)", () => {
       });
     }
 
-    // Seed 3 volumes at same location:
-    //   - title with Dewey "200"   (V5801)
-    //   - title with no Dewey      (V5802)
-    //   - title with Dewey "900"   (V5803)
+    // Seed 3 volumes at same location (V-codes from the DC block):
+    //   - title with Dewey "200"
+    //   - title with no Dewey
+    //   - title with Dewey "900"
     // Two non-NULL values make the DESC-with-NULL-last assertion non-trivial:
     // a buggy impl that omits `IS NULL` in DESC would return ["900","200",NULL]
     // from MariaDB default (which happens to be right) OR would return
     // [NULL,"900","200"] if default is NULL-first — detection requires >= 2 non-NULL.
-    await scanAndShelve(ISBN_DEWEY_200, "V5801");
+    await scanAndShelve(ISBN_DEWEY_200, specVcode("DC", 0));
     await setDeweyViaEdit(ISBN_DEWEY_200, "200");
 
-    await scanAndShelve(ISBN_NO_DEWEY, "V5802");
+    await scanAndShelve(ISBN_NO_DEWEY, specVcode("DC", 1));
 
-    await scanAndShelve(ISBN_DEWEY_900, "V5803");
+    await scanAndShelve(ISBN_DEWEY_900, specVcode("DC", 2));
     await setDeweyViaEdit(ISBN_DEWEY_900, "900");
 
     // --- Find location ID via edit link on /locations ---

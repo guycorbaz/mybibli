@@ -17,8 +17,8 @@
  * revoked (afterEach, fresh context).
  *
  * Spec ID "EZ"; the ISBN sequence carries a per-run stamp, so a re-run on
- * a non-reset stack meets none of an earlier run's titles. Creates no
- * series (#528); nothing is rejected (no resubmission delay applies).
+ * a non-reset stack meets none of an earlier run's titles. Nothing is
+ * rejected (no resubmission delay applies).
  * The mock metadata server serves no cover for an "EZ" ISBN, so the
  * background fetch never writes `cover_image_url` between the filing and
  * the acceptance (which would rightly outdate the cover proposal).

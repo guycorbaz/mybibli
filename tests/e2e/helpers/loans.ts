@@ -77,7 +77,14 @@ export async function scanTitleAndVolume(
   if (await phantomConfirm.isVisible()) {
     await phantomConfirm.click();
   }
-  await expect(volumeFeedback.first()).toBeVisible({ timeout: 10000 });
+  // Story 19-2 — the volume must have been CREATED here: an answer that only
+  // names the label (#585 "already assigned to another title", a duplicate
+  // or race refusal) is a warning/error, and a test going on with it fails
+  // much later and far from the cause (V-code collisions, #674).
+  await expect(
+    volumeFeedback.and(page.locator('[data-feedback-variant="success"]')).first(),
+    `scanning ${volumeLabel} must create the volume (success entry)`,
+  ).toBeVisible({ timeout: 10000 });
 }
 
 /**

@@ -14,9 +14,7 @@
  * corrects the proposed subtitle, accepts → the title page shows the
  * corrected subtitle.
  *
- * Spec ID "PE". The file name sorts after `classification-fieldset`,
- * `dewey-code` and `empty-states`, which assume no series exists
- * (D-11-11-6, #528). Series names carry a per-run stamp.
+ * Spec ID "PE". Series names carry a per-run stamp.
  */
 import { test, expect, request as playwrightRequest, Page, APIRequestContext, Locator } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";

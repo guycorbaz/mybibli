@@ -14,8 +14,8 @@
  * volume → `get_title` reports it → the key is revoked.
  *
  * Spec ID "LB" for ISBNs (random sequence, so a rerun against an
- * un-reset DB starts from a fresh title); V-code band V4500–V4999 (unused
- * by any other spec); unique label and key names; assertions only on rows
+ * un-reset DB starts from a fresh title); V-codes from its
+ * `specVcode` block; unique label and key names; assertions only on rows
  * this test creates.
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
@@ -27,6 +27,7 @@ import { createApiKey } from "../../helpers/api-keys";
 import { createLabel } from "../../helpers/labels";
 import { MCP_TOOLS, mcpCallTool, mcpPost } from "../../helpers/mcp";
 import { acceptFromDetail, revokeProposeKey } from "../../helpers/proposals";
+import { specVcode } from "../../helpers/vcode";
 
 const SOURCE = "https://example.org/notice-lb";
 const NOTE = "The ISBN printed on this copy belongs to another book.";
@@ -45,7 +46,7 @@ test.describe("Story 13-9 — the agent proposes a label", () => {
     await createLabel(page, labelName);
 
     const isbn = specIsbn("LB", 1 + Math.floor(Math.random() * 89999));
-    const vcode = `V${4500 + Math.floor(Math.random() * 500)}`;
+    const vcode = specVcode("LB", 0);
     await scanTitleAndVolume(page, isbn, vcode);
     await page.goto(`/?q=${isbn}`);
     await page

@@ -14,8 +14,8 @@
  * the key is revoked.
  *
  * Spec ID "VV" for ISBNs (random sequence, so a rerun against an un-reset
- * DB starts from a fresh title); V-code band V7000–V7499 (unused by any
- * other spec); assertions only on rows this test creates.
+ * DB starts from a fresh title); V-codes from its `specVcode`
+ * block; assertions only on rows this test creates.
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
@@ -25,6 +25,7 @@ import { volumeIdByLabel } from "../../helpers/catalog";
 import { createApiKey } from "../../helpers/api-keys";
 import { mcpCallTool } from "../../helpers/mcp";
 import { acceptFromDetail, revokeProposeKey } from "../../helpers/proposals";
+import { specVcode } from "../../helpers/vcode";
 
 const SOURCE = "https://example.org/cote-vv";
 const NOTE = "Good condition, first printing; comparable completed sales.";
@@ -39,7 +40,7 @@ test.describe("Story 15-5 — the agent proposes a volume value", () => {
     await loginAs(page, "admin");
 
     const isbn = specIsbn("VV", 1 + Math.floor(Math.random() * 89999));
-    const vcode = `V${7000 + Math.floor(Math.random() * 500)}`;
+    const vcode = specVcode("VV", 0);
     await scanTitleAndVolume(page, isbn, vcode);
     await page.goto(`/?q=${isbn}`);
     await page
@@ -136,7 +137,7 @@ test.describe("Story 15-5 — the agent proposes a volume value", () => {
     await loginAs(page, "admin");
 
     const isbn = specIsbn("VV", 1 + Math.floor(Math.random() * 89999));
-    const vcode = `V${7000 + Math.floor(Math.random() * 500)}`;
+    const vcode = specVcode("VV", 1);
     await scanTitleAndVolume(page, isbn, vcode);
     await page.goto(`/?q=${isbn}`);
     await page

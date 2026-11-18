@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { waitForDuplicateScanWindow } from "../../helpers/scanner";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 const VALID_ISBN = specIsbn("CT", 1);
 // Invalid ISBN-13 (wrong checksum — last digit changed)
@@ -106,7 +107,7 @@ test.describe("Title CRUD & ISBN Scanning", () => {
     });
 
     const formContainer = page.locator("#title-form-container");
-    await expect(formContainer.locator("form")).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(formContainer.locator("form"));
 
     // Required fields should have asterisks
     const titleLabel = formContainer.locator('label[for="title-field"]');
@@ -121,7 +122,7 @@ test.describe("Title CRUD & ISBN Scanning", () => {
     });
 
     const form = page.locator("#title-form-container form");
-    await expect(form).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(form);
 
     // Fill required fields. #458: name suffixed per run so a retry (or a
     // repeat run against an un-reset DB) creates a fresh title instead of
@@ -158,7 +159,7 @@ test.describe("Title CRUD & ISBN Scanning", () => {
     });
 
     const form = page.locator("#title-form-container form");
-    await expect(form).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(form);
 
     // Select "book" — should show page_count. #458: 10s timeouts — the
     // former 3s was routinely exceeded under CI's 2-worker load.
@@ -185,7 +186,7 @@ test.describe("Title CRUD & ISBN Scanning", () => {
     });
 
     const form = page.locator("#title-form-container form");
-    await expect(form).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(form);
 
     // Submit without filling anything — client-side validation prevents submission
     await form.locator('button[type="submit"]').click();
@@ -214,7 +215,7 @@ test.describe("Title CRUD & ISBN Scanning", () => {
     });
 
     const form = page.locator("#title-form-container form");
-    await expect(form).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(form);
 
     await page.keyboard.press("Escape");
     await expect(form).not.toBeVisible();
@@ -264,7 +265,7 @@ test.describe("Title CRUD & ISBN Scanning", () => {
     });
 
     const form = page.locator("#title-form-container form");
-    await expect(form).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(form);
 
     // Focus on title field and press Enter
     await form.locator("#title-field").fill("Test");

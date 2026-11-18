@@ -6,8 +6,8 @@
  * the edit form sets them → the page shows both, the value with its date →
  * a blank browser (anonymous) sees the volume page without any amount.
  *
- * Spec ID "VA" for ISBNs; V-code band V8500–V8999 (unused by any other
- * spec); assertions only on rows this test creates (Rule #23).
+ * Spec ID "VA" for ISBNs; V-codes from its `specVcode`
+ * block; assertions only on rows this test creates (Rule #23).
  */
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
@@ -15,6 +15,7 @@ import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume } from "../../helpers/loans";
 import { volumeIdByLabel } from "../../helpers/catalog";
 import { checkAccessibility } from "../../helpers/accessibility";
+import { specVcode } from "../../helpers/vcode";
 
 test.describe("Story 16-2 — amounts on the volume page", () => {
   test("a librarian sees the amounts, an anonymous visitor does not", async ({ page, browser, baseURL }) => {
@@ -23,7 +24,7 @@ test.describe("Story 16-2 — amounts on the volume page", () => {
     await loginAs(page, "librarian");
 
     const isbn = specIsbn("VA", 1 + Math.floor(Math.random() * 89999));
-    const vcode = `V${8500 + Math.floor(Math.random() * 500)}`;
+    const vcode = specVcode("VA", 0);
     await scanTitleAndVolume(page, isbn, vcode);
     await page.goto(`/?q=${isbn}`);
     await page

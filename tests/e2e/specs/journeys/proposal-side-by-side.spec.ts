@@ -16,7 +16,7 @@
  * cover next to the proposed one, flagged "replaces". axe passes; no
  * horizontal scroll at phone width.
  *
- * Spec ID "SB". Creates no series (#528). The key is revoked at the end
+ * Spec ID "SB". The key is revoked at the end
  * (its pending proposals become outdated).
  */
 import { test, expect, request as playwrightRequest, Page, Locator } from "@playwright/test";

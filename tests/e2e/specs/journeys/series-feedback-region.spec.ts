@@ -12,9 +12,7 @@
  * #feedback-list + one feedback entry); before that, only the generic
  * "Server error (404)" line showed.
  *
- * From a blank browser; the spec uses its own series (Rule #23). It creates
- * a series, so its file name sorts after the specs that assume none exists
- * (#528).
+ * From a blank browser; the spec uses its own series (Rule #23).
  */
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";

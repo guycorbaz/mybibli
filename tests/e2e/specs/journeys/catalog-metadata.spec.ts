@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { waitForDuplicateScanWindow } from "../../helpers/scanner";
+import { specVcode } from "../../helpers/vcode";
 
 const VALID_ISBN = specIsbn("CM", 1);
 const COUNTER_ISBN = specIsbn("CM", 2); // Unique ISBN for session counter test
@@ -95,7 +96,8 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
   test("already recorded V-code re-scanned under its title shows info", async ({
     page,
   }) => {
-    // CR #300: unique ISBN so the title has no prior volumes and the V0055
+    const vcode = specVcode("CM", 0);
+    // CR #300: unique ISBN so the title has no prior volumes and the V-code
     // scan path doesn't hit the phantom-volume confirmation modal.
     const isbn = specIsbn("CM", 3);
     await page.goto("/catalog");
@@ -107,7 +109,7 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     await expect(page.locator("#feedback-list .feedback-skeleton, #feedback-list .feedback-entry").first()).toBeVisible({ timeout: 5000 });
 
     // Create a volume
-    await scanField.fill("V0055");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
 
     // Wait for volume created feedback
@@ -118,12 +120,12 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
 
     // Scan the same V-code again, once the double-read window is over
     await waitForDuplicateScanWindow(page);
-    await scanField.fill("V0055");
+    await scanField.fill(vcode);
     await scanField.press("Enter");
 
     const infoEntry = page
       .locator('.feedback-entry[data-feedback-variant="info"]')
-      .filter({ hasText: /V0055/ });
+      .filter({ hasText: new RegExp(vcode) });
     await expect(infoEntry).toBeVisible({ timeout: 5000 });
     await expect(
       page.locator('.feedback-entry[data-feedback-variant="error"]')

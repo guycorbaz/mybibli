@@ -9,7 +9,7 @@ import { specIsbn } from "../../helpers/isbn";
  * "Tome 3 : Le Mystère des tomes": the title is stored without the
  * marker, the number shows as "Tome 3 (detected)", pre-fills the series
  * position, and the position is then edited from the title page.
- * Creates its own uniquely named series (#528). Each attempt scans fresh
+ * Creates its own uniquely named series. Each attempt scans fresh
  * ISBNs, so a retry never meets the state an earlier attempt left.
  */
 const freshSeq = (base: number, span: number) => base + (Date.now() % span);

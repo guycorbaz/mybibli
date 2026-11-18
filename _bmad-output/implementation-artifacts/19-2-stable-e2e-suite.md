@@ -65,6 +65,13 @@ Research (two read-only agents, 2026-11-18; last 40 CI runs on `main`, 2026-11-1
 - E2E stack: `./scripts/e2e-reset.sh` (port 8080 on this workstation today), `CI=true npx playwright test --workers=2`. Heavy commands under `mem-guard`, one at a time; up to 2–3 sub-agents (kesh's release is over).
 - Couplings (Rule #24): this story touches shared E2E helpers and many specs — stories after it rebase before their E2E gate (named in the epic).
 
+### `specVcode` and its guard (T3, D4, AC2)
+
+- `tests/e2e/helpers/vcode.ts`: 50 blocks of 200 codes; block = `VCODE_BLOCKS[specId]` (a `const` map, so `VcodeSpecId` is the union of its keys and a typo fails `tsc --noEmit`). Block 0 (V0000–V0199) is never assigned — V0000 is refused by the server, and the rest of block 0 gives the specs a code no spec creates (`loans` not-found scan V0199, `catalog-volume` no-title warning V0099). Block 49 (V9800–V9999) is `HC` only.
+- Slot = `repeatEachIndex * (project.retries + 1) + retry`, 20 codes per slot, 10 slots per block: in CI (2 retries) `--repeat-each` up to 3 fits; for `--repeat-each 10` (AC6) pass `--retries=0` — an overflow throws with that hint, never wraps.
+- How a collision is caught: (1) two ids declaring the same block, a block out of range or the top block given to another id → `checkVcodeBlocks()` throws when the module loads, so every importing spec fails; (2) a hard-coded created V-code or one built by hand (`` `V${…}` ``) → `tests/e2e/vcode-literals.sh` lists every `V\d{4}` literal outside comments in `specs/` and `helpers/` and fails on one not allow-listed (`file:literal`, only message-text uses: V0000, V0099, V0199, V0042 as the example in the refusal, V0001 swallowed by the drawer). Proposed CI wiring next to the flake gate in the `e2e` job: `tests/e2e/vcode-literals.sh`.
+- `specVcode` calls `test.info()`: call it inside a test or hook, never at module level.
+
 ### References
 
 - Issues #685, #499, #554, #528, #674; epic 19 story 19.2; retro v1.28.1 A1.

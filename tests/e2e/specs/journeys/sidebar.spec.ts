@@ -20,7 +20,7 @@
  *
  * Spec ID "SD" for ISBNs. The badge test files one metadata proposal on
  * this spec's own title, rejects it and revokes its key (the rejection
- * blocks nothing elsewhere). Creates no series (#528).
+ * blocks nothing elsewhere).
  */
 import { test, expect, Page, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
@@ -29,6 +29,7 @@ import { simulateScan, waitForDuplicateScanWindow } from "../../helpers/scanner"
 import { specIsbn } from "../../helpers/isbn";
 import { mcpCallTool } from "../../helpers/mcp";
 import { newProposeKey, revokeProposeKey, scanSettledTitle } from "../../helpers/proposals";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 const SIDEBAR = "#sidebar";
 const TOGGLE = "[data-sidebar-toggle]";
@@ -372,7 +373,7 @@ test.describe("Story 14-1 — the sidebar on wide screens", () => {
     await page.goto("/catalog");
     await page.locator("#new-title-btn").click();
     const title = page.locator("#title-form-container #title-field");
-    await expect(title).toBeVisible({ timeout: 10000 });
+    await expectHtmxProcessed(page.locator("#title-form-container form"));
     await title.focus();
     await title.fill("Sidebar focus");
 
