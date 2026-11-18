@@ -1,6 +1,6 @@
 # Story hotfix-696: Requests that cannot use a session leave no trace in `sessions`
 
-Status: review
+Status: done
 
 GitHub issue: #696 (closes). Covers: fix. Outside any epic; ships in patch v1.28.1 (decided 2026-11-18, all three points). Sprint-status key: `hotfix-696-anonymous-sessions-and-client-address`.
 
