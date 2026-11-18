@@ -12,10 +12,19 @@ import { expect, type Locator } from "@playwright/test";
  * (no `method` / `action`) then does a native GET submit and the page
  * reloads.
  *
- * `locator` must be a top-level node of the swapped fragment (the element
- * that carries `htmx-added`), e.g. `#title-edit-form`.
+ * htmx marks only the fragment's top-level nodes, and processes their
+ * descendants in the same task — so `locator` may be any node inside the
+ * swap (e.g. a form nested in a wrapper `<div>`, `#title-form-container
+ * form`): the wait is over when neither it nor an ancestor still carries
+ * the class. Limit: a locator that already matched before the swap passes
+ * at once — target what the swap brings.
  */
 export async function expectHtmxProcessed(locator: Locator, timeout = 10000): Promise<void> {
   await expect(locator).toBeVisible({ timeout });
-  await expect(locator).not.toHaveClass(/(^|\s)htmx-added(\s|$)/, { timeout });
+  await expect
+    .poll(() => locator.evaluate((el) => el.closest(".htmx-added") === null), {
+      message: "the swapped node (or an ancestor) still carries htmx-added",
+      timeout,
+    })
+    .toBe(true);
 }

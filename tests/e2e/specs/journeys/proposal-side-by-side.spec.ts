@@ -29,6 +29,7 @@ import {
   revokeProposeKey,
   scanSettledTitle,
 } from "../../helpers/proposals";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 const SOURCE = "https://example.org/notice-sb";
 const EDIT = /^(Edit|Modifier|Bearbeiten|Modifica) —/;
@@ -120,7 +121,7 @@ test.describe("Story 11-20 — side-by-side view for metadata and covers", () =>
       const line = page.locator("#proposal-items > li").first();
       await line.getByRole("button", { name: EDIT }).click();
       const form = line.locator("[data-edit-slot] form");
-      await expect(form).toBeVisible();
+      await expectHtmxProcessed(form);
       await form.locator("input[name='value']").fill("Sous-titre corrigé SB");
       await form.getByRole("button", { name: SAVE }).click();
       await expect(

@@ -300,13 +300,7 @@ test.describe("Story 10-5 — entity-detail routes WCAG 2.2 AA", () => {
       //    prior run (`getBorrowerIdByName`-style helpers fail loud on
       //    duplicate names).
       const borrowerName = `AX-A11y Borrower ${seq}`;
-      await createBorrower(page, borrowerName);
-      const borrowerLink = page
-        .locator('tbody a[href^="/borrower/"]')
-        .filter({ hasText: new RegExp(`^\\s*AX-A11y Borrower ${seq}\\s*$`) })
-        .first();
-      const borrowerHref = await borrowerLink.getAttribute("href");
-      ids.borrower = parseInt(borrowerHref!.split("/").pop()!, 10);
+      ids.borrower = parseInt(await createBorrower(page, borrowerName), 10);
 
       // 4. Series — POST /series, follow the 303 redirect to /series/:id
       //    to capture the new id.

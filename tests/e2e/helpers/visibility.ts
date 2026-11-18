@@ -52,7 +52,12 @@ const DETACHED: SeenState = {
 
 /** One reading of what a person would see of `locator` right now. */
 export async function seenState(locator: Locator): Promise<SeenState> {
-  if ((await locator.count()) === 0) return DETACHED;
+  const matches = await locator.count();
+  if (matches === 0) return DETACHED;
+  if (matches > 1) {
+    // Report the real cause instead of polling a strict-mode error as "detached".
+    throw new Error(`seenState: the locator matches ${matches} elements — narrow it to one`);
+  }
   try {
     return await locator.evaluate(
       (el) => {

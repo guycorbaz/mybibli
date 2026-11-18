@@ -38,6 +38,7 @@ import {
   scanSettledTitle,
   shownPendingCount,
 } from "../../helpers/proposals";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 const SPEC = "EK";
 // Seconds stamp, kept small enough for specIsbn's five-digit sequence.
@@ -189,7 +190,7 @@ test.describe("Epic 11 smoke — an agent proposes, a librarian decides", () => 
       const line = items.filter({ has: page.locator(`a[href="/title/${t2}"]`) });
       await line.getByRole("button", { name: EDIT }).click();
       const form = line.locator("[data-edit-slot] form");
-      await expect(form).toBeVisible();
+      await expectHtmxProcessed(form);
       await form.getByLabel(/^(Position|Posizione)$/).fill("4");
       await form.getByRole("button", { name: SAVE }).click();
       await expect(

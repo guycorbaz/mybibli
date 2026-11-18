@@ -3,6 +3,7 @@ import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { captureEntityCounts } from "../../helpers/db-snapshot";
 import { selectFirstRealOption } from "../../helpers/catalog";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 const VALID_ISBN = specIsbn("CC", 1);
 
@@ -60,7 +61,7 @@ test.describe("Contributor Management", () => {
     });
 
     const form = page.locator("#contributor-form-container form");
-    await expect(form).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(form);
 
     // Fill contributor name — unique per run to avoid parallel collisions (#22)
     await form.locator("#contributor-name-input").fill(`CC-AC2 Camus ${Date.now()}`);
@@ -97,7 +98,7 @@ test.describe("Contributor Management", () => {
     });
 
     let form = page.locator("#contributor-form-container form");
-    await expect(form).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(form);
 
     // Same contributor name reused below to trigger the duplicate-role error;
     // unique per run to avoid parallel collisions (#22).
@@ -120,7 +121,7 @@ test.describe("Contributor Management", () => {
     });
 
     form = page.locator("#contributor-form-container form");
-    await expect(form).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(form);
 
     await form.locator("#contributor-name-input").fill(dupContributor);
     const roleSelect2 = form.locator("#contributor-role-select");
@@ -157,7 +158,7 @@ test.describe("Contributor Management", () => {
       });
     });
     const form = page.locator("#contributor-form-container form");
-    await expect(form).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(form);
     await form.locator("#contributor-name-input").fill(CONTRIBUTOR_NAME);
     const roleSelect = form.locator("#contributor-role-select");
     if ((await roleSelect.locator("option").count()) > 1) {
@@ -306,7 +307,7 @@ test.describe("Contributor Management", () => {
     });
 
     const form = page.locator("#contributor-form-container form");
-    await expect(form).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(form);
 
     await form.locator("#contributor-name-input").fill(`CC-AC8 Author ${Date.now()}`);
     const roleSelect = form.locator("#contributor-role-select");
@@ -406,7 +407,7 @@ test.describe("#325 — Add contributor from /title/:id", () => {
     await addBtn.click();
 
     const form = page.locator("#contributor-form-slot form");
-    await expect(form).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(form);
 
     // Step 5: fill name + role.
     await form.locator("#contributor-name-input").fill(NAME);

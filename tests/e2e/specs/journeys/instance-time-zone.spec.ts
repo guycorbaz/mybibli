@@ -21,6 +21,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import {
+  borrowerIdByName,
   createBorrower,
   returnLoanFromBorrowerDetail,
   scanTitleAndVolume,
@@ -76,11 +77,7 @@ test.describe("Story 15-1 — instance time zone", () => {
     });
 
     const openBorrower = async () => {
-      await page.goto("/borrowers");
-      await page
-        .locator('tbody a[href^="/borrower/"]')
-        .filter({ hasText: borrowerName })
-        .click();
+      await page.goto(`/borrower/${await borrowerIdByName(page, borrowerName)}`);
       await expect(page).toHaveURL(/\/borrower\/\d+/);
     };
     const loanRow = () => page.locator("tbody tr").filter({ hasText: vcode });

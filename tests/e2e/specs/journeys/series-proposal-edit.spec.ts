@@ -22,6 +22,7 @@ import { specIsbn } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
 import { createApiKey, revokeApiKey } from "../../helpers/api-keys";
 import { mcpCallTool } from "../../helpers/mcp";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 const SOURCE = "https://example.org/edit";
 // The buttons are named "<verb> — <the line>" for screen readers.
@@ -94,7 +95,7 @@ async function acceptFromDetail(page: Page) {
 async function editLine(page: Page, line: Locator, fill: (form: Locator) => Promise<void>) {
   await line.getByRole("button", { name: EDIT }).click();
   const form = line.locator("[data-edit-slot] form");
-  await expect(form).toBeVisible();
+  await expectHtmxProcessed(form);
   await fill(form);
   await form.getByRole("button", { name: SAVE }).click();
   await expect(

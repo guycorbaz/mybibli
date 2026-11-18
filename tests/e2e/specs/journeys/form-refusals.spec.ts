@@ -158,7 +158,7 @@ test.describe("Issue #676 — form refusals show their message", () => {
     await page.goto("/catalog");
     await page.locator("#new-title-btn").click();
     const form = page.locator("#title-form-container form");
-    await expect(form).toBeVisible({ timeout: 10000 });
+    await expectHtmxProcessed(form);
     const name = `Manual refusal FR ${Date.now()}`;
     await form.locator("#title-field").fill(name);
     await form.locator("#media-type-field").selectOption("cd");

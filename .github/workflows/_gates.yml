@@ -232,7 +232,7 @@ jobs:
       # included: it fails the job since 19-2), print the application log
       # in the job log, before the stack is stopped (`down -v` drops it).
       - name: Print application log on failure
-        if: failure()
+        if: failure() || cancelled()
         run: |
           echo "::group::mybibli application log"
           docker compose -f tests/e2e/docker-compose.test.yml logs --no-color --timestamps mybibli || true
@@ -325,7 +325,7 @@ jobs:
         run: npx playwright test specs/journeys/setup-wizard.spec.ts
 
       - name: Print application log on failure
-        if: failure()
+        if: failure() || cancelled()
         run: |
           echo "::group::mybibli application log"
           docker compose \

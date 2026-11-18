@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { createLocation } from "../../helpers/locations";
-import { specVcode } from "../../helpers/vcode";
+import { specVcode, vcodeSlot } from "../../helpers/vcode";
 import { expectReallySeen } from "../../helpers/visibility";
 
 // CR #300: VALID_ISBN was shared across 4 tests, leaving each one's title
@@ -198,16 +198,15 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
   });
 
   // polish-2 (#9, review P1): only the LATEST undo button survives a 2nd shelve
-  test("second shelve removes the earlier undo button", async ({ page }, testInfo) => {
+  test("second shelve removes the earlier undo button", async ({ page }) => {
     // #499: the V-codes come from this spec's `specVcode` block, which
-    // already moves to a fresh slot on a retry. The ISBNs and the L-code
-    // still need a retry offset of their own: an earlier attempt's title
-    // would already hold a volume (phantom-volume modal) and its location
-    // would already exist.
-    const r = testInfo.retry;
+    // moves to a fresh slot on a retry or a repetition. The ISBNs and the
+    // L-code follow the same slot: an earlier attempt's title would already
+    // hold a volume (phantom-volume modal) and its location would exist.
+    const r = vcodeSlot();
     const va = specVcode("SH", 6);
     const vb = specVcode("SH", 7);
-    const lcode = await createLocation(page, `SH-UndoLatest-${r}`, `L10${12 + r * 10}`);
+    const lcode = await createLocation(page, `SH-UndoLatest-${r}`, `L1${String(12 + r * 10).padStart(3, "0")}`);
 
     // The creation answer of a fresh label on a title in context: a success
     // entry "Volume {label} attached to {title}" (feedback.volume_created).

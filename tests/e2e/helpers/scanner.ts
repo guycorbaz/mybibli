@@ -68,8 +68,11 @@ export async function simulateTyping(
   const threshold = await field.evaluate((el) => {
     const own = el.getAttribute("data-scanner-threshold");
     const body = document.body.getAttribute("data-scanner-threshold");
-    return Number(own ?? body ?? 0);
+    return parseInt(own ?? body ?? "", 10);
   });
+  if (!Number.isFinite(threshold)) {
+    throw new Error("simulateTyping: no readable data-scanner-threshold on the field or <body>");
+  }
   if (TYPING_DELAY_MS < threshold + TYPING_MARGIN_MS) {
     throw new Error(
       `simulateTyping: ${TYPING_DELAY_MS} ms per key is within ${TYPING_MARGIN_MS} ms of the field's scanner threshold (${threshold} ms) — typing would be read as a scan`,

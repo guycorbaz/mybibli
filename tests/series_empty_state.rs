@@ -18,7 +18,7 @@ mod common;
 
 use axum::http::StatusCode;
 use common::mcp::router;
-use common::web::{Browser, PW_HASH, body_string, get_anonymous, seed_admin};
+use common::web::{Browser, body_string, get_anonymous, seed_admin, seed_librarian};
 use mybibli::db::DbPool;
 
 /// The empty-state block of the page (`components/status_message.html`),
@@ -30,15 +30,6 @@ fn empty_state(html: &str) -> &str {
         .unwrap_or_else(|| panic!("no empty state on the page: {html}"));
     let end = html[start..].find("</div>").expect("empty state closes") + start;
     &html[start..end]
-}
-
-async fn seed_librarian(pool: &DbPool, username: &str) {
-    sqlx::query("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'librarian')")
-        .bind(username)
-        .bind(PW_HASH)
-        .execute(pool)
-        .await
-        .unwrap();
 }
 
 async fn no_live_series(pool: &DbPool) {

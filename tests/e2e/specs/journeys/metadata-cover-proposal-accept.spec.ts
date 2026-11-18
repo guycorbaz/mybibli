@@ -26,6 +26,7 @@ import { specIsbn } from "../../helpers/isbn";
 import { selectFirstRealOption, titleIdFromSkeleton } from "../../helpers/catalog";
 import { createApiKey, revokeApiKey } from "../../helpers/api-keys";
 import { mcpCallTool } from "../../helpers/mcp";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 const SOURCE = "https://example.org/notice-ma";
 const ACCEPT = /^(Accept|Accepter|Annehmen|Accetta)$/;
@@ -276,7 +277,7 @@ test.describe("Story 11-18 — accept a metadata or cover proposal", () => {
     const add = async () => {
       await page.locator(`button[hx-get="/title/${titleId}/contributor-form"]`).click();
       const form = page.locator("#contributor-form-slot form");
-      await expect(form).toBeVisible();
+      await expectHtmxProcessed(form);
       await form.locator("#contributor-name-input").fill(name);
       await selectFirstRealOption(form.locator("#contributor-role-select"));
       await form.locator('button[type="submit"]').click();

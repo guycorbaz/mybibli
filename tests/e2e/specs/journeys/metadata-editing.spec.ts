@@ -120,7 +120,7 @@ test.describe("Metadata Editing & Re-Download (Story 3-5)", () => {
     // Click edit, modify, save
     await editButton.click();
     await expect(page.locator("#edit-title")).toBeVisible({ timeout: 3000 });
-      await expectHtmxProcessed(page.locator("#title-edit-form"));
+    await expectHtmxProcessed(page.locator("#title-edit-form"));
 
     // Verify form is pre-filled
     const titleInput = page.locator("#edit-title");

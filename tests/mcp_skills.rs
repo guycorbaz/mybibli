@@ -12,7 +12,7 @@ use crate::common;
 
 use axum::http::StatusCode;
 use common::mcp::router;
-use common::web::{Browser, PW_HASH, body_string, get_anonymous, seed_admin};
+use common::web::{Browser, body_string, get_anonymous, seed_admin, seed_librarian};
 use mybibli::db::DbPool;
 use mybibli::models::mcp_skill::{McpSkillModel, SkillWriteError};
 use mybibli::services::mcp_skills::{ValidSkill, validate};
@@ -193,15 +193,6 @@ async fn auto_purge_hard_deletes_an_old_trashed_skill(pool: DbPool) {
 }
 
 // ─── Routes ──────────────────────────────────────────────────────
-
-async fn seed_librarian(pool: &DbPool, username: &str) {
-    sqlx::query("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'librarian')")
-        .bind(username)
-        .bind(PW_HASH)
-        .execute(pool)
-        .await
-        .unwrap();
-}
 
 fn form(pairs: &[(&str, &str)]) -> String {
     pairs

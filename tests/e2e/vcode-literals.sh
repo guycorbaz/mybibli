@@ -55,4 +55,14 @@ while IFS= read -r hit; do
   status=1
 done < <(grep -rnE '`V[0-9]*\$\{' specs helpers --include='*.ts' | grep -v '^helpers/vcode.ts:' || true)
 
+# One block per spec file: a spec copied from another must not keep its id
+# (`specVcode("SH", …)` in two files recreates the #499 collision).
+while IFS= read -r dup; do
+  echo "specVcode id $dup is used by more than one spec file" >&2
+  echo "  → give the new spec its own id in VCODE_BLOCKS (helpers/vcode.ts)" >&2
+  status=1
+done < <(grep -rhoE 'specVcode\("[A-Z0-9]{2}"' specs --include='*.ts' -l | while read -r f; do
+           grep -oE 'specVcode\("[A-Z0-9]{2}"' "$f" | sort -u | sed "s|\$| $f|"
+         done | awk '{print $1}' | sort | uniq -d || true)
+
 exit $status
