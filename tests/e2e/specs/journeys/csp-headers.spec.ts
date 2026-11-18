@@ -22,7 +22,7 @@
 import { test, expect, Page, ConsoleMessage } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
-import { scanTitleAndVolume, createBorrower, createLoan } from "../../helpers/loans";
+import { borrowerIdByName, scanTitleAndVolume, createBorrower, createLoan } from "../../helpers/loans";
 import { specVcode } from "../../helpers/vcode";
 
 const SPEC_ID = "CS";
@@ -199,11 +199,8 @@ test.describe("Story 7-4 — CSP headers", () => {
 
     // Borrower detail page exercises the extracted borrower-detail script
     // (initBorrowerDetailReload — gated on body[data-page="borrower-detail"]).
-    await page.goto("/borrowers");
-    const borrowerLink = page.getByRole("link", { name: borrowerName }).first();
-    await expect(borrowerLink).toBeVisible({ timeout: 5000 });
-    const href = await borrowerLink.getAttribute("href");
-    expect(href).toMatch(/\/borrower\/\d+/);
+    // Story 19-2: by id — the /borrowers list is paginated by name.
+    const href = `/borrower/${await borrowerIdByName(page, borrowerName)}`;
     await assertCsp(page, href!);
 
     // Verify body[data-page] is set so the reload script can engage.

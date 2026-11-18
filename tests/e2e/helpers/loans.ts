@@ -101,8 +101,14 @@ export async function createBorrower(page: Page, name: string): Promise<string> 
   // #470 — the Add link has a stable id (selector policy in CLAUDE.md).
   await page.locator("#borrowers-show-add-form").click();
   await page.locator("#new-name").fill(name);
+  // The form posts natively (303 → /borrowers, the page we are on): wait
+  // for the POST's answer and the reload, not for the URL.
+  const posted = page.waitForResponse(
+    (r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/borrowers",
+  );
   await page.locator('main button[type="submit"]').last().click();
-  await page.waitForURL(/\/borrowers(\?|$)/, { timeout: 10000 });
+  await posted;
+  await page.waitForLoadState("domcontentloaded");
   const id = await borrowerIdByName(page, name);
   return id;
 }

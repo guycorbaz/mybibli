@@ -1,27 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
-import { specIsbn } from "../../helpers/isbn";
+import { specIsbn, specLcode } from "../../helpers/isbn";
 import { simulateScan, simulateTyping } from "../../helpers/scanner";
 import { scanTitleAndVolume } from "../../helpers/loans";
 import { createLocation } from "../../helpers/locations";
-import { specVcode } from "../../helpers/vcode";
+import { specVcode, vcodeSlot } from "../../helpers/vcode";
 
 const SPEC_ID = "HS";
-
-/**
- * Per-test unique CHAR(5) L-code generator (L0001 … L0999 …).
- * Combines a process-local counter with `Date.now() % 100` so two
- * parallel tests in the same wall-clock millisecond can't collide on
- * the UNIQUE constraint of `storage_locations.label`. V-codes come from
- * the spec's `specVcode` block instead (story 19-2).
- */
-let labelCounter = 0;
-function uniqueLabel(prefix: "L"): string {
-  labelCounter = (labelCounter + 1) % 100;
-  const counterPart = labelCounter.toString().padStart(2, "0");
-  const timePart = (Date.now() % 100).toString().padStart(2, "0");
-  return `${prefix}${counterPart}${timePart}`;
-}
 
 test.describe("Home page search", () => {
   test("should display search field on home page", async ({ page }) => {
@@ -220,9 +205,9 @@ test.describe("Home page scanner detection — scan to navigate", () => {
   test("scanning a known L-code redirects to /location/<id>", async ({
     page,
   }) => {
-    // L-code via `uniqueLabel("L")` for parallel-collision resistance.
-    // CHAR(5) constrained.
-    const lcode = uniqueLabel("L");
+    // Story 19-2: bucket 7 from L7500, one code per attempt slot (the old
+    // counter + clock draw spanned every other spec's L-codes).
+    const lcode = specLcode(7, 500 + vcodeSlot());
     const locationName = `HS-9-9 Shelf ${Date.now()}`;
 
     await createLocation(page, locationName, lcode);

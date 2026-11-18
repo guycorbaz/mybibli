@@ -6,6 +6,7 @@ import {
   createLoan,
   returnLoanFromBorrowerDetail,
   scanTitleAndVolume,
+  borrowerIdByName,
 } from "../../helpers/loans";
 import { specVcode } from "../../helpers/vcode";
 
@@ -46,8 +47,8 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
     await createLoan(page, vcode, "BL-Loan Detail Borrower");
 
     // Navigate to borrower detail
-    await page.goto("/borrowers");
-    await page.locator("tbody").getByText("BL-Loan Detail Borrower").click();
+    // Story 19-2: by id — the /borrowers list is paginated by name.
+    await page.goto(`/borrower/${await borrowerIdByName(page, "BL-Loan Detail Borrower")}`);
     await expect(page.locator("h1")).toContainText("BL-Loan Detail Borrower", {
       timeout: 3000,
     });
@@ -71,8 +72,8 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
     await createLoan(page, vcode, "BL-Return Detail Borrower");
 
     // Navigate to borrower detail
-    await page.goto("/borrowers");
-    await page.locator("tbody").getByText("BL-Return Detail Borrower").click();
+    // Story 19-2: by id — the /borrowers list is paginated by name.
+    await page.goto(`/borrower/${await borrowerIdByName(page, "BL-Return Detail Borrower")}`);
     await expect(page.locator("#active-loans-section")).toContainText(vcode, {
       timeout: 5000,
     });
@@ -107,8 +108,8 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
     await createLoan(page, vcode, "BL-Smoke Detail Borrower");
 
     // Navigate to borrower detail — should see loan
-    await page.goto("/borrowers");
-    await page.locator("tbody").getByText("BL-Smoke Detail Borrower").click();
+    // Story 19-2: by id — the /borrowers list is paginated by name.
+    await page.goto(`/borrower/${await borrowerIdByName(page, "BL-Smoke Detail Borrower")}`);
     const activeLoans = page.locator("#active-loans-section");
     await expect(activeLoans).toContainText(vcode, { timeout: 5000 });
 

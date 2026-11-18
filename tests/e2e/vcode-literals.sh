@@ -56,13 +56,24 @@ while IFS= read -r hit; do
 done < <(grep -rnE '`V[0-9]*\$\{' specs helpers --include='*.ts' | grep -v '^helpers/vcode.ts:' || true)
 
 # One block per spec file: a spec copied from another must not keep its id
-# (`specVcode("SH", …)` in two files recreates the #499 collision).
-while IFS= read -r dup; do
-  echo "specVcode id $dup is used by more than one spec file" >&2
-  echo "  → give the new spec its own id in VCODE_BLOCKS (helpers/vcode.ts)" >&2
-  status=1
-done < <(grep -rhoE 'specVcode\("[A-Z0-9]{2}"' specs --include='*.ts' -l | while read -r f; do
-           grep -oE 'specVcode\("[A-Z0-9]{2}"' "$f" | sort -u | sed "s|\$| $f|"
-         done | awk '{print $1}' | sort | uniq -d || true)
+# (`specVcode("SH", …)` in two files recreates the #499 collision). The id
+# is read from `specVcode("XX"` or, for `specVcode(SPEC…)`, from the
+# file's `const SPEC… = "XX"`.
+declare -A owner=()
+while IFS= read -r f; do
+  ids=$( { grep -oE 'specVcode\("[A-Z0-9]{2}"' "$f" | grep -oE '[A-Z0-9]{2}' || true
+           if grep -qE 'specVcode\(SPEC' "$f"; then
+             grep -oE 'const SPEC[A-Z_]* = "[A-Z0-9]{2}"' "$f" | grep -oE '"[A-Z0-9]{2}"' | tr -d '"' || true
+           fi; } | sort -u )
+  for id in $ids; do
+    if [[ -n "${owner[$id]:-}" && "${owner[$id]}" != "$f" ]]; then
+      echo "specVcode id $id is used by ${owner[$id]} and $f" >&2
+      echo "  → give the new spec its own id in VCODE_BLOCKS (helpers/vcode.ts)" >&2
+      status=1
+    else
+      owner[$id]="$f"
+    fi
+  done
+done < <(grep -rlE 'specVcode\(' specs --include='*.ts' | sort)
 
 exit $status

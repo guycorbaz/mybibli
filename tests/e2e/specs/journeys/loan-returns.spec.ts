@@ -9,6 +9,7 @@ import {
 } from "../../helpers/loans";
 import { simulateScan } from "../../helpers/scanner";
 import { specVcode } from "../../helpers/vcode";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 // CR #300: per-test unique ISBNs — each test gets a fresh title so the
 // V-code scan never hits the phantom-volume confirmation modal.
@@ -151,7 +152,8 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
     const returnBtn = page.locator(
       '#scan-result button:has-text("Return"), #scan-result button:has-text("Retourner")',
     );
-    await expect(returnBtn).toBeVisible({ timeout: 3000 });
+    // Story 19-2: the button arrived in a swap — click it once HTMX wired it.
+    await expectHtmxProcessed(returnBtn);
 
     // Story 9-11 — scan-card Return now goes through the modal flow,
     // mirroring the loans-table button. Click → wait for modal → Confirm.

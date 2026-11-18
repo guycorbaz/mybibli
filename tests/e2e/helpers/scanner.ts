@@ -68,7 +68,7 @@ export async function simulateTyping(
   const threshold = await field.evaluate((el) => {
     const own = el.getAttribute("data-scanner-threshold");
     const body = document.body.getAttribute("data-scanner-threshold");
-    return parseInt(own ?? body ?? "", 10);
+    return parseInt(own || body || "", 10);
   });
   if (!Number.isFinite(threshold)) {
     throw new Error("simulateTyping: no readable data-scanner-threshold on the field or <body>");
