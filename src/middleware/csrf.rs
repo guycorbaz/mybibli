@@ -102,6 +102,14 @@ pub(crate) fn normalize_exempt_path(path: &str) -> String {
     normalized
 }
 
+/// Whether `(method, path)` — `path` already normalized (#40) — is one of
+/// [`CSRF_EXEMPT_ROUTES`].
+fn is_exempt_normalized(method: &Method, path: &str) -> bool {
+    CSRF_EXEMPT_ROUTES
+        .iter()
+        .any(|(m, p)| *m == method.as_str() && *p == path)
+}
+
 pub async fn csrf_middleware(
     State(state): State<AppState>,
     req: Request,
@@ -121,12 +129,8 @@ pub async fn csrf_middleware(
     // Axum's router would dispatch identically (trailing `/`, repeated `/`)
     // also bypass — see `normalize_exempt_path` doc for the security
     // trade-off (#40).
-    let raw_path = req.uri().path();
-    let path = normalize_exempt_path(raw_path);
-    if CSRF_EXEMPT_ROUTES
-        .iter()
-        .any(|(m, p)| *m == method.as_str() && *p == path)
-    {
+    let path = normalize_exempt_path(req.uri().path());
+    if is_exempt_normalized(&method, &path) {
         return next.run(req).await;
     }
 
@@ -160,6 +164,36 @@ pub async fn csrf_middleware(
         return AppError::Internal("session CSRF token unset".to_string()).into_response();
     }
 
+    // Decide whether to engage the form-field fallback. The mime-essence
+    // (part before `;`) must match exactly — `starts_with` would accept
+    // doctored values like `application/x-www-form-urlencoded-evil` that
+    // downstream parsers would reject, enabling a token-parse mismatch.
+    let is_form: bool = parts
+        .headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| {
+            s.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case("application/x-www-form-urlencoded")
+        })
+        .unwrap_or(false);
+
+    // #696 — no session cookie at all: the resolver stored nothing, so no
+    // token can match. Checked before any other refusal, so the log names
+    // the real cause. Same refusal as before #696 (HTMX: the 403 "session
+    // expired, reload" entry, the page and any typed text stay; plain
+    // anonymous form: 303 to /login), with its own reason in the log. A
+    // browser gets here when its cookie reached its Max-Age (#418). Unlike
+    // before #696, no row, cookie or rotated token comes with it (#37 does
+    // not apply): every action keeps getting this refusal until the page is
+    // reloaded, which is what the message asks for.
+    if parts.extensions.get::<crate::middleware::auth::CookielessRequest>().is_some() {
+        return reject(&parts, &method, &path, "no_session_cookie", is_form, &session);
+    }
+
     // Header always wins — it covers every HTMX-driven mutation plus any
     // explicit JS `fetch()` call. An empty / whitespace-only header is
     // treated as absent so the form-field fallback still engages for a
@@ -177,45 +211,13 @@ pub async fn csrf_middleware(
         .filter_map(|v| v.to_str().ok())
         .collect();
     if header_values.len() > 1 {
-        tracing::warn!(
-            method = %method,
-            path = %path,
-            count = header_values.len(),
-            reason = "csrf_multiple_headers",
-            "CSRF validation failed"
-        );
-        let locale: &str = parts
-            .extensions
-            .get::<Locale>()
-            .map(|l| l.0)
-            .unwrap_or("fr");
-        // `is_form` not yet computed here; pass false to get the HTMX /
-        // JSON envelope response. Plain-form attackers would need to
-        // bypass SameSite=Lax to reach this path anyway.
-        return build_rejection_response(locale, &parts, false, Some(&session));
+        return reject(&parts, &method, &path, "csrf_multiple_headers", is_form, &session);
     }
     let header_token: Option<String> = header_values
         .first()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-
-    // Decide whether to engage the form-field fallback. The mime-essence
-    // (part before `;`) must match exactly — `starts_with` would accept
-    // doctored values like `application/x-www-form-urlencoded-evil` that
-    // downstream parsers would reject, enabling a token-parse mismatch.
-    let is_form: bool = parts
-        .headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| {
-            s.split(';')
-                .next()
-                .unwrap_or("")
-                .trim()
-                .eq_ignore_ascii_case("application/x-www-form-urlencoded")
-        })
-        .unwrap_or(false);
 
     // Multipart bypass (issue #335) — multipart/form-data POSTs are used for
     // file uploads where the body can be up to 10 MiB (cover image upload).
@@ -242,18 +244,7 @@ pub async fn csrf_middleware(
     if is_multipart && header_token.is_some() {
         let client_token = header_token.unwrap_or_default();
         if !ct_eq(session.csrf_token.as_bytes(), client_token.as_bytes()) {
-            tracing::warn!(
-                method = %method,
-                path = %path,
-                reason = "csrf_token_mismatch_multipart",
-                "CSRF validation failed"
-            );
-            let locale: &str = parts
-                .extensions
-                .get::<Locale>()
-                .map(|l| l.0)
-                .unwrap_or("fr");
-            return build_rejection_response(locale, &parts, false, Some(&session));
+            return reject(&parts, &method, &path, "csrf_token_mismatch_multipart", false, &session);
         }
         // Token OK — hand the ORIGINAL body to the handler. Multipart
         // parsing happens downstream via `axum::extract::Multipart`.
@@ -271,12 +262,7 @@ pub async fn csrf_middleware(
     let bytes = match axum::body::to_bytes(body, MAX_CSRF_BODY_BYTES).await {
         Ok(b) => b,
         Err(_) => {
-            let locale: &str = parts
-                .extensions
-                .get::<Locale>()
-                .map(|l| l.0)
-                .unwrap_or("fr");
-            return build_payload_too_large_response(locale);
+            return build_payload_too_large_response(request_locale(&parts));
         }
     };
 
@@ -290,18 +276,14 @@ pub async fn csrf_middleware(
                 let mut iter = pairs.into_iter().filter(|(k, _)| k == "_csrf_token");
                 let first = iter.next();
                 if iter.next().is_some() {
-                    tracing::warn!(
-                        method = %method,
-                        path = %path,
-                        reason = "csrf_token_duplicate_form_field",
-                        "CSRF validation failed"
+                    return reject(
+                        &parts,
+                        &method,
+                        &path,
+                        "csrf_token_duplicate_form_field",
+                        is_form,
+                        &session,
                     );
-                    let locale: &str = parts
-                        .extensions
-                        .get::<Locale>()
-                        .map(|l| l.0)
-                        .unwrap_or("fr");
-                    return build_rejection_response(locale, &parts, is_form, Some(&session));
                 }
                 first.map(|(_, v)| v)
             }
@@ -314,28 +296,39 @@ pub async fn csrf_middleware(
     let client_token = header_token.or(form_token).unwrap_or_default();
 
     if !ct_eq(session.csrf_token.as_bytes(), client_token.as_bytes()) {
-        tracing::warn!(
-            method = %method,
-            path = %path,
-            reason = "csrf_token_mismatch",
-            "CSRF validation failed"
-        );
-        // Resolve locale from the request (Extension populated by
-        // locale_resolve_middleware). Fall back to "fr" (app default)
-        // so a misordered layer stack never leaves the user with a
-        // blank 403 page.
-        let locale: &str = parts
-            .extensions
-            .get::<Locale>()
-            .map(|l| l.0)
-            .unwrap_or("fr");
-        return build_rejection_response(locale, &parts, is_form, Some(&session));
+        return reject(&parts, &method, &path, "csrf_token_mismatch", is_form, &session);
     }
 
     // Re-attach the (possibly body-consumed) bytes so the handler sees
     // an intact request. `Request::from_parts` + `Body::from(bytes)`.
     let req = Request::from_parts(parts, Body::from(bytes));
     next.run(req).await
+}
+
+/// Log a CSRF rejection (with the client address, #696) and build its
+/// localized response — never a blank 403 page, even on a misordered stack.
+fn reject(
+    parts: &axum::http::request::Parts,
+    method: &Method,
+    path: &str,
+    reason: &'static str,
+    is_form: bool,
+    session: &Session,
+) -> Response {
+    tracing::warn!(
+        method = %method,
+        path = %path,
+        reason,
+        client = %crate::middleware::client_addr::client_addr(&parts.extensions, &parts.headers),
+        "CSRF validation failed"
+    );
+    build_rejection_response(request_locale(parts), parts, is_form, session)
+}
+
+/// The request locale (Extension set by `locale_resolve_middleware`), `fr`
+/// (app default) when that layer did not run.
+fn request_locale(parts: &axum::http::request::Parts) -> &str {
+    parts.extensions.get::<Locale>().map(|l| l.0).unwrap_or("fr")
 }
 
 /// Constant-time byte comparison. Treats differing lengths as non-equal.
@@ -347,20 +340,11 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     bool::from(a.ct_eq(b))
 }
 
-fn is_htmx_request(parts: &axum::http::request::Parts) -> bool {
-    parts
-        .headers
-        .get("hx-request")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-}
-
 fn build_rejection_response(
     locale: &str,
     parts: &axum::http::request::Parts,
     is_form: bool,
-    session: Option<&Session>,
+    session: &Session,
 ) -> Response {
     // Plain-browser form submitters (no HTMX, classic `<form method="POST">`)
     // cannot consume the HTMX envelope — they would render a bare feedback
@@ -380,10 +364,9 @@ fn build_rejection_response(
     //
     // API / JSON / fetch() clients still get the 403 envelope below so
     // they can handle the failure programmatically.
-    if is_form && !is_htmx_request(parts) {
-        if let Some(sess) = session
-            && sess.user_id.is_some()
-        {
+    if is_form && !crate::middleware::htmx::is_htmx(&parts.headers) {
+        if session.user_id.is_some() {
+            let sess = session;
             let title = rust_i18n::t!("error.csrf_session_drifted_title", locale = locale)
                 .to_string();
             let message =

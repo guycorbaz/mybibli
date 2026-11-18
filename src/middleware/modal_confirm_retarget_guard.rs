@@ -57,6 +57,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 
 const MODAL_CONFIRM_HEADER: &str = "x-modal-confirm";
+#[cfg(test)]
 const HX_REQUEST_HEADER: &str = "hx-request";
 const RETARGET_HEADER: &str = "hx-retarget";
 const RESWAP_HEADER: &str = "hx-reswap";
@@ -73,7 +74,7 @@ fn header_is_true(headers: &HeaderMap, name: &str) -> bool {
 /// True when the request originated from a Pattern A modal Confirm — both
 /// `X-Modal-Confirm: true` AND `HX-Request: true` must be present.
 fn request_is_modal_confirm(headers: &HeaderMap) -> bool {
-    header_is_true(headers, MODAL_CONFIRM_HEADER) && header_is_true(headers, HX_REQUEST_HEADER)
+    header_is_true(headers, MODAL_CONFIRM_HEADER) && crate::middleware::htmx::is_htmx(headers)
 }
 
 /// True when the response carries `HX-Trigger: csrf-rejected` (literal value,

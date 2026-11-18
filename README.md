@@ -167,6 +167,9 @@ The variables are grouped in seven sections:
    name/IP your AI agent uses) and `MYBIBLI_MCP_ALLOWED_ORIGINS`
    (`Origin` values accepted from clients or proxies that forward one;
    default none — browser pages are not supported, no CORS).
+   Behind a reverse proxy, `MYBIBLI_TRUSTED_PROXIES` (IPs or CIDRs)
+   lets the logs name the real client of a refused request instead of
+   the proxy (#696); default none.
 5. **Metadata provider API keys** — `GOOGLE_BOOKS_API_KEY`,
    `OMDB_API_KEY`, `TMDB_API_KEY`. Migrated ONCE into the `settings`
    table at boot; afterwards the admin can rotate or clear them via

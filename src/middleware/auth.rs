@@ -128,25 +128,41 @@ impl Session {
 ///   bandwidth and can saturate the pool under realistic browser
 ///   concurrency (issue #36).
 ///
-/// - `/api/mcp` — the MCP endpoint (story 11-6, D-11-6-6) authenticates
-///   by API key only and reads no `Session`; an agent calling tools in a
-///   loop would otherwise mint one anonymous `sessions` row per call.
+/// - `/api/*` — API-key surfaces (`/api/v1`, the MCP endpoint, cover
+///   uploads) read no `Session`; a client calling in a loop would otherwise
+///   mint one anonymous `sessions` row per call (story 11-6 for `/api/mcp`,
+///   #696 for the rest).
 ///
 /// Uses `csrf::normalize_exempt_path` (issue #40) so that router-equivalent
 /// variants (`//static/app.css`, `/static/`) are caught alongside the
 /// canonical forms.
 pub(crate) fn should_skip_session_resolve(uri_path: &str) -> bool {
     let path = crate::middleware::csrf::normalize_exempt_path(uri_path);
-    if path == "/health"
-        || path == crate::mcp::MCP_PATH
-        || path == crate::services::cover_uploads::COVER_UPLOADS_PATH
-    {
+    if path == "/health" {
         return true;
     }
     matches!(path.as_str(), "/static" | "/covers" | "/logo")
+        || path.starts_with("/api/")
         || path.starts_with("/static/")
         || path.starts_with("/covers/")
         || path.starts_with("/logo/")
+}
+
+/// #696 — marks a state-changing request that carried no session cookie
+/// (the resolver gave it an unstored session): the CSRF layer refuses it
+/// with reason `no_session_cookie`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CookielessRequest;
+
+/// #696 — a request that mints no anonymous row when it carries no session
+/// cookie: every method but GET (a page view, whose cookie the browser
+/// keeps). HEAD and OPTIONS (probes, CORS preflights) never store a cookie;
+/// a cookieless `POST /login` (a script, a credential-stuffing bot — a
+/// browser has the cookie of the login page) signs in with a row of its own
+/// and, on failure, renders with the unstored token: the next `POST /login`
+/// is CSRF-exempt anyway.
+pub(crate) fn persists_nothing_without_cookie(method: &axum::http::Method) -> bool {
+    *method != axum::http::Method::GET
 }
 
 /// Story 11-21 (AC7) — whether this request renders a page, so the nav
@@ -167,7 +183,7 @@ pub(crate) fn wants_pending_count(role: &Role, headers: &axum::http::HeaderMap) 
         return false;
     }
     let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
-    if header("hx-request") == Some("true") {
+    if crate::middleware::htmx::is_htmx(headers) {
         return header("hx-history-restore-request") == Some("true");
     }
     if let Some(dest) = header("sec-fetch-dest") {
@@ -236,7 +252,20 @@ pub async fn session_resolve_middleware(
         return next.run(request).await;
     }
 
-    let cookie_token = extract_session_cookie(request.headers());
+    let cookie_values = session_cookie_values(request.headers());
+
+    // #696 — a request other than GET without any session cookie gets an
+    // in-memory anonymous session, no row and no cookie; a state-changing
+    // one is then refused by the CSRF layer (`no_session_cookie`), except
+    // the exempt `POST /login`. A browser holding a cookie whose row is gone
+    // still gets a minted row and the rotated token (#37).
+    if cookie_values.is_empty() && persists_nothing_without_cookie(request.method()) {
+        let ext = request.extensions_mut();
+        ext.insert(Session::anonymous_with_token(crate::utils::generate_csrf_token()));
+        ext.insert(CookielessRequest);
+        return next.run(request).await;
+    }
+    let cookie_token = single_session_cookie(cookie_values);
     let timeout_secs = state.session_timeout_secs();
 
     let (session, new_cookie_token) =
@@ -472,7 +501,17 @@ async fn resolve_or_mint(
     }
 }
 
+/// The one session cookie of a request (the resolver composes the two steps
+/// below itself, #696; kept for the unit tests of the parsing rules).
+#[cfg(test)]
 fn extract_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
+    single_session_cookie(session_cookie_values(headers))
+}
+
+/// Every non-empty `session=` cookie value across all `Cookie` headers,
+/// unquoted and percent-decoded. Several values are possible: a parent-domain
+/// shadow cookie rides along the real one (see [`single_session_cookie`]).
+fn session_cookie_values(headers: &axum::http::HeaderMap) -> Vec<String> {
     // Collect every `session=` cookie across all `Cookie` headers. A
     // parent-domain attacker (subdomain takeover, stale wildcard cert,
     // etc.) can set a shadow `session=evil; Domain=example.com` that
@@ -513,6 +552,12 @@ fn extract_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
             }
         }
     }
+    matches
+}
+
+/// The one session cookie, or `None` when there is none or more than one
+/// (anti-shadowing: neither can safely be picked, the resolver mints).
+fn single_session_cookie(mut matches: Vec<String>) -> Option<String> {
     if matches.len() > 1 {
         tracing::warn!(
             count = matches.len(),
@@ -682,12 +727,31 @@ mod tests {
         assert!(should_skip_session_resolve("/logo/svg/mybibli-icon.svg"));
     }
 
+    /// #696 — every API-key surface, not only `/api/mcp` (story 11-6).
     #[test]
-    fn should_skip_session_resolve_mcp_endpoint() {
+    fn should_skip_session_resolve_api_paths() {
         assert!(should_skip_session_resolve("/api/mcp"));
         assert!(should_skip_session_resolve("//api/mcp"));
-        assert!(!should_skip_session_resolve("/api/mcpx"));
-        assert!(!should_skip_session_resolve("/api/v1/titles"));
+        assert!(should_skip_session_resolve("/api/v1/titles"));
+        assert!(!should_skip_session_resolve("/apix"));
+        assert!(!should_skip_session_resolve("/apidocs"));
+    }
+
+    /// #696 — a cookieless request mints a row only when it can use it.
+    #[test]
+    fn persists_nothing_without_cookie_for_state_changing_requests() {
+        use axum::http::Method;
+        for m in [
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::HEAD,
+            Method::OPTIONS,
+        ] {
+            assert!(persists_nothing_without_cookie(&m), "{m}");
+        }
+        assert!(!persists_nothing_without_cookie(&Method::GET));
     }
 
     #[test]

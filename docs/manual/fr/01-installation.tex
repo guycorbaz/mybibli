@@ -208,6 +208,9 @@ HOST_PORT=8080         # à changer si 8080 est déjà pris sur l'hôte
 APP_LANGUAGE=fr        # ou 'en' pour l'interface en anglais par défaut
 
 MYBIBLI_COOKIE_SECURE=false   # mettre à true uniquement derrière HTTPS
+MYBIBLI_TRUSTED_PROXIES=      # derrière un proxy inverse : son IP ou son
+                              # réseau (ex. 172.18.0.0/16), pour que les
+                              # journaux montrent le client
 \end{lstlisting}
 
 L'URL \texttt{DATABASE\_URL} \emph{doit} référencer les mêmes

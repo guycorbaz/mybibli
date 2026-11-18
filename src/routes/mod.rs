@@ -49,6 +49,7 @@ pub mod loans;
 pub mod proposal_edit;
 pub mod proposals;
 pub mod locations;
+pub mod not_found;
 pub mod series;
 pub mod series_expected_tomes;
 pub mod setup;
@@ -936,6 +937,12 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
             state.clone(),
             setup_gate_middleware,
         ))
+        // #696 — set AFTER the layers above, so an unrouted request runs
+        // none of them: no session row, no CSRF rejection hiding the 404,
+        // no setup-wizard redirect. (axum applies `Router::layer` only to
+        // what is already registered; testing for a missing `MatchedPath`
+        // instead would also open CSRF on any future `nest_service` mount.)
+        .fallback(not_found::fallback)
         .with_state(state);
 
     apply_csp_layer(app, report_only)

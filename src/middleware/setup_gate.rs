@@ -30,9 +30,8 @@
 use std::sync::{Arc, RwLock};
 
 use axum::extract::{Request, State};
-use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 
 use crate::AppState;
 use crate::db::DbPool;
@@ -183,16 +182,6 @@ pub fn is_whitelisted_path(path: &str) -> bool {
         || path.starts_with("/setup/")
 }
 
-/// Detect HTMX requests so the redirect uses `HX-Redirect` instead of
-/// a 303 Location (HTMX swallows 3xx by default).
-fn is_htmx_request(headers: &axum::http::HeaderMap) -> bool {
-    headers
-        .get("hx-request")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-}
-
 pub async fn setup_gate_middleware(
     State(state): State<AppState>,
     request: Request,
@@ -221,24 +210,9 @@ pub async fn setup_gate_middleware(
         return next.run(request).await;
     }
 
-    // Wizard active + non-whitelisted → redirect to /setup.
-    let target = "/setup";
-    if is_htmx_request(request.headers()) {
-        // HTMX: 200 OK + HX-Redirect header so the client navigates
-        // (3xx would be swallowed by htmx default behavior).
-        let mut response = StatusCode::OK.into_response();
-        response.headers_mut().insert(
-            "HX-Redirect",
-            HeaderValue::from_static(target),
-        );
-        response
-    } else {
-        let mut response = StatusCode::SEE_OTHER.into_response();
-        response
-            .headers_mut()
-            .insert(header::LOCATION, HeaderValue::from_static(target));
-        response
-    }
+    // Wizard active + non-whitelisted → redirect to /setup (HTMX: 200 +
+    // HX-Redirect, since a 3xx would be followed inside the XHR).
+    crate::middleware::htmx::redirect("/setup", crate::middleware::htmx::is_htmx(request.headers()))
 }
 
 #[cfg(test)]

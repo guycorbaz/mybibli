@@ -186,6 +186,8 @@ HOST_PORT=8080         # change if 8080 is already taken on the host
 APP_LANGUAGE=en        # or 'fr' for the French UI by default
 
 MYBIBLI_COOKIE_SECURE=false   # set to true only behind HTTPS
+MYBIBLI_TRUSTED_PROXIES=      # behind a reverse proxy: its IP or network
+                              # (e.g. 172.18.0.0/16), so logs show the client
 \end{lstlisting}
 
 The \texttt{DATABASE\_URL} \emph{must} reference the same user,

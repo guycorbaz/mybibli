@@ -86,7 +86,12 @@ async fn mcp_guard(State(state): State<AppState>, request: Request, next: Next) 
     if let Some(value) = parts.headers.get(PROTOCOL_VERSION_HEADER)
         && let Err(reason) = check_protocol_version_header(value.to_str().ok())
     {
-        tracing::warn!(key_id = ctx.key_id, reason, "MCP request refused");
+        tracing::warn!(
+            key_id = ctx.key_id,
+            reason,
+            client = %crate::middleware::client_addr::client_addr(&parts.extensions, &parts.headers),
+            "MCP request refused"
+        );
         return (StatusCode::BAD_REQUEST, reason).into_response();
     }
     parts.extensions.insert(ctx);

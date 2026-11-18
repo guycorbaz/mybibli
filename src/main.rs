@@ -579,7 +579,18 @@ async fn main() {
         .await
         .expect("Failed to bind to address");
 
+    // #696 — parse MYBIBLI_TRUSTED_PROXIES now, so an invalid entry is
+    // reported at boot rather than at the first refused request.
+    mybibli::middleware::client_addr::trusted_proxies();
+
     tracing::info!(%addr, "Server listening");
 
-    axum::serve(listener, app).await.expect("Server failed");
+    // #696 — `ConnectInfo<SocketAddr>` gives log lines the peer address
+    // (`middleware::client_addr`).
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .expect("Server failed");
 }

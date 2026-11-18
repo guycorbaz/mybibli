@@ -31,16 +31,7 @@ use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::Response;
 
-const HX_REQUEST_HEADER: &str = "hx-request";
 const MAX_FRAGMENT_BYTES: usize = 64 * 1024;
-
-fn request_is_htmx(headers: &axum::http::HeaderMap) -> bool {
-    headers
-        .get(HX_REQUEST_HEADER)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-}
 
 fn body_is_html_fragment(body_str: &str) -> bool {
     // `<!doctype html>` / `<html` (case-insensitive) means it's already a
@@ -81,7 +72,7 @@ fn wrap_in_minimal_shell(status: StatusCode, fragment: &str) -> String {
 }
 
 pub async fn non_htmx_error_wrapper(req: Request, next: Next) -> Response {
-    let request_was_htmx = request_is_htmx(req.headers());
+    let request_was_htmx = crate::middleware::htmx::is_htmx(req.headers());
     let response = next.run(req).await;
 
     if request_was_htmx {
