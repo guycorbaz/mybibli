@@ -136,15 +136,14 @@
 
         document.body.addEventListener("htmx:responseError", function (e) {
             if (!document.getElementById("feedback-list")) return;
-            // Story 19-1 — the open modal's Confirm got a server entry: modal.js
-            // shows it inside the modal (`[data-modal-error]`; the server-side
-            // ModalConfirmRetargetGuard strips the retarget), so no second,
-            // generic line behind the modal. Anything else — another modal's
-            // stale request, an empty or proxy-made body — still gets the line.
+            // Story 19-1 — the open modal's own Confirm failed: modal.js shows
+            // the error inside the modal (`[data-modal-error]`: the server's
+            // body, or the generic line for an empty one; the
+            // server-side ModalConfirmRetargetGuard strips the retarget), so
+            // nothing is added behind the modal. Another modal's stale
+            // request still gets its line here.
             var modalApi = window.mybibliModal;
-            var errBody = e.detail.xhr ? (e.detail.xhr.responseText || "") : "";
-            if (modalApi && modalApi.ownsRequest && modalApi.ownsRequest(e.detail.elt)
-                && errBody.indexOf("feedback-entry") !== -1) {
+            if (modalApi && modalApi.ownsRequest && modalApi.ownsRequest(e.detail.elt)) {
                 return;
             }
             var target = e.detail.target;

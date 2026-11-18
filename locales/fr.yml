@@ -289,6 +289,7 @@ validation:
   negative_number: "Les champs numériques doivent être positifs ou nuls."
   invalid_date_format: "Format de date invalide. Utilisez AAAA, AAAA-MM ou AAAA-MM-JJ."
 contributor:
+  remove_aria: "Retirer %{name} comme %{role}"
   added: "%{name} ajouté(e) en tant que %{role} pour %{title}."
   duplicate: "%{name} est déjà %{role} sur ce titre."
   updated: Contributeur mis à jour.
@@ -708,6 +709,7 @@ labels:
   add: Ajouter
   detach_aria: "Retirer l'étiquette %{name}"
 media_type:
+  suggested_aria: "%{label} (suggéré)"
   book: Livre
   bd: BD
   cd: CD

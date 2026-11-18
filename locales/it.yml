@@ -283,6 +283,7 @@ validation:
   negative_number: "I campi numerici non possono essere negativi."
   invalid_date_format: "Formato data non valido. Usa AAAA, AAAA-MM o AAAA-MM-GG."
 contributor:
+  remove_aria: "Rimuovi %{name} come %{role}"
   added: "%{name} aggiunto come %{role} a %{title}."
   duplicate: "%{name} è già %{role} di questo titolo."
   updated: Collaboratore aggiornato.
@@ -692,6 +693,7 @@ labels:
   add: Aggiungi
   detach_aria: "Rimuovi etichetta %{name}"
 media_type:
+  suggested_aria: "%{label} (suggerito)"
   book: Libro
   bd: BD
   cd: CD

@@ -287,6 +287,7 @@ validation:
   negative_number: "Zahlenfelder dürfen nicht negativ sein."
   invalid_date_format: "Ungültiges Datumsformat. Verwenden Sie JJJJ, JJJJ-MM oder JJJJ-MM-TT."
 contributor:
+  remove_aria: "%{name} als %{role} entfernen"
   added: "%{name} als %{role} zu %{title} hinzugefügt."
   duplicate: "%{name} ist bereits %{role} dieses Titels."
   updated: Mitwirkender aktualisiert.
@@ -702,6 +703,7 @@ labels:
   add: Hinzufügen
   detach_aria: "Etikett %{name} entfernen"
 media_type:
+  suggested_aria: "%{label} (vorgeschlagen)"
   book: Buch
   bd: BD
   cd: CD

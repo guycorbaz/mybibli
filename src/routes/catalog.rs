@@ -1263,7 +1263,10 @@ fn media_type_selector_html(
             "bg-white dark:bg-gray-800 text-indigo-600 border border-indigo-300 dark:border-indigo-600"
         };
         let aria = if is_suggested {
-            format!(r#" aria-label="{label} (suggested)""#)
+            format!(
+                r#" aria-label="{}""#,
+                html_escape(rust_i18n::t!("media_type.suggested_aria", locale = loc, label = *label).as_ref())
+            )
         } else {
             String::new()
         };
@@ -1667,5 +1670,14 @@ mod tests {
         let html = session_counter_html(5);
         assert!(html.contains("5"));
         assert!(html.contains("aria-label"));
+    }
+
+    /// Story 19-1 — the suggested media type's accessible name is in the
+    /// request language.
+    #[test]
+    fn suggested_media_type_label_is_localized() {
+        let html = media_type_selector_html("123456789012", Some("bd"), None, "fr");
+        assert!(html.contains("(suggéré)"), "{html}");
+        assert!(!html.contains("(suggested)"));
     }
 }

@@ -287,6 +287,7 @@ validation:
   negative_number: "Numeric fields must be non-negative."
   invalid_date_format: "Invalid date format. Use YYYY, YYYY-MM, or YYYY-MM-DD."
 contributor:
+  remove_aria: "Remove %{name} as %{role}"
   added: "%{name} added as %{role} to %{title}."
   duplicate: "%{name} is already %{role} on this title."
   updated: Contributor updated.
@@ -710,6 +711,7 @@ labels:
   add: Add
   detach_aria: "Remove label %{name}"
 media_type:
+  suggested_aria: "%{label} (suggested)"
   book: Book
   bd: BD
   cd: CD

@@ -288,6 +288,25 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await expect(dialog).toContainText("Corbeille");
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
+
+    // The refusal, in French: give the row a child, then try to delete it.
+    await row.locator("[data-locations-toggle]").click();
+    const childForm = page.locator('form[id^="add-child-"]:visible').first();
+    await childForm.locator('input[name="name"]').fill("LO-698-FR-Child");
+    await childForm.locator('input[name="label"]').fill("L5704");
+    await childForm.locator('button[type="submit"]').click();
+    await expect(page.locator("text=LO-698-FR-Child")).toBeVisible({ timeout: 5000 });
+    await page
+      .locator('[role="treeitem"] > div')
+      .filter({ hasText: "LO-698-FR" })
+      .first()
+      .locator('button[aria-label="Supprimer LO-698-FR"]')
+      .click();
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await page.locator("[data-modal-confirm]").click();
+    await expect(dialog.locator("[data-modal-error]")).toContainText("Suppression impossible", {
+      timeout: 5000,
+    });
   });
 
   // #698 — the location was deleted in another tab: opening the modal says
@@ -340,9 +359,11 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await row.locator("button[data-modal-trigger]").click();
     await expect(page.locator("#modal-slot dialog[open]")).toBeVisible({ timeout: 5000 });
     await page.locator("[data-modal-confirm]").click();
-    await expect(page.locator("#feedback-list")).toContainText(/Server error|Erreur serveur/i, {
-      timeout: 5000,
-    });
+    // Shown inside the modal, where the user is looking — not behind it.
+    const region = page.locator("#modal-slot dialog[open] [data-modal-error]");
+    await expect(region).toBeVisible({ timeout: 5000 });
+    await expect(region).toContainText(/Server error|Erreur serveur/i);
+    await expect(page.locator("#feedback-list")).not.toContainText(/Server error|Erreur serveur/i);
   });
 
   // AC9: Node type dropdown has options

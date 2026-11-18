@@ -300,7 +300,9 @@ const ALLOWED_LITERAL_NAMES_RUST_SITES: &[(&str, usize)] = &[("src/utils.rs", 1)
 /// purpose). A `#[cfg(test)]` on any other item does not hide anything else.
 /// A test-only file (`#![cfg(test)]`) has no production part. Braces are
 /// counted naively: a test module holding an unbalanced brace in a string
-/// would end early or late — a false positive is shown, never silently kept.
+/// would end early (its rest scanned: false positives) or late (the
+/// production code after it hidden). No such module exists today
+/// (checked over `src/` in review 19-1); keep test strings balanced.
 fn production_code(raw: &str) -> String {
     if raw.lines().any(|l| l.trim() == "#![cfg(test)]") {
         return String::new();

@@ -192,6 +192,19 @@
         }
     }
 
+    // The localized "Server error (N) — please try again." line, from the
+    // #i18n-bundle data island (request locale), as mybibli.js builds it.
+    function genericErrorText(status) {
+        var template = "";
+        try {
+            var bundleEl = document.getElementById("i18n-bundle");
+            var bundle = bundleEl ? JSON.parse(bundleEl.textContent) : {};
+            template = (bundle.errors || {}).server_error_retry || "";
+        } catch (_) { template = ""; }
+        if (!template) template = "Server error (%{status})";
+        return template.replace("%{status}", String(status || ""));
+    }
+
     // Story 19-1 (Rule #21) — a trigger that left the page with what an
     // answer removed (e.g. a deleted tree row) hands focus to the element its
     // `data-modal-focus-fallback` selector names (read on the detached
@@ -314,7 +327,15 @@
                 if (xhr.getResponseHeader && xhr.getResponseHeader("HX-Retarget")) return;
                 var region = state.dialog.querySelector("[data-modal-error]");
                 if (!region) return;
-                region.innerHTML = xhr.responseText || "";
+                var body = xhr.responseText || "";
+                if (body.trim() !== "") {
+                    region.innerHTML = body;
+                } else {
+                    // Story 19-1 — an empty body (e.g. a proxy's 502): the
+                    // localized generic line, inside the modal where the user
+                    // is looking (mybibli.js adds nothing behind it).
+                    region.textContent = genericErrorText(xhr.status);
+                }
                 region.classList.remove("hidden");
                 return;
             }

@@ -433,7 +433,10 @@ fn contributor_list_html(contributors: &[TitleContributorModel], loc: &str) -> S
             let title_id = contributors.first().map(|c| c.title_id).unwrap_or(0);
             html.push_str(&format!(
                 r##" <button type="button" class="text-red-400 hover:text-red-600 text-xs" aria-label="{}" hx-post="/catalog/contributors/remove" hx-vals='{{"junction_id":{},"title_id":{}}}' hx-target="#feedback-list" hx-swap="afterbegin">&times;</button>"##,
-                html_escape(&format!("Remove {} as {}", name, role)),
+                html_escape(
+                    rust_i18n::t!("contributor.remove_aria", locale = loc, name = *name, role = *role)
+                        .as_ref()
+                ),
                 junction_id,
                 title_id
             ));
@@ -444,4 +447,29 @@ fn contributor_list_html(contributors: &[TitleContributorModel], loc: &str) -> S
 
     html.push_str("</ul>");
     html
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Story 19-1 — the list's name and each remove button's name are in the
+    /// request language, the contributor name escaped once.
+    #[test]
+    fn contributor_list_labels_are_localized() {
+        let rows = vec![TitleContributorModel {
+            id: 5,
+            title_id: 9,
+            contributor_id: 3,
+            role_id: 1,
+            contributor_name: "Hergé <x>".to_string(),
+            role_name: "Auteur".to_string(),
+        }];
+        let fr = contributor_list_html(&rows, "fr");
+        assert!(fr.contains(r#"aria-label="Retirer Hergé &lt;x&gt; comme Auteur""#), "{fr}");
+        assert!(!fr.contains("Remove "));
+        let en = contributor_list_html(&rows, "en");
+        assert!(en.contains(r#"aria-label="Contributors""#));
+        assert!(en.contains("Remove Hergé &lt;x&gt; as Auteur"));
+    }
 }
