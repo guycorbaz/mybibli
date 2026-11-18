@@ -165,6 +165,9 @@
         }
         var s = state;
         state = null;
+        // The modal owned the trigger's focus restore (below): the afterSettle
+        // fallback must not fire later for it (Rule #21, review 19-1).
+        lastPressedTrigger = null;
 
         document.removeEventListener("keydown", s.onKeydown, false);
         if (s.dialog) {
