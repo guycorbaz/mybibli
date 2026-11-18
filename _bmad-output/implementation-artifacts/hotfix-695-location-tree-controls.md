@@ -20,6 +20,9 @@ The controls are built in Rust (`src/routes/locations.rs::render_node_at_depth`)
 - **D2 — controls always shown, dimmed** (user's choice, 2026-11-18): `opacity-60`, full opacity on row hover (`group-hover:`), on focus inside the controls (`focus-within:`) and on a coarse pointer (`pointer-coarse:`). The class list is `locations::TREE_ROW_CONTROLS_CLASS`.
 - **D3 — side effect accepted.** Building the CSS with `src/` adds 52 selectors to the image's `output.css` (measured by building the old and new stage contexts). Those that matter are classes Rust-built HTML already carried and never got in the image — feedback entry colours (`bg-green-50`, `border-green-500`, `bg-yellow-50`, …), the title page cover height (`h-72`), hover colours of the tree controls, `no-underline` on tree rows. The layout-looking ones (`md:fixed`, `md:overflow-y-auto`, `overflow-scroll`, `collapse`, `ml-100`) come from comments and test strings; no element carries them.
 
+- **D4 — feedback suggestion contrast (found by the full E2E run).** With the colours of D3 in the image, a feedback entry's suggestion line (`text-stone-500` on `bg-blue-50`) fell to 4.4:1 (axe, contributor form). It moves to `text-stone-600` in both renderers (`utils::feedback_html_action`, `components/feedback_entry.html`).
+- **D5 — `role="group"` on the tree's children container.** A nested `treeitem` sat in a plain `div` (axe `aria-required-parent`), visible only when the database holds nested locations at the time the accessibility spec runs. One attribute on the same component; the unit test pins it.
+
 ## Acceptance Criteria
 
 1. **AC1.** In the Docker image, a tree row's controls are visible at rest (opacity strictly between 0 and 1), at full opacity on row hover and when one of them holds keyboard focus.
@@ -33,7 +36,7 @@ The controls are built in Rust (`src/routes/locations.rs::render_node_at_depth`)
 - [x] T3 — `tests/tailwind_sources.rs` (AC2); `read()` shared through `tests/common/repo.rs` with `toolchain_pins`
 - [x] T4 — E2E case in `locations.spec.ts`: computed opacity (Playwright's `toBeVisible` counts opacity 0 as visible)
 - [x] T5 — CLAUDE.md (navigation shell paragraph: Tailwind sources)
-- [ ] T6 — gates
+- [x] T6 — gates (full E2E on a fresh stack, 2 workers)
 
 ## Dev Notes
 

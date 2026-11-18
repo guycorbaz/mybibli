@@ -347,7 +347,9 @@ fn render_node_at_depth(
 
     if has_children {
         html.push_str(&format!(
-            r#"<div class="tree-children" id="tree-children-{id}">"#,
+            // A nested `treeitem` must sit in a `group` (ARIA tree pattern;
+            // axe `aria-required-parent`).
+            r#"<div class="tree-children" role="group" id="tree-children-{id}">"#,
             id = node.location.id,
         ));
         for child in &node.children {
@@ -825,8 +827,8 @@ mod tests {
             "parent's toggle should target its children container"
         );
         assert!(
-            html.contains(r#"id="tree-children-1""#),
-            "parent should wrap its children in a tree-children container"
+            html.contains(r#"<div class="tree-children" role="group" id="tree-children-1">"#),
+            "parent should wrap its children in a tree-children group"
         );
 
         // The leaf (id=2) has no children → no toggle button, no container.

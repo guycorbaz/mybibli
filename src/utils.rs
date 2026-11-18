@@ -306,7 +306,7 @@ fn feedback_html_action(
         String::new()
     } else {
         format!(
-            r#"<p class="text-sm text-stone-500 dark:text-stone-400 mt-1">{}</p>"#,
+            r#"<p class="text-sm text-stone-600 dark:text-stone-400 mt-1">{}</p>"#,
             html_escape(suggestion)
         )
     };
