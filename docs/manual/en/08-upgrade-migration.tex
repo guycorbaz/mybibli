@@ -139,6 +139,45 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.28.1}\label{sec:whats-new-1.28.1}
+
+Version 1.28.1 is a patch release on 1.28.0, outside any epic: two bugs
+seen in production
+(\href{https://github.com/guycorbaz/mybibli/issues/695}{\#695},
+\href{https://github.com/guycorbaz/mybibli/issues/696}{\#696}).
+\emph{No migration}; one new optional environment variable --- back up
+first, pull the image, recreate the container
+(\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{The location tree's buttons are visible again.} On the
+        locations page (section~\ref{sec:locations}), the add, edit and
+        delete buttons of each row appeared only under the mouse, and
+        the Docker image did not ship what made them appear: they could
+        not be seen at all, and could not be reached on a touch screen.
+        They are now always shown, dimmed, and at full strength under
+        the mouse, on keyboard focus and on touch screens. The coloured
+        backgrounds of some messages and the cover height on the title
+        page come back with the same fix.
+  \item \textbf{No session for requests that cannot use one.} An agent
+        configured with \texttt{/mcp} instead of \texttt{/api/mcp}
+        called about a thousand times a day; each call stored an
+        anonymous session before being refused, enough to slow the
+        database. Calls to \texttt{/api/*}, to unknown addresses, and
+        any request other than a page view that carries no session
+        cookie now store nothing; \texttt{/mcp} answers ``not found''
+        and names \texttt{/api/mcp}.
+  \item \textbf{The client's address in the logs.} Refusals and API-key
+        logins now log the address of the client. Behind a reverse
+        proxy, set \texttt{MYBIBLI\_TRUSTED\_PROXIES} to the proxy's IP
+        or network (for example \texttt{172.18.0.0/16}) so the address
+        the proxy forwards is used; left empty, the direct peer's
+        address is logged and no forwarding header is trusted
+        (section~\ref{sec:env-vars}). The variable is passed by the
+        \texttt{docker-compose.yml} of this release: fetch it again if
+        you want to set it.
+\end{itemize}
+
 \section{What's new in 1.28.0}\label{sec:whats-new-1.28.0}
 
 Version 1.28.0 closes epic 18, ``maintenance''

@@ -148,6 +148,48 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.28.1}\label{sec:whats-new-1.28.1}
+
+La version 1.28.1 est une version de correctif sur la 1.28.0, hors de
+tout epic : deux bogues vus en production
+(\href{https://github.com/guycorbaz/mybibli/issues/695}{\#695},
+\href{https://github.com/guycorbaz/mybibli/issues/696}{\#696}).
+\emph{Aucune migration} ; une nouvelle variable d'environnement,
+facultative --- sauvegardez d'abord, tirez l'image, recréez le
+conteneur (\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{Les boutons de l'arbre des emplacements sont de nouveau
+        visibles.} Sur la page des emplacements
+        (section~\ref{sec:locations}), les boutons d'ajout, de
+        modification et de suppression de chaque ligne n'apparaissaient
+        que sous la souris, et l'image Docker ne livrait pas ce qui les
+        faisait apparaître : on ne les voyait pas du tout, et on ne
+        pouvait pas les atteindre sur un écran tactile. Ils sont
+        désormais toujours affichés, estompés, et pleinement visibles
+        sous la souris, au focus clavier et sur écran tactile. Les fonds
+        colorés de certains messages et la hauteur de la couverture sur
+        la page d'un titre reviennent avec la même correction.
+  \item \textbf{Plus de session pour les requêtes qui ne peuvent pas
+        s'en servir.} Un agent configuré avec \texttt{/mcp} au lieu de
+        \texttt{/api/mcp} appelait environ mille fois par jour ; chaque
+        appel enregistrait une session anonyme avant d'être refusé, de
+        quoi ralentir la base. Les appels à \texttt{/api/*}, aux adresses
+        inconnues, et toute requête autre qu'un affichage de page sans
+        cookie de session n'enregistrent plus rien ; \texttt{/mcp}
+        répond « introuvable » et indique \texttt{/api/mcp}.
+  \item \textbf{L'adresse du client dans les journaux.} Les refus et les
+        connexions par clé d'API journalisent désormais l'adresse du
+        client. Derrière un proxy inverse, indiquez dans
+        \texttt{MYBIBLI\_TRUSTED\_PROXIES} l'IP ou le réseau du proxy
+        (par exemple \texttt{172.18.0.0/16}) pour que l'adresse qu'il
+        transmet soit retenue ; laissée vide, c'est l'adresse du pair
+        direct qui est journalisée, et aucun en-tête de transfert n'est
+        cru (section~\ref{sec:env-vars}). La variable est transmise par
+        le \texttt{docker-compose.yml} de cette version : récupérez-le à
+        nouveau si vous voulez la définir.
+\end{itemize}
+
 \section{Nouveautés de la 1.28.0}\label{sec:whats-new-1.28.0}
 
 La version 1.28.0 clôt l'epic 18, « maintenance »

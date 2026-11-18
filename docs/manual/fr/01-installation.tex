@@ -125,8 +125,8 @@ le tag correspondant) :
 
 \begin{lstlisting}
 mkdir -p /srv/mybibli && cd /srv/mybibli
-curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.28.0/docker-compose.yml
-curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.28.0/.env.example
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.28.1/docker-compose.yml
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.28.1/.env.example
 cp .env.example .env
 \end{lstlisting}
 
@@ -379,6 +379,7 @@ se lit comme « positionnée » et bascule silencieusement un opt-out.
 \midrule
 \multicolumn{3}{l}{\emph{Durcissement}} \\
 \texttt{MYBIBLI\_COOKIE\_SECURE} & \texttt{false} & Mettre à \texttt{true} uniquement derrière HTTPS. \\
+\texttt{MYBIBLI\_TRUSTED\_PROXIES} & --- & v1.28.1+. Proxys inverses dont les en-têtes de transfert sont crus (IP ou réseaux CIDR séparés par des virgules, ex.\ \texttt{172.18.0.0/16}), pour que les journaux montrent l'adresse du client. Vide : l'adresse du pair direct est journalisée et aucun en-tête n'est cru. \\
 \texttt{CSP\_REPORT\_ONLY}     & \texttt{false} & Bascule l'en-tête CSP en mode report-only. \\
 \texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS} & boucle locale & Valeurs de \texttt{Host} auxquelles répond le point d'entrée des agents IA \texttt{/api/mcp} (\texttt{hôte} ou \texttt{hôte:port}, séparés par des virgules). Par défaut \texttt{localhost,127.0.0.1,::1} ; une valeur définie la remplace. Voir section~\ref{sec:agents-hosts}. \\
 \texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS} & --- & Valeurs d'\texttt{Origin} acceptées sur \texttt{/api/mcp} ; vide, toute requête qui en porte une est refusée. \\
