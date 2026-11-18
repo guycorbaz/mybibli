@@ -227,8 +227,11 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await row.hover();
     await expect.poll(opacity).toBe(1);
 
+    // A real keyboard journey: Tab from the row's name link onto its controls.
     await page.mouse.move(0, 0);
-    await editLink.focus();
+    await row.locator('a[href^="/location/"]').focus();
+    await page.keyboard.press("Tab");
+    await expect(row.locator('button[aria-label^="Add child under LO-Controls695"]')).toBeFocused();
     await expect.poll(opacity).toBe(1);
   });
 

@@ -1,7 +1,6 @@
 //! Repository files read by configuration tests (`toolchain_pins`,
-//! `tailwind_sources`).
-
-#![allow(dead_code)] // each test crate uses a different subset
+//! `tailwind_sources`), which include this file alone with
+//! `#[path = "common/repo.rs"] mod repo;` — not through `mod common;`.
 
 use std::fs;
 use std::path::Path;

@@ -184,12 +184,13 @@ fn render_node_html(
 /// `opacity-0` until hover: invisible on a touch screen (no hover) and while
 /// keyboard-focused, and — `group-hover:opacity-100` living only in this Rust
 /// string, which the Docker CSS stage never scanned — invisible everywhere in
-/// the shipped image. Now always shown, dimmed (75 %: `text-stone-600` stays
-/// above 3:1, WCAG 1.4.11), at full opacity on row hover, on keyboard focus
-/// anywhere in the row and on a coarse pointer. The classes are only
+/// the shipped image. Now always shown, dimmed to 75 % (the glyphs are colour
+/// emoji, whose colours CSS does not set: dimmed, never hidden), at full
+/// opacity on row hover, on keyboard focus anywhere in the row and whenever a
+/// touch pointer is present (`any-pointer-coarse`, hybrid devices included). The classes are only
 /// generated because `static/css/input.css` sources `src/` (checked by
 /// `tests/tailwind_sources.rs`).
-pub(crate) const TREE_ROW_CONTROLS_CLASS: &str = "ml-auto flex items-center gap-1 opacity-75 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity";
+pub(crate) const TREE_ROW_CONTROLS_CLASS: &str = "ml-auto flex items-center gap-1 opacity-75 group-hover:opacity-100 group-focus-within:opacity-100 any-pointer-coarse:opacity-100 transition-opacity";
 
 #[allow(clippy::too_many_arguments)]
 fn render_node_at_depth(
@@ -768,7 +769,7 @@ mod tests {
             "opacity-75",
             "group-hover:opacity-100",
             "group-focus-within:opacity-100",
-            "pointer-coarse:opacity-100",
+            "any-pointer-coarse:opacity-100",
         ] {
             assert!(classes.contains(&needed), "missing {needed}");
         }
