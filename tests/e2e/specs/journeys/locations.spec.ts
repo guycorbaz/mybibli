@@ -270,6 +270,81 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await expect(row.locator("button[data-modal-trigger]")).toHaveCount(0);
   });
 
+  // #698 — in French: the control labels, the modal and the refusal copy.
+  test("in French, the tree controls and the delete modal speak French", async ({ page, context }) => {
+    await context.addCookies([{ name: "lang", value: "fr", domain: "localhost", path: "/" }]);
+    await page.goto("/locations");
+    await page.locator("#add-root-summary").click();
+    await page.locator("#new-name").fill("LO-698-FR");
+    await page.locator("#new-lcode").fill("L5701");
+    await page.locator("#add-root-submit").click();
+    const row = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-FR" }).first();
+    await expect(row.locator('a[aria-label="Modifier LO-698-FR"]')).toHaveCount(1, { timeout: 5000 });
+    await expect(row.locator('button[aria-label="Ajouter un emplacement dans LO-698-FR"]')).toHaveCount(1);
+    const trigger = row.locator('button[aria-label="Supprimer LO-698-FR"]');
+    await trigger.click();
+    const dialog = page.locator("#modal-slot dialog[open]");
+    await expect(dialog).toContainText("Supprimer LO-698-FR (L5701) ?", { timeout: 5000 });
+    await expect(dialog).toContainText("Corbeille");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  });
+
+  // #698 — the location was deleted in another tab: opening the modal says
+  // so, removes the stale row, keeps focus on the page (Rule #21).
+  test("a location deleted in another tab: the stale row goes, focus stays on the page", async ({ page }) => {
+    await page.goto("/locations");
+    await page.locator("#add-root-summary").click();
+    await page.locator("#new-name").fill("LO-698-Gone");
+    await page.locator("#new-lcode").fill("L5702");
+    await page.locator("#add-root-submit").click();
+    const row = page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Gone" }).first();
+    await expect(row).toBeVisible({ timeout: 5000 });
+    const href = await row.locator('a[href$="/edit"]').getAttribute("href");
+    const id = href?.match(/\/locations\/(\d+)/)?.[1];
+    expect(id).toBeTruthy();
+
+    // "Another tab": the same session deletes it through the route.
+    const csrf = await page.locator('meta[name="csrf-token"]').getAttribute("content");
+    const res = await page.request.delete(`/locations/${id}`, {
+      headers: { "X-CSRF-Token": csrf ?? "", "HX-Request": "true" },
+    });
+    expect(res.status()).toBe(200);
+
+    await row.locator("button[data-modal-trigger]").click();
+    await expect(page.locator("#feedback-list .feedback-entry").first()).toContainText(
+      /already deleted by another session|déjà été supprimé par une autre session/,
+      { timeout: 5000 },
+    );
+    await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0);
+    await expect(page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Gone" })).toHaveCount(0);
+    await expect(page.locator("#add-root-summary")).toBeFocused();
+  });
+
+  // Review 19-1 — a Confirm answered with an empty error body (a proxy's
+  // 502) is not lost: the generic line still appears.
+  test("an empty error answer to the modal's Confirm still shows a message", async ({ page }) => {
+    await page.goto("/locations");
+    await page.locator("#add-root-summary").click();
+    await page.locator("#new-name").fill("LO-698-502");
+    await page.locator("#new-lcode").fill("L5703");
+    await page.locator("#add-root-submit").click();
+    const row = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-502" }).first();
+    await expect(row).toBeVisible({ timeout: 5000 });
+
+    await page.route("**/locations/*", (route) =>
+      route.request().method() === "DELETE"
+        ? route.fulfill({ status: 502, body: "" })
+        : route.continue(),
+    );
+    await row.locator("button[data-modal-trigger]").click();
+    await expect(page.locator("#modal-slot dialog[open]")).toBeVisible({ timeout: 5000 });
+    await page.locator("[data-modal-confirm]").click();
+    await expect(page.locator("#feedback-list")).toContainText(/Server error|Erreur serveur/i, {
+      timeout: 5000,
+    });
+  });
+
   // AC9: Node type dropdown has options
   test("node type dropdown shows configured types", async ({ page }) => {
     await page.goto("/locations");

@@ -368,7 +368,7 @@ development_status:
   # Sequencing: 19-1 -> 19-2 -> 19-3 -> 19-4 -> 19-5 -> 19-6 -> 19-7 -> 19-8 -> 19-9 -> 19-10 (epic smoke, Rule #7) -> 19-11 -> retrospective -> release.
   # Couplings: 19-5 and 19-7 share the Health tab; 19-7 and 19-8 need 19-6.
   epic-19: in-progress
-  19-1-location-tree-delete-modal: ready-for-dev
+  19-1-location-tree-delete-modal: review
   19-2-stable-e2e-suite: backlog
   19-3-simultaneous-actions: backlog
   19-4-what-the-user-reads: backlog

@@ -292,37 +292,57 @@ fn visit(dir: &Path, f: &mut impl FnMut(&Path)) {
 const ALLOWED_LITERAL_NAMES_RUST_SITES: &[(&str, usize)] = &[("src/utils.rs", 1)];
 
 /// The production part of a Rust source file, for the audits of
-/// Rust-built markup (story 19-1): the file up to its inline unit-test
-/// module (`#[cfg(test)]` followed by `mod … {` — the project puts it last),
-/// with line comments blanked (doc comments quote markup on purpose). A
-/// `#[cfg(test)]` on an item, or on an out-of-line module declaration
-/// (`mod foo_tests;`, whose file is skipped by name), does not end
-/// production code — only those lines are left out. A test-only file
-/// (`#![cfg(test)]`) has no production part.
+/// Rust-built markup (story 19-1), line count preserved: inline test
+/// modules (`#[cfg(test)]`, possibly more attributes, then `mod … {`) are
+/// blanked up to their closing brace — production code may follow one
+/// (`config.rs`) —, out-of-line ones (`mod foo_tests;`, whose file is
+/// skipped by name) and line comments too (doc comments quote markup on
+/// purpose). A `#[cfg(test)]` on any other item does not hide anything else.
+/// A test-only file (`#![cfg(test)]`) has no production part. Braces are
+/// counted naively: a test module holding an unbalanced brace in a string
+/// would end early or late — a false positive is shown, never silently kept.
 fn production_code(raw: &str) -> String {
     if raw.lines().any(|l| l.trim() == "#![cfg(test)]") {
         return String::new();
     }
     let lines: Vec<&str> = raw.lines().collect();
-    let mut out = Vec::with_capacity(lines.len());
+    let mut out: Vec<&str> = Vec::with_capacity(lines.len());
     let mut i = 0;
     while i < lines.len() {
-        let line = lines[i];
-        if line.trim() == "#[cfg(test)]" {
-            let next = lines[i + 1..].iter().position(|l| !l.trim().is_empty()).map(|k| i + 1 + k);
-            if let Some(j) = next {
+        if lines[i].trim() == "#[cfg(test)]" {
+            // The declaration: the next line that is neither blank nor an attribute.
+            let decl_at = lines[i + 1..]
+                .iter()
+                .position(|l| {
+                    let t = l.trim();
+                    !t.is_empty() && !t.starts_with("#[")
+                })
+                .map(|k| i + 1 + k);
+            if let Some(j) = decl_at {
                 let decl = lines[j].trim();
                 let is_mod = decl.starts_with("mod ") || decl.contains(" mod ");
-                if is_mod && decl.contains('{') {
-                    break;
-                }
                 if is_mod && decl.ends_with(';') {
                     out.extend(std::iter::repeat_n("", j + 1 - i));
                     i = j + 1;
                     continue;
                 }
+                if is_mod && decl.contains('{') {
+                    let mut depth: i64 = 0;
+                    let mut end = j;
+                    for (k, l) in lines.iter().enumerate().skip(j) {
+                        depth += l.matches('{').count() as i64 - l.matches('}').count() as i64;
+                        end = k;
+                        if depth <= 0 {
+                            break;
+                        }
+                    }
+                    out.extend(std::iter::repeat_n("", end + 1 - i));
+                    i = end + 1;
+                    continue;
+                }
             }
         }
+        let line = lines[i];
         out.push(if line.trim_start().starts_with("//") { "" } else { line });
         i += 1;
     }
@@ -362,11 +382,13 @@ fn inline_style_or_handler_re() -> Regex {
 }
 
 /// A literal (not interpolated) accessible name or hint in Rust-built markup:
-/// the value starts with a letter, accented ones included. Same HTML-spelling
-/// rule as above. A value that starts with an interpolation and goes on with
-/// literal words (`"{n} volumes"`) is not caught.
+/// a letter (accented ones included) before any interpolation, after
+/// optional symbols (`"← Back"`). Same HTML-spelling rule as above. Not
+/// caught: a value that starts with an interpolation and goes on with
+/// words (`"{n} volumes"`), and a literal passed as a `format!` argument
+/// (`aria-label=\"{}\"`, "Close") — review those by eye.
 fn literal_accessible_name_re() -> Regex {
-    Regex::new(r#"(?i)(?:^|[\s"'\\])(aria-label|title|alt|placeholder)=\\?["']\p{L}"#).unwrap()
+    Regex::new(r#"(?i)(?:^|[\s"'\\])(aria-label|title|alt|placeholder)=\\?["'][^"'{\\]*?\p{L}"#).unwrap()
 }
 
 /// Story 19-1 (#698, retro v1.28.1 A2) — the CSP rule of
@@ -439,6 +461,13 @@ fn production_code_stops_at_the_test_module_only() {
     let decl = production_code("#[cfg(test)]\nmod foo_tests;\nfn prod() { \"aria-label=\\\"X\\\"\" }\n");
     assert!(decl.contains("aria-label"), "{decl}");
     assert!(!decl.contains("foo_tests"));
+    // Production code after an inline test module is kept; an attribute
+    // between `#[cfg(test)]` and `mod` does not hide the module.
+    let after = production_code(
+        "#[cfg(test)]\n#[allow(dead_code)]\nmod t {\n    fn f() { \"Hidden\" }\n}\nfn prod() { \"Visible\" }\n",
+    );
+    assert!(after.contains("Visible") && !after.contains("Hidden"), "{after}");
+    assert_eq!(after.lines().count(), 6, "line numbers are preserved");
 }
 
 #[test]
@@ -451,6 +480,8 @@ fn rust_markup_patterns_match_markup_not_code() {
     assert!(!names.is_match(r#"<div data-title="Foo">"#));
     assert!(names.is_match(r#"<img alt="Échec">"#));
     assert!(names.is_match(r#"<button ARIA-LABEL="Close">"#));
+    assert!(names.is_match(r#"<a title="← Back">"#));
+    assert!(!names.is_match(r#"<a title="{back}">"#));
     let inline = inline_style_or_handler_re();
     assert!(inline.is_match(r#"<div style="color:red">"#));
     assert!(inline.is_match(r#"<button onclick=\"x()\">"#));

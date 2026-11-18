@@ -746,29 +746,37 @@ enum AlreadyGoneAt {
 
 /// The "deleted by another session" entry, added on top of `#feedback-list`
 /// (never replacing the entries already there), with the stale row removed.
-fn already_gone_response(id: u64, loc: &str, at: AlreadyGoneAt) -> axum::response::Response {
-    let message =
-        rust_i18n::t!("error.already_deleted_by_another_session", locale = loc).to_string();
-    let mut main = crate::utils::feedback_html("error", &message, "");
-    main.push_str(&format!(r#"<div id="tree-node-{id}" hx-swap-oob="delete"></div>"#));
-    let resp = crate::middleware::htmx::HtmxResponse { main, oob: Vec::new() };
+fn already_gone_response(
+    id: u64,
+    loc: &'static str,
+    at: AlreadyGoneAt,
+) -> axum::response::Response {
     match at {
-        AlreadyGoneAt::Confirm => resp.into_response_with_hx_trigger_after_swap("modal-close"),
-        AlreadyGoneAt::ModalOpen => {
-            let mut r = resp.into_response();
-            let headers = r.headers_mut();
-            headers.insert("HX-Retarget", axum::http::HeaderValue::from_static("#feedback-list"));
-            headers.insert("HX-Reswap", axum::http::HeaderValue::from_static("afterbegin"));
-            r
+        AlreadyGoneAt::ModalOpen => crate::routes::build_already_deleted_response_with(
+            loc,
+            "#feedback-list",
+            "afterbegin",
+            &row_removal_oob(id),
+        ),
+        AlreadyGoneAt::Confirm => {
+            let mut main = crate::routes::already_deleted_entry_html(loc);
+            main.push_str(&row_removal_oob(id));
+            crate::middleware::htmx::HtmxResponse { main, oob: Vec::new() }
+                .into_response_with_hx_trigger_after_swap("modal-close")
         }
     }
+}
+
+/// htmx 2: an OOB element with `hx-swap-oob="delete"` removes its target —
+/// here the tree row `#tree-node-{id}`.
+fn row_removal_oob(id: u64) -> String {
+    format!(r#"<div id="tree-node-{id}" hx-swap-oob="delete"></div>"#)
 }
 
 /// The success answer of [`delete_location`], split out for its unit test.
 fn delete_success_response(id: u64, message: &str) -> axum::response::Response {
     let mut main = crate::utils::feedback_html("success", message, "");
-    // htmx 2: an OOB element with `hx-swap-oob="delete"` removes its target.
-    main.push_str(&format!(r#"<div id="tree-node-{id}" hx-swap-oob="delete"></div>"#));
+    main.push_str(&row_removal_oob(id));
     crate::middleware::htmx::HtmxResponse { main, oob: Vec::new() }
         .into_response_with_hx_trigger_after_swap("modal-close")
 }

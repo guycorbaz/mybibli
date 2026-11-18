@@ -77,18 +77,37 @@ pub(crate) fn build_already_deleted_response(
     locale: &'static str,
     retarget: &str,
 ) -> axum::response::Response {
+    build_already_deleted_response_with(locale, retarget, "innerHTML", "")
+}
+
+/// The "already deleted by another session" FeedbackEntry, in `locale`.
+pub(crate) fn already_deleted_entry_html(locale: &'static str) -> String {
+    let title =
+        rust_i18n::t!("error.already_deleted_by_another_session", locale = locale).to_string();
+    crate::utils::feedback_html("error", &title, "")
+}
+
+/// [`build_already_deleted_response`] with the swap style and extra markup
+/// after the entry (story 19-1: `afterbegin` into the shared
+/// `#feedback-list`, which must not lose its entries, plus an OOB removal
+/// of the stale row). `extra_html` must be server-built, HTML-safe markup.
+pub(crate) fn build_already_deleted_response_with(
+    locale: &'static str,
+    retarget: &str,
+    reswap: &'static str,
+    extra_html: &str,
+) -> axum::response::Response {
     use axum::http::{HeaderValue, StatusCode};
     use axum::response::{Html, IntoResponse};
 
-    let title =
-        rust_i18n::t!("error.already_deleted_by_another_session", locale = locale).to_string();
-    let html = crate::utils::feedback_html("error", &title, "");
+    let mut html = already_deleted_entry_html(locale);
+    html.push_str(extra_html);
     let mut response: axum::response::Response = (StatusCode::OK, Html(html)).into_response();
     let headers = response.headers_mut();
     if let Ok(v) = HeaderValue::from_str(retarget) {
         headers.insert("HX-Retarget", v);
     }
-    headers.insert("HX-Reswap", HeaderValue::from_static("innerHTML"));
+    headers.insert("HX-Reswap", HeaderValue::from_static(reswap));
     response
 }
 

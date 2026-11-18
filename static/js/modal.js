@@ -186,20 +186,35 @@
                 if (document.contains(s.triggerEl)) {
                     try { s.triggerEl.focus(); } catch (_) { /* ignore */ }
                 } else {
-                    // Story 19-1 (Rule #21) — the trigger left with what the
-                    // Confirm removed (e.g. a deleted tree row): focus the
-                    // element its `data-modal-focus-fallback` selector names
-                    // (read on the detached trigger), if still on the page.
-                    var sel = s.triggerEl.getAttribute("data-modal-focus-fallback");
-                    var fallback = null;
-                    try { fallback = sel ? document.querySelector(sel) : null; } catch (_) { fallback = null; }
-                    if (fallback) {
-                        try { fallback.focus(); } catch (_) { /* ignore */ }
-                    }
+                    focusFallbackOf(s.triggerEl);
                 }
             }
         }
     }
+
+    // Story 19-1 (Rule #21) — a trigger that left the page with what an
+    // answer removed (e.g. a deleted tree row) hands focus to the element its
+    // `data-modal-focus-fallback` selector names (read on the detached
+    // trigger), if that element is still on the page.
+    function focusFallbackOf(trigger) {
+        var sel = trigger && trigger.getAttribute("data-modal-focus-fallback");
+        var fallback = null;
+        try { fallback = sel ? document.querySelector(sel) : null; } catch (_) { fallback = null; }
+        if (fallback) {
+            try { fallback.focus(); } catch (_) { /* ignore */ }
+        }
+    }
+
+    // The last pressed trigger, for an answer that removes it without
+    // opening a modal (the row was already gone): see afterSettle below.
+    var lastPressedTrigger = null;
+    document.body.addEventListener("htmx:afterSettle", function () {
+        var t = lastPressedTrigger;
+        if (!t || state || document.contains(t)) return;
+        lastPressedTrigger = null;
+        var active = document.activeElement;
+        if (!active || active === document.body) focusFallbackOf(t);
+    }, false);
 
     // Mark the trigger as pressed on click — gives close() a focus anchor.
     // Delegated (capture) so HTMX-swapped buttons are picked up.
@@ -209,6 +224,7 @@
         var prior = document.querySelectorAll('[data-modal-trigger][data-pressed="true"]');
         for (var i = 0; i < prior.length; i++) prior[i].removeAttribute("data-pressed");
         trigger.setAttribute("data-pressed", "true");
+        lastPressedTrigger = trigger;
     }, true);
 
     // polish-1 AC4.a: tag every Pattern A modal Confirm request with
@@ -366,5 +382,8 @@
     window.mybibliModal = {
         isOpen: function () { return state !== null; },
         close: close,
+        // Story 19-1 — true when `elt` is the open modal's Confirm, i.e.
+        // when Path A above shows the request's error inside the modal.
+        ownsRequest: function (elt) { return !!originatesFromConfirm(elt); },
     };
 })();
