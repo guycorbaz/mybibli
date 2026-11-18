@@ -183,10 +183,13 @@ pub async fn csrf_middleware(
 
     // #696 — no session cookie at all: the resolver stored nothing, so no
     // token can match. Checked before any other refusal, so the log names
-    // the real cause. Same answer as before #696 (HTMX: the 403 "session
+    // the real cause. Same refusal as before #696 (HTMX: the 403 "session
     // expired, reload" entry, the page and any typed text stay; plain
     // anonymous form: 303 to /login), with its own reason in the log. A
-    // browser gets here when its cookie reached its Max-Age (#418).
+    // browser gets here when its cookie reached its Max-Age (#418). Unlike
+    // before #696, no row, cookie or rotated token comes with it (#37 does
+    // not apply): every action keeps getting this refusal until the page is
+    // reloaded, which is what the message asks for.
     if parts.extensions.get::<crate::middleware::auth::CookielessRequest>().is_some() {
         return reject(&parts, &method, &path, "no_session_cookie", is_form, &session);
     }
@@ -208,10 +211,7 @@ pub async fn csrf_middleware(
         .filter_map(|v| v.to_str().ok())
         .collect();
     if header_values.len() > 1 {
-        // `is_form` not yet computed here; pass false to get the HTMX /
-        // JSON envelope response. Plain-form attackers would need to
-        // bypass SameSite=Lax to reach this path anyway.
-        return reject(&parts, &method, &path, "csrf_multiple_headers", false, &session);
+        return reject(&parts, &method, &path, "csrf_multiple_headers", is_form, &session);
     }
     let header_token: Option<String> = header_values
         .first()
@@ -315,11 +315,6 @@ fn reject(
     is_form: bool,
     session: &Session,
 ) -> Response {
-    log_rejection(parts, method, path, reason);
-    build_rejection_response(request_locale(parts), parts, is_form, Some(session))
-}
-
-fn log_rejection(parts: &axum::http::request::Parts, method: &Method, path: &str, reason: &'static str) {
     tracing::warn!(
         method = %method,
         path = %path,
@@ -327,6 +322,7 @@ fn log_rejection(parts: &axum::http::request::Parts, method: &Method, path: &str
         client = %crate::middleware::client_addr::client_addr(&parts.extensions, &parts.headers),
         "CSRF validation failed"
     );
+    build_rejection_response(request_locale(parts), parts, is_form, session)
 }
 
 /// The request locale (Extension set by `locale_resolve_middleware`), `fr`
@@ -348,7 +344,7 @@ fn build_rejection_response(
     locale: &str,
     parts: &axum::http::request::Parts,
     is_form: bool,
-    session: Option<&Session>,
+    session: &Session,
 ) -> Response {
     // Plain-browser form submitters (no HTMX, classic `<form method="POST">`)
     // cannot consume the HTMX envelope — they would render a bare feedback
@@ -369,9 +365,8 @@ fn build_rejection_response(
     // API / JSON / fetch() clients still get the 403 envelope below so
     // they can handle the failure programmatically.
     if is_form && !crate::middleware::htmx::is_htmx(&parts.headers) {
-        if let Some(sess) = session
-            && sess.user_id.is_some()
-        {
+        if session.user_id.is_some() {
+            let sess = session;
             let title = rust_i18n::t!("error.csrf_session_drifted_title", locale = locale)
                 .to_string();
             let message =
