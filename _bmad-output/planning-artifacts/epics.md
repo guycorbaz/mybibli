@@ -3617,7 +3617,7 @@ On 2026-11-09 the production database was erased by a mishandling and restored f
 **FRs:** FR178–FR182
 **NFRs:** NFR49 (NFR3 CSP, NFR12 a11y unchanged)
 **UX-DRs:** UX-DR45, UX-DR46
-**Issues:** #698, #685, #499, #554, #528, #674, #663 (items 1–3), #541, #519, #689, #538, #679 (items 6–7), #708, #657, #658
+**Issues:** #698, #685, #499, #554, #528, #674, #663 (items 1–3), #541, #519, #689, #538, #679 (items 6–7), #712, #708, #657, #658
 
 **Release.** v1.29.0 at the close of the epic, after its retrospective.
 
@@ -3692,7 +3692,7 @@ As a librarian,
 I want the numbers, errors and focus on screen to be right,
 So that I trust what the page tells me.
 
-**Covers:** fix (#519, #689, #538, #679 items 6–7), Rule #9 copy promised by the epic 17 and 18 retrospectives
+**Covers:** fix (#519, #689, #538, #679 items 6–7, #712), Rule #9 copy promised by the epic 17 and 18 retrospectives
 
 **Acceptance Criteria:**
 
@@ -3701,6 +3701,7 @@ So that I trust what the page tells me.
 **And** an error answered to a control low on a long page is visible without moving focus (#689 item 1; e.g. the entry scrolled into view, or a fixed region), and replace-mode OOB updates of `#feedback-list` keep `aria-live` (#689 item 3)
 **And** after a successful proposal rejection, focus returns to an element of the list (Rule #21), not `<body>` (#538)
 **And** `admin.reference_data.name_taken` and its siblings say what to do (choose another name or reactivate the existing one), `error.isbn.already_used` names and links the title that holds the ISBN and reads correctly on the edit form, and the two title-edit refusals still answered as "Server error (400)" become field refusals (#679 items 6–7) — four locale files, each reviewed against the Rule #9 guide
+**And** modal and overlay backdrops dim the page instead of hiding it (#712: `bg-opacity-50` is a Tailwind v3 utility, absent from the v4 build — `bg-black/50`), and the template audit refuses Tailwind v3-only utilities
 **And** each fix has a unit or integration test and an E2E case
 
 #### Story 19.5: Production watching at a glance (closes #708)
