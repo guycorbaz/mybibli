@@ -108,8 +108,8 @@ at the matching tag):
 
 \begin{lstlisting}
 mkdir -p /srv/mybibli && cd /srv/mybibli
-curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.28.0/docker-compose.yml
-curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.28.0/.env.example
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.28.1/docker-compose.yml
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.28.1/.env.example
 cp .env.example .env
 \end{lstlisting}
 
@@ -351,6 +351,7 @@ and silently flips an opt-out.
 \midrule
 \multicolumn{3}{l}{\emph{Hardening}} \\
 \texttt{MYBIBLI\_COOKIE\_SECURE} & \texttt{false} & Set to \texttt{true} only behind HTTPS. \\
+\texttt{MYBIBLI\_TRUSTED\_PROXIES} & --- & v1.28.1+. Reverse proxies whose forwarding headers are believed (comma-separated IPs or CIDR networks, e.g.\ \texttt{172.18.0.0/16}), so the logs show the client's address. Empty: the direct peer's address is logged and no header is trusted. \\
 \texttt{CSP\_REPORT\_ONLY}     & \texttt{false} & Switch CSP header to report-only mode. \\
 \texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS} & loopback & \texttt{Host} values the AI-agent endpoint \texttt{/api/mcp} answers (comma-separated \texttt{host} or \texttt{host:port}). Default \texttt{localhost,127.0.0.1,::1}; a set value replaces it. See section~\ref{sec:agents-hosts}. \\
 \texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS} & --- & \texttt{Origin} values accepted on \texttt{/api/mcp}; empty refuses any request carrying one. \\

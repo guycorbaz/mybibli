@@ -32,14 +32,14 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.28.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.28.0)**
-(2026-11-12) — maintenance: every failed action now explains itself,
-the series API returns every series, dependencies brought up to date
-and pinned. **No migration, no configuration change.** The section
-below has the detail; every release before it has its own section
-further down, and this is the file that carries them — the README
-quotes only the current release, and the website tells the same story
-for a different audience.
+**Current stable: [`v1.28.1`](https://github.com/guycorbaz/mybibli/releases/tag/v1.28.1)**
+(2026-11-18) — two production fixes on v1.28.0, the maintenance
+release: the location tree's buttons visible again, and no session row
+for requests that cannot use one, with the client's address in the
+logs. **No migration.** The section below has the detail; every release
+before it has its own section further down, and this is the file that
+carries them — the README quotes only the current release, and the
+website tells the same story for a different audience.
 
 **Next:** epic 19 — built-in backup and restore of the database and
 the covers, scheduled and driven from the admin page
@@ -52,6 +52,38 @@ shelving plan for comics ([#655](https://github.com/guycorbaz/mybibli/issues/655
 ([#591](https://github.com/guycorbaz/mybibli/issues/591)). The base-path setting for reverse proxies
 ([#492](https://github.com/guycorbaz/mybibli/issues/492)) comes later. Everything else open lives in the issue
 tracker.
+
+## v1.28.1 — two production fixes *(shipped)*
+
+Shipped 2026-11-18. A patch on v1.28.0, outside any epic: two bugs
+seen in production. **No migration**; one new optional environment
+variable — back up first, pull the image and recreate the container
+(`docker compose up -d`).
+
+- [#695](https://github.com/guycorbaz/mybibli/issues/695) — **the location tree's buttons are visible again.** On
+  `/locations`, the add / edit / delete buttons of each row showed only
+  on hover, and the Docker image did not even ship the class that made
+  them appear: they were invisible everywhere, and out of reach on a
+  touch screen. They are now always shown, dimmed, and at full strength
+  on hover, on keyboard focus and on touch screens. The image's
+  stylesheet now reads the classes written in the Rust code, as a local
+  build already did — the coloured backgrounds of some messages and the
+  cover height on the title page come back with it.
+- [#696](https://github.com/guycorbaz/mybibli/issues/696) — **no session row for requests that cannot use one.** An
+  agent configured with `/mcp` instead of `/api/mcp` called a thousand
+  times a day; each call stored an anonymous session and then was
+  refused, and those inserts slowed the database until its connection
+  pool timed out. Calls to `/api/*`, to unknown addresses and any
+  request other than GET without a session cookie now store nothing;
+  `/mcp` answers a 404 naming `/api/mcp`. Refusals and API-key logins
+  now log the **client's address**. Behind a reverse proxy, set
+  `MYBIBLI_TRUSTED_PROXIES` to the proxy's IP or network (for example
+  `172.18.0.0/16`) so the address forwarded by the proxy is used; left
+  empty, the address of the direct peer is logged and no forwarding
+  header is trusted. The variable is passed by the `docker-compose.yml`
+  of this release: fetch it again if you want to set it.
+- **Manual** (EN + FR): *What's new in 1.28.1* in chapter 8; the
+  installation chapter lists the new variable.
 
 ## v1.28.0 — maintenance *(shipped)*
 
