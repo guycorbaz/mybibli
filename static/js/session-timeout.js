@@ -126,6 +126,10 @@
                 // to reload.
                 if (r && r.status === 403) {
                     showWarning(0);
+                } else if (r && r.redirected) {
+                    // #696 — the session cookie is gone (Max-Age): the
+                    // server sent the request to the login page.
+                    window.location.href = r.url;
                 }
             }).catch(function () {
                 // Network errors fall through silently — the next user

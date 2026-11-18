@@ -82,10 +82,20 @@ async fn a_cookieless_post_to_a_route_goes_to_login_without_a_session_row(pool: 
         .body(Body::from("code=9782070360246"))
         .unwrap();
     let res = router(&pool).oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::SEE_OTHER);
-    assert_eq!(res.headers().get("location").unwrap(), "/login?next=%2Fcatalog");
+    // HTMX never sees a 3xx (the XHR follows it): 200 + HX-Redirect.
+    assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(res.headers().get("hx-redirect").unwrap(), "/login?next=%2Fcatalog");
     assert!(res.headers().get(axum::http::header::SET_COOKIE).is_none());
+
+    // A plain form post gets the 303, back to its page through `Referer`.
+    let req = Request::post("/catalog/scan")
+        .header("referer", "http://nas.local:8080/catalog?tab=1")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(Body::from("code=9782070360246"))
+        .unwrap();
+    let res = router(&pool).oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.headers().get("location").unwrap(), "/login?next=%2Fcatalog%3Ftab%3D1");
     assert_eq!(session_rows(&pool).await, before);
 }
 

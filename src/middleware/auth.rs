@@ -141,7 +141,7 @@ pub(crate) fn should_skip_session_resolve(uri_path: &str) -> bool {
     if path == "/health" {
         return true;
     }
-    matches!(path.as_str(), "/static" | "/covers" | "/logo" | "/api")
+    matches!(path.as_str(), "/static" | "/covers" | "/logo")
         || path.starts_with("/api/")
         || path.starts_with("/static/")
         || path.starts_with("/covers/")
@@ -731,7 +731,6 @@ mod tests {
         assert!(should_skip_session_resolve("/api/mcp"));
         assert!(should_skip_session_resolve("//api/mcp"));
         assert!(should_skip_session_resolve("/api/v1/titles"));
-        assert!(should_skip_session_resolve("/api"));
         assert!(!should_skip_session_resolve("/apix"));
         assert!(!should_skip_session_resolve("/apidocs"));
     }

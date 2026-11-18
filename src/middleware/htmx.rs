@@ -13,14 +13,36 @@ impl<S: Send + Sync> FromRequestParts<S> for HxRequest {
         parts: &mut request::Parts,
         _state: &S,
     ) -> Result<Self, Self::Rejection> {
-        let is_htmx = parts
-            .headers
-            .get("hx-request")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s == "true")
-            .unwrap_or(false);
-        Ok(HxRequest(is_htmx))
+        Ok(HxRequest(is_htmx(&parts.headers)))
     }
+}
+
+/// Whether a request was issued by HTMX (`HX-Request: true`, any case).
+pub fn is_htmx(headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get("hx-request")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// A redirect to `target` that works for both kinds of request: HTMX never
+/// sees a 3xx (the browser follows it inside the XHR and HTMX swaps the
+/// target page), so an HTMX request gets `200` + `HX-Redirect`; any other
+/// request a `303` + `Location`.
+pub fn redirect(target: &str, htmx: bool) -> Response {
+    use axum::http::{HeaderValue, StatusCode, header};
+    let Ok(value) = HeaderValue::from_str(target) else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let (status, name) = if htmx {
+        (StatusCode::OK, header::HeaderName::from_static("hx-redirect"))
+    } else {
+        (StatusCode::SEE_OTHER, header::LOCATION)
+    };
+    let mut response = status.into_response();
+    response.headers_mut().insert(name, value);
+    response
 }
 
 /// CR #87 — per-target swap-mode for an OOB update.

@@ -788,6 +788,22 @@ pub(crate) fn test_base_context(
     }
 }
 
+/// Parse a full URL (`HX-Current-URL`, `Referer`: the page a request
+/// came from) and extract a same-origin path-and-query suitable for use
+/// as a post-login `next=` return target. Returns `None` when the URL
+/// can't be parsed or fails the [`crate::error::is_safe_next`] guard
+/// (defends against open-redirect when the header is attacker-controlled).
+pub fn safe_path_of_url(current_url: &str) -> Option<String> {
+    use axum::http::Uri;
+    let uri: Uri = current_url.parse().ok()?;
+    let p = uri.path_and_query()?.as_str().to_string();
+    if crate::error::is_safe_next(&p) {
+        Some(p)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1385,4 +1401,44 @@ mod tests {
         assert_eq!(zurich.added_on, "Added on 2026-10-31");
         assert_eq!(zurich.modified_on, "Modified on 2026-11-04");
     }
+
+    // ─── #133: safe_path_of_url coverage ───────────────
+
+    #[test]
+    fn safe_path_of_url_accepts_absolute_url() {
+        assert_eq!(
+            safe_path_of_url("http://example.com/borrower/42"),
+            Some("/borrower/42".to_string())
+        );
+    }
+
+    #[test]
+    fn safe_path_of_url_preserves_query() {
+        assert_eq!(
+            safe_path_of_url("https://example.com/loans?page=2&sort=title"),
+            Some("/loans?page=2&sort=title".to_string())
+        );
+    }
+
+    #[test]
+    fn safe_path_of_url_accepts_bare_path() {
+        // HTMX always sends an absolute URL today, but accept a bare path
+        // defensively so we don't regress on clients that emit one.
+        assert_eq!(
+            safe_path_of_url("/borrower/7"),
+            Some("/borrower/7".to_string())
+        );
+    }
+
+    #[test]
+    fn safe_path_of_url_rejects_protocol_relative() {
+        assert_eq!(safe_path_of_url("//evil.example.com/path"), None);
+    }
+
+    #[test]
+    fn safe_path_of_url_rejects_unparseable() {
+        assert_eq!(safe_path_of_url(""), None);
+        assert_eq!(safe_path_of_url("not a url"), None);
+    }
+
 }
