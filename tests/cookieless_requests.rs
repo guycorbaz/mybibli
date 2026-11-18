@@ -77,15 +77,32 @@ async fn a_cookieless_post_to_a_route_goes_to_login_without_a_session_row(pool: 
     let before = session_rows(&pool).await;
     let req = Request::post("/catalog/scan")
         .header("hx-request", "true")
+        .header("hx-current-url", "http://nas.local:8080/catalog")
         .header("content-type", "application/x-www-form-urlencoded")
         .body(Body::from("code=9782070360246"))
         .unwrap();
     let res = router(&pool).oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
-    assert_eq!(res.headers().get("location").unwrap(), "/login");
-    assert_eq!(res.headers().get("hx-redirect").unwrap(), "/login");
+    assert_eq!(res.headers().get("location").unwrap(), "/login?next=%2Fcatalog");
+    assert_eq!(res.headers().get("hx-redirect").unwrap(), "/login?next=%2Fcatalog");
     assert!(res.headers().get(axum::http::header::SET_COOKIE).is_none());
     assert_eq!(session_rows(&pool).await, before);
+}
+
+/// Two `session=` cookies (anti-shadowing) are not "no cookie": the request
+/// keeps the resolver's fresh anonymous row and cookie, as before #696.
+#[sqlx::test(migrations = "./migrations")]
+async fn two_session_cookies_are_not_treated_as_cookieless(pool: DbPool) {
+    let before = session_rows(&pool).await;
+    let req = Request::post("/catalog/scan")
+        .header("cookie", "session=aaa; session=bbb")
+        .header("hx-request", "true")
+        .body(Body::from("code=9782070360246"))
+        .unwrap();
+    let res = router(&pool).oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN, "refused by CSRF, not sent to /login");
+    assert!(res.headers().get(axum::http::header::SET_COOKIE).is_some());
+    assert_eq!(session_rows(&pool).await, before + 1);
 }
 
 #[sqlx::test(migrations = "./migrations")]

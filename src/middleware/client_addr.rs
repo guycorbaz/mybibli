@@ -30,7 +30,7 @@ impl TrustedProxies {
         let mut invalid = Vec::new();
         for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
             if let Ok(net) = entry.parse::<IpNet>() {
-                nets.push(net.trunc());
+                nets.push(canonical_net(net.trunc()));
             } else if let Ok(ip) = entry.parse::<IpAddr>() {
                 nets.push(IpNet::from(ip.to_canonical()));
             } else {
@@ -42,6 +42,20 @@ impl TrustedProxies {
 
     fn contains(&self, ip: IpAddr) -> bool {
         self.0.iter().any(|n| n.contains(&ip))
+    }
+}
+
+/// An IPv4-mapped IPv6 network (`::ffff:172.18.0.0/112`) as the IPv4 network
+/// it names: peers are compared in canonical (IPv4) form.
+fn canonical_net(net: IpNet) -> IpNet {
+    match net {
+        IpNet::V6(v6) if v6.prefix_len() >= 96 => match v6.addr().to_ipv4_mapped() {
+            Some(v4) => ipnet::Ipv4Net::new(v4, v6.prefix_len() - 96)
+                .map(IpNet::V4)
+                .unwrap_or(net),
+            None => net,
+        },
+        other => other,
     }
 }
 
@@ -78,20 +92,21 @@ pub fn resolve(peer: Option<IpAddr>, headers: &HeaderMap, trusted: &TrustedProxi
         // An empty element (trailing or doubled comma) names no hop.
         .filter(|e| !e.is_empty())
         .collect();
+    let real_ip = || {
+        headers
+            .get("x-real-ip")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| parse_hop(v.trim()))
+    };
     if forwarded.is_empty() {
-        return Some(
-            headers
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| parse_hop(v.trim()))
-                .unwrap_or(peer),
-        );
+        return Some(real_ip().unwrap_or(peer));
     }
     let mut hop = peer;
     for entry in forwarded.iter().rev() {
         let Some(ip) = parse_hop(entry) else {
-            // Malformed: stop at the last address we could read.
-            return Some(hop);
+            // Malformed: stop at the last address we could read — unless
+            // that is still a trusted proxy, where `X-Real-IP` says more.
+            return Some(if trusted.contains(hop) { real_ip().unwrap_or(hop) } else { hop });
         };
         hop = ip;
         if !trusted.contains(hop) {
@@ -217,6 +232,23 @@ mod tests {
         for bad in ["unknown", "_hidden", "proxy.lan", "1.2.3", "[1.2.3.4]"] {
             assert_eq!(parse_hop(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn an_unreadable_rightmost_hop_falls_back_to_x_real_ip() {
+        let t = proxies("172.18.0.0/16");
+        let h = headers(&[("x-forwarded-for", "203.0.113.9, unknown"), ("x-real-ip", "203.0.113.9")]);
+        assert_eq!(resolve(Some(ip("172.18.0.3")), &h, &t), Some(ip("203.0.113.9")));
+        let no_real = headers(&[("x-forwarded-for", "203.0.113.9, unknown")]);
+        assert_eq!(resolve(Some(ip("172.18.0.3")), &no_real, &t), Some(ip("172.18.0.3")));
+    }
+
+    #[test]
+    fn a_v4_mapped_trusted_network_matches_ipv4_peers() {
+        let t = proxies("::ffff:172.18.0.0/112");
+        let h = headers(&[("x-forwarded-for", "192.168.1.5")]);
+        assert_eq!(resolve(Some(ip("172.18.0.3")), &h, &t), Some(ip("192.168.1.5")));
+        assert_eq!(resolve(Some(ip("::ffff:172.18.0.3")), &h, &t), Some(ip("192.168.1.5")));
     }
 
     #[test]

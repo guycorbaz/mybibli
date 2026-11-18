@@ -1,6 +1,6 @@
-//! #696 — the router's fallback: a 404 for every unrouted path, answered
-//! before any session or CSRF work (`session_resolve_middleware` and
-//! `csrf_middleware` let a request without `MatchedPath` through).
+//! #696 — the router's fallback: a 404 for every unrouted path. Registered
+//! after the application layers in `routes::build_router`, so it runs no
+//! session resolution (no row), no CSRF check and no setup-wizard redirect.
 //!
 //! `/mcp` gets a JSON body naming the real endpoint and a `warn` with the
 //! client address: a client configured with the wrong URL otherwise

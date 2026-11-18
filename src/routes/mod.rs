@@ -876,9 +876,6 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         // reference `/logo/svg/mybibli-icon.svg` etc. The Dockerfile
         // copies this directory into the runtime image.
         .nest_service("/logo", ServeDir::new("docs/mybibli-logo"))
-        // #696 — unrouted paths: 404 (with a hint for `/mcp`), reached
-        // without a session row or a CSRF rejection.
-        .fallback(not_found::fallback)
         // Layer stack (axum applies layers bottom-up; at request time
         // the request hits the OUTERMOST layer first):
         //
@@ -940,6 +937,12 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
             state.clone(),
             setup_gate_middleware,
         ))
+        // #696 — set AFTER the layers above, so an unrouted request runs
+        // none of them: no session row, no CSRF rejection hiding the 404,
+        // no setup-wizard redirect. (axum applies `Router::layer` only to
+        // what is already registered; testing for a missing `MatchedPath`
+        // instead would also open CSRF on any future `nest_service` mount.)
+        .fallback(not_found::fallback)
         .with_state(state);
 
     apply_csp_layer(app, report_only)

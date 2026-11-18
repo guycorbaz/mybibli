@@ -1,4 +1,4 @@
-use axum::extract::{FromRequestParts, MatchedPath, Request, State};
+use axum::extract::{FromRequestParts, Request, State};
 use axum::http::request;
 use axum::middleware::Next;
 use axum::response::Response;
@@ -249,25 +249,21 @@ pub async fn session_resolve_middleware(
     if should_skip_session_resolve(request.uri().path()) {
         return next.run(request).await;
     }
-    // #696 — an unrouted path (no `MatchedPath`: this layer runs after
-    // routing) goes to the 404 fallback, which reads no `Session`.
-    if request.extensions().get::<MatchedPath>().is_none() {
-        return next.run(request).await;
-    }
 
-    let cookie_token = extract_session_cookie(request.headers());
+    let cookie_values = session_cookie_values(request.headers());
 
     // #696 — a request other than GET without any session cookie (except
     // the exempt `POST /login`) gets an in-memory anonymous session, no row
     // and no cookie; a state-changing one is then sent to `/login` by the
     // CSRF layer (`no_session_cookie`). A browser holding a cookie whose
     // row is gone still gets a minted row and the rotated token (#37).
-    if cookie_token.is_none() && persists_nothing_without_cookie(request.method(), request.uri().path()) {
+    if cookie_values.is_empty() && persists_nothing_without_cookie(request.method(), request.uri().path()) {
         let ext = request.extensions_mut();
         ext.insert(Session::anonymous_with_token(crate::utils::generate_csrf_token()));
         ext.insert(CookielessRequest);
         return next.run(request).await;
     }
+    let cookie_token = single_session_cookie(cookie_values);
     let timeout_secs = state.session_timeout_secs();
 
     let (session, new_cookie_token) =
@@ -503,7 +499,17 @@ async fn resolve_or_mint(
     }
 }
 
+/// The one session cookie of a request (the resolver composes the two steps
+/// below itself, #696; kept for the unit tests of the parsing rules).
+#[cfg(test)]
 fn extract_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
+    single_session_cookie(session_cookie_values(headers))
+}
+
+/// Every non-empty `session=` cookie value across all `Cookie` headers,
+/// unquoted and percent-decoded. Several values are possible: a parent-domain
+/// shadow cookie rides along the real one (see [`single_session_cookie`]).
+fn session_cookie_values(headers: &axum::http::HeaderMap) -> Vec<String> {
     // Collect every `session=` cookie across all `Cookie` headers. A
     // parent-domain attacker (subdomain takeover, stale wildcard cert,
     // etc.) can set a shadow `session=evil; Domain=example.com` that
@@ -544,6 +550,12 @@ fn extract_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
             }
         }
     }
+    matches
+}
+
+/// The one session cookie, or `None` when there is none or more than one
+/// (anti-shadowing: neither can safely be picked, the resolver mints).
+fn single_session_cookie(mut matches: Vec<String>) -> Option<String> {
     if matches.len() > 1 {
         tracing::warn!(
             count = matches.len(),

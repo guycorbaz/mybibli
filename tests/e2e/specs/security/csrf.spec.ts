@@ -181,7 +181,8 @@ test.describe("#696 — expired session cookie", () => {
     await page.context().clearCookies();
     await simulateScan(page, "#scan-field", specIsbn("CK", 1));
 
-    await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
+    // Back to the catalog after sign-in.
+    await expect(page).toHaveURL(/\/login\?next=%2Fcatalog/, { timeout: 10000 });
     await expect(page.locator('input[name="username"]')).toBeVisible();
   });
 });

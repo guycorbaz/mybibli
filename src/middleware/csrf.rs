@@ -25,7 +25,7 @@
 
 use askama::Template;
 use axum::body::Body;
-use axum::extract::{FromRequestParts, MatchedPath, Request, State};
+use axum::extract::{FromRequestParts, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -149,13 +149,6 @@ pub async fn csrf_middleware(
         return next.run(req).await;
     }
 
-    // #696 — an unrouted path reaches no handler: let the router's 404
-    // fallback answer instead of a CSRF rejection that hides the real cause
-    // (a client POSTing to `/mcp` instead of `/api/mcp`).
-    if req.extensions().get::<MatchedPath>().is_none() {
-        return next.run(req).await;
-    }
-
     let (mut parts, body) = req.into_parts();
 
     // Resolve the session (Extension fast path from session_resolve_middleware).
@@ -173,6 +166,21 @@ pub async fn csrf_middleware(
             "session CSRF token is empty — refusing to validate"
         );
         return AppError::Internal("session CSRF token unset".to_string()).into_response();
+    }
+
+    // #696 — no session cookie at all: the resolver persisted nothing and
+    // no token can match. A browser gets here when its cookie expired
+    // (Max-Age, #418) — answer as for any anonymous action on a protected
+    // route: to `/login` (303 + `HX-Redirect`, back to the page after
+    // sign-in), never a 403 the tab would repeat with no token to resync.
+    // Checked first, so no other refusal (duplicate header…) answers it.
+    if parts.extensions.get::<crate::middleware::auth::CookielessRequest>().is_some() {
+        log_rejection(&parts, &method, &path, "no_session_cookie");
+        return match return_path(&parts) {
+            Some(next) => AppError::UnauthorizedWithReturn(next),
+            None => AppError::Unauthorized,
+        }
+        .into_response();
     }
 
     // Header always wins — it covers every HTMX-driven mutation plus any
@@ -220,15 +228,6 @@ pub async fn csrf_middleware(
         })
         .unwrap_or(false);
 
-    // #696 — no session cookie at all: the resolver persisted nothing and
-    // no token can match. A browser gets here when its cookie expired
-    // (Max-Age, #418) — answer as for any anonymous action on a protected
-    // route: to `/login` (303 + `HX-Redirect`), never a 403 the tab would
-    // repeat with no token to resync.
-    if parts.extensions.get::<crate::middleware::auth::CookielessRequest>().is_some() {
-        log_rejection(&parts, &method, &path, "no_session_cookie");
-        return AppError::Unauthorized.into_response();
-    }
 
     // Multipart bypass (issue #335) — multipart/form-data POSTs are used for
     // file uploads where the body can be up to 10 MiB (cover image upload).
@@ -344,6 +343,24 @@ fn log_rejection(parts: &axum::http::request::Parts, method: &Method, path: &str
 /// (app default) when that layer did not run.
 fn request_locale(parts: &axum::http::request::Parts) -> &str {
     parts.extensions.get::<Locale>().map(|l| l.0).unwrap_or("fr")
+}
+
+/// #696 review — the page a cookieless (expired) request came from, as a
+/// same-origin path for `/login?next=`: the path and query of
+/// `HX-Current-URL` (HTMX) or else `Referer`. Only the part after the host is
+/// kept, so the redirect never leaves the site; `is_safe_next` checks it.
+fn return_path(parts: &axum::http::request::Parts) -> Option<String> {
+    ["hx-current-url", "referer"]
+        .iter()
+        .filter_map(|h| parts.headers.get(*h)?.to_str().ok())
+        .find_map(path_of_url)
+}
+
+fn path_of_url(url: &str) -> Option<String> {
+    let after_scheme = url.split_once("://")?.1;
+    let path = &after_scheme[after_scheme.find('/')?..];
+    let path = path.split('#').next().unwrap_or(path);
+    crate::error::is_safe_next(path).then(|| path.to_string())
 }
 
 /// Constant-time byte comparison. Treats differing lengths as non-equal.
@@ -979,4 +996,15 @@ mod tests {
         assert_eq!(res.status(), StatusCode::SEE_OTHER);
         assert_eq!(res.headers().get(header::LOCATION).unwrap(), "/login");
     }
+
+    /// #696 review — the return path keeps only what follows the host.
+    #[test]
+    fn path_of_url_keeps_a_same_origin_path() {
+        assert_eq!(path_of_url("http://nas.local:8080/catalog?x=1#top").as_deref(), Some("/catalog?x=1"));
+        assert_eq!(path_of_url("https://evil.example/title/3").as_deref(), Some("/title/3"));
+        assert_eq!(path_of_url("http://host"), None);
+        assert_eq!(path_of_url("/catalog"), None);
+        assert_eq!(path_of_url("http://host//evil.example/x"), None);
+    }
+
 }
