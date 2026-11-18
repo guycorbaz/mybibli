@@ -167,12 +167,11 @@ test.describe("Story 8-2 smoke — CSRF", () => {
 });
 
 // #696 — a session cookie that disappeared (the browser drops it at its
-// Max-Age after an idle timeout; simulated here by clearing cookies) makes
-// the next action land on the login page, never a 403 that would repeat
-// on every scan with no token to resync. The server stores no anonymous
-// session for that request.
+// Max-Age after an idle timeout; simulated here by clearing cookies): the
+// next action shows the "session expired, reload" entry and the page stays
+// (nothing typed is lost). The server stores no anonymous session for it.
 test.describe("#696 — expired session cookie", () => {
-  test("the next scan after the cookie is gone opens the login page", async ({ page }) => {
+  test("the next scan after the cookie is gone says the session expired", async ({ page }) => {
     await page.context().clearCookies();
     await loginAs(page, "librarian");
     await page.goto("/catalog");
@@ -181,8 +180,9 @@ test.describe("#696 — expired session cookie", () => {
     await page.context().clearCookies();
     await simulateScan(page, "#scan-field", specIsbn("CK", 1));
 
-    // Back to the catalog after sign-in.
-    await expect(page).toHaveURL(/\/login\?next=%2Fcatalog/, { timeout: 10000 });
-    await expect(page.locator('input[name="username"]')).toBeVisible();
+    await expect(
+      page.locator("#feedback-list .feedback-entry").filter({ hasText: /Session expired|Session expirée/i }),
+    ).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(/\/catalog/);
   });
 });

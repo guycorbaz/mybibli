@@ -33,6 +33,7 @@ pub fn is_htmx(headers: &axum::http::HeaderMap) -> bool {
 pub fn redirect(target: &str, htmx: bool) -> Response {
     use axum::http::{HeaderValue, StatusCode, header};
     let Ok(value) = HeaderValue::from_str(target) else {
+        tracing::error!(target, "redirect target is not a valid header value");
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     let (status, name) = if htmx {

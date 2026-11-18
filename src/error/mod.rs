@@ -106,11 +106,6 @@ pub fn is_safe_next(next: &str) -> bool {
     true
 }
 
-/// `/login`, with `?next=` when a safe return path is given.
-pub(crate) fn login_location(next: Option<&str>) -> String {
-    next.map(login_location_with_next).unwrap_or_else(|| "/login".to_string())
-}
-
 fn login_location_with_next(next: &str) -> String {
     if is_safe_next(next) {
         let encoded = utf8_percent_encode(next, NON_ALPHANUMERIC).to_string();

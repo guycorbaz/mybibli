@@ -71,31 +71,30 @@ async fn unrouted_and_api_requests_persist_no_session(pool: DbPool) {
 }
 
 /// Also what a browser meets once its session cookie expired (Max-Age):
-/// sent to `/login`, never a 403 it would repeat.
+/// the same refusal as before #696 — HTMX gets the 403 "session expired,
+/// reload" entry (the page stays), a plain anonymous form the 303 to
+/// `/login` — but no row and no cookie.
 #[sqlx::test(migrations = "./migrations")]
-async fn a_cookieless_post_to_a_route_goes_to_login_without_a_session_row(pool: DbPool) {
+async fn a_cookieless_post_to_a_route_is_refused_without_a_session_row(pool: DbPool) {
     let before = session_rows(&pool).await;
     let req = Request::post("/catalog/scan")
         .header("hx-request", "true")
-        .header("hx-current-url", "http://nas.local:8080/catalog")
         .header("content-type", "application/x-www-form-urlencoded")
         .body(Body::from("code=9782070360246"))
         .unwrap();
     let res = router(&pool).oneshot(req).await.unwrap();
-    // HTMX never sees a 3xx (the XHR follows it): 200 + HX-Redirect.
-    assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(res.headers().get("hx-redirect").unwrap(), "/login?next=%2Fcatalog");
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert_eq!(res.headers().get("hx-trigger").unwrap(), "csrf-rejected");
+    assert_eq!(res.headers().get("cache-control").unwrap(), "no-store");
     assert!(res.headers().get(axum::http::header::SET_COOKIE).is_none());
 
-    // A plain form post gets the 303, back to its page through `Referer`.
     let req = Request::post("/catalog/scan")
-        .header("referer", "http://nas.local:8080/catalog?tab=1")
         .header("content-type", "application/x-www-form-urlencoded")
         .body(Body::from("code=9782070360246"))
         .unwrap();
     let res = router(&pool).oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
-    assert_eq!(res.headers().get("location").unwrap(), "/login?next=%2Fcatalog%3Ftab%3D1");
+    assert_eq!(res.headers().get("location").unwrap(), "/login");
     assert_eq!(session_rows(&pool).await, before);
 }
 
@@ -110,8 +109,8 @@ async fn two_session_cookies_are_not_treated_as_cookieless(pool: DbPool) {
         .body(Body::from("code=9782070360246"))
         .unwrap();
     let res = router(&pool).oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::FORBIDDEN, "refused by CSRF, not sent to /login");
-    assert!(res.headers().get(axum::http::header::SET_COOKIE).is_some());
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert!(res.headers().get(axum::http::header::SET_COOKIE).is_some(), "the resolver still mints");
     assert_eq!(session_rows(&pool).await, before + 1);
 }
 

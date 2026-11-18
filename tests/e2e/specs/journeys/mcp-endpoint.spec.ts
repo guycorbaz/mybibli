@@ -141,4 +141,22 @@ test.describe("Story 11-6 — MCP endpoint", () => {
       await agent.dispose();
     }
   });
+
+  // #696 — a client configured with `/mcp` instead of `/api/mcp` gets a
+  // 404 naming the real endpoint (not a CSRF refusal), and no session
+  // cookie: nothing was stored for it.
+  test("a request to /mcp answers 404 naming /api/mcp", async ({ baseURL }) => {
+    const agent = await playwrightRequest.newContext({ baseURL: baseURL! });
+    try {
+      const res = await agent.post("/mcp", {
+        data: { jsonrpc: "2.0", id: 1, method: "initialize" },
+      });
+      expect(res.status()).toBe(404);
+      expect(await res.text()).toContain("/api/mcp");
+      const setCookie = res.headersArray().filter((h) => h.name.toLowerCase() === "set-cookie");
+      expect(setCookie.some((h) => h.value.startsWith("session="))).toBe(false);
+    } finally {
+      await agent.dispose();
+    }
+  });
 });

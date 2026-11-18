@@ -168,18 +168,6 @@ pub async fn csrf_middleware(
         return AppError::Internal("session CSRF token unset".to_string()).into_response();
     }
 
-    // #696 — no session cookie at all: the resolver persisted nothing and
-    // no token can match. A browser gets here when its cookie expired
-    // (Max-Age, #418) — answer as for any anonymous action on a protected
-    // route: to `/login`, back to the page after sign-in (HTMX: 200 +
-    // `HX-Redirect`), never a 403 the tab would repeat with no token.
-    // Checked first, so no other refusal (duplicate header…) answers it.
-    if parts.extensions.get::<crate::middleware::auth::CookielessRequest>().is_some() {
-        log_rejection(&parts, &method, &path, "no_session_cookie");
-        let target = crate::error::login_location(return_path(&parts).as_deref());
-        return crate::middleware::htmx::redirect(&target, crate::middleware::htmx::is_htmx(&parts.headers));
-    }
-
     // Header always wins — it covers every HTMX-driven mutation plus any
     // explicit JS `fetch()` call. An empty / whitespace-only header is
     // treated as absent so the form-field fallback still engages for a
@@ -224,6 +212,15 @@ pub async fn csrf_middleware(
                 .eq_ignore_ascii_case("application/x-www-form-urlencoded")
         })
         .unwrap_or(false);
+
+    // #696 — no session cookie at all: the resolver stored nothing, so no
+    // token can match. Same answer as before #696 (HTMX: the 403 "session
+    // expired, reload" entry, the page and any typed text stay; plain
+    // anonymous form: 303 to /login), with its own reason in the log. A
+    // browser gets here when its cookie reached its Max-Age (#418).
+    if parts.extensions.get::<crate::middleware::auth::CookielessRequest>().is_some() {
+        return reject(&parts, &method, &path, "no_session_cookie", is_form, &session);
+    }
 
     // Multipart bypass (issue #335) — multipart/form-data POSTs are used for
     // file uploads where the body can be up to 10 MiB (cover image upload).
@@ -339,16 +336,6 @@ fn log_rejection(parts: &axum::http::request::Parts, method: &Method, path: &str
 /// (app default) when that layer did not run.
 fn request_locale(parts: &axum::http::request::Parts) -> &str {
     parts.extensions.get::<Locale>().map(|l| l.0).unwrap_or("fr")
-}
-
-/// #696 review — the page a cookieless (expired) request came from, as a
-/// same-origin path for `/login?next=`: from `HX-Current-URL` (HTMX) or
-/// else `Referer` (`utils::safe_path_of_url`, path and query only).
-fn return_path(parts: &axum::http::request::Parts) -> Option<String> {
-    ["hx-current-url", "referer"]
-        .iter()
-        .filter_map(|h| parts.headers.get(*h)?.to_str().ok())
-        .find_map(crate::utils::safe_path_of_url)
 }
 
 /// Constant-time byte comparison. Treats differing lengths as non-equal.
