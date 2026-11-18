@@ -31,6 +31,7 @@ use serde_json::json;
 
 use crate::AppState;
 use crate::error::AppError;
+use crate::middleware::client_addr::client_addr;
 use crate::models::api_key::{ApiKeyModel, ApiKeyScope};
 use crate::services::password;
 
@@ -70,10 +71,10 @@ async fn resolve_api_key(parts: &Parts, state: &AppState) -> Result<ApiKeyContex
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
-        .ok_or_else(|| unauthorized_response("missing_api_key"))?;
+        .ok_or_else(|| unauthorized(parts, "missing_api_key"))?;
 
     if plaintext.len() < 12 {
-        return Err(unauthorized_response("invalid_api_key_format"));
+        return Err(unauthorized(parts, "invalid_api_key_format"));
     }
     let prefix: String = plaintext.chars().take(12).collect();
 
@@ -85,7 +86,7 @@ async fn resolve_api_key(parts: &Parts, state: &AppState) -> Result<ApiKeyContex
         })?;
 
     if candidates.is_empty() {
-        return Err(unauthorized_response("invalid_api_key"));
+        return Err(unauthorized(parts, "invalid_api_key"));
     }
 
     for c in candidates {
@@ -95,7 +96,12 @@ async fn resolve_api_key(parts: &Parts, state: &AppState) -> Result<ApiKeyContex
             if let Err(e) = ApiKeyModel::touch_last_used(&state.pool, c.id).await {
                 tracing::warn!(key_id = c.id, error = %e, "touch_last_used failed");
             }
-            tracing::info!(key_id = c.id, scope = ?c.scope, "API key authenticated");
+            tracing::info!(
+                key_id = c.id,
+                scope = ?c.scope,
+                client = %client_addr(&parts.extensions, &parts.headers),
+                "API key authenticated"
+            );
             return Ok(ApiKeyContext {
                 key_id: c.id,
                 scope: c.scope,
@@ -103,7 +109,20 @@ async fn resolve_api_key(parts: &Parts, state: &AppState) -> Result<ApiKeyContex
         }
     }
 
-    Err(unauthorized_response("invalid_api_key"))
+    Err(unauthorized(parts, "invalid_api_key"))
+}
+
+/// A 401 envelope, logged with the client address (#696): a client
+/// retrying with a wrong or missing key is otherwise invisible.
+fn unauthorized(parts: &Parts, reason: &'static str) -> Response {
+    tracing::warn!(
+        reason,
+        method = %parts.method,
+        path = %parts.uri.path(),
+        client = %client_addr(&parts.extensions, &parts.headers),
+        "API key authentication failed"
+    );
+    unauthorized_response(reason)
 }
 
 fn unauthorized_response(reason: &str) -> Response {
@@ -115,6 +134,20 @@ fn unauthorized_response(reason: &str) -> Response {
         })),
     )
         .into_response()
+}
+
+/// A 403 for a key whose scope does not allow the endpoint, logged with the
+/// client address (#696).
+fn insufficient_scope(parts: &Parts, ctx: &ApiKeyContext, required: &'static str) -> Response {
+    tracing::warn!(
+        key_id = ctx.key_id,
+        scope = ctx.scope.as_str(),
+        scope_required = required,
+        path = %parts.uri.path(),
+        client = %client_addr(&parts.extensions, &parts.headers),
+        "API key without the required scope refused"
+    );
+    forbidden_response("insufficient_scope", required)
 }
 
 fn forbidden_response(reason: &str, scope_required: &str) -> Response {
@@ -164,12 +197,7 @@ where
         let State(app_state): State<AppState> = State(app_state);
         let ctx = resolve_api_key(parts, &app_state).await?;
         if !ctx.scope.allows_write() {
-            tracing::warn!(
-                key_id = ctx.key_id,
-                scope = ctx.scope.as_str(),
-                "API key without write scope attempted a write endpoint"
-            );
-            return Err(forbidden_response("insufficient_scope", "write"));
+            return Err(insufficient_scope(parts, &ctx, "write"));
         }
         Ok(ApiKeyWrite(ctx))
     }
@@ -191,12 +219,7 @@ where
         let app_state = AppState::from_ref(state);
         let ctx = resolve_api_key(parts, &app_state).await?;
         if !ctx.scope.allows_propose() {
-            tracing::warn!(
-                key_id = ctx.key_id,
-                scope = ctx.scope.as_str(),
-                "API key without propose scope attempted a propose endpoint"
-            );
-            return Err(forbidden_response("insufficient_scope", "propose"));
+            return Err(insufficient_scope(parts, &ctx, "propose"));
         }
         Ok(ApiKeyPropose(ctx))
     }

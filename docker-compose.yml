@@ -57,6 +57,11 @@ services:
       # uses, e.g. `nas.local,192.168.1.10,localhost`. See .env.example.
       MYBIBLI_MCP_ALLOWED_HOSTS: ${MYBIBLI_MCP_ALLOWED_HOSTS:-}
       MYBIBLI_MCP_ALLOWED_ORIGINS: ${MYBIBLI_MCP_ALLOWED_ORIGINS:-}
+      # #696: proxies whose X-Forwarded-For / X-Real-IP name the client in
+      # log lines (CSRF rejections, API-key authentication). IPs or CIDRs,
+      # e.g. the Docker network of Traefik `172.18.0.0/16`. Empty = the peer
+      # address only, no header believed. See .env.example.
+      MYBIBLI_TRUSTED_PROXIES: ${MYBIBLI_TRUSTED_PROXIES:-}
     volumes:
       # Issue #213 — cover images MUST persist across container upgrades.
       # The Rust binary writes cover JPGs into `/app/covers` (resolved

@@ -182,6 +182,14 @@ Skills are Markdown instructions an Admin writes in Admin → Skills (story 15-2
 - **Treat a skill like any instruction given to the agent.** An Admin who pastes text from elsewhere into a skill hands it to the agent as house rules: prompt injection written into a skill is injection by the Admin's hand. Every Admin can edit every skill (§ 5.3). The agent receives the body exactly as typed (no Markdown rendering, no rewrite); the web never renders it as HTML (escaped `<textarea>` / `<pre>`, story 15-2).
 - **Inactive and trashed skills are never served.** Every read filters `deleted_at IS NULL AND active = TRUE`, on each request: a deactivation or a deletion takes effect on the agent's next request (no cache). An unknown name answers a protocol error (`prompts/get`, -32602) or a tool error (`get_skill`) without any body; `get_skill`'s error lists the active skills' names.
 
+### 5.12 Cookieless and unrouted requests; client address in logs (#696)
+
+A misconfigured MCP client POSTing to `/mcp` 1 200–2 200 times a day (production, November 2026) cost one anonymous `sessions` row per request and pressed the connection pool, behind a misleading `csrf_token_mismatch` log line with no client address. Since v1.28.1:
+
+- **No anonymous row** for `/api/*` (API-key surfaces read no `Session`), for an unrouted path (the resolver sees no `MatchedPath`), nor for a state-changing request (not GET / HEAD / OPTIONS) that carries **no** `session` cookie — it gets an in-memory anonymous session with an unstored random CSRF token, so it can only be refused (`no_session_cookie`). The CSRF-exempt `POST /login` keeps minting (§ 5.6). A browser whose cookie went stale still sends one, so the #37 re-mint and token rotation are unchanged.
+- **404 before CSRF** for an unrouted path: the CSRF layer lets a request without `MatchedPath` reach the router's fallback, which runs no handler. `/mcp` answers a JSON 404 naming `/api/mcp`.
+- **Client address.** CSRF rejections, API-key authentications (success, 401, 403) and MCP refusals log `client`: the TCP peer, or — only when the peer is listed in `MYBIBLI_TRUSTED_PROXIES` (IPs / CIDRs) — the first untrusted hop of `X-Forwarded-For` read from the right, else `X-Real-IP`. Unlisted peers' headers are ignored, so a client cannot choose the address logged for it. The value feeds logs only, never an access decision; an invalid entry in the variable is ignored with a warning (it can only trust fewer proxies).
+
 ---
 
 ## 6. Cross-reference with issue #17 sub-items

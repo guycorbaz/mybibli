@@ -1,5 +1,6 @@
 pub mod api_key;
 pub mod auth;
+pub mod client_addr;
 pub mod csp;
 pub mod csrf;
 pub mod htmx;

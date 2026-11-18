@@ -1,4 +1,4 @@
-use axum::extract::{FromRequestParts, Request, State};
+use axum::extract::{FromRequestParts, MatchedPath, Request, State};
 use axum::http::request;
 use axum::middleware::Next;
 use axum::response::Response;
@@ -128,25 +128,39 @@ impl Session {
 ///   bandwidth and can saturate the pool under realistic browser
 ///   concurrency (issue #36).
 ///
-/// - `/api/mcp` — the MCP endpoint (story 11-6, D-11-6-6) authenticates
-///   by API key only and reads no `Session`; an agent calling tools in a
-///   loop would otherwise mint one anonymous `sessions` row per call.
+/// - `/api/*` — API-key surfaces (`/api/v1`, the MCP endpoint, cover
+///   uploads) read no `Session`; a client calling in a loop would otherwise
+///   mint one anonymous `sessions` row per call (story 11-6 for `/api/mcp`,
+///   #696 for the rest).
 ///
 /// Uses `csrf::normalize_exempt_path` (issue #40) so that router-equivalent
 /// variants (`//static/app.css`, `/static/`) are caught alongside the
 /// canonical forms.
 pub(crate) fn should_skip_session_resolve(uri_path: &str) -> bool {
     let path = crate::middleware::csrf::normalize_exempt_path(uri_path);
-    if path == "/health"
-        || path == crate::mcp::MCP_PATH
-        || path == crate::services::cover_uploads::COVER_UPLOADS_PATH
-    {
+    if path == "/health" {
         return true;
     }
-    matches!(path.as_str(), "/static" | "/covers" | "/logo")
+    matches!(path.as_str(), "/static" | "/covers" | "/logo" | "/api")
+        || path.starts_with("/api/")
         || path.starts_with("/static/")
         || path.starts_with("/covers/")
         || path.starts_with("/logo/")
+}
+
+/// #696 — marks a state-changing request that carried no session cookie
+/// (the resolver gave it an unstored session): the CSRF layer refuses it
+/// with reason `no_session_cookie`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CookielessRequest;
+
+/// #696 — a request that mints no anonymous row when it carries no session
+/// cookie: every method but GET / HEAD / OPTIONS, except the CSRF-exempt
+/// routes (`POST /login` signs in from a cookieless request).
+pub(crate) fn persists_nothing_without_cookie(method: &axum::http::Method, uri_path: &str) -> bool {
+    use axum::http::Method;
+    !matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS)
+        && !crate::middleware::csrf::is_exempt(method, uri_path)
 }
 
 /// Story 11-21 (AC7) — whether this request renders a page, so the nav
@@ -235,8 +249,25 @@ pub async fn session_resolve_middleware(
     if should_skip_session_resolve(request.uri().path()) {
         return next.run(request).await;
     }
+    // #696 — an unrouted path (no `MatchedPath`: this layer runs after
+    // routing) goes to the 404 fallback, which reads no `Session`.
+    if request.extensions().get::<MatchedPath>().is_none() {
+        return next.run(request).await;
+    }
 
     let cookie_token = extract_session_cookie(request.headers());
+
+    // #696 — a state-changing request without any session cookie cannot
+    // pass CSRF (except the exempt routes, i.e. `POST /login`): it gets an
+    // in-memory anonymous session, no row and no cookie. A browser whose
+    // cookie went stale still sends one, so it still gets a minted row and
+    // the rotated token (#37).
+    if cookie_token.is_none() && persists_nothing_without_cookie(request.method(), request.uri().path()) {
+        let ext = request.extensions_mut();
+        ext.insert(Session::anonymous_with_token(crate::utils::generate_csrf_token()));
+        ext.insert(CookielessRequest);
+        return next.run(request).await;
+    }
     let timeout_secs = state.session_timeout_secs();
 
     let (session, new_cookie_token) =
@@ -682,12 +713,31 @@ mod tests {
         assert!(should_skip_session_resolve("/logo/svg/mybibli-icon.svg"));
     }
 
+    /// #696 — every API-key surface, not only `/api/mcp` (story 11-6).
     #[test]
-    fn should_skip_session_resolve_mcp_endpoint() {
+    fn should_skip_session_resolve_api_paths() {
         assert!(should_skip_session_resolve("/api/mcp"));
         assert!(should_skip_session_resolve("//api/mcp"));
-        assert!(!should_skip_session_resolve("/api/mcpx"));
-        assert!(!should_skip_session_resolve("/api/v1/titles"));
+        assert!(should_skip_session_resolve("/api/v1/titles"));
+        assert!(should_skip_session_resolve("/api"));
+        assert!(!should_skip_session_resolve("/apix"));
+        assert!(!should_skip_session_resolve("/apidocs"));
+    }
+
+    /// #696 — a cookieless request mints a row only when it can use it.
+    #[test]
+    fn persists_nothing_without_cookie_for_state_changing_requests() {
+        use axum::http::Method;
+        for m in [Method::POST, Method::PUT, Method::PATCH, Method::DELETE] {
+            assert!(persists_nothing_without_cookie(&m, "/catalog/scan"), "{m}");
+        }
+        for m in [Method::GET, Method::HEAD, Method::OPTIONS] {
+            assert!(!persists_nothing_without_cookie(&m, "/catalog"), "{m}");
+        }
+        // The CSRF-exempt login keeps minting, in every normalized form.
+        assert!(!persists_nothing_without_cookie(&Method::POST, "/login"));
+        assert!(!persists_nothing_without_cookie(&Method::POST, "//login/"));
+        assert!(persists_nothing_without_cookie(&Method::PUT, "/login"));
     }
 
     #[test]

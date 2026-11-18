@@ -25,7 +25,7 @@
 
 use askama::Template;
 use axum::body::Body;
-use axum::extract::{FromRequestParts, Request, State};
+use axum::extract::{FromRequestParts, MatchedPath, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -102,6 +102,15 @@ pub(crate) fn normalize_exempt_path(path: &str) -> String {
     normalized
 }
 
+/// Whether `(method, path)` is one of [`CSRF_EXEMPT_ROUTES`], after path
+/// normalization (#40). Shared with the session resolver (#696).
+pub(crate) fn is_exempt(method: &Method, raw_path: &str) -> bool {
+    let path = normalize_exempt_path(raw_path);
+    CSRF_EXEMPT_ROUTES
+        .iter()
+        .any(|(m, p)| *m == method.as_str() && *p == path)
+}
+
 pub async fn csrf_middleware(
     State(state): State<AppState>,
     req: Request,
@@ -121,14 +130,10 @@ pub async fn csrf_middleware(
     // Axum's router would dispatch identically (trailing `/`, repeated `/`)
     // also bypass — see `normalize_exempt_path` doc for the security
     // trade-off (#40).
-    let raw_path = req.uri().path();
-    let path = normalize_exempt_path(raw_path);
-    if CSRF_EXEMPT_ROUTES
-        .iter()
-        .any(|(m, p)| *m == method.as_str() && *p == path)
-    {
+    if is_exempt(&method, req.uri().path()) {
         return next.run(req).await;
     }
+    let path = normalize_exempt_path(req.uri().path());
 
     // CR #241: `/api/*` routes authenticate via `Authorization: Bearer`
     // (or `X-API-Key:`) headers, not session cookies. CSRF is a
@@ -138,6 +143,13 @@ pub async fn csrf_middleware(
     // its own terms. The path check is narrow enough (only `/api/`)
     // that no browser route can accidentally claim the bypass.
     if path.starts_with("/api/") {
+        return next.run(req).await;
+    }
+
+    // #696 — an unrouted path reaches no handler: let the router's 404
+    // fallback answer instead of a CSRF rejection that hides the real cause
+    // (a client POSTing to `/mcp` instead of `/api/mcp`).
+    if req.extensions().get::<MatchedPath>().is_none() {
         return next.run(req).await;
     }
 
@@ -177,22 +189,10 @@ pub async fn csrf_middleware(
         .filter_map(|v| v.to_str().ok())
         .collect();
     if header_values.len() > 1 {
-        tracing::warn!(
-            method = %method,
-            path = %path,
-            count = header_values.len(),
-            reason = "csrf_multiple_headers",
-            "CSRF validation failed"
-        );
-        let locale: &str = parts
-            .extensions
-            .get::<Locale>()
-            .map(|l| l.0)
-            .unwrap_or("fr");
         // `is_form` not yet computed here; pass false to get the HTMX /
         // JSON envelope response. Plain-form attackers would need to
         // bypass SameSite=Lax to reach this path anyway.
-        return build_rejection_response(locale, &parts, false, Some(&session));
+        return reject(&parts, &method, &path, "csrf_multiple_headers", false, &session);
     }
     let header_token: Option<String> = header_values
         .first()
@@ -216,6 +216,12 @@ pub async fn csrf_middleware(
                 .eq_ignore_ascii_case("application/x-www-form-urlencoded")
         })
         .unwrap_or(false);
+
+    // #696 — no session cookie at all: the resolver persisted nothing and
+    // no token can match. Say so instead of `csrf_token_mismatch`.
+    if parts.extensions.get::<crate::middleware::auth::CookielessRequest>().is_some() {
+        return reject(&parts, &method, &path, "no_session_cookie", is_form, &session);
+    }
 
     // Multipart bypass (issue #335) — multipart/form-data POSTs are used for
     // file uploads where the body can be up to 10 MiB (cover image upload).
@@ -242,18 +248,7 @@ pub async fn csrf_middleware(
     if is_multipart && header_token.is_some() {
         let client_token = header_token.unwrap_or_default();
         if !ct_eq(session.csrf_token.as_bytes(), client_token.as_bytes()) {
-            tracing::warn!(
-                method = %method,
-                path = %path,
-                reason = "csrf_token_mismatch_multipart",
-                "CSRF validation failed"
-            );
-            let locale: &str = parts
-                .extensions
-                .get::<Locale>()
-                .map(|l| l.0)
-                .unwrap_or("fr");
-            return build_rejection_response(locale, &parts, false, Some(&session));
+            return reject(&parts, &method, &path, "csrf_token_mismatch_multipart", false, &session);
         }
         // Token OK — hand the ORIGINAL body to the handler. Multipart
         // parsing happens downstream via `axum::extract::Multipart`.
@@ -271,12 +266,7 @@ pub async fn csrf_middleware(
     let bytes = match axum::body::to_bytes(body, MAX_CSRF_BODY_BYTES).await {
         Ok(b) => b,
         Err(_) => {
-            let locale: &str = parts
-                .extensions
-                .get::<Locale>()
-                .map(|l| l.0)
-                .unwrap_or("fr");
-            return build_payload_too_large_response(locale);
+            return build_payload_too_large_response(request_locale(&parts));
         }
     };
 
@@ -290,18 +280,14 @@ pub async fn csrf_middleware(
                 let mut iter = pairs.into_iter().filter(|(k, _)| k == "_csrf_token");
                 let first = iter.next();
                 if iter.next().is_some() {
-                    tracing::warn!(
-                        method = %method,
-                        path = %path,
-                        reason = "csrf_token_duplicate_form_field",
-                        "CSRF validation failed"
+                    return reject(
+                        &parts,
+                        &method,
+                        &path,
+                        "csrf_token_duplicate_form_field",
+                        is_form,
+                        &session,
                     );
-                    let locale: &str = parts
-                        .extensions
-                        .get::<Locale>()
-                        .map(|l| l.0)
-                        .unwrap_or("fr");
-                    return build_rejection_response(locale, &parts, is_form, Some(&session));
                 }
                 first.map(|(_, v)| v)
             }
@@ -314,28 +300,39 @@ pub async fn csrf_middleware(
     let client_token = header_token.or(form_token).unwrap_or_default();
 
     if !ct_eq(session.csrf_token.as_bytes(), client_token.as_bytes()) {
-        tracing::warn!(
-            method = %method,
-            path = %path,
-            reason = "csrf_token_mismatch",
-            "CSRF validation failed"
-        );
-        // Resolve locale from the request (Extension populated by
-        // locale_resolve_middleware). Fall back to "fr" (app default)
-        // so a misordered layer stack never leaves the user with a
-        // blank 403 page.
-        let locale: &str = parts
-            .extensions
-            .get::<Locale>()
-            .map(|l| l.0)
-            .unwrap_or("fr");
-        return build_rejection_response(locale, &parts, is_form, Some(&session));
+        return reject(&parts, &method, &path, "csrf_token_mismatch", is_form, &session);
     }
 
     // Re-attach the (possibly body-consumed) bytes so the handler sees
     // an intact request. `Request::from_parts` + `Body::from(bytes)`.
     let req = Request::from_parts(parts, Body::from(bytes));
     next.run(req).await
+}
+
+/// Log a CSRF rejection (with the client address, #696) and build its
+/// localized response — never a blank 403 page, even on a misordered stack.
+fn reject(
+    parts: &axum::http::request::Parts,
+    method: &Method,
+    path: &str,
+    reason: &'static str,
+    is_form: bool,
+    session: &Session,
+) -> Response {
+    tracing::warn!(
+        method = %method,
+        path = %path,
+        reason,
+        client = %crate::middleware::client_addr::client_addr(&parts.extensions, &parts.headers),
+        "CSRF validation failed"
+    );
+    build_rejection_response(request_locale(parts), parts, is_form, Some(session))
+}
+
+/// The request locale (Extension set by `locale_resolve_middleware`), `fr`
+/// (app default) when that layer did not run.
+fn request_locale(parts: &axum::http::request::Parts) -> &str {
+    parts.extensions.get::<Locale>().map(|l| l.0).unwrap_or("fr")
 }
 
 /// Constant-time byte comparison. Treats differing lengths as non-equal.

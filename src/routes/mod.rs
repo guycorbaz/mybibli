@@ -49,6 +49,7 @@ pub mod loans;
 pub mod proposal_edit;
 pub mod proposals;
 pub mod locations;
+pub mod not_found;
 pub mod series;
 pub mod series_expected_tomes;
 pub mod setup;
@@ -875,6 +876,9 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         // reference `/logo/svg/mybibli-icon.svg` etc. The Dockerfile
         // copies this directory into the runtime image.
         .nest_service("/logo", ServeDir::new("docs/mybibli-logo"))
+        // #696 — unrouted paths: 404 (with a hint for `/mcp`), reached
+        // without a session row or a CSRF rejection.
+        .fallback(not_found::fallback)
         // Layer stack (axum applies layers bottom-up; at request time
         // the request hits the OUTERMOST layer first):
         //
