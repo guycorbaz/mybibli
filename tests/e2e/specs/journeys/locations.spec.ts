@@ -209,13 +209,14 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("#new-name").fill("LO-Controls695");
     await page.locator("#new-lcode").fill("L5695");
     await page.locator("#add-root-submit").click();
-    await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
 
     const row = page
       .locator('[role="treeitem"] > div')
       .filter({ hasText: "LO-Controls695" })
       .first();
     const editLink = row.locator('a[aria-label="Edit LO-Controls695"]');
+    // Wait for the created row (the URL is /locations before and after).
+    await expect(editLink).toHaveCount(1, { timeout: 5000 });
     const controls = editLink.locator("xpath=..");
     const opacity = () => controls.evaluate((el) => Number(getComputedStyle(el).opacity));
 

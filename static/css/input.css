@@ -1,4 +1,12 @@
-@import "tailwindcss";
+/*
+ * #695 review — `source(none)`: no automatic source detection. A local run
+ * from the repo root would otherwise scan every directory while the Docker
+ * `css` stage only sees what it copies; with an explicit list, both builds
+ * read exactly the sources declared below (`tests/tailwind_sources.rs`
+ * checks each one is copied into that stage).
+ */
+@import "tailwindcss" source(none);
+@source "../../templates";
 
 /*
  * Story 14-1 — class strings built in first-party JS (the session-timeout

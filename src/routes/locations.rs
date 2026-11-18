@@ -184,11 +184,12 @@ fn render_node_html(
 /// `opacity-0` until hover: invisible on a touch screen (no hover) and while
 /// keyboard-focused, and — `group-hover:opacity-100` living only in this Rust
 /// string, which the Docker CSS stage never scanned — invisible everywhere in
-/// the shipped image. Now always shown, dimmed, at full opacity on row hover,
-/// on focus inside the controls and on a coarse pointer. The classes are only
+/// the shipped image. Now always shown, dimmed (75 %: `text-stone-600` stays
+/// above 3:1, WCAG 1.4.11), at full opacity on row hover, on keyboard focus
+/// anywhere in the row and on a coarse pointer. The classes are only
 /// generated because `static/css/input.css` sources `src/` (checked by
 /// `tests/tailwind_sources.rs`).
-pub(crate) const TREE_ROW_CONTROLS_CLASS: &str = "ml-auto flex items-center gap-1 opacity-60 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity";
+pub(crate) const TREE_ROW_CONTROLS_CLASS: &str = "ml-auto flex items-center gap-1 opacity-75 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity";
 
 #[allow(clippy::too_many_arguments)]
 fn render_node_at_depth(
@@ -329,8 +330,11 @@ fn render_node_at_depth(
         r#"<span class="w-6" aria-hidden="true"></span>"#.to_string()
     };
 
+    // ARIA tree pattern: a parent treeitem states whether its group is
+    // shown; `locations-tree-toggle.js` keeps it in step with the toggle.
+    let expanded_attr = if has_children { r#" aria-expanded="true""# } else { "" };
     html.push_str(&format!(
-        r#"<div role="treeitem" class="{indent_class}" data-tree-node-id="{id}">
+        r#"<div role="treeitem"{expanded_attr} class="{indent_class}" data-tree-node-id="{id}">
 <div class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 group">
 {toggle_html}
 <a href="/location/{id}" class="flex items-center gap-2 flex-1 min-w-0 no-underline">
@@ -764,9 +768,9 @@ mod tests {
         let classes: Vec<&str> = TREE_ROW_CONTROLS_CLASS.split_whitespace().collect();
         assert!(!classes.contains(&"opacity-0"), "controls must not be invisible at rest");
         for needed in [
-            "opacity-60",
+            "opacity-75",
             "group-hover:opacity-100",
-            "focus-within:opacity-100",
+            "group-focus-within:opacity-100",
             "pointer-coarse:opacity-100",
         ] {
             assert!(classes.contains(&needed), "missing {needed}");
@@ -829,6 +833,14 @@ mod tests {
         assert!(
             html.contains(r#"<div class="tree-children" role="group" id="tree-children-1">"#),
             "parent should wrap its children in a tree-children group"
+        );
+        assert!(
+            html.contains(r#"<div role="treeitem" aria-expanded="true" class="tree-indent-0" data-tree-node-id="1">"#),
+            "a parent treeitem states its expansion"
+        );
+        assert!(
+            html.contains(r#"<div role="treeitem" class="tree-indent-1" data-tree-node-id="2">"#),
+            "a leaf treeitem carries no aria-expanded"
         );
 
         // The leaf (id=2) has no children → no toggle button, no container.

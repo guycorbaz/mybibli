@@ -8,9 +8,12 @@
 //! `/locations` tree controls stayed at `opacity-0` because
 //! `group-hover:opacity-100` lived only in `src/routes/locations.rs`.
 
-mod common;
+// Only the file reader: `mod common;` would compile the MCP / web helpers
+// and link the whole crate into a test that reads text files.
+#[path = "common/repo.rs"]
+mod repo;
 
-use common::repo::read;
+use repo::read;
 
 /// The positive `@source "…"` paths of input.css, resolved against
 /// `static/css/` to repository-relative directories (`../js` → `static/js`).
@@ -35,7 +38,9 @@ fn tailwind_sources(css: &str) -> Vec<String> {
         .collect()
 }
 
-/// The `COPY <src> ./<dst>` sources of the Dockerfile stage named `css`.
+/// The sources of the shell-form `COPY` lines of the Dockerfile stage named
+/// `css` (options such as `--chown=` skipped, trailing `/` and leading `./`
+/// removed; `.` stays `.`).
 fn css_stage_copies(dockerfile: &str) -> Vec<String> {
     let mut in_css = false;
     let mut out = Vec::new();
@@ -45,18 +50,35 @@ fn css_stage_copies(dockerfile: &str) -> Vec<String> {
             continue;
         }
         if in_css && let Some(rest) = line.strip_prefix("COPY ") {
-            for src in rest.split_whitespace().rev().skip(1) {
-                out.push(src.trim_end_matches('/').to_string());
+            let args: Vec<&str> = rest.split_whitespace().filter(|a| !a.starts_with("--")).collect();
+            for src in args.iter().rev().skip(1) {
+                let src = src.trim_end_matches('/');
+                let src = src.strip_prefix("./").unwrap_or(src);
+                out.push(if src.is_empty() { ".".to_string() } else { src.to_string() });
             }
         }
     }
     out
 }
 
+/// Whether a source path is inside one of the copied paths.
+fn is_copied(source: &str, copies: &[String]) -> bool {
+    copies
+        .iter()
+        .any(|c| c == "." || source == c || source.starts_with(&format!("{c}/")))
+}
+
 #[test]
-fn input_css_sources_rust_html() {
-    let sources = tailwind_sources(&read("static/css/input.css"));
-    assert!(sources.contains(&"src".to_string()), "input.css must @source src/: {sources:?}");
+fn input_css_declares_every_source_and_detects_none() {
+    let css = read("static/css/input.css");
+    assert!(
+        css.contains(r#"@import "tailwindcss" source(none);"#),
+        "automatic source detection must stay off, or a local build sees more than the image"
+    );
+    let sources = tailwind_sources(&css);
+    for needed in ["templates", "static/js", "src"] {
+        assert!(sources.contains(&needed.to_string()), "input.css must @source {needed}: {sources:?}");
+    }
 }
 
 #[test]
@@ -65,7 +87,7 @@ fn every_tailwind_source_is_copied_into_the_css_stage() {
     let copies = css_stage_copies(&read("Dockerfile"));
     assert!(!copies.is_empty(), "no `FROM … AS css` stage found in the Dockerfile");
     for s in &sources {
-        assert!(copies.contains(s), "Tailwind source {s} is not copied into the css stage: {copies:?}");
+        assert!(is_copied(s, &copies), "Tailwind source {s} is not copied into the css stage: {copies:?}");
     }
 }
 
@@ -75,6 +97,12 @@ fn source_resolution_and_stage_parsing() {
         tailwind_sources("@source \"../js\";\n@source not \"../js/vendor\";\n@source \"../../src\";"),
         vec!["static/js".to_string(), "src".to_string()]
     );
-    let df = "FROM rust AS builder\nCOPY src/ ./src/\nFROM node AS css\nCOPY templates/ ./templates/\nCOPY a b ./\nFROM alpine\nCOPY x/ ./x/";
+    let df = "FROM rust AS builder\nCOPY src/ ./src/\nFROM node AS css\nCOPY templates/ ./templates/\nCOPY --chown=node a ./b/ ./\nFROM alpine\nCOPY x/ ./x/";
     assert_eq!(css_stage_copies(df), vec!["templates", "b", "a"]);
+    let copies = vec!["static/js".to_string(), "src".to_string()];
+    assert!(is_copied("static/js/foo.js", &copies));
+    assert!(is_copied("src", &copies));
+    assert!(!is_copied("srcx", &copies));
+    assert!(!is_copied("templates", &copies));
+    assert!(is_copied("anything", &[".".to_string()]));
 }
