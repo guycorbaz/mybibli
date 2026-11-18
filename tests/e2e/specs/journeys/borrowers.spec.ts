@@ -65,7 +65,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
 
     // Modify phone
     await page.locator("#edit-phone").fill("+33699887766");
-    await page.locator('form button[type="submit"]').last().click();
+    await page.locator(`form[action="/borrower/${id}"] button[type="submit"]`).click();
 
     // Should redirect to detail page
     await expect(page.locator("body")).toContainText("+33699887766", {

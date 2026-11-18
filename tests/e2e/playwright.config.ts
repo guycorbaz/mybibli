@@ -34,6 +34,8 @@ export default defineConfig({
     // every other test, one file at a time (a project each, chained):
     // `mode: "serial"` only serialises their own file, and the other
     // worker's sessions expired or showed the timeout toast meanwhile.
+    // Cost accepted: a failure in `chromium` skips them (the job is red
+    // anyway). Run one alone with `--no-deps`, or the whole suite runs first.
     {
       name: "instance-settings",
       use: { browserName: "chromium" },
