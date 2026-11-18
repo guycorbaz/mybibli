@@ -1,4 +1,5 @@
 import { expect, Page, request } from "@playwright/test";
+import { expectHtmxProcessed } from "./htmx";
 
 /**
  * Loan-related E2E helpers — canonical patterns for Epic 4 specs.
@@ -75,6 +76,8 @@ export async function scanTitleAndVolume(
     timeout: 10000,
   });
   if (await phantomConfirm.isVisible()) {
+    // The modal arrived in a swap: click Confirm once HTMX wired it (19-2).
+    await expectHtmxProcessed(phantomConfirm);
     await phantomConfirm.click();
   }
   // Story 19-2 — the volume must have been CREATED here: an answer that only
@@ -234,6 +237,7 @@ export async function returnLoanFromLoansPage(
   // modal entered the slot before we click Confirm.
   const modalDialog = page.locator("#modal-slot dialog[open]");
   await expect(modalDialog).toBeVisible({ timeout: 5000 });
+  await expectHtmxProcessed(modalDialog.locator("[data-modal-confirm]"));
   await modalDialog.locator("[data-modal-confirm]").click();
   // Wait for the row to disappear — POST /loans/:id/return commits, then
   // the modal closes and the feedback HTML lands in `#loan-feedback`.
@@ -268,6 +272,7 @@ export async function returnLoanFromBorrowerDetail(
   await returnBtn.click();
   const modalDialog = page.locator("#modal-slot dialog[open]");
   await expect(modalDialog).toBeVisible({ timeout: 5000 });
+  await expectHtmxProcessed(modalDialog.locator("[data-modal-confirm]"));
   await modalDialog.locator("[data-modal-confirm]").click();
   await expect(activeLoans).not.toContainText(volumeLabel, {
     timeout: 10000,

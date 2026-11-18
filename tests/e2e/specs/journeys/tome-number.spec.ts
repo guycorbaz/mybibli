@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 /**
  * Story 13-10 (#579) — the tome number. Spec ID "TN".
@@ -105,6 +106,8 @@ test.describe("The tome number (story 13-10, #579)", () => {
     await page.locator("button[hx-get$='/edit']").first().click();
     const titleField = page.locator("#edit-title");
     await expect(titleField).toBeVisible({ timeout: 5000 });
+    // #685 — the edit form has only `hx-post`: wait until HTMX wired it.
+    await expectHtmxProcessed(page.locator("#title-edit-form"));
     const handTitle = `Saga TN Tome 5 : à la main ${Date.now()}`;
     await titleField.fill(handTitle);
     await page.locator("#edit-title-submit").click();

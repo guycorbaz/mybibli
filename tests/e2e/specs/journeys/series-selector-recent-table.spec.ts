@@ -41,9 +41,9 @@ test.describe("Story 13-5 — series selector (#576)", () => {
     // 27 series sharing a unique prefix: whatever else the table holds,
     // at least 26 series sort before the last one, so it sits past
     // page 1 (25 rows) of the paginated list the selector used to read.
-    // The `zzz-` head sorts them after every other spec's series, so the
-    // paginated /series list of a parallel spec keeps its own rows on
-    // page 1 (series.spec.ts looks its series up there).
+    // The `zzz-` head sorts them after every other spec's series (no spec
+    // reads its own row from the paginated /series list any more, story
+    // 19-2, but the head keeps the list readable for a human).
     const prefix = `zzz-RT-${Date.now()}-`;
     await page.goto("/series");
     for (let i = 1; i <= 27; i++) {

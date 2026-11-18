@@ -1,5 +1,10 @@
 import { defineConfig } from "@playwright/test";
 
+/** Specs that change instance-wide settings (story 19-2): run last, alone. */
+const SETTINGS_SPEC = /journeys\/admin-system-settings\.spec\.ts/;
+const SESSION_TIMEOUT_SPEC = /journeys\/session-inactivity-timeout\.spec\.ts/;
+const INSTANCE_WIDE_SPECS = [SETTINGS_SPEC, SESSION_TIMEOUT_SPEC];
+
 export default defineConfig({
   testDir: "./specs",
   // Per-spec unique ISBNs (helpers/isbn.ts) + per-test loginAs() sessions
@@ -22,6 +27,24 @@ export default defineConfig({
     {
       name: "chromium",
       use: { browserName: "chromium" },
+      testIgnore: INSTANCE_WIDE_SPECS,
+    },
+    // Story 19-2 — specs that change an instance-wide setting while they run
+    // (System settings saved; the session timeout dropped to 9 s) run after
+    // every other test, one file at a time (a project each, chained):
+    // `mode: "serial"` only serialises their own file, and the other
+    // worker's sessions expired or showed the timeout toast meanwhile.
+    {
+      name: "instance-settings",
+      use: { browserName: "chromium" },
+      testMatch: SETTINGS_SPEC,
+      dependencies: ["chromium"],
+    },
+    {
+      name: "instance-session-timeout",
+      use: { browserName: "chromium" },
+      testMatch: SESSION_TIMEOUT_SPEC,
+      dependencies: ["instance-settings"],
     },
   ],
 });

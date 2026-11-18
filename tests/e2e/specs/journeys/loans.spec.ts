@@ -249,8 +249,8 @@ test.describe("Volume detail — loan status role-aware (FR59)", () => {
 
     // Per-invocation unique suffix protects against Playwright retry-
     // induced collisions:
-    // - borrowerName: a duplicate name would trigger strict-mode
-    //   "resolved to N elements" in createBorrower's link assertion.
+    // - borrowerName: a duplicate name would make `borrowerIdByName`
+    //   fail loud on ambiguity.
     // - volumeLabel: from this spec's `specVcode` block, which moves to a
     //   fresh slot on a retry.
     const uniq = Date.now();

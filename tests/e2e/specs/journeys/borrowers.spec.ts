@@ -56,27 +56,21 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
   test("edit borrower → changes saved", async ({ page }) => {
     // Story 19-2: its own borrower (Rule #23 — editing "the first row"
     // changed another spec's borrower).
-    const id = await createBorrower(page, "BW-Edit Borrower");
+    const id = await createBorrower(page, `BW-Phone Borrower ${Date.now()}`);
     await page.goto(`/borrower/${id}`);
-    {
-      await expect(page.locator("h1")).toBeVisible({ timeout: 3000 });
+    await expect(page.locator("h1")).toBeVisible({ timeout: 3000 });
 
-      // Click Edit
-      const editLink = page.getByText(/Edit borrower|Modifier/i);
-      if (await editLink.isVisible()) {
-        await editLink.click();
-        await expect(page.locator("#edit-name")).toBeVisible({ timeout: 3000 });
+    await page.getByRole("link", { name: /Edit borrower|Modifier l.emprunteur/i }).click();
+    await expect(page.locator("#edit-name")).toBeVisible({ timeout: 3000 });
 
-        // Modify phone
-        await page.locator("#edit-phone").fill("+33699887766");
-        await page.locator('form button[type="submit"]').last().click();
+    // Modify phone
+    await page.locator("#edit-phone").fill("+33699887766");
+    await page.locator('form button[type="submit"]').last().click();
 
-        // Should redirect to detail page
-        await expect(page.locator("body")).toContainText("+33699887766", {
-          timeout: 5000,
-        });
-      }
-    }
+    // Should redirect to detail page
+    await expect(page.locator("body")).toContainText("+33699887766", {
+      timeout: 5000,
+    });
   });
 
   // AC6: Delete borrower with no active loans

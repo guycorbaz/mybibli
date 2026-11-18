@@ -77,8 +77,9 @@ test.describe("Home page search", () => {
 
   test("should focus search field when pressing / key", async ({ page }) => {
     await page.goto("/");
-    // Click body first to ensure no input is focused
-    await page.locator("body").click();
+    // Ensure no input is focused — without a click: the centre of <body>
+    // can be a title link once the library is large (story 19-2).
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press("/");
     const searchField = page.locator("#search-field");
     await expect(searchField).toBeFocused();

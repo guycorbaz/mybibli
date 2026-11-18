@@ -20,8 +20,8 @@ import { specVcode } from "../../helpers/vcode";
  * displayed "next" is exactly highest + 1.
  */
 const ISBN = specIsbn("HL", 1);
-// V-codes come from the spec's `specVcode` block; L-codes in the 7xxx
-// bucket are used by no other spec (grep before changing).
+// V-codes come from the spec's `specVcode` block. L-codes: L7489 here;
+// home-search uses L7500–L7509 of the same bucket (grep before changing).
 const LCODE = "L7489";
 
 const WATERMARK =

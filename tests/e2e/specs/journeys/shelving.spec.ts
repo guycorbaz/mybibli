@@ -4,6 +4,7 @@ import { specIsbn } from "../../helpers/isbn";
 import { createLocation } from "../../helpers/locations";
 import { specVcode, vcodeSlot } from "../../helpers/vcode";
 import { expectReallySeen } from "../../helpers/visibility";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 // CR #300: VALID_ISBN was shared across 4 tests, leaving each one's title
 // with prior volumes → the V-code scan returned the phantom-volume modal.
@@ -175,6 +176,7 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
     // The undo button lives in a feedback entry that fades by class: check
     // it is really seen, not just in the layout (retro v1.28.1 A1).
     await expectReallySeen(undoBtn, { timeout: 5000 });
+    await expectHtmxProcessed(undoBtn);
 
     // Undo → "undone" feedback appears at the top of the list
     await undoBtn.click();
@@ -272,6 +274,7 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
     // The undo button lives in a feedback entry that fades by class: check
     // it is really seen, not just in the layout (retro v1.28.1 A1).
     await expectReallySeen(undoBtn, { timeout: 5000 });
+    await expectHtmxProcessed(undoBtn);
 
     await undoBtn.click();
     await expect(page.locator(".feedback-entry").first()).toContainText(
