@@ -18,6 +18,8 @@
  */
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { simulateScan } from "../../helpers/scanner";
+import { specIsbn } from "../../helpers/isbn";
 
 test.describe("Story 8-2 smoke — CSRF", () => {
   test("logged-in language toggle with a valid token succeeds", async ({ page }) => {
@@ -161,5 +163,25 @@ test.describe("Story 8-2 smoke — CSRF", () => {
     // Cache-Control: no-store prevents the browser back-cache from serving
     // a stale rejection after the user reloads and re-establishes a session.
     expect(response.headers()["cache-control"]).toBe("no-store");
+  });
+});
+
+// #696 — a session cookie that disappeared (the browser drops it at its
+// Max-Age after an idle timeout; simulated here by clearing cookies) makes
+// the next action land on the login page, never a 403 that would repeat
+// on every scan with no token to resync. The server stores no anonymous
+// session for that request.
+test.describe("#696 — expired session cookie", () => {
+  test("the next scan after the cookie is gone opens the login page", async ({ page }) => {
+    await page.context().clearCookies();
+    await loginAs(page, "librarian");
+    await page.goto("/catalog");
+    await expect(page.locator("#scan-field")).toBeVisible();
+
+    await page.context().clearCookies();
+    await simulateScan(page, "#scan-field", specIsbn("CK", 1));
+
+    await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
+    await expect(page.locator('input[name="username"]')).toBeVisible();
   });
 });

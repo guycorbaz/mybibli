@@ -23,17 +23,21 @@ const MISTAKEN_MCP_PATH: &str = "/mcp";
 
 pub async fn fallback(request: Request) -> Response {
     let path = normalize_exempt_path(request.uri().path());
-    let client = client_addr(request.extensions(), request.headers());
     if path == MISTAKEN_MCP_PATH {
         tracing::warn!(
             method = %request.method(),
             path = %request.uri().path(),
-            %client,
+            client = %client_addr(request.extensions(), request.headers()),
             "request to /mcp: the MCP endpoint is /api/mcp"
         );
         return (StatusCode::NOT_FOUND, Json(mistaken_mcp_body())).into_response();
     }
-    tracing::debug!(method = %request.method(), path = %request.uri().path(), %client, "no route");
+    tracing::debug!(
+        method = %request.method(),
+        path = %request.uri().path(),
+        client = %client_addr(request.extensions(), request.headers()),
+        "no route"
+    );
     StatusCode::NOT_FOUND.into_response()
 }
 

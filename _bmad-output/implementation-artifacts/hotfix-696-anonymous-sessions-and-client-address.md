@@ -17,8 +17,8 @@ Production, v1.28.0, since 2026-11-07: an MCP client configured with `/mcp` inst
 ## Decisions
 
 - **D1 — client address (point 1).** `src/middleware/client_addr.rs`: the peer address comes from `ConnectInfo<SocketAddr>` (`main.rs` serves with `into_make_service_with_connect_info`). `MYBIBLI_TRUSTED_PROXIES` (comma-separated IPs or CIDRs, read once; an entry that does not parse is ignored with a `warn` — it can only make the result fall back to the peer, never trust more). When the peer is trusted, `X-Forwarded-For` is walked right to left and the first address that is not a trusted proxy is the client; without `X-Forwarded-For`, `X-Real-IP`; a malformed entry stops the walk at the last good hop. Unset → the peer address (no header honoured). IPv4-mapped IPv6 addresses are shown as IPv4. Logged as `client` on CSRF rejections, API-key authentication (success and every 401 / 403) and MCP refusals.
-- **D2 — no anonymous row (point 2).** The resolver persists nothing for: any `/api/*` path (none reads a `Session`; replaces the `/api/mcp` and cover-upload special cases); an unrouted path (no `MatchedPath` — `Router::layer` middleware runs after routing); a state-changing request (not GET / HEAD / OPTIONS) **carrying no `session` cookie**, other than the CSRF-exempt routes (`POST /login` keeps its behaviour) — it gets an in-memory `Session::anonymous_with_token`, no cookie. A browser whose cookie is stale still gets a minted row and the rotated token (#37 unchanged).
-- **D3 — 404 before CSRF (point 3).** The CSRF middleware lets an unrouted request through, and a router `fallback` answers 404. `POST`/`GET /mcp` (any method, normalized path) answers a JSON 404 naming `/api/mcp`, with a `warn` carrying method and client; other unknown paths keep the empty 404, logged at `debug`. A state-changing request without cookie on a routed path is rejected with reason `no_session_cookie` instead of `csrf_token_mismatch`.
+- **D2 — no anonymous row (point 2).** The resolver persists nothing for: any `/api/*` path (none reads a `Session`; replaces the `/api/mcp` and cover-upload special cases); an unrouted path (no `MatchedPath` — `Router::layer` middleware runs after routing); a request other than GET **carrying no `session` cookie**, other than the CSRF-exempt routes (`POST /login` keeps its behaviour) — it gets an in-memory `Session::anonymous_with_token`, no cookie (HEAD / OPTIONS included: probes and preflights store no cookie). A browser holding a cookie whose row is gone still gets a minted row and the rotated token (#37 unchanged).
+- **D3 — 404 before CSRF (point 3).** The CSRF middleware lets an unrouted request through, and a router `fallback` answers 404. `POST`/`GET /mcp` (any method, normalized path) answers a JSON 404 naming `/api/mcp`, with a `warn` carrying method and client; other unknown paths keep the empty 404, logged at `debug`. A state-changing request without cookie on a routed path is logged with reason `no_session_cookie` (not `csrf_token_mismatch`) and answered like any anonymous action on a protected route: 303 to `/login` + `HX-Redirect` (review finding 1: session cookies carry a Max-Age, so this is also what a tab meets after an idle timeout — a 403 would have repeated on every action, with no token to resync).
 - **D4 — DRY.** The four CSRF rejection sites share one `reject(...)` (log + locale + response) and `request_locale`; the CSRF exemption check is one `csrf::is_exempt`, used by the resolver too; the API-key 401s and 403s share one logging constructor each.
 - **D5 — the cookieless signal is an extension, not a header read (found in dev).** The resolver marks its unstored session with `auth::CookielessRequest`; CSRF refuses on that marker. Reading the `Cookie` header in CSRF instead broke the unit harness that injects a `Session` directly, and would tie CSRF to the resolver's cookie parsing.
 
@@ -26,7 +26,7 @@ Production, v1.28.0, since 2026-11-07: an MCP client configured with `/mcp` inst
 
 1. **AC1.** `POST /mcp` without cookie → 404 whose body names `/api/mcp`; no `sessions` row inserted; one `warn` with the client address.
 2. **AC2.** `GET /does-not-exist`, `POST /does-not-exist`, `GET /api/v1/titles` (no key) → no `sessions` row; the unknown paths answer 404.
-3. **AC3.** `POST` to a routed path without cookie → 403 (or 303 for a plain form) as today, reason `no_session_cookie`, no row. `POST /login` without cookie still logs in. `GET /` without cookie still mints a row and sets the cookie.
+3. **AC3.** `POST` to a routed path without cookie → 303 to `/login` with `HX-Redirect`, reason `no_session_cookie`, no row; `HEAD` / `OPTIONS` without cookie → no row. `POST /login` without cookie still logs in. `GET /` without cookie still mints a row and sets the cookie.
 4. **AC4.** Unit cases of the address resolution: untrusted peer ignores headers; trusted peer + XFF chain (with trusted hops) → first untrusted; X-Real-IP fallback; malformed entry; IPv4-mapped; CIDR and invalid entries in the variable.
 5. **AC5.** Docs: `MYBIBLI_TRUSTED_PROXIES` in `docker-compose.yml` comment, `docs/auth-threat-model.md`, installation chapter (en/fr), CLAUDE.md.
 
@@ -39,11 +39,13 @@ Production, v1.28.0, since 2026-11-07: an MCP client configured with `/mcp` inst
 - [x] T5 — client address on API-key and MCP log lines (D1)
 - [x] T6 — `tests/cookieless_requests.rs` (AC1–AC3), unit tests (AC4)
 - [x] T7 — docs (AC5)
-- [ ] T8 — gates
+- [x] T8 — review fixes
+- [ ] T9 — gates
 
 ## Dev Notes
 
-- No E2E spec: the change has no browser-visible behaviour (a browser always holds a cookie after its first page; the 404 of an unknown page is unchanged). The cookieless / unrouted / API journeys are covered through the whole router in `tests/cookieless_requests.rs`; the full E2E suite still runs as a regression gate.
+- E2E (`security/csrf.spec.ts`): the session cookie disappears (idle expiry, simulated by clearing cookies) on `/catalog`, the next scan lands on `/login`. The cookieless bot / unrouted / API journeys are covered through the whole router in `tests/cookieless_requests.rs`.
+- Review (high, 9 candidates): fixed 1 (expired cookie → `/login`), 2 (HEAD / OPTIONS), 3 (`X-Forwarded-For` hops with port, brackets, empty elements — positive shapes), 4 (E2E), 5 (variable read at boot), 7 (client computed only inside the log macros), 8 (path normalized once), 9 (docs name exactly which MCP refusals carry `client`). Kept 6: one `warn` per refused API key is the signal #696 asks for.
 - Sharing `normalize_exempt_path` for the fallback keeps `//mcp` and `/mcp/` on the hint.
 
 ## Dev Agent Record

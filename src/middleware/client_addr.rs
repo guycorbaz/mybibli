@@ -75,29 +75,48 @@ pub fn resolve(peer: Option<IpAddr>, headers: &HeaderMap, trusted: &TrustedProxi
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(','))
         .map(str::trim)
+        // An empty element (trailing or doubled comma) names no hop.
+        .filter(|e| !e.is_empty())
         .collect();
     if forwarded.is_empty() {
         return Some(
             headers
                 .get("x-real-ip")
                 .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.trim().parse::<IpAddr>().ok())
-                .map(|ip| ip.to_canonical())
+                .and_then(|v| parse_hop(v.trim()))
                 .unwrap_or(peer),
         );
     }
     let mut hop = peer;
     for entry in forwarded.iter().rev() {
-        let Ok(ip) = entry.parse::<IpAddr>() else {
+        let Some(ip) = parse_hop(entry) else {
             // Malformed: stop at the last address we could read.
             return Some(hop);
         };
-        hop = ip.to_canonical();
+        hop = ip;
         if !trusted.contains(hop) {
             return Some(hop);
         }
     }
     Some(hop)
+}
+
+/// One forwarding hop, positive shapes only: an IP address, `a.b.c.d:port`,
+/// `[v6]` or `[v6]:port` (what proxies write). Anything else — `unknown`,
+/// a host name, an RFC 7239 obfuscated identifier — is `None`.
+fn parse_hop(entry: &str) -> Option<IpAddr> {
+    let ip = entry
+        .parse::<IpAddr>()
+        .ok()
+        .or_else(|| entry.parse::<SocketAddr>().ok().map(|s| s.ip()))
+        .or_else(|| {
+            entry
+                .strip_prefix('[')
+                .and_then(|e| e.strip_suffix(']'))
+                .and_then(|e| e.parse::<std::net::Ipv6Addr>().ok())
+                .map(IpAddr::V6)
+        })?;
+    Some(ip.to_canonical())
 }
 
 /// The client address of a request, as a log field (`unknown` without a peer).
@@ -180,6 +199,24 @@ mod tests {
         let t = proxies("10.0.0.0/8");
         let h = headers(&[("x-forwarded-for", "1.1.1.1, garbage, 10.0.0.4")]);
         assert_eq!(resolve(Some(ip("10.0.0.1")), &h, &t), Some(ip("10.0.0.4")));
+    }
+
+    #[test]
+    fn hops_with_ports_brackets_or_empty_elements_are_read() {
+        let t = proxies("10.0.0.1");
+        for (xff, client) in [
+            ("203.0.113.9, ", "203.0.113.9"),
+            ("203.0.113.9:51234", "203.0.113.9"),
+            ("[2001:db8::7]:443", "2001:db8::7"),
+            ("[2001:db8::7]", "2001:db8::7"),
+            ("203.0.113.9,,10.0.0.1", "203.0.113.9"),
+        ] {
+            let h = headers(&[("x-forwarded-for", xff)]);
+            assert_eq!(resolve(Some(ip("10.0.0.1")), &h, &t), Some(ip(client)), "{xff}");
+        }
+        for bad in ["unknown", "_hidden", "proxy.lan", "1.2.3", "[1.2.3.4]"] {
+            assert_eq!(parse_hop(bad), None, "{bad}");
+        }
     }
 
     #[test]

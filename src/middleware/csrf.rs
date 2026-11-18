@@ -105,7 +105,10 @@ pub(crate) fn normalize_exempt_path(path: &str) -> String {
 /// Whether `(method, path)` is one of [`CSRF_EXEMPT_ROUTES`], after path
 /// normalization (#40). Shared with the session resolver (#696).
 pub(crate) fn is_exempt(method: &Method, raw_path: &str) -> bool {
-    let path = normalize_exempt_path(raw_path);
+    is_exempt_normalized(method, &normalize_exempt_path(raw_path))
+}
+
+fn is_exempt_normalized(method: &Method, path: &str) -> bool {
     CSRF_EXEMPT_ROUTES
         .iter()
         .any(|(m, p)| *m == method.as_str() && *p == path)
@@ -130,10 +133,10 @@ pub async fn csrf_middleware(
     // Axum's router would dispatch identically (trailing `/`, repeated `/`)
     // also bypass — see `normalize_exempt_path` doc for the security
     // trade-off (#40).
-    if is_exempt(&method, req.uri().path()) {
+    let path = normalize_exempt_path(req.uri().path());
+    if is_exempt_normalized(&method, &path) {
         return next.run(req).await;
     }
-    let path = normalize_exempt_path(req.uri().path());
 
     // CR #241: `/api/*` routes authenticate via `Authorization: Bearer`
     // (or `X-API-Key:`) headers, not session cookies. CSRF is a
@@ -218,9 +221,13 @@ pub async fn csrf_middleware(
         .unwrap_or(false);
 
     // #696 — no session cookie at all: the resolver persisted nothing and
-    // no token can match. Say so instead of `csrf_token_mismatch`.
+    // no token can match. A browser gets here when its cookie expired
+    // (Max-Age, #418) — answer as for any anonymous action on a protected
+    // route: to `/login` (303 + `HX-Redirect`), never a 403 the tab would
+    // repeat with no token to resync.
     if parts.extensions.get::<crate::middleware::auth::CookielessRequest>().is_some() {
-        return reject(&parts, &method, &path, "no_session_cookie", is_form, &session);
+        log_rejection(&parts, &method, &path, "no_session_cookie");
+        return AppError::Unauthorized.into_response();
     }
 
     // Multipart bypass (issue #335) — multipart/form-data POSTs are used for
@@ -319,6 +326,11 @@ fn reject(
     is_form: bool,
     session: &Session,
 ) -> Response {
+    log_rejection(parts, method, path, reason);
+    build_rejection_response(request_locale(parts), parts, is_form, Some(session))
+}
+
+fn log_rejection(parts: &axum::http::request::Parts, method: &Method, path: &str, reason: &'static str) {
     tracing::warn!(
         method = %method,
         path = %path,
@@ -326,7 +338,6 @@ fn reject(
         client = %crate::middleware::client_addr::client_addr(&parts.extensions, &parts.headers),
         "CSRF validation failed"
     );
-    build_rejection_response(request_locale(parts), parts, is_form, Some(session))
 }
 
 /// The request locale (Extension set by `locale_resolve_middleware`), `fr`

@@ -579,6 +579,10 @@ async fn main() {
         .await
         .expect("Failed to bind to address");
 
+    // #696 — parse MYBIBLI_TRUSTED_PROXIES now, so an invalid entry is
+    // reported at boot rather than at the first refused request.
+    mybibli::middleware::client_addr::trusted_proxies();
+
     tracing::info!(%addr, "Server listening");
 
     // #696 — `ConnectInfo<SocketAddr>` gives log lines the peer address

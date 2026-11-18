@@ -70,12 +70,31 @@ async fn unrouted_and_api_requests_persist_no_session(pool: DbPool) {
     assert_eq!(session_rows(&pool).await, before);
 }
 
+/// Also what a browser meets once its session cookie expired (Max-Age):
+/// sent to `/login`, never a 403 it would repeat.
 #[sqlx::test(migrations = "./migrations")]
-async fn a_cookieless_post_to_a_route_is_refused_without_a_session_row(pool: DbPool) {
+async fn a_cookieless_post_to_a_route_goes_to_login_without_a_session_row(pool: DbPool) {
     let before = session_rows(&pool).await;
-    let (status, sets_cookie, _) = send(&pool, "POST", "/catalog/scan", "code=9782070360246").await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    assert!(!sets_cookie);
+    let req = Request::post("/catalog/scan")
+        .header("hx-request", "true")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(Body::from("code=9782070360246"))
+        .unwrap();
+    let res = router(&pool).oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.headers().get("location").unwrap(), "/login");
+    assert_eq!(res.headers().get("hx-redirect").unwrap(), "/login");
+    assert!(res.headers().get(axum::http::header::SET_COOKIE).is_none());
+    assert_eq!(session_rows(&pool).await, before);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn cookieless_head_and_options_persist_no_session(pool: DbPool) {
+    let before = session_rows(&pool).await;
+    for method in ["HEAD", "OPTIONS"] {
+        let (_, sets_cookie, _) = send(&pool, method, "/catalog", "").await;
+        assert!(!sets_cookie, "{method}");
+    }
     assert_eq!(session_rows(&pool).await, before);
 }
 

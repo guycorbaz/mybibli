@@ -155,12 +155,12 @@ pub(crate) fn should_skip_session_resolve(uri_path: &str) -> bool {
 pub(crate) struct CookielessRequest;
 
 /// #696 — a request that mints no anonymous row when it carries no session
-/// cookie: every method but GET / HEAD / OPTIONS, except the CSRF-exempt
-/// routes (`POST /login` signs in from a cookieless request).
+/// cookie: every method but GET (a page view, whose cookie the browser
+/// keeps), except the CSRF-exempt routes (`POST /login` signs in from a
+/// cookieless request). HEAD and OPTIONS (probes, CORS preflights) never
+/// store a cookie either.
 pub(crate) fn persists_nothing_without_cookie(method: &axum::http::Method, uri_path: &str) -> bool {
-    use axum::http::Method;
-    !matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS)
-        && !crate::middleware::csrf::is_exempt(method, uri_path)
+    *method != axum::http::Method::GET && !crate::middleware::csrf::is_exempt(method, uri_path)
 }
 
 /// Story 11-21 (AC7) — whether this request renders a page, so the nav
@@ -257,11 +257,11 @@ pub async fn session_resolve_middleware(
 
     let cookie_token = extract_session_cookie(request.headers());
 
-    // #696 — a state-changing request without any session cookie cannot
-    // pass CSRF (except the exempt routes, i.e. `POST /login`): it gets an
-    // in-memory anonymous session, no row and no cookie. A browser whose
-    // cookie went stale still sends one, so it still gets a minted row and
-    // the rotated token (#37).
+    // #696 — a request other than GET without any session cookie (except
+    // the exempt `POST /login`) gets an in-memory anonymous session, no row
+    // and no cookie; a state-changing one is then sent to `/login` by the
+    // CSRF layer (`no_session_cookie`). A browser holding a cookie whose
+    // row is gone still gets a minted row and the rotated token (#37).
     if cookie_token.is_none() && persists_nothing_without_cookie(request.method(), request.uri().path()) {
         let ext = request.extensions_mut();
         ext.insert(Session::anonymous_with_token(crate::utils::generate_csrf_token()));
@@ -728,12 +728,17 @@ mod tests {
     #[test]
     fn persists_nothing_without_cookie_for_state_changing_requests() {
         use axum::http::Method;
-        for m in [Method::POST, Method::PUT, Method::PATCH, Method::DELETE] {
+        for m in [
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::HEAD,
+            Method::OPTIONS,
+        ] {
             assert!(persists_nothing_without_cookie(&m, "/catalog/scan"), "{m}");
         }
-        for m in [Method::GET, Method::HEAD, Method::OPTIONS] {
-            assert!(!persists_nothing_without_cookie(&m, "/catalog"), "{m}");
-        }
+        assert!(!persists_nothing_without_cookie(&Method::GET, "/catalog"));
         // The CSRF-exempt login keeps minting, in every normalized form.
         assert!(!persists_nothing_without_cookie(&Method::POST, "/login"));
         assert!(!persists_nothing_without_cookie(&Method::POST, "//login/"));
