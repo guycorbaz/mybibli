@@ -136,8 +136,12 @@ async fn a_cookieless_page_view_still_mints_an_anonymous_session(pool: DbPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn a_cookieless_login_still_signs_in(pool: DbPool) {
     seed_admin(&pool, "cookieless").await;
-    // `Browser::login` posts `/login` without any cookie, then loads `/`.
+    let before = session_rows(&pool).await;
+    // `Browser::login` posts `/login` without any cookie, then loads `/`
+    // with the session cookie it got.
     let browser = Browser::login(&router(&pool), "cookieless").await;
     assert!(!browser.cookie.is_empty());
     assert!(!browser.csrf.is_empty());
+    // Only the authenticated row: no anonymous row for the cookieless POST.
+    assert_eq!(session_rows(&pool).await, before + 1);
 }

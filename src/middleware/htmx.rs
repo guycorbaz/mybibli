@@ -30,12 +30,9 @@ pub fn is_htmx(headers: &axum::http::HeaderMap) -> bool {
 /// sees a 3xx (the browser follows it inside the XHR and HTMX swaps the
 /// target page), so an HTMX request gets `200` + `HX-Redirect`; any other
 /// request a `303` + `Location`.
-pub fn redirect(target: &str, htmx: bool) -> Response {
+pub fn redirect(target: &'static str, htmx: bool) -> Response {
     use axum::http::{HeaderValue, StatusCode, header};
-    let Ok(value) = HeaderValue::from_str(target) else {
-        tracing::error!(target, "redirect target is not a valid header value");
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    };
+    let value = HeaderValue::from_static(target);
     let (status, name) = if htmx {
         (StatusCode::OK, header::HeaderName::from_static("hx-redirect"))
     } else {

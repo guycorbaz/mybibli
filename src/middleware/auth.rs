@@ -156,11 +156,13 @@ pub(crate) struct CookielessRequest;
 
 /// #696 — a request that mints no anonymous row when it carries no session
 /// cookie: every method but GET (a page view, whose cookie the browser
-/// keeps), except the CSRF-exempt routes (`POST /login` signs in from a
-/// cookieless request). HEAD and OPTIONS (probes, CORS preflights) never
-/// store a cookie either.
-pub(crate) fn persists_nothing_without_cookie(method: &axum::http::Method, uri_path: &str) -> bool {
-    *method != axum::http::Method::GET && !crate::middleware::csrf::is_exempt(method, uri_path)
+/// keeps). HEAD and OPTIONS (probes, CORS preflights) never store a cookie;
+/// a cookieless `POST /login` (a script, a credential-stuffing bot — a
+/// browser has the cookie of the login page) signs in with a row of its own
+/// and, on failure, renders with the unstored token: the next `POST /login`
+/// is CSRF-exempt anyway.
+pub(crate) fn persists_nothing_without_cookie(method: &axum::http::Method) -> bool {
+    *method != axum::http::Method::GET
 }
 
 /// Story 11-21 (AC7) — whether this request renders a page, so the nav
@@ -181,7 +183,7 @@ pub(crate) fn wants_pending_count(role: &Role, headers: &axum::http::HeaderMap) 
         return false;
     }
     let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
-    if header("hx-request") == Some("true") {
+    if crate::middleware::htmx::is_htmx(headers) {
         return header("hx-history-restore-request") == Some("true");
     }
     if let Some(dest) = header("sec-fetch-dest") {
@@ -252,12 +254,12 @@ pub async fn session_resolve_middleware(
 
     let cookie_values = session_cookie_values(request.headers());
 
-    // #696 — a request other than GET without any session cookie (except
-    // the exempt `POST /login`) gets an in-memory anonymous session, no row
-    // and no cookie; a state-changing one is then sent to `/login` by the
-    // CSRF layer (`no_session_cookie`). A browser holding a cookie whose
-    // row is gone still gets a minted row and the rotated token (#37).
-    if cookie_values.is_empty() && persists_nothing_without_cookie(request.method(), request.uri().path()) {
+    // #696 — a request other than GET without any session cookie gets an
+    // in-memory anonymous session, no row and no cookie; a state-changing
+    // one is then refused by the CSRF layer (`no_session_cookie`), except
+    // the exempt `POST /login`. A browser holding a cookie whose row is gone
+    // still gets a minted row and the rotated token (#37).
+    if cookie_values.is_empty() && persists_nothing_without_cookie(request.method()) {
         let ext = request.extensions_mut();
         ext.insert(Session::anonymous_with_token(crate::utils::generate_csrf_token()));
         ext.insert(CookielessRequest);
@@ -747,13 +749,9 @@ mod tests {
             Method::HEAD,
             Method::OPTIONS,
         ] {
-            assert!(persists_nothing_without_cookie(&m, "/catalog/scan"), "{m}");
+            assert!(persists_nothing_without_cookie(&m), "{m}");
         }
-        assert!(!persists_nothing_without_cookie(&Method::GET, "/catalog"));
-        // The CSRF-exempt login keeps minting, in every normalized form.
-        assert!(!persists_nothing_without_cookie(&Method::POST, "/login"));
-        assert!(!persists_nothing_without_cookie(&Method::POST, "//login/"));
-        assert!(persists_nothing_without_cookie(&Method::PUT, "/login"));
+        assert!(!persists_nothing_without_cookie(&Method::GET));
     }
 
     #[test]

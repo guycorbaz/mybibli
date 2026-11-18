@@ -102,12 +102,8 @@ pub(crate) fn normalize_exempt_path(path: &str) -> String {
     normalized
 }
 
-/// Whether `(method, path)` is one of [`CSRF_EXEMPT_ROUTES`], after path
-/// normalization (#40). Shared with the session resolver (#696).
-pub(crate) fn is_exempt(method: &Method, raw_path: &str) -> bool {
-    is_exempt_normalized(method, &normalize_exempt_path(raw_path))
-}
-
+/// Whether `(method, path)` — `path` already normalized (#40) — is one of
+/// [`CSRF_EXEMPT_ROUTES`].
 fn is_exempt_normalized(method: &Method, path: &str) -> bool {
     CSRF_EXEMPT_ROUTES
         .iter()
@@ -168,6 +164,33 @@ pub async fn csrf_middleware(
         return AppError::Internal("session CSRF token unset".to_string()).into_response();
     }
 
+    // Decide whether to engage the form-field fallback. The mime-essence
+    // (part before `;`) must match exactly — `starts_with` would accept
+    // doctored values like `application/x-www-form-urlencoded-evil` that
+    // downstream parsers would reject, enabling a token-parse mismatch.
+    let is_form: bool = parts
+        .headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| {
+            s.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case("application/x-www-form-urlencoded")
+        })
+        .unwrap_or(false);
+
+    // #696 — no session cookie at all: the resolver stored nothing, so no
+    // token can match. Checked before any other refusal, so the log names
+    // the real cause. Same answer as before #696 (HTMX: the 403 "session
+    // expired, reload" entry, the page and any typed text stay; plain
+    // anonymous form: 303 to /login), with its own reason in the log. A
+    // browser gets here when its cookie reached its Max-Age (#418).
+    if parts.extensions.get::<crate::middleware::auth::CookielessRequest>().is_some() {
+        return reject(&parts, &method, &path, "no_session_cookie", is_form, &session);
+    }
+
     // Header always wins — it covers every HTMX-driven mutation plus any
     // explicit JS `fetch()` call. An empty / whitespace-only header is
     // treated as absent so the form-field fallback still engages for a
@@ -195,32 +218,6 @@ pub async fn csrf_middleware(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-
-    // Decide whether to engage the form-field fallback. The mime-essence
-    // (part before `;`) must match exactly — `starts_with` would accept
-    // doctored values like `application/x-www-form-urlencoded-evil` that
-    // downstream parsers would reject, enabling a token-parse mismatch.
-    let is_form: bool = parts
-        .headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| {
-            s.split(';')
-                .next()
-                .unwrap_or("")
-                .trim()
-                .eq_ignore_ascii_case("application/x-www-form-urlencoded")
-        })
-        .unwrap_or(false);
-
-    // #696 — no session cookie at all: the resolver stored nothing, so no
-    // token can match. Same answer as before #696 (HTMX: the 403 "session
-    // expired, reload" entry, the page and any typed text stay; plain
-    // anonymous form: 303 to /login), with its own reason in the log. A
-    // browser gets here when its cookie reached its Max-Age (#418).
-    if parts.extensions.get::<crate::middleware::auth::CookielessRequest>().is_some() {
-        return reject(&parts, &method, &path, "no_session_cookie", is_form, &session);
-    }
 
     // Multipart bypass (issue #335) — multipart/form-data POSTs are used for
     // file uploads where the body can be up to 10 MiB (cover image upload).

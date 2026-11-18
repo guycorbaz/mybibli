@@ -18,14 +18,7 @@ struct PendingUpdate {
 /// and appends OOB swap HTML to the response for skeleton replacement.
 pub async fn pending_updates_middleware(request: Request, next: Next) -> Response {
     // Only process HTMX requests
-    let is_htmx = request
-        .headers()
-        .get("hx-request")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s == "true")
-        .unwrap_or(false);
-
-    if !is_htmx {
+    if !crate::middleware::htmx::is_htmx(request.headers()) {
         return next.run(request).await;
     }
 
