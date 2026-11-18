@@ -228,6 +228,7 @@ title:
     magazine: Rivista
     report: Relazione
 feedback:
+  dismiss_aria: Chiudi
   title_created: "Titolo creato con successo."
   title_created_suggestion: "Scansiona un codice V per collegare un esemplare, oppure un altro ISBN."
   title_exists: "Questo titolo è già nel catalogo."
@@ -282,6 +283,7 @@ validation:
   negative_number: "I campi numerici non possono essere negativi."
   invalid_date_format: "Formato data non valido. Usa AAAA, AAAA-MM o AAAA-MM-GG."
 contributor:
+  remove_aria: "Rimuovi %{name} come %{role}"
   added: "%{name} aggiunto come %{role} a %{title}."
   duplicate: "%{name} è già %{role} di questo titolo."
   updated: Collaboratore aggiornato.
@@ -576,6 +578,9 @@ location:
   deleted: Ubicazione eliminata.
   has_volumes: "Impossibile eliminare: %{count} esemplari sono qui. Spostali prima."
   has_children: "Impossibile eliminare: contiene sotto-ubicazioni. Eliminale o spostale prima."
+  delete_modal_title: "Eliminare %{name} (%{label})?"
+  delete_modal_body: "L'ubicazione va nel Cestino, da cui può essere ripristinata per 30 giorni."
+  delete_modal_confirm: "Elimina l'ubicazione"
   cycle_detected: "Impossibile spostare: si creerebbe una gerarchia circolare."
   lcode_invalid: "Formato codice L non valido. Atteso L seguito da 4 cifre (es. L0042)."
   lcode_duplicate: "Questo codice L è già in uso."
@@ -586,6 +591,9 @@ location:
   breadcrumb_label: Percorso ubicazione
   tree:
     toggle: Espandi/comprimi sotto-albero
+    add_child_named: "Aggiungi un'ubicazione in %{name}"
+    edit_named: "Modifica %{name}"
+    delete_named: "Elimina %{name}"
   contents_title: Contenuto dello scaffale
   empty_volumes: "Nessun esemplare in questa ubicazione."
   col_title: Titolo
@@ -685,6 +693,7 @@ labels:
   add: Aggiungi
   detach_aria: "Rimuovi etichetta %{name}"
 media_type:
+  suggested_aria: "%{label} (suggerito)"
   book: Libro
   bd: BD
   cd: CD

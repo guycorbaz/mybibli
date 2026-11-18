@@ -203,10 +203,12 @@ fn failed_feedback_html(message: &str, title_id: u64, loc: &str) -> String {
       <p class="text-stone-700 dark:text-stone-300">{escaped}</p>
       <p class="text-sm mt-1"><a href="/title/{title_id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{edit_escaped}</a></p>
     </div>
-    <button type="button" class="text-stone-500 dark:text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1 min-w-[44px] min-h-[44px] md:min-w-[36px] md:min-h-[36px] flex items-center justify-center" aria-label="Dismiss" data-action="dismiss-feedback"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg></button>
+    <button type="button" class="text-stone-500 dark:text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1 min-w-[44px] min-h-[44px] md:min-w-[36px] md:min-h-[36px] flex items-center justify-center" aria-label="{dismiss_escaped}" data-action="dismiss-feedback"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg></button>
   </div>
 </div>"#,
-        edit_escaped = html_escape(&edit_label)
+        edit_escaped = html_escape(&edit_label),
+        dismiss_escaped =
+            html_escape(rust_i18n::t!("feedback.dismiss_aria", locale = loc).as_ref())
     )
 }
 

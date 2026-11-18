@@ -232,6 +232,7 @@ title:
     magazine: Magazine
     report: Report
 feedback:
+  dismiss_aria: Dismiss
   title_created: "Title created successfully."
   title_created_suggestion: "Scan a V-code to attach a volume, or scan another ISBN."
   title_exists: "This title is already in your catalog."
@@ -286,6 +287,7 @@ validation:
   negative_number: "Numeric fields must be non-negative."
   invalid_date_format: "Invalid date format. Use YYYY, YYYY-MM, or YYYY-MM-DD."
 contributor:
+  remove_aria: "Remove %{name} as %{role}"
   added: "%{name} added as %{role} to %{title}."
   duplicate: "%{name} is already %{role} on this title."
   updated: Contributor updated.
@@ -592,6 +594,9 @@ location:
   deleted: Location deleted.
   has_volumes: "Cannot delete: %{count} volumes stored here. Move volumes first."
   has_children: "Cannot delete: has child locations. Delete or move children first."
+  delete_modal_title: "Delete %{name} (%{label})?"
+  delete_modal_body: "The location goes to the Trash, where it can be restored for 30 days."
+  delete_modal_confirm: "Delete the location"
   cycle_detected: "Cannot move: would create a circular hierarchy."
   lcode_invalid: "Invalid L-code format. Expected L followed by 4 digits (e.g., L0042)."
   lcode_duplicate: "This L-code is already in use."
@@ -602,6 +607,9 @@ location:
   breadcrumb_label: Location path
   tree:
     toggle: Toggle subtree
+    add_child_named: "Add a location under %{name}"
+    edit_named: "Edit %{name}"
+    delete_named: "Delete %{name}"
   contents_title: Shelf contents
   empty_volumes: "No volumes at this location."
   col_title: Title
@@ -703,6 +711,7 @@ labels:
   add: Add
   detach_aria: "Remove label %{name}"
 media_type:
+  suggested_aria: "%{label} (suggested)"
   book: Book
   bd: BD
   cd: CD

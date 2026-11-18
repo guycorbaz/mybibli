@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { simulateScan } from "../../helpers/scanner";
 
 test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
   test.beforeEach(async ({ page }) => {
@@ -155,31 +156,214 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await expect(page.locator("text=LO-OrgRoot")).toBeVisible();
   });
 
-  // AC3: Delete empty location
-  test("delete empty location → removed from tree", async ({ page }) => {
+  // AC3: Delete empty location — #698: through the UX-DR8 modal (the native
+  // `hx-confirm` was English and not watched by scanner-guard).
+  test("delete empty location through the modal → removed from tree", async ({ page }) => {
     await page.goto("/locations");
 
-    // Create a location to delete
-    await page.locator("summary").filter({ hasText: /add root/i }).click();
+    await page.locator("summary").filter({ hasText: /add root|ajouter/i }).click();
     await page.locator("#new-name").fill("LO-ToDelete");
     await page.locator("#new-lcode").fill("L5005");
     await page.locator("#add-root-submit").click();
-    await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
-    await expect(page.locator("text=LO-ToDelete")).toBeVisible();
+    const row = page.locator('[role="treeitem"]').filter({ hasText: "LO-ToDelete" }).first();
+    await expect(row).toBeVisible({ timeout: 5000 });
 
-    // Click delete — accept browser confirm dialog
-    page.on("dialog", (dialog) => dialog.accept());
-    const deleteBtn = page
-      .locator('button[aria-label*="Delete LO-ToDelete"]')
-      .first();
-    await expect(deleteBtn).toBeVisible({ timeout: 5000 });
+    const deleteBtn = row.locator("button[data-modal-trigger]");
+    await expect(deleteBtn).toHaveAttribute("aria-label", /Delete LO-ToDelete|Supprimer LO-ToDelete/);
     await deleteBtn.click();
 
-    // Location should be removed from the tree — assert the delete button is gone
-    // (scoped selector avoids matching any success-toast copy containing the name).
-    await expect(
-      page.locator('button[aria-label*="Delete LO-ToDelete"]'),
-    ).toHaveCount(0, { timeout: 5000 });
+    const dialog = page.locator("#modal-slot dialog[open]");
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await expect(dialog).toContainText(/LO-ToDelete \(L5005\)/);
+    await expect(page.locator("[data-modal-default-focus]")).toBeFocused({ timeout: 2000 });
+
+    // #698 — a scanner burst ending in Enter while Confirm holds focus must
+    // not confirm the deletion (scanner-guard watches the modal).
+    await page.keyboard.press("Tab");
+    const confirmBtn = page.locator("[data-modal-confirm]");
+    await expect(confirmBtn).toBeFocused({ timeout: 2000 });
+    const deletes: string[] = [];
+    page.on("request", (r) => {
+      if (r.method() === "DELETE" && r.url().includes("/locations/")) deletes.push(r.url());
+    });
+    await simulateScan(page, "body", "9782070360246");
+    await expect(dialog).toBeVisible({ timeout: 1000 });
+    await expect(confirmBtn).toBeFocused();
+    expect(deletes, "the scanner's Enter must not send the delete").toHaveLength(0);
+
+    await confirmBtn.click();
+    await expect(dialog).toHaveCount(0, { timeout: 5000 });
+    expect(deletes).toHaveLength(1);
+    await expect(page.locator('[role="treeitem"]').filter({ hasText: "LO-ToDelete" })).toHaveCount(0, {
+      timeout: 5000,
+    });
+    await expect(page.locator("#feedback-list .feedback-entry").first()).toContainText(
+      /Location deleted|Emplacement supprimé/,
+    );
+    // Rule #21 — the trigger left with the row: focus goes to the
+    // "add root location" summary (a root row's fallback), not <body>.
+    await expect(page.locator("#add-root-summary")).toBeFocused();
+  });
+
+  // #698 — a refusal (child locations) shows inside the open modal, in the
+  // request language, and nothing is deleted.
+  test("deleting a location with children is refused inside the modal", async ({ page }) => {
+    await page.goto("/locations");
+    await page.locator("summary").filter({ hasText: /add root|ajouter/i }).click();
+    await page.locator("#new-name").fill("LO-698-Parent");
+    await page.locator("#new-lcode").fill("L5698");
+    await page.locator("#add-root-submit").click();
+    const parent = page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Parent" }).first();
+    await expect(parent).toBeVisible({ timeout: 5000 });
+
+    await parent.locator("[data-locations-toggle]").first().click();
+    const childForm = parent.locator('form[id^="add-child-"]').first();
+    await childForm.locator('input[name="name"]').fill("LO-698-Child");
+    await childForm.locator('input[name="label"]').fill("L5699");
+    await childForm.locator('button[type="submit"]').click();
+    await expect(page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Child" }).first()).toBeVisible({
+      timeout: 5000,
+    });
+
+    const parentRow = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-Parent" }).first();
+    await parentRow.locator("button[data-modal-trigger]").click();
+    const dialog = page.locator("#modal-slot dialog[open]");
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await page.locator("[data-modal-confirm]").click();
+
+    await expect(dialog.locator("[data-modal-error]")).toContainText(
+      /has child locations|contient des emplacements enfants/,
+      { timeout: 5000 },
+    );
+    await expect(dialog).toBeVisible();
+    // Shown once, in the modal — no generic "Server error" line behind it.
+    await expect(page.locator("#feedback-list")).not.toContainText(/Server error|Erreur serveur/i);
+    await page.keyboard.press("Escape");
+    await expect(parent).toBeVisible();
+
+    // Deleting the child: focus falls back to the parent row's link (Rule #21).
+    const childRow = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-Child" }).first();
+    await childRow.locator("button[data-modal-trigger]").click();
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await page.locator("[data-modal-confirm]").click();
+    await expect(dialog).toHaveCount(0, { timeout: 5000 });
+    await expect(page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Child" })).toHaveCount(0);
+    await expect(parentRow.locator('a[href^="/location/"]')).toBeFocused();
+  });
+
+  // #698 — a Librarian adds and edits, but only an Admin may delete: no dead
+  // delete control for a Librarian.
+  test("a librarian sees add and edit controls but no delete", async ({ page, context }) => {
+    await page.goto("/locations");
+    await page.locator("summary").filter({ hasText: /add root|ajouter/i }).click();
+    await page.locator("#new-name").fill("LO-698-Librarian");
+    await page.locator("#new-lcode").fill("L5700");
+    await page.locator("#add-root-submit").click();
+    await expect(page.locator("text=LO-698-Librarian")).toBeVisible({ timeout: 5000 });
+
+    await context.clearCookies();
+    await loginAs(page, "librarian");
+    await page.goto("/locations");
+    const row = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-Librarian" }).first();
+    await expect(row.locator('a[href$="/edit"]')).toHaveCount(1);
+    await expect(row.locator("[data-locations-toggle]")).toHaveCount(1);
+    await expect(row.locator("button[data-modal-trigger]")).toHaveCount(0);
+  });
+
+  // #698 — in French: the control labels, the modal and the refusal copy.
+  test("in French, the tree controls and the delete modal speak French", async ({ page, context }) => {
+    await context.addCookies([{ name: "lang", value: "fr", domain: "localhost", path: "/" }]);
+    await page.goto("/locations");
+    await page.locator("#add-root-summary").click();
+    await page.locator("#new-name").fill("LO-698-FR");
+    await page.locator("#new-lcode").fill("L5701");
+    await page.locator("#add-root-submit").click();
+    const row = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-FR" }).first();
+    await expect(row.locator('a[aria-label="Modifier LO-698-FR"]')).toHaveCount(1, { timeout: 5000 });
+    await expect(row.locator('button[aria-label="Ajouter un emplacement dans LO-698-FR"]')).toHaveCount(1);
+    const trigger = row.locator('button[aria-label="Supprimer LO-698-FR"]');
+    await trigger.click();
+    const dialog = page.locator("#modal-slot dialog[open]");
+    await expect(dialog).toContainText("Supprimer LO-698-FR (L5701) ?", { timeout: 5000 });
+    await expect(dialog).toContainText("Corbeille");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+
+    // The refusal, in French: give the row a child, then try to delete it.
+    await row.locator("[data-locations-toggle]").click();
+    const childForm = page.locator('form[id^="add-child-"]:visible').first();
+    await childForm.locator('input[name="name"]').fill("LO-698-FR-Child");
+    await childForm.locator('input[name="label"]').fill("L5704");
+    await childForm.locator('button[type="submit"]').click();
+    await expect(page.locator("text=LO-698-FR-Child")).toBeVisible({ timeout: 5000 });
+    await page
+      .locator('[role="treeitem"] > div')
+      .filter({ hasText: "LO-698-FR" })
+      .first()
+      .locator('button[aria-label="Supprimer LO-698-FR"]')
+      .click();
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await page.locator("[data-modal-confirm]").click();
+    await expect(dialog.locator("[data-modal-error]")).toContainText("Suppression impossible", {
+      timeout: 5000,
+    });
+  });
+
+  // #698 — the location was deleted in another tab: opening the modal says
+  // so, removes the stale row, keeps focus on the page (Rule #21).
+  test("a location deleted in another tab: the stale row goes, focus stays on the page", async ({ page }) => {
+    await page.goto("/locations");
+    await page.locator("#add-root-summary").click();
+    await page.locator("#new-name").fill("LO-698-Gone");
+    await page.locator("#new-lcode").fill("L5702");
+    await page.locator("#add-root-submit").click();
+    const row = page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Gone" }).first();
+    await expect(row).toBeVisible({ timeout: 5000 });
+    const href = await row.locator('a[href$="/edit"]').getAttribute("href");
+    const id = href?.match(/\/locations\/(\d+)/)?.[1];
+    expect(id).toBeTruthy();
+
+    // "Another tab": the same session deletes it through the route.
+    const csrf = await page.locator('meta[name="csrf-token"]').getAttribute("content");
+    const res = await page.request.delete(`/locations/${id}`, {
+      headers: { "X-CSRF-Token": csrf ?? "", "HX-Request": "true" },
+    });
+    expect(res.status()).toBe(200);
+
+    await row.locator("button[data-modal-trigger]").click();
+    await expect(page.locator("#feedback-list .feedback-entry").first()).toContainText(
+      /already deleted by another session|déjà été supprimé par une autre session/,
+      { timeout: 5000 },
+    );
+    await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0);
+    await expect(page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Gone" })).toHaveCount(0);
+    await expect(page.locator("#add-root-summary")).toBeFocused();
+  });
+
+  // Review 19-1 — a Confirm answered with an empty error body (a proxy's
+  // 502) is not lost: the generic line still appears.
+  test("an empty error answer to the modal's Confirm still shows a message", async ({ page }) => {
+    await page.goto("/locations");
+    await page.locator("#add-root-summary").click();
+    await page.locator("#new-name").fill("LO-698-502");
+    await page.locator("#new-lcode").fill("L5703");
+    await page.locator("#add-root-submit").click();
+    const row = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-502" }).first();
+    await expect(row).toBeVisible({ timeout: 5000 });
+
+    await page.route("**/locations/*", (route) =>
+      route.request().method() === "DELETE"
+        ? route.fulfill({ status: 502, body: "" })
+        : route.continue(),
+    );
+    await row.locator("button[data-modal-trigger]").click();
+    await expect(page.locator("#modal-slot dialog[open]")).toBeVisible({ timeout: 5000 });
+    await page.locator("[data-modal-confirm]").click();
+    // Shown inside the modal, where the user is looking — not behind it.
+    const region = page.locator("#modal-slot dialog[open] [data-modal-error]");
+    await expect(region).toBeVisible({ timeout: 5000 });
+    await expect(region).toContainText(/Server error|Erreur serveur/i);
+    await expect(page.locator("#feedback-list")).not.toContainText(/Server error|Erreur serveur/i);
   });
 
   // AC9: Node type dropdown has options
@@ -231,7 +415,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.mouse.move(0, 0);
     await row.locator('a[href^="/location/"]').focus();
     await page.keyboard.press("Tab");
-    await expect(row.locator('button[aria-label^="Add child under LO-Controls695"]')).toBeFocused();
+    await expect(row.locator('button[aria-label^="Add a location under LO-Controls695"]')).toBeFocused();
     await expect.poll(opacity).toBe(1);
   });
 
@@ -324,8 +508,9 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await expect(firstRow).toBeVisible({ timeout: 10000 });
 
     // 2. Delete it (soft delete — the row keeps its label).
-    page.once("dialog", (d) => d.accept());
-    await firstRow.locator('button[hx-delete^="/locations/"]').click();
+    await firstRow.locator("button[data-modal-trigger]").first().click();
+    await expect(page.locator("#modal-slot dialog[open]")).toBeVisible({ timeout: 5000 });
+    await page.locator("[data-modal-confirm]").click();
     await expect(firstRow).toHaveCount(0, { timeout: 10000 });
 
     // 3. Create again. The proposal must have moved on, not back.

@@ -234,6 +234,7 @@ title:
     magazine: Revue
     report: Rapport
 feedback:
+  dismiss_aria: Fermer
   title_created: "Titre créé avec succès."
   title_created_suggestion: "Scannez un code V pour attacher un volume, ou scannez un autre ISBN."
   title_exists: "Ce titre est déjà dans votre catalogue."
@@ -288,6 +289,7 @@ validation:
   negative_number: "Les champs numériques doivent être positifs ou nuls."
   invalid_date_format: "Format de date invalide. Utilisez AAAA, AAAA-MM ou AAAA-MM-JJ."
 contributor:
+  remove_aria: "Retirer %{name} comme %{role}"
   added: "%{name} ajouté(e) en tant que %{role} pour %{title}."
   duplicate: "%{name} est déjà %{role} sur ce titre."
   updated: Contributeur mis à jour.
@@ -588,6 +590,9 @@ location:
   deleted: Emplacement supprimé.
   has_volumes: "Suppression impossible : %{count} volumes stockés ici. Déplacez-les d'abord."
   has_children: "Suppression impossible : contient des emplacements enfants. Supprimez-les ou déplacez-les d'abord."
+  delete_modal_title: "Supprimer %{name} (%{label}) ?"
+  delete_modal_body: "L'emplacement part dans la Corbeille, d'où il peut être restauré pendant 30 jours."
+  delete_modal_confirm: "Supprimer l'emplacement"
   cycle_detected: "Déplacement impossible : créerait une hiérarchie circulaire."
   lcode_invalid: "Format de code L invalide. Attendu : L suivi de 4 chiffres (ex. L0042)."
   lcode_duplicate: "Ce code L est déjà utilisé."
@@ -598,6 +603,9 @@ location:
   breadcrumb_label: Chemin de l'emplacement
   tree:
     toggle: Afficher / masquer la sous-arborescence
+    add_child_named: "Ajouter un emplacement dans %{name}"
+    edit_named: "Modifier %{name}"
+    delete_named: "Supprimer %{name}"
   contents_title: Contenu de l'étagère
   empty_volumes: "Aucun volume à cet emplacement."
   col_title: Titre
@@ -701,6 +709,7 @@ labels:
   add: Ajouter
   detach_aria: "Retirer l'étiquette %{name}"
 media_type:
+  suggested_aria: "%{label} (suggéré)"
   book: Livre
   bd: BD
   cd: CD

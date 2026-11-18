@@ -20,7 +20,7 @@
     {% if base.role == "librarian" || base.role == "admin" %}
     <!-- Add root location form -->
     <details class="mt-4 border border-stone-200 dark:border-stone-700 rounded-md">
-        <summary class="px-4 py-2 cursor-pointer text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-stone-50 dark:hover:bg-stone-800">
+        <summary id="add-root-summary" class="px-4 py-2 cursor-pointer text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-stone-50 dark:hover:bg-stone-800">
             + {{ add_root_label }}
         </summary>
         <form method="POST" action="/locations" class="px-4 py-3 space-y-3 border-t border-stone-200 dark:border-stone-700">

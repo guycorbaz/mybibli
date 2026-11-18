@@ -157,27 +157,33 @@ fn render_tree_html(
     nodes: &[TreeNode],
     node_types: &[(u64, String)],
     next_lcode: &str,
-    can_edit: bool,
+    rights: TreeRights,
     loc: &str,
     csrf_token: &str,
 ) -> String {
     let mut html = String::new();
     for node in nodes {
-        render_node_html(node, &mut html, node_types, next_lcode, can_edit, loc, csrf_token);
+        render_node_at_depth(node, &mut html, node_types, next_lcode, 0, rights, loc, csrf_token);
     }
     html
 }
 
-fn render_node_html(
-    node: &TreeNode,
-    html: &mut String,
-    node_types: &[(u64, String)],
-    next_lcode: &str,
-    can_edit: bool,
-    loc: &str,
-    csrf_token: &str,
-) {
-    render_node_at_depth(node, html, node_types, next_lcode, 0, can_edit, loc, csrf_token);
+/// What the viewer may do from the tree rows: add a child and edit
+/// (Librarian+), delete (Admin only, like `delete_location` — #698: a
+/// Librarian used to see a delete control that always answered a refusal).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TreeRights {
+    pub can_edit: bool,
+    pub can_delete: bool,
+}
+
+impl TreeRights {
+    pub(crate) fn for_role(role: &Role) -> Self {
+        Self {
+            can_edit: *role >= Role::Librarian,
+            can_delete: *role >= Role::Admin,
+        }
+    }
 }
 
 /// #695 — the row's add / edit / delete controls. They used to be
@@ -199,7 +205,7 @@ fn render_node_at_depth(
     node_types: &[(u64, String)],
     next_lcode: &str,
     depth: usize,
-    can_edit: bool,
+    rights: TreeRights,
     loc: &str,
     csrf_token: &str,
 ) {
@@ -262,13 +268,41 @@ fn render_node_at_depth(
         format!("tree-margin-{child_depth}")
     };
 
-    let (mutation_controls, child_form) = if can_edit {
+    let (mutation_controls, child_form) = if rights.can_edit {
+        // #698 — accessible names localized (the raw name goes through `t!()`,
+        // then the whole label is escaped once); delete opens the UX-DR8
+        // modal in `#modal-slot` (scanner-guard watches it), Admin only.
+        let raw_name = node.location.name.as_str();
+        let add_lbl = crate::utils::html_escape(
+            rust_i18n::t!("location.tree.add_child_named", locale = loc, name = raw_name).as_ref(),
+        );
+        let edit_lbl = crate::utils::html_escape(
+            rust_i18n::t!("location.tree.edit_named", locale = loc, name = raw_name).as_ref(),
+        );
+        let delete_control = if rights.can_delete {
+            let delete_lbl = crate::utils::html_escape(
+                rust_i18n::t!("location.tree.delete_named", locale = loc, name = raw_name).as_ref(),
+            );
+            // Rule #21 — after the delete, the row (and this trigger) is gone:
+            // modal.js then focuses the parent row's link, or the "add root"
+            // summary for a root location.
+            let focus_fallback = match node.location.parent_id {
+                Some(parent) => format!(r#"#tree-node-{parent} > div > a[href="/location/{parent}"]"#),
+                None => "#add-root-summary".to_string(),
+            };
+            format!(
+                "\n<button type=\"button\" hx-get=\"/locations/{id}/delete-modal\" hx-target=\"#modal-slot\" hx-swap=\"innerHTML\" data-modal-trigger data-modal-focus-fallback=\"{fallback}\" aria-haspopup=\"dialog\" aria-expanded=\"false\" class=\"p-1 text-stone-600 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400\" aria-label=\"{delete_lbl}\">🗑️</button>",
+                id = node.location.id,
+                fallback = crate::utils::html_escape(&focus_fallback),
+            )
+        } else {
+            String::new()
+        };
         (
             format!(
                 r#"<span class="{TREE_ROW_CONTROLS_CLASS}">
-<button type="button" data-locations-toggle="{form_id}" class="p-1 text-stone-600 dark:text-stone-400 hover:text-green-600 dark:hover:text-green-400" aria-label="Add child under {name}">➕</button>
-<a href="/locations/{id}/edit" class="p-1 text-stone-600 dark:text-stone-400 hover:text-indigo-600 dark:hover:text-indigo-400" aria-label="Edit {name}">✏️</a>
-<button type="button" hx-delete="/locations/{id}" hx-confirm="Delete {name} ({label})?" hx-target="closest [role=treeitem]" hx-swap="outerHTML" class="p-1 text-stone-600 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400" aria-label="Delete {name}">🗑️</button>
+<button type="button" data-locations-toggle="{form_id}" class="p-1 text-stone-600 dark:text-stone-400 hover:text-green-600 dark:hover:text-green-400" aria-label="{add_lbl}">➕</button>
+<a href="/locations/{id}/edit" class="p-1 text-stone-600 dark:text-stone-400 hover:text-indigo-600 dark:hover:text-indigo-400" aria-label="{edit_lbl}">✏️</a>{delete_control}
 </span>"#,
                 id = node.location.id,
             ),
@@ -332,7 +366,7 @@ fn render_node_at_depth(
     };
 
     html.push_str(&format!(
-        r#"<div role="treeitem" class="{indent_class}" data-tree-node-id="{id}">
+        r#"<div role="treeitem" id="tree-node-{id}" class="{indent_class}" data-tree-node-id="{id}">
 <div class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 group">
 {toggle_html}
 <a href="/location/{id}" class="flex items-center gap-2 flex-1 min-w-0 no-underline">
@@ -361,7 +395,7 @@ fn render_node_at_depth(
                 node_types,
                 next_lcode,
                 depth + 1,
-                can_edit,
+                rights,
                 loc,
                 csrf_token,
             );
@@ -418,12 +452,11 @@ pub async fn locations_page(
     }
 
     let tree = build_tree(&locations, &volume_counts);
-    let can_edit = session.role >= Role::Librarian;
     let tree_html = render_tree_html(
         &tree,
         &node_types,
         &next_lcode,
-        can_edit,
+        TreeRights::for_role(&session.role),
         loc,
         &session.csrf_token,
     );
@@ -610,6 +643,76 @@ pub async fn update_location(
 
 // ─── Delete location ─────────────────────────────────────────────
 
+/// Story 19-1 (#698) — the UX-DR8 confirmation of a tree delete.
+#[derive(Template)]
+#[template(path = "fragments/location_delete_modal.html")]
+pub struct LocationDeleteModalTemplate {
+    pub title: String,
+    pub body_html: String,
+    pub confirm_label: String,
+    pub cancel_label: String,
+    pub action_url: String,
+    pub csrf_token: String,
+}
+
+/// `GET /locations/{id}/delete-modal` — the delete confirmation for a tree
+/// row (Admin, like the delete itself). HTMX only: a direct navigation gets
+/// 405 + `Allow: GET`, like the other modal fragments. A location already
+/// gone answers the "deleted by another session" entry in `#feedback-list`.
+pub async fn delete_modal(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    HxRequest(is_htmx): HxRequest,
+    Path(id): Path<u64>,
+) -> Result<axum::response::Response, AppError> {
+    session.require_role_with_return(Role::Admin, "/locations", locale.0)?;
+    let loc = locale.0;
+
+    if !is_htmx {
+        return Ok((
+            axum::http::StatusCode::METHOD_NOT_ALLOWED,
+            [(axum::http::header::ALLOW, "GET")],
+            String::new(),
+        )
+            .into_response());
+    }
+
+    let Some(location) = LocationModel::find_by_id(&state.pool, id).await? else {
+        return Ok(already_gone_response(id, loc, AlreadyGoneAt::ModalOpen));
+    };
+
+    // Raw values through `t!()`; Askama escapes `{{ title }}` in the macro.
+    let title = rust_i18n::t!(
+        "location.delete_modal_title",
+        locale = loc,
+        name = location.name.as_str(),
+        label = location.label.as_str()
+    )
+    .to_string();
+    let body_html = format!(
+        "<p>{}</p>",
+        crate::utils::html_escape(rust_i18n::t!("location.delete_modal_body", locale = loc).as_ref())
+    );
+    let template = LocationDeleteModalTemplate {
+        title,
+        body_html,
+        confirm_label: rust_i18n::t!("location.delete_modal_confirm", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("common.cancel", locale = loc).to_string(),
+        action_url: format!("/locations/{}", location.id),
+        csrf_token: session.csrf_token.clone(),
+    };
+    template
+        .render()
+        .map(|html| Html(html).into_response())
+        .map_err(|e| AppError::Internal(format!("location delete modal render: {e}")))
+}
+
+/// `DELETE /locations/{id}` — from the modal's Confirm. Success: a feedback
+/// entry for `#feedback-list` (the modal's target), the tree row removed out
+/// of band, and `modal-close` after the swap (so the OOB lookup runs while
+/// the Confirm form is still attached). A refusal (children, volumes) is an
+/// `AppError::BadRequest` in the request locale, shown inside the modal.
 pub async fn delete_location(
     session: Session,
     Extension(locale): Extension<Locale>,
@@ -619,15 +722,63 @@ pub async fn delete_location(
     session.require_role(Role::Admin, locale.0)?;
     let loc = locale.0;
 
-    LocationService::delete_location(&state.pool, id).await?;
+    match LocationService::delete_location(&state.pool, id, loc).await {
+        Ok(()) => {}
+        // Deleted meanwhile (another tab): say so and drop the stale row.
+        Err(AppError::NotFound(_)) => {
+            return Ok(already_gone_response(id, loc, AlreadyGoneAt::Confirm));
+        }
+        Err(e) => return Err(e),
+    }
 
     let message = rust_i18n::t!("location.deleted", locale = loc).to_string();
-    Ok(Html(format!(
-        r#"<div class="p-3 border-l-4 border-green-500 bg-green-50 dark:bg-green-900/20 rounded-r" role="status">
-            <p class="text-stone-700 dark:text-stone-300">{}</p>
-        </div>"#,
-        crate::utils::html_escape(&message)
-    )))
+    Ok(delete_success_response(id, &message))
+}
+
+/// Where a location already deleted by another session is noticed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AlreadyGoneAt {
+    /// Opening the modal (`hx-target` is `#modal-slot`: retarget the entry).
+    ModalOpen,
+    /// The modal's Confirm (already aimed at `#feedback-list`; close the modal).
+    Confirm,
+}
+
+/// The "deleted by another session" entry, added on top of `#feedback-list`
+/// (never replacing the entries already there), with the stale row removed.
+fn already_gone_response(
+    id: u64,
+    loc: &'static str,
+    at: AlreadyGoneAt,
+) -> axum::response::Response {
+    match at {
+        AlreadyGoneAt::ModalOpen => crate::routes::build_already_deleted_response_with(
+            loc,
+            "#feedback-list",
+            "afterbegin",
+            &row_removal_oob(id),
+        ),
+        AlreadyGoneAt::Confirm => {
+            let mut main = crate::routes::already_deleted_entry_html(loc);
+            main.push_str(&row_removal_oob(id));
+            crate::middleware::htmx::HtmxResponse { main, oob: Vec::new() }
+                .into_response_with_hx_trigger_after_swap("modal-close")
+        }
+    }
+}
+
+/// htmx 2: an OOB element with `hx-swap-oob="delete"` removes its target —
+/// here the tree row `#tree-node-{id}`.
+fn row_removal_oob(id: u64) -> String {
+    format!(r#"<div id="tree-node-{id}" hx-swap-oob="delete"></div>"#)
+}
+
+/// The success answer of [`delete_location`], split out for its unit test.
+fn delete_success_response(id: u64, message: &str) -> axum::response::Response {
+    let mut main = crate::utils::feedback_html("success", message, "");
+    main.push_str(&row_removal_oob(id));
+    crate::middleware::htmx::HtmxResponse { main, oob: Vec::new() }
+        .into_response_with_hx_trigger_after_swap("modal-close")
 }
 
 // ─── Next L-code JSON endpoint ───────────────────────────────────
@@ -662,10 +813,18 @@ mod tests {
         }
     }
 
+    const ADMIN: TreeRights = TreeRights { can_edit: true, can_delete: true };
+    const LIBRARIAN: TreeRights = TreeRights { can_edit: true, can_delete: false };
+    const READ_ONLY: TreeRights = TreeRights { can_edit: false, can_delete: false };
+
     /// The tree of one root location "Salon", rendered with the given rights and token.
-    fn render_salon(id: u64, can_edit: bool, csrf_token: &str) -> String {
+    fn render_salon(id: u64, rights: TreeRights, csrf_token: &str) -> String {
+        render_salon_in(id, rights, csrf_token, "en")
+    }
+
+    fn render_salon_in(id: u64, rights: TreeRights, csrf_token: &str, locale: &str) -> String {
         let tree = build_tree(&[loc(id, None, "Salon", "room", "L0001")], &HashMap::new());
-        render_tree_html(&tree, &[(1, "room".to_string())], "L0002", can_edit, "en", csrf_token)
+        render_tree_html(&tree, &[(1, "room".to_string())], "L0002", rights, locale, csrf_token)
     }
 
     /// Fix #296 — `<select name="parent_id"><option value="">None</option>...
@@ -748,7 +907,7 @@ mod tests {
     #[test]
     fn render_tree_html_includes_csrf_token_in_inline_form() {
         let token = "test-csrf-token-abcdef0123456789";
-        let html = render_salon(42, true, token);
+        let html = render_salon(42, ADMIN, token);
         let needle = format!(r#"<input type="hidden" name="_csrf_token" value="{token}">"#);
         assert!(
             html.contains(&needle),
@@ -761,7 +920,7 @@ mod tests {
     /// dimmed, and full opacity on row hover, focus or a coarse pointer.
     #[test]
     fn tree_row_controls_are_visible_at_rest() {
-        let html = render_salon(42, true, "t");
+        let html = render_salon(42, ADMIN, "t");
         assert!(html.contains(&format!(r#"<span class="{TREE_ROW_CONTROLS_CLASS}">"#)));
         let classes: Vec<&str> = TREE_ROW_CONTROLS_CLASS.split_whitespace().collect();
         assert!(!classes.contains(&"opacity-0"), "controls must not be invisible at rest");
@@ -779,7 +938,7 @@ mod tests {
     /// should NOT leak into the read-only HTML.
     #[test]
     fn render_tree_html_omits_csrf_token_when_read_only() {
-        let html = render_salon(42, false, "should-not-appear");
+        let html = render_salon(42, READ_ONLY, "should-not-appear");
         assert!(
             !html.contains("_csrf_token"),
             "no form, no token: read-only tree leaked CSRF token in HTML"
@@ -797,7 +956,7 @@ mod tests {
     /// goes through html_escape").
     #[test]
     fn render_tree_html_escapes_csrf_token() {
-        let html = render_salon(1, true, r#"a"b<c>"#);
+        let html = render_salon(1, ADMIN, r#"a"b<c>"#);
         assert!(html.contains(r#"value="a&quot;b&lt;c&gt;""#));
         assert!(!html.contains(r#"value="a"b<c>""#));
     }
@@ -817,7 +976,7 @@ mod tests {
             &tree,
             &[(1, "room".to_string())],
             "L0003",
-            /* can_edit */ false,
+            READ_ONLY,
             "en",
             "tok",
         );
@@ -849,6 +1008,120 @@ mod tests {
             !html.contains(r#"id="tree-children-2""#),
             "leaf node should not emit a children container"
         );
+    }
+
+    /// #698 — rights follow the handlers: Librarians add and edit, only an
+    /// Admin gets the delete control (the delete itself is Admin-only).
+    #[test]
+    fn tree_rights_follow_the_role() {
+        assert_eq!(TreeRights::for_role(&Role::Admin), ADMIN);
+        assert_eq!(TreeRights::for_role(&Role::Librarian), LIBRARIAN);
+        assert_eq!(TreeRights::for_role(&Role::Anonymous), READ_ONLY);
+    }
+
+    /// #698 — delete opens the UX-DR8 modal (no native `hx-confirm`), the row
+    /// carries the id the success answer removes, a Librarian sees no delete.
+    #[test]
+    fn delete_control_opens_the_modal_for_admins_only() {
+        let admin = render_salon(42, ADMIN, "t");
+        assert!(!admin.contains("hx-confirm"));
+        assert!(!admin.contains("hx-delete"));
+        assert!(admin.contains(r##"hx-get="/locations/42/delete-modal" hx-target="#modal-slot" hx-swap="innerHTML" data-modal-trigger data-modal-focus-fallback="#add-root-summary" aria-haspopup="dialog""##));
+        assert!(admin.contains(r#"id="tree-node-42""#));
+
+        let librarian = render_salon(42, LIBRARIAN, "t");
+        assert!(!librarian.contains("delete-modal"));
+        assert!(librarian.contains(r#"href="/locations/42/edit""#));
+        assert!(librarian.contains(r#"data-locations-toggle="add-child-42""#));
+    }
+
+    /// #698 — the controls' accessible names are in the request language,
+    /// with the location name escaped once.
+    #[test]
+    fn control_labels_are_localized_and_escaped() {
+        let fr = render_salon_in(42, ADMIN, "t", "fr");
+        assert!(fr.contains(r#"aria-label="Ajouter un emplacement dans Salon""#));
+        assert!(fr.contains(r#"aria-label="Modifier Salon""#));
+        assert!(fr.contains(r#"aria-label="Supprimer Salon""#));
+
+        let tree = build_tree(&[loc(7, None, r#"A<b>"c"#, "room", "L0001")], &HashMap::new());
+        let html = render_tree_html(&tree, &[], "L0002", ADMIN, "en", "t");
+        assert!(html.contains(r#"aria-label="Delete A&lt;b&gt;&quot;c""#));
+        assert!(!html.contains("&amp;lt;"), "double-escaped");
+    }
+
+    /// #698 — the success answer: a feedback entry, the row removed out of
+    /// band, the modal closed after the swap.
+    #[tokio::test]
+    async fn delete_success_answer_removes_the_row_and_closes_the_modal() {
+        let resp = delete_success_response(42, "Location deleted.");
+        assert_eq!(
+            resp.headers().get("hx-trigger-after-swap").unwrap(),
+            "modal-close"
+        );
+        let body = body_of(resp).await;
+        assert!(body.contains("feedback-entry"));
+        assert!(body.contains(r#"data-feedback-variant="success""#));
+        assert!(body.contains("Location deleted."));
+        assert!(body.contains(r#"<div id="tree-node-42" hx-swap-oob="delete"></div>"#));
+    }
+
+    /// #698 — the modal fragment: the delete variant, DELETE to the location,
+    /// the answer aimed at `#feedback-list`, the name escaped by Askama.
+    #[test]
+    fn delete_modal_template_renders_the_confirmation() {
+        let html = LocationDeleteModalTemplate {
+            title: "Delete <Salon> (L0001)?".to_string(),
+            body_html: "<p>Trash</p>".to_string(),
+            confirm_label: "Delete the location".to_string(),
+            cancel_label: "Cancel".to_string(),
+            action_url: "/locations/42".to_string(),
+            csrf_token: "tok".to_string(),
+        }
+        .render()
+        .unwrap();
+        assert!(html.contains("Salon") && !html.contains("<Salon>"), "title not escaped");
+        assert!(html.contains(r#"hx-delete="/locations/42""#), "{html}");
+        assert!(html.contains("#feedback-list"));
+        assert!(!html.contains("hx-confirm"));
+    }
+
+    /// Rule #21 — a child row's delete names its parent's link as the focus
+    /// fallback (the row and its trigger leave with the delete).
+    #[test]
+    fn child_delete_falls_back_to_the_parent_link() {
+        let tree = build_tree(
+            &[loc(1, None, "Salon", "room", "L0001"), loc(2, Some(1), "Étagère", "shelf", "L0002")],
+            &HashMap::new(),
+        );
+        let html = render_tree_html(&tree, &[], "L0003", ADMIN, "en", "t");
+        assert!(html.contains(
+            r##"data-modal-focus-fallback="#tree-node-1 &gt; div &gt; a[href=&quot;/location/1&quot;]""##
+        ));
+    }
+
+    async fn body_of(resp: axum::response::Response) -> String {
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    /// Review 19-1 — a location already deleted elsewhere: the entry is added
+    /// on top of `#feedback-list` (not replacing it), in the request locale,
+    /// and the stale row is removed; at Confirm the modal closes.
+    #[tokio::test]
+    async fn already_gone_answers_add_an_entry_and_drop_the_row() {
+        let open = already_gone_response(9, "fr", AlreadyGoneAt::ModalOpen);
+        assert_eq!(open.headers().get("HX-Retarget").unwrap(), "#feedback-list");
+        assert_eq!(open.headers().get("HX-Reswap").unwrap(), "afterbegin");
+        assert!(open.headers().get("hx-trigger-after-swap").is_none());
+        let body = body_of(open).await;
+        assert!(body.contains(r#"<div id="tree-node-9" hx-swap-oob="delete"></div>"#));
+        let fr = rust_i18n::t!("error.already_deleted_by_another_session", locale = "fr").to_string();
+        assert!(body.contains(&crate::utils::html_escape(&fr)), "{body}");
+
+        let confirm = already_gone_response(9, "en", AlreadyGoneAt::Confirm);
+        assert!(confirm.headers().get("HX-Retarget").is_none());
+        assert_eq!(confirm.headers().get("hx-trigger-after-swap").unwrap(), "modal-close");
     }
 
     #[test]

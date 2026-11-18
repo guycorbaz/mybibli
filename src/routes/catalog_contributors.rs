@@ -80,7 +80,7 @@ pub async fn add_contributor(
         Ok((contributor, role_name)) => {
             // Build contributor list OOB
             let contributors = TitleContributorModel::find_by_title(pool, form.title_id).await?;
-            let list_html = contributor_list_html(&contributors);
+            let list_html = contributor_list_html(&contributors, locale.0);
 
             // Update banner with author
             let vol_count = VolumeModel::count_by_title(pool, form.title_id)
@@ -154,7 +154,7 @@ pub async fn remove_contributor(
     let message = rust_i18n::t!("contributor.removed").to_string();
 
     let contributors = TitleContributorModel::find_by_title(pool, form.title_id).await?;
-    let list_html = contributor_list_html(&contributors);
+    let list_html = contributor_list_html(&contributors, locale.0);
 
     // Update banner (author may have changed)
     let vol_count = VolumeModel::count_by_title(pool, form.title_id)
@@ -211,7 +211,7 @@ pub async fn update_contributor(
             // Refresh contributor list if title_id provided
             if let Some(title_id) = form.title_id {
                 let contributors = TitleContributorModel::find_by_title(pool, title_id).await?;
-                let list_html = contributor_list_html(&contributors);
+                let list_html = contributor_list_html(&contributors, locale.0);
                 let resp = HtmxResponse {
                     main: feedback_html("success", &message, ""),
                     oob: vec![OobUpdate { swap_mode: Default::default(),
@@ -382,7 +382,7 @@ pub async fn contributor_form_for_title(
     }
 }
 
-fn contributor_list_html(contributors: &[TitleContributorModel]) -> String {
+fn contributor_list_html(contributors: &[TitleContributorModel], loc: &str) -> String {
     if contributors.is_empty() {
         return String::new();
     }
@@ -405,8 +405,9 @@ fn contributor_list_html(contributors: &[TitleContributorModel]) -> String {
         }
     }
 
-    let mut html = String::from(
-        r#"<ul role="list" aria-label="Contributors" class="flex flex-wrap gap-1 text-sm text-stone-700 dark:text-stone-300">"#,
+    let mut html = format!(
+        r#"<ul role="list" aria-label="{}" class="flex flex-wrap gap-1 text-sm text-stone-700 dark:text-stone-300">"#,
+        html_escape(rust_i18n::t!("title_detail.contributors", locale = loc).as_ref())
     );
 
     for (i, (cid, name, roles)) in grouped.iter().enumerate() {
@@ -432,7 +433,10 @@ fn contributor_list_html(contributors: &[TitleContributorModel]) -> String {
             let title_id = contributors.first().map(|c| c.title_id).unwrap_or(0);
             html.push_str(&format!(
                 r##" <button type="button" class="text-red-400 hover:text-red-600 text-xs" aria-label="{}" hx-post="/catalog/contributors/remove" hx-vals='{{"junction_id":{},"title_id":{}}}' hx-target="#feedback-list" hx-swap="afterbegin">&times;</button>"##,
-                html_escape(&format!("Remove {} as {}", name, role)),
+                html_escape(
+                    rust_i18n::t!("contributor.remove_aria", locale = loc, name = *name, role = *role)
+                        .as_ref()
+                ),
                 junction_id,
                 title_id
             ));
@@ -443,4 +447,29 @@ fn contributor_list_html(contributors: &[TitleContributorModel]) -> String {
 
     html.push_str("</ul>");
     html
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Story 19-1 — the list's name and each remove button's name are in the
+    /// request language, the contributor name escaped once.
+    #[test]
+    fn contributor_list_labels_are_localized() {
+        let rows = vec![TitleContributorModel {
+            id: 5,
+            title_id: 9,
+            contributor_id: 3,
+            role_id: 1,
+            contributor_name: "Hergé <x>".to_string(),
+            role_name: "Auteur".to_string(),
+        }];
+        let fr = contributor_list_html(&rows, "fr");
+        assert!(fr.contains(r#"aria-label="Retirer Hergé &lt;x&gt; comme Auteur""#), "{fr}");
+        assert!(!fr.contains("Remove "));
+        let en = contributor_list_html(&rows, "en");
+        assert!(en.contains(r#"aria-label="Contributors""#));
+        assert!(en.contains("Remove Hergé &lt;x&gt; as Auteur"));
+    }
 }

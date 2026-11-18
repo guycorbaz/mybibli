@@ -165,6 +165,9 @@
         }
         var s = state;
         state = null;
+        // The modal owned the trigger's focus restore (below): the afterSettle
+        // fallback must not fire later for it (Rule #21, review 19-1).
+        lastPressedTrigger = null;
 
         document.removeEventListener("keydown", s.onKeydown, false);
         if (s.dialog) {
@@ -185,10 +188,49 @@
             if (!opts || !opts.skipFocusRestore) {
                 if (document.contains(s.triggerEl)) {
                     try { s.triggerEl.focus(); } catch (_) { /* ignore */ }
+                } else {
+                    focusFallbackOf(s.triggerEl);
                 }
             }
         }
     }
+
+    // The localized "Server error (N) — please try again." line, from the
+    // #i18n-bundle data island (request locale), as mybibli.js builds it.
+    function genericErrorText(status) {
+        var template = "";
+        try {
+            var bundleEl = document.getElementById("i18n-bundle");
+            var bundle = bundleEl ? JSON.parse(bundleEl.textContent) : {};
+            template = (bundle.errors || {}).server_error_retry || "";
+        } catch (_) { template = ""; }
+        if (!template) template = "Server error (%{status})";
+        return template.replace("%{status}", String(status || ""));
+    }
+
+    // Story 19-1 (Rule #21) — a trigger that left the page with what an
+    // answer removed (e.g. a deleted tree row) hands focus to the element its
+    // `data-modal-focus-fallback` selector names (read on the detached
+    // trigger), if that element is still on the page.
+    function focusFallbackOf(trigger) {
+        var sel = trigger && trigger.getAttribute("data-modal-focus-fallback");
+        var fallback = null;
+        try { fallback = sel ? document.querySelector(sel) : null; } catch (_) { fallback = null; }
+        if (fallback) {
+            try { fallback.focus(); } catch (_) { /* ignore */ }
+        }
+    }
+
+    // The last pressed trigger, for an answer that removes it without
+    // opening a modal (the row was already gone): see afterSettle below.
+    var lastPressedTrigger = null;
+    document.body.addEventListener("htmx:afterSettle", function () {
+        var t = lastPressedTrigger;
+        if (!t || state || document.contains(t)) return;
+        lastPressedTrigger = null;
+        var active = document.activeElement;
+        if (!active || active === document.body) focusFallbackOf(t);
+    }, false);
 
     // Mark the trigger as pressed on click — gives close() a focus anchor.
     // Delegated (capture) so HTMX-swapped buttons are picked up.
@@ -198,6 +240,7 @@
         var prior = document.querySelectorAll('[data-modal-trigger][data-pressed="true"]');
         for (var i = 0; i < prior.length; i++) prior[i].removeAttribute("data-pressed");
         trigger.setAttribute("data-pressed", "true");
+        lastPressedTrigger = trigger;
     }, true);
 
     // polish-1 AC4.a: tag every Pattern A modal Confirm request with
@@ -287,7 +330,15 @@
                 if (xhr.getResponseHeader && xhr.getResponseHeader("HX-Retarget")) return;
                 var region = state.dialog.querySelector("[data-modal-error]");
                 if (!region) return;
-                region.innerHTML = xhr.responseText || "";
+                var body = xhr.responseText || "";
+                if (body.trim() !== "") {
+                    region.innerHTML = body;
+                } else {
+                    // Story 19-1 — an empty body (e.g. a proxy's 502): the
+                    // localized generic line, inside the modal where the user
+                    // is looking (mybibli.js adds nothing behind it).
+                    region.textContent = genericErrorText(xhr.status);
+                }
                 region.classList.remove("hidden");
                 return;
             }
@@ -355,5 +406,8 @@
     window.mybibliModal = {
         isOpen: function () { return state !== null; },
         close: close,
+        // Story 19-1 — true when `elt` is the open modal's Confirm, i.e.
+        // when Path A above shows the request's error inside the modal.
+        ownsRequest: function (elt) { return !!originatesFromConfirm(elt); },
     };
 })();

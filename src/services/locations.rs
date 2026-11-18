@@ -224,7 +224,9 @@ impl LocationService {
     }
 
     /// Delete a location (soft-delete) with guards for children and volumes.
-    pub async fn delete_location(pool: &DbPool, id: u64) -> Result<(), AppError> {
+    /// The refusals are built in `loc`, the request locale (#698: they used
+    /// to come out in the instance language).
+    pub async fn delete_location(pool: &DbPool, id: u64, loc: &str) -> Result<(), AppError> {
         // Check for child locations
         let children_count: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM storage_locations WHERE parent_id = ? AND deleted_at IS NULL",
@@ -235,7 +237,7 @@ impl LocationService {
 
         if children_count.0 > 0 {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("location.has_children").to_string(),
+                rust_i18n::t!("location.has_children", locale = loc).to_string(),
             ));
         }
 
@@ -249,7 +251,8 @@ impl LocationService {
 
         if volume_count.0 > 0 {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("location.has_volumes", count = volume_count.0).to_string(),
+                rust_i18n::t!("location.has_volumes", locale = loc, count = volume_count.0)
+                    .to_string(),
             ));
         }
 
