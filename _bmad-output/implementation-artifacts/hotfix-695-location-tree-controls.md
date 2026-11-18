@@ -1,6 +1,6 @@
 # Story hotfix-695: Location tree controls visible
 
-Status: review
+Status: done
 
 GitHub issue: #695 (closes). Covers: fix. Outside any epic; ships in patch v1.28.1 (decided 2026-11-18). Sprint-status key: `hotfix-695-location-tree-controls`.
 
