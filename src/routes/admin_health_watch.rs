@@ -63,11 +63,11 @@ fn row_label(kind: WatchKind, loc: &str) -> String {
 }
 
 fn build_row(k: &KindSnapshot, loc: &str) -> WatchRow {
-    let other_label = if k.other_addresses > 0 {
+    let other_label = if k.unlisted_addresses > 0 {
         rust_i18n::t!(
             "admin.health.watch.addresses_other",
             locale = loc,
-            count = k.other_addresses
+            count = k.unlisted_addresses
         )
         .to_string()
     } else {
@@ -206,13 +206,27 @@ mod tests {
     }
 
     #[test]
-    fn addresses_beyond_the_cap_are_announced() {
+    fn addresses_beyond_the_top_three_are_announced() {
+        // Five addresses: three listed, two announced.
+        let mut s = store();
+        for i in 0..5 {
+            record(&mut s, WatchKind::CsrfRefusal, Some(&format!("10.2.{i}.1")), 1);
+        }
+        let html = render(&s, "en");
+        assert!(html.contains("and 2 more not listed"), "{html}");
+        // Past the cap: the kept ones beyond the top three, plus each
+        // refusal whose address was not kept.
         let mut s = store();
         for i in 0..(watch::MAX_ADDRESSES_PER_BUCKET + 2) {
             record(&mut s, WatchKind::ApiKeyRefusal, Some(&format!("10.1.{i}.1")), 1);
         }
         let html = render(&s, "en");
-        assert!(html.contains("and 2 more not listed"), "{html}");
+        let expected = format!("and {} more not listed", watch::MAX_ADDRESSES_PER_BUCKET - 3 + 2);
+        assert!(html.contains(&expected), "{html}");
+        // Three or fewer: no announcement.
+        let mut s = store();
+        record(&mut s, WatchKind::CsrfRefusal, Some("10.3.0.1"), 1);
+        assert!(!render(&s, "en").contains("more not listed"));
     }
 
     #[test]

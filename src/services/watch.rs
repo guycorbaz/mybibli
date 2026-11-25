@@ -138,6 +138,11 @@ pub struct KindSnapshot {
     /// Refusals over the last 24 hours whose address fell outside a full
     /// bucket's [`MAX_ADDRESSES_PER_BUCKET`].
     pub other_addresses: u64,
+    /// Addresses of the last 24 hours not in [`Self::top_addresses`]: the
+    /// distinct kept addresses beyond the top three, plus one per refusal
+    /// whose address was not kept (an upper bound, reached only past the
+    /// cap). What "and N more not listed" names (story 19-5 review).
+    pub unlisted_addresses: u64,
 }
 
 impl KindSnapshot {
@@ -234,6 +239,8 @@ impl WatchStore {
                 let mut top: Vec<(String, u64)> =
                     merged.into_iter().map(|(a, n)| (a.to_string(), n)).collect();
                 top.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+                let unlisted_addresses =
+                    top.len().saturating_sub(TOP_ADDRESSES) as u64 + other_addresses;
                 top.truncate(TOP_ADDRESSES);
                 KindSnapshot {
                     kind,
@@ -241,6 +248,7 @@ impl WatchStore {
                     since_start: counts.total,
                     top_addresses: top,
                     other_addresses,
+                    unlisted_addresses,
                 }
             })
             .collect();
@@ -524,6 +532,24 @@ mod tests {
     }
 
     #[test]
+    fn addresses_beyond_the_top_three_are_counted_as_unlisted() {
+        let mut s = store();
+        let now = at(15, 0, 0);
+        for i in 0..10 {
+            s.record_at(WatchKind::CsrfRefusal, Some(&format!("10.1.0.{i}")), now);
+        }
+        let snap = s.snapshot_at(now);
+        let csrf = snap.kind(WatchKind::CsrfRefusal);
+        assert_eq!(csrf.top_addresses.len(), 3);
+        assert_eq!(csrf.other_addresses, 0);
+        assert_eq!(csrf.unlisted_addresses, 7);
+        // Three addresses or fewer: nothing unlisted.
+        let mut s = store();
+        s.record_at(WatchKind::CsrfRefusal, Some("10.1.0.1"), now);
+        assert_eq!(s.snapshot_at(now).kind(WatchKind::CsrfRefusal).unlisted_addresses, 0);
+    }
+
+    #[test]
     fn addresses_beyond_the_cap_count_as_other() {
         let mut s = store();
         let now = at(16, 0, 0);
@@ -539,6 +565,8 @@ mod tests {
         let api = snap.kind(WatchKind::ApiKeyRefusal);
         assert_eq!(api.last_24h, MAX_ADDRESSES_PER_BUCKET as u64 + 4);
         assert_eq!(api.other_addresses, 3);
+        // 64 kept addresses, 3 listed, plus the 3 refusals not kept.
+        assert_eq!(api.unlisted_addresses, MAX_ADDRESSES_PER_BUCKET as u64 - 3 + 3);
         assert_eq!(api.top_addresses[0], ("10.0.0.1".to_string(), 2));
         assert!(!api.top_addresses.iter().any(|(a, _)| a == "192.168.1.1"));
         let bucket = &s.kinds[WatchKind::ApiKeyRefusal.index()].buckets

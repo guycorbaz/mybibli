@@ -150,3 +150,28 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 - New: `src/services/watch.rs`, `src/routes/admin_health_watch.rs`, `templates/fragments/admin_health_watch.html`, `tests/e2e/specs/journeys/admin-health-watch.spec.ts`
 - Changed: `src/main.rs`, `src/services/mod.rs`, `src/routes/mod.rs`, `src/routes/admin.rs`, `templates/fragments/admin_health_panel.html`, `src/error/mod.rs`, `src/middleware/csrf.rs`, `src/middleware/api_key.rs`, `src/services/expected_tomes.rs`, `src/models/contributor.rs`, `locales/{en,fr,de,it}.yml`, `docs/manual/en/02-configuration.tex`, `docs/manual/fr/02-configuration.tex`, `CLAUDE.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`, this story file
+
+## Senior Developer Review (AI)
+
+### Review pass 1
+
+**Date:** 2026-11-25. A manual pass over the dev commit (`5c989e6`) against `git diff main...HEAD`. It covered `services/watch.rs` (store, window, cap, layer, `subscriber`), the `main.rs` filter move, the counting sites (`error/mod.rs`, `csrf.rs`, `api_key.rs`, the two direct `AppError::Database` constructions), `routes/admin_health_watch.rs`, the fragment, the locales, the E2E spec and the manual.
+
+**Medium, fixed: "and N more not listed" did not count addresses.** The line showed `other_addresses`, which is the number of *refusals* whose address fell beyond the 64-address cap of a bucket. Below the cap it was always 0. With ten distinct addresses in the last 24 hours, the panel listed three and said nothing of the other seven, although D6's copy names *addresses* not listed. Fix: a new `KindSnapshot::unlisted_addresses` holds the distinct kept addresses beyond the top three, plus one per refusal whose address was not kept (an upper bound, reached only past the cap), and the panel shows that. New tests:
+- `addresses_beyond_the_top_three_are_counted_as_unlisted` (store);
+- `addresses_beyond_the_top_three_are_announced` (view: five addresses, past the cap, and three or fewer).
+
+Checked and found sound:
+
+- **The filter move.** The same `EnvFilter` now sits behind one reload handle as a per-layer filter on stdout plus the optional file layer (`and_then`), and the `LogLevelReloader` closure is unchanged. The slow-statement layer has its own `Targets` filter, so sqlx's enabled check passes even at the `error` level. Tests cover that case, a reload to `warn`, and per-target directives.
+- **The store.** The hourly slots are stamped and reset on reuse. `in_window` covers the current hour and the 23 before it. Nothing is held across an `.await`, and a poisoned lock is recovered.
+- **The counting sites** do no I/O. A pool timeout is counted once at `From<sqlx::Error>`. The two hand-built `AppError::Database(e)` now go through `from`.
+- **The panel:** amber colour **and** text marker; Askama escapes the addresses; it sits behind the Health tab's admin gate (E2E as a Librarian).
+- **The E2E spec** asserts "at least" on the global counters (Rule #23).
+
+Low, not fixed:
+
+1. The window is 23 to 24 hours (hourly buckets), as the dev notes record. The label says "last 24 hours".
+2. `ProposalService::revoke_key` converts a database error twice, so a pool timeout there could be counted twice (dev notes).
+3. The corner cell of the table head is an empty `<td>`; axe passes.
+4. Manual chapter 2 says the admin page "has six tabs"; it has seven (outside this story).
