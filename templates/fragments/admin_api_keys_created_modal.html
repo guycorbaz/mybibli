@@ -2,7 +2,7 @@
    successful POST /admin/api-keys; after dismiss, only the argon2
    hash + 12-char prefix remain in the DB.
    No hx-confirm=, no inline scripts/styles (CSP 'self'). #}
-<dialog open aria-modal="true" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 rounded-lg">
+<dialog open aria-modal="true" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 rounded-lg">
     <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-xl w-full mx-4 border border-stone-200 dark:border-stone-700">
         <div class="p-6 space-y-4">
             <h3 class="text-lg font-bold text-stone-900 dark:text-white">{{ heading }}</h3>

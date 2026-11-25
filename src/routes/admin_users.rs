@@ -299,7 +299,11 @@ pub async fn admin_users_create(
     let password_hash = password::hash_password(&form.password)?;
 
     // Create user
-    UserModel::create(&state.pool, &username, &password_hash, &form.role).await?;
+    // Story 19-4 — a taken username is named in the request locale (the
+    // model's `Conflict("username_taken")` marker was shown raw).
+    UserModel::create(&state.pool, &username, &password_hash, &form.role)
+        .await
+        .map_err(|e| username_taken_conflict(e, loc, &username))?;
 
     // Render feedback and updated users list
     let success_msg = rust_i18n::t!("admin.users.success_created", locale = loc, username = &username)
@@ -498,14 +502,7 @@ pub async fn admin_users_update(
     )
     .await
     {
-        return match e {
-            AppError::Conflict(ref msg) if msg.contains("username_taken") => {
-                Err(AppError::Conflict(
-                    rust_i18n::t!("error.user.username_taken", locale = loc, username = &username).to_string(),
-                ))
-            }
-            _ => Err(e),
-        };
+        return Err(username_taken_conflict(e, loc, &username));
     }
 
     // Fetch updated user and render row
@@ -745,6 +742,17 @@ async fn render_user_row(
 }
 
 // ─── Tests ──────────────────────────────────────────────────────
+
+/// The model's `Conflict("username_taken")` marker as the localized
+/// refusal (Rule #9, story 19-4); other errors pass through.
+fn username_taken_conflict(err: AppError, loc: &'static str, username: &str) -> AppError {
+    match err {
+        AppError::Conflict(ref msg) if msg.contains("username_taken") => AppError::Conflict(
+            rust_i18n::t!("error.user.username_taken", locale = loc, username = username).to_string(),
+        ),
+        _ => err,
+    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -20,7 +20,10 @@ import { badUpcA, titleIdByName as titleId } from "../../helpers/catalog";
 import { expectHtmxProcessed } from "../../helpers/htmx";
 
 const CHECK_DIGIT = /check digit does not match|clé de contrôle ne correspond pas/i;
-const ISBN_TAKEN = /Another title already uses this ISBN|Un autre titre utilise déjà cet ISBN/i;
+// Story 19-4 (#679 item 7) — the holder is named, as a link.
+const ISBN_TAKEN = /already has this ISBN\. Check the number, or open that title|porte déjà cet ISBN\. Vérifiez le numéro, ou ouvrez ce titre/i;
+const TITLE_REQUIRED = /Title is required|Le titre est obligatoire/i;
+const MEDIA_INVALID = /Invalid media type|Type de média invalide/i;
 const GENERIC = /Server error|Erreur serveur/i;
 
 /** `isbn` with its check digit made wrong. */
@@ -93,6 +96,11 @@ test.describe("Issue #676 — form refusals show their message", () => {
     // 2. An ISBN another title holds, submitted with the Save button.
     await page.locator("#edit-title-submit").click();
     await expect(isbnError).toContainText(ISBN_TAKEN, { timeout: 10000 });
+    const holder = isbnError.locator("a");
+    await expect(holder).toHaveCount(1);
+    await expect(holder).toHaveAttribute("href", /^\/title\/\d+$/);
+    await expect(holder).not.toHaveAttribute("href", `/title/${id}`);
+    await expect(holder).not.toBeEmpty();
     await expect(page.locator("#edit-title-submit")).toBeFocused();
     await expect(isbn).toHaveValue(taken);
     await expect(page.locator("#feedback-list")).not.toContainText(GENERIC);
@@ -116,6 +124,90 @@ test.describe("Issue #676 — form refusals show their message", () => {
     expect(html).not.toContain(typo);
     expect(html).not.toContain(code);
     expect(html).not.toContain("typed before the refusal");
+  });
+
+  // Story 19-4 (#679 item 6) — an empty title and an unknown media type
+  // were answered in the page's feedback list; they show under their field.
+  test("the title edit form shows an empty title and an unknown media type under their fields", async ({
+    page,
+  }) => {
+    await page.context().clearCookies();
+    await loginAs(page, "librarian");
+    const name = `Fields FR ${Date.now()}`;
+    const id = await editNewTitle(page, name);
+    const title = page.locator("#edit-title");
+    const subtitle = page.locator("#edit-subtitle");
+    await subtitle.fill("typed before the refusal");
+
+    // 1. An empty title: the browser's `required` is removed in the page,
+    // so the server's refusal is what the librarian meets.
+    await title.evaluate((el) => el.removeAttribute("required"));
+    await title.fill("");
+    await title.press("Enter");
+    const titleError = page.locator("#edit-title-error");
+    await expect(titleError).toContainText(TITLE_REQUIRED, { timeout: 10000 });
+    await expect(title).toBeFocused();
+    await expect(title).toHaveValue("");
+    await expect(subtitle).toHaveValue("typed before the refusal");
+    await expect(page.locator("#feedback-list")).not.toContainText(TITLE_REQUIRED);
+    await title.fill(name);
+    await expect(titleError).toBeEmpty();
+
+    // 2. A media type outside the <select>, posted with the Save button.
+    const media = page.locator("#edit-media-type");
+    await media.evaluate((el) => {
+      const option = document.createElement("option");
+      option.value = "vinyl";
+      option.textContent = "Vinyl";
+      el.appendChild(option);
+    });
+    await media.selectOption("vinyl");
+    await page.locator("#edit-title-submit").click();
+    const mediaError = page.locator("#edit-media-type-error");
+    await expect(mediaError).toContainText(MEDIA_INVALID, { timeout: 10000 });
+    await expect(page.locator("#edit-title-submit")).toBeFocused();
+    await expect(media).toHaveValue("vinyl");
+    await expect(page.locator("#feedback-list")).not.toContainText(MEDIA_INVALID);
+
+    // Nothing was saved.
+    const saved = await page.request.get(`/title/${id}/metadata`, { headers: { "HX-Request": "true" } });
+    const html = await saved.text();
+    expect(html).toContain(name);
+    expect(html).not.toContain("typed before the refusal");
+  });
+
+  // Story 19-4 (#679 item 7) — the manual form's ISBN refusal names and
+  // links the title that holds the ISBN, in the feedback entry.
+  test("the manual title form names the title that holds the ISBN", async ({ page }) => {
+    await page.context().clearCookies();
+    await loginAs(page, "librarian");
+    const holderName = `Holder FR ${Date.now()}`;
+    const isbn = specIsbn("FR", 4);
+    const create = async (name: string) => {
+      await page.goto("/catalog");
+      await page.locator("#new-title-btn").click();
+      const form = page.locator("#title-form-container form");
+      await expectHtmxProcessed(form);
+      await form.locator("#title-field").fill(name);
+      await form.locator("#media-type-field").selectOption("book");
+      await page.waitForSelector("#page-count-field", { timeout: 10000 });
+      await form.locator("#genre-field").selectOption({ index: 1 });
+      await form.locator("#language-field").fill("fr");
+      await form.locator("#isbn-field").fill(isbn);
+      await form.locator('button[type="submit"]').click();
+    };
+    await create(holderName);
+    await expect(page.locator("#title-form-container form")).not.toBeVisible({ timeout: 10000 });
+    const holderId = await titleId(page, holderName);
+    expect(holderId).not.toBeNull();
+
+    const second = `Second FR ${Date.now()}`;
+    await create(second);
+    const entry = page.locator("#feedback-list .feedback-entry").filter({ hasText: ISBN_TAKEN });
+    await expect(entry).toBeVisible({ timeout: 10000 });
+    const link = entry.getByRole("link", { name: holderName });
+    await expect(link).toHaveAttribute("href", `/title/${holderId}`);
+    expect(await titleId(page, second)).toBeNull();
   });
 
   test("the wish list's By ISBN form shows its refusal under the field", async ({ page }) => {

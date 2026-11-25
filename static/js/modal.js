@@ -211,13 +211,22 @@
     // Story 19-1 (Rule #21) — a trigger that left the page with what an
     // answer removed (e.g. a deleted tree row) hands focus to the element its
     // `data-modal-focus-fallback` selector names (read on the detached
-    // trigger), if that element is still on the page.
+    // trigger), if that element is still on the page. Story 19-4 (#538):
+    // the value may list alternatives separated by " || ", tried in turn
+    // (the first that matches wins) — a selector list alone always picks
+    // the element first in document order.
     function focusFallbackOf(trigger) {
-        var sel = trigger && trigger.getAttribute("data-modal-focus-fallback");
-        var fallback = null;
-        try { fallback = sel ? document.querySelector(sel) : null; } catch (_) { fallback = null; }
-        if (fallback) {
-            try { fallback.focus(); } catch (_) { /* ignore */ }
+        var value = trigger && trigger.getAttribute("data-modal-focus-fallback");
+        if (!value) return;
+        var alternatives = value.split(" || ");
+        for (var i = 0; i < alternatives.length; i++) {
+            var sel = alternatives[i].trim();
+            var fallback = null;
+            try { fallback = sel ? document.querySelector(sel) : null; } catch (_) { fallback = null; }
+            if (fallback) {
+                try { fallback.focus(); } catch (_) { /* ignore */ }
+                return;
+            }
         }
     }
 

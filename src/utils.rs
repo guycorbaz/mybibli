@@ -265,6 +265,39 @@ pub fn feedback_html_with_link(
     feedback_html_action(variant, message, suggestion, &link)
 }
 
+/// Story 19-4 (#679 item 7) — the stand-in a localized message carries
+/// where [`message_with_link_html`] puts its link: pass it as the value of
+/// the name argument (`t!("error.isbn.already_used", title =
+/// LINK_PLACEHOLDER)`), so the name shows once, as the link.
+pub const LINK_PLACEHOLDER: &str = "[[link]]";
+
+/// Story 19-4 (#679 item 7) — `message` HTML-escaped, with its
+/// [`LINK_PLACEHOLDER`] replaced by `<a href="{href}">{link_text}</a>`
+/// (`link_text` escaped too; `href` must be a server-built same-origin
+/// path, e.g. `/title/{id}` from an integer). Everything is escaped except
+/// the `<a>` built here. A message without the placeholder gets the link
+/// appended.
+pub fn message_with_link_html(message: &str, href: &str, link_text: &str) -> String {
+    let link = format!(
+        r#"<a href="{}" class="underline font-semibold">{}</a>"#,
+        html_escape(href),
+        html_escape(link_text)
+    );
+    let escaped = html_escape(message);
+    if escaped.contains(LINK_PLACEHOLDER) {
+        escaped.replacen(LINK_PLACEHOLDER, &link, 1)
+    } else {
+        format!("{escaped} {link}")
+    }
+}
+
+/// Story 19-4 (#679 item 7) — a feedback entry whose message names a
+/// record as a link, inline (see [`message_with_link_html`]): the manual
+/// title form's ISBN refusal names the title that holds the ISBN.
+pub fn feedback_html_with_inline_link(variant: &str, message: &str, href: &str, link_text: &str) -> String {
+    feedback_html_entry(variant, &message_with_link_html(message, href, link_text), "", "")
+}
+
 /// Shared renderer behind [`feedback_html`] and [`feedback_html_undoable`].
 /// `extra_action_html` is injected verbatim inside the entry body after the
 /// suggestion paragraph — callers are responsible for its safety (the only
@@ -272,6 +305,17 @@ pub fn feedback_html_with_link(
 fn feedback_html_action(
     variant: &str,
     message: &str,
+    suggestion: &str,
+    extra_action_html: &str,
+) -> String {
+    feedback_html_entry(variant, &html_escape(message), suggestion, extra_action_html)
+}
+
+/// The entry markup; `message_html` is inserted verbatim — callers pass
+/// it escaped ([`feedback_html_action`], [`message_with_link_html`]).
+fn feedback_html_entry(
+    variant: &str,
+    message_html: &str,
     suggestion: &str,
     extra_action_html: &str,
 ) -> String {
@@ -320,7 +364,7 @@ fn feedback_html_action(
     format!(
         r#"<div class="p-3 border-l-4 {} {} rounded-r feedback-entry" role="status" data-feedback-variant="{}">
   <div class="flex items-start gap-2">
-    <svg class="{} w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">{}</svg>
+    <svg class="{} w-5 h-5 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">{}</svg>
     <div class="flex-1">
       <p class="text-stone-700 dark:text-stone-300">{}</p>
       {}
@@ -334,7 +378,7 @@ fn feedback_html_action(
         variant,
         icon_color,
         icon_path,
-        html_escape(message),
+        message_html,
         suggestion_html,
         extra_action_html,
         dismiss_html

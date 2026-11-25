@@ -10,14 +10,16 @@ use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
 use crate::middleware::locale::Locale;
 use crate::models::PaginatedList;
-use crate::models::series::{SeriesModel, SeriesType};
+use crate::models::series::{SeriesModel, SeriesSummaryRow, SeriesType};
 use crate::utils::feedback_html;
 use crate::services::series::{SeriesPositionInfo, SeriesService};
 
 /// Compute gap count for a closed series: total - owned, clamped to 0.
-fn compute_gap(series: &SeriesModel, owned: u64) -> u64 {
-    if series.series_type == SeriesType::Closed {
-        let total = series.total_volume_count.unwrap_or(0).max(0) as u64;
+/// `owned` is the distinct held positions of the shared counting rule
+/// (`filled_positions_join!` / `services::series::series_gaps`, #519).
+fn compute_gap(series_type: SeriesType, total_volume_count: Option<i32>, owned: u64) -> u64 {
+    if series_type == SeriesType::Closed {
+        let total = total_volume_count.unwrap_or(0).max(0) as u64;
         total.saturating_sub(owned)
     } else {
         0
@@ -38,7 +40,7 @@ fn default_page() -> u32 {
 
 /// A row in the series list with computed stats.
 pub struct SeriesListRow {
-    pub series: SeriesModel,
+    pub series: SeriesSummaryRow,
     pub owned_count: u64,
     pub gap_count: u64,
 }
@@ -62,7 +64,7 @@ pub struct SeriesListTemplate {
     pub prev_label: String,
     pub next_label: String,
     pub pagination_aria: String,
-    pub series: PaginatedList<SeriesModel>,
+    pub series: PaginatedList<SeriesSummaryRow>,
     pub series_rows: Vec<SeriesListRow>,
 }
 
@@ -77,19 +79,11 @@ pub async fn series_list_page(
     let pool = &state.pool;
     let loc = locale.0;
 
-    let series = SeriesModel::active_list(pool, params.page).await?;
-
-    // Compute stats for each series
-    let mut series_rows = Vec::with_capacity(series.items.len());
-    for s in &series.items {
-        let owned = SeriesModel::active_count_titles(pool, s.id).await?;
-        let gap = compute_gap(s, owned);
-        series_rows.push(SeriesListRow {
-            series: s.clone(),
-            owned_count: owned,
-            gap_count: gap,
-        });
-    }
+    // #519: one page read with the owned count of the shared rule
+    // (distinct positions within 1..=total), as the dashboard and the
+    // MCP tools count it — no per-row query.
+    let series = SeriesModel::list_summaries(pool, "", false, params.page).await?;
+    let series_rows = series.items.iter().map(series_list_row).collect();
 
     // CR #35 (v1.7.11 slice): shared page-template fields built via base_context.
     let base = crate::utils::base_context(&session, loc, "series", &uri, state.page_settings());
@@ -117,6 +111,15 @@ pub async fn series_list_page(
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
         Err(_) => Err(AppError::TemplateRenderFailed { template: "series" }),
+    }
+}
+
+/// #519 — a `/series` row from a summary of the shared counting rule.
+fn series_list_row(s: &SeriesSummaryRow) -> SeriesListRow {
+    SeriesListRow {
+        series: s.clone(),
+        owned_count: s.owned_count,
+        gap_count: compute_gap(s.series_type, s.total_volume_count, s.owned_count),
     }
 }
 
@@ -246,9 +249,13 @@ pub async fn series_detail_page(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
-    let mut positions = SeriesService::get_series_positions(pool, &series).await?;
-    let owned = positions.iter().filter(|p| p.title_id.is_some()).count() as u64;
-    let gap = compute_gap(&series, owned);
+    // #519: the header counts as `/series`, the dashboard and the MCP
+    // tools do (`series_gaps`), not the grid's cells — an open series
+    // holding one position twice, or a closed one without a total,
+    // would otherwise disagree.
+    let (mut positions, gaps) = SeriesService::get_series_positions_and_gaps(pool, &series).await?;
+    let owned = gaps.owned_positions;
+    let gap = compute_gap(series.series_type, series.total_volume_count, owned);
     let series_name_for_grid = series.name.clone();
 
     // Story 11-11: name the gaps with the series' expected tomes; those

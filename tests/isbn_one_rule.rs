@@ -103,15 +103,24 @@ async fn an_invalid_isbn_typed_by_hand_is_refused_with_a_hint(pool: DbPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn an_isbn_another_title_holds_is_refused_by_hand(pool: DbPool) {
     let (app, b) = admin(&pool).await;
-    let held = seed_title(&pool, "Held").await;
+    let held = seed_title(&pool, "Held <b>x</b>").await;
     sqlx::query("UPDATE titles SET isbn = '9782205001211' WHERE id = ?")
         .bind(held)
         .execute(&pool)
         .await
         .unwrap();
 
+    // Story 19-4 (#679 item 7) — the feedback entry names the holder as a
+    // link, escaped.
     let (_, body) = create_by_hand(&app, &b, &pool, "2205001213").await;
-    assert!(body.contains("Another title already uses this ISBN"), "{body}");
+    assert!(body.contains("feedback-entry") && body.contains(r#"data-feedback-variant="error""#), "{body}");
+    assert!(
+        body.contains(&format!(
+            r#"“<a href="/title/{held}" class="underline font-semibold">Held &lt;b&gt;x&lt;/b&gt;</a>” already has this ISBN. Check the number, or open that title."#
+        )),
+        "{body}"
+    );
+    assert!(!body.contains("<b>x"), "{body}");
     assert_eq!(titles_with(&pool, "9782205001211").await, vec![held]);
 }
 

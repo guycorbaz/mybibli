@@ -119,12 +119,42 @@ test.describe("Story 8-4 — Admin Reference Data", () => {
 
     const feedback = page.locator("#feedback-list");
     await expect(feedback.locator(".feedback-entry").first()).toContainText(
-      new RegExp(`${genre}.*(already exists|existe déjà)`),
+      // Story 19-4 (Rule #9) — what happened, why, what to do.
+      new RegExp(
+        `${genre}.*(was not saved: this list already has an entry with that name\\. Choose another name, or use the existing entry|n'a pas été enregistré : cette liste contient déjà une entrée de ce nom\\. Choisissez un autre nom, ou utilisez l'entrée existante)`,
+      ),
       { timeout: 10000 },
     );
     await expect(feedback).not.toContainText(/Server error|Erreur serveur/i);
     await expect(addSlot).toBeVisible();
     await expect(nameInput).toHaveValue(genre);
+  });
+
+  // Story 19-4 (#689 item 3) — a save answered with a feedback-list OOB
+  // update swaps the region's content: the region keeps `aria-live` and
+  // `aria-relevant`, so the next entry is announced too.
+  test("two saves in a row keep the feedback region live", async ({ page }) => {
+    await loginAs(page, "admin");
+    await page.goto("/admin?tab=reference_data");
+    const openAdd = page.getByRole("button", { name: /Add genre|Ajouter un genre/i });
+    const addSlot = page.locator("#admin-ref-genres-add");
+    const nameInput = addSlot.locator('input[name="name"]');
+    const region = page.locator("#feedback-list");
+    await expect(region).toHaveCount(1);
+
+    for (const prefix of ["RD-Live-A", "RD-Live-B"]) {
+      const genre = uniqueSlug(prefix);
+      if (!(await addSlot.isVisible())) await openAdd.click();
+      await nameInput.fill(genre);
+      await addSlot.getByRole("button", { name: /Save|Enregistrer/i }).click();
+      await expect(
+        page.locator("#admin-ref-genres-list").getByText(genre, { exact: true }),
+      ).toBeVisible({ timeout: 10000 });
+      await expect(region.locator(".feedback-entry")).toContainText(genre);
+      await expect(region).toHaveCount(1);
+      await expect(region).toHaveAttribute("aria-live", "polite");
+      await expect(region).toHaveAttribute("aria-relevant", "additions");
+    }
   });
 
   test("LocationNodeType rename cascades into storage_locations", async ({

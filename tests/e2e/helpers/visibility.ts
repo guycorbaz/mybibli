@@ -150,3 +150,19 @@ export async function expectReallySeen(
     })
     .toEqual([]);
 }
+
+/**
+ * Story 19-4 (#712) — the alpha of the element's computed
+ * `background-color` (1 for an opaque `rgb()`, 0 for `transparent`).
+ * Reads `rgba(r, g, b, a)` and the slash forms Chromium gives a
+ * `color-mix()` (`oklab(0 0 0 / 0.5)`, `color(srgb 0 0 0 / 0.5)`).
+ */
+export async function backgroundAlpha(locator: Locator): Promise<number> {
+  const color = await locator.evaluate((el) => getComputedStyle(el).backgroundColor);
+  if (color === "transparent") return 0;
+  const slash = /\/\s*([\d.]+%?)\s*\)$/.exec(color);
+  const comma = /^rgba\([^)]*,\s*([\d.]+)\s*\)$/.exec(color);
+  const raw = slash?.[1] ?? comma?.[1];
+  if (raw === undefined) return 1;
+  return raw.endsWith("%") ? parseFloat(raw) / 100 : parseFloat(raw);
+}

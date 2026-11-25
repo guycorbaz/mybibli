@@ -457,7 +457,7 @@ error:
   isbn:
     invalid_checksum: "ISBN invalide : la clé de contrôle ne correspond pas — vérifiez la saisie"
     invalid_format: "Ce n'est pas un ISBN — 10 ou 13 chiffres attendus, p. ex. 978-2-07-036024-6"
-    already_used: "Un autre titre utilise déjà cet ISBN — refus de créer un doublon"
+    already_used: "« %{title} » porte déjà cet ISBN. Vérifiez le numéro, ou ouvrez ce titre."
     not_found: ISBN introuvable
   upc:
     invalid_checksum: "UPC invalide : la clé de contrôle ne correspond pas — vérifiez la saisie"
@@ -480,7 +480,7 @@ error:
     username_empty: "Le nom d'utilisateur est requis"
     username_too_short: "Le nom d'utilisateur doit contenir au moins 3 caractères"
     username_too_long: "Le nom d'utilisateur doit contenir au plus 255 caractères"
-    username_taken: "Le nom d'utilisateur « %{username} » est déjà pris"
+    username_taken: "Le compte n'a pas été enregistré : le nom d'utilisateur « %{username} » est déjà pris. Choisissez-en un autre."
     password_too_short: "Le mot de passe doit contenir au moins 8 caractères"
     password_too_long: "Le mot de passe ne peut dépasser 72 caractères"
     role_invalid: "Le rôle doit être Bibliothécaire ou Admin"
@@ -488,17 +488,17 @@ error:
     last_admin: "Au moins un administrateur actif doit rester"
     last_admin_demote: "Vous êtes le seul administrateur actif — créez-en un autre avant de changer votre rôle"
     not_found: "Utilisateur introuvable"
-    version_mismatch: "L'utilisateur a été modifié par un autre administrateur — rechargez et réessayez"
+    version_mismatch: "Votre modification n'a pas été enregistrée : un autre administrateur a modifié ce compte entre-temps. Rechargez la page, puis refaites votre modification."
   reference_data:
     name_empty: "Le nom est requis"
     name_too_long: "Le nom ne peut dépasser 255 caractères"
-    name_taken: "« %{name} » existe déjà"
+    name_taken: "« %{name} » n'a pas été enregistré : cette liste contient déjà une entrée de ce nom. Choisissez un autre nom, ou utilisez l'entrée existante."
     in_use_with_link: "Suppression impossible : %{count} %{plural} utilisent ce %{singular}. %{link_html}"
     in_use_no_link: "Suppression impossible : %{count} %{plural} utilisent ce %{singular}."
-    version_mismatch: "Entrée modifiée par un autre administrateur — rechargez et réessayez"
+    version_mismatch: "Votre modification n'a pas été enregistrée : un autre administrateur a modifié cette entrée entre-temps. Rechargez la page, puis refaites votre modification."
     not_found: "Entrée introuvable"
-    invalid_version: "Version invalide — rechargez la page et réessayez"
-    node_type_name_too_long_for_cascade: "Le nom ne peut dépasser %{max} caractères (les types de nœud sont propagés vers storage_locations)"
+    invalid_version: "Votre modification n'a pas été enregistrée : la page n'est plus à jour. Rechargez-la, puis refaites votre modification."
+    node_type_name_too_long_for_cascade: "Le nom ne peut dépasser %{max} caractères."
     name_invalid_chars: "Le nom contient des caractères Unicode invisibles ou directionnels non autorisés"
   system:
     overdue_threshold_invalid: "Le seuil doit être ≥ 1 jour"

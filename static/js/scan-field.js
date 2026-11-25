@@ -77,7 +77,7 @@
         var html = '<div class="p-3 border-l-4 ' + c.border + " " + c.bg +
             ' rounded-r feedback-entry" role="status" data-feedback-variant="' + variant + '">' +
             '<div class="flex items-start gap-2">' +
-            '<svg class="' + c.icon + ' w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">' +
+            '<svg class="' + c.icon + ' w-5 h-5 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">' +
             c.svg + '</svg>' +
             '<div class="flex-1"><p class="text-stone-700 dark:text-stone-300">' +
             escapedMessage + '</p></div>' +

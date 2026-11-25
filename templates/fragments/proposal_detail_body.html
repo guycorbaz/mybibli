@@ -37,7 +37,7 @@
         <button type="button" id="proposal-accept-button"
                 hx-get="/proposals/{{ body.id }}/accept-modal?version={{ body.version }}"
                 hx-target="#modal-slot" hx-swap="innerHTML"
-                data-modal-trigger aria-haspopup="dialog" aria-expanded="false"
+                data-modal-trigger data-modal-focus-fallback="#proposal-back-link" aria-haspopup="dialog" aria-expanded="false"
                 class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-md">
             {{ l.t("accept_button") }}
         </button>
@@ -45,7 +45,7 @@
         <button type="button" id="proposal-reject-button"
                 hx-get="/proposals/{{ body.id }}/reject-modal?version={{ body.version }}"
                 hx-target="#modal-slot" hx-swap="innerHTML"
-                data-modal-trigger aria-haspopup="dialog" aria-expanded="false"
+                data-modal-trigger data-modal-focus-fallback="#proposal-back-link" aria-haspopup="dialog" aria-expanded="false"
                 class="px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20">
             {{ l.t("reject_button") }}
         </button>
@@ -288,6 +288,7 @@
                             hx-get="/proposals/{{ body.id }}/items/{{ line.item_id }}/remove-modal?version={{ body.version }}"
                             hx-target="#modal-slot" hx-swap="innerHTML"
                             data-modal-trigger aria-haspopup="dialog" aria-expanded="false"
+                            data-modal-focus-fallback="#proposal-items [data-remove-line], #proposal-items [data-action='inline-form-add-toggle'] || #proposal-back-link"
                             class="px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20">
                         {{ l.t("remove_button") }}
                     </button>

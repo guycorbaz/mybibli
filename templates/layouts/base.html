@@ -100,7 +100,7 @@
        heading/body/retry text is in the visible DOM directly. #}
     <div id="connection-lost-overlay"
          role="alert" aria-live="assertive" aria-atomic="true"
-         class="hidden fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center motion-safe:transition-opacity motion-safe:duration-200"
+         class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center motion-safe:transition-opacity motion-safe:duration-200"
          data-i18n-restored-toast="{{ base.connection_status.restored_toast|e }}">
         <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 border border-stone-200 dark:border-stone-700">
             <h2 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ base.connection_status.lost_heading }}</h2>

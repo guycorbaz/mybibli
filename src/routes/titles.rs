@@ -8,7 +8,7 @@ use axum::{Extension, Form};
 use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::Session;
-use crate::middleware::htmx::{HxRequest, field_refusal};
+use crate::middleware::htmx::{HxRequest, LINK_PLACEHOLDER, field_refusal, field_refusal_with_link};
 use crate::middleware::locale::Locale;
 use crate::models::contributor::TitleContributorModel;
 use crate::models::genre::GenreModel;
@@ -350,7 +350,7 @@ fn title_detail_fragment(
     format!(
         r#"<div class="max-w-4xl mx-auto px-4 py-8">
             <div class="flex gap-8">
-                <div class="flex-shrink-0">{}</div>
+                <div class="shrink-0">{}</div>
                 <div class="flex-1">
                     <div id="title-metadata">
                         <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{}</h1>
@@ -721,6 +721,9 @@ pub(crate) fn should_clear_flag(accept: &Option<String>, changed: bool) -> bool 
 
 /// Issue #676 — the slot under the edit form's ISBN field.
 const EDIT_ISBN_SLOT: &str = "edit-isbn-error";
+/// Story 19-4 (#679 item 6) — the slots under the title and media-type fields.
+const EDIT_TITLE_SLOT: &str = "edit-title-error";
+const EDIT_MEDIA_TYPE_SLOT: &str = "edit-media-type-error";
 
 pub async fn update_title(
     State(state): State<AppState>,
@@ -733,15 +736,45 @@ pub async fn update_title(
     let pool = &state.pool;
     let loc = locale.0;
 
+    // Story 19-4 (#679 item 6) — the hint shows under the title field.
     if form.title.trim().is_empty() {
-        return Err(AppError::BadRequest(
-            rust_i18n::t!("error.title.required", locale = loc).to_string(),
+        return Ok(field_refusal(
+            StatusCode::BAD_REQUEST,
+            EDIT_TITLE_SLOT,
+            &rust_i18n::t!("error.title.required", locale = loc),
         ));
     }
 
     let old_title = TitleModel::find_by_id(pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
+
+    // Issue #331 — media_type bascule (book ↔ bd ↔ cd ↔ dvd ↔ magazine ↔ report).
+    // Absent / empty form field → keep the existing value (back-compat with
+    // existing automated tests that built `TitleEditForm` without this field
+    // and with the create-and-conflict-confirm flow that doesn't touch it).
+    // A non-empty value MUST parse as a known `MediaType` variant; otherwise
+    // the user gets a localized 400 instead of a silent write of garbage.
+    // Story 19-4 (#679 item 6): checked before the UPC (which reads the
+    // media type), the hint shows under the media-type field.
+    let resolved_media_type = match form
+        .media_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(s) => match s.parse::<crate::models::media_type::MediaType>() {
+            Ok(mt) => mt.to_string(),
+            Err(_) => {
+                return Ok(field_refusal(
+                    StatusCode::BAD_REQUEST,
+                    EDIT_MEDIA_TYPE_SLOT,
+                    &rust_i18n::t!("error.media_type.invalid", locale = loc),
+                ));
+            }
+        },
+        None => old_title.media_type.clone(),
+    };
 
     // Defensive fallback: if the submitted genre_id is 0 (missing field,
     // empty <select>, or a corrupt row where title.genre_id pointed at a
@@ -804,10 +837,13 @@ pub async fn update_title(
         if let Some(existing) = TitleModel::find_by_isbn(pool, new_isbn).await?
             && existing.id != id
         {
-            return Ok(field_refusal(
+            // Story 19-4 (#679 item 7) — the holder, named as a link.
+            return Ok(field_refusal_with_link(
                 StatusCode::CONFLICT,
                 EDIT_ISBN_SLOT,
-                &rust_i18n::t!("error.isbn.already_used", locale = loc),
+                &rust_i18n::t!("error.isbn.already_used", locale = loc, title = LINK_PLACEHOLDER),
+                &format!("/title/{}", existing.id),
+                &existing.title,
             ));
         }
     }
@@ -865,29 +901,6 @@ pub async fn update_title(
     let old_isbn = old_title.isbn.clone();
     let old_issn = old_title.issn.clone();
     let old_upc = old_title.upc.clone();
-
-    // Issue #331 — media_type bascule (book ↔ bd ↔ cd ↔ dvd ↔ magazine ↔ report).
-    // Absent / empty form field → keep the existing value (back-compat with
-    // existing automated tests that built `TitleEditForm` without this field
-    // and with the create-and-conflict-confirm flow that doesn't touch it).
-    // A non-empty value MUST parse as a known `MediaType` variant; otherwise
-    // the user gets a localized 400 instead of a silent write of garbage.
-    let resolved_media_type = match form
-        .media_type
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        Some(s) => match s.parse::<crate::models::media_type::MediaType>() {
-            Ok(mt) => mt.to_string(),
-            Err(_) => {
-                return Err(AppError::BadRequest(
-                    rust_i18n::t!("error.media_type.invalid", locale = loc).to_string(),
-                ));
-            }
-        },
-        None => old_title.media_type.clone(),
-    };
 
 
     let updated = TitleModel::update_full(

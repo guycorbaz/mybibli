@@ -13,6 +13,14 @@ use crate::models::title::{NewTitle, TitleModel};
 /// list (Fix #314 — dedupe with the "Sans genre" #205 affordance).
 pub const DEFAULT_GENRE_NAME: &str = "Non classé";
 
+/// Story 19-4 (#679 item 7) — the outcome of [`TitleService::create_manual`].
+#[derive(Debug)]
+pub enum ManualCreate {
+    Created(Box<TitleModel>),
+    /// Another live title holds the ISBN: nothing was written.
+    IsbnTaken { id: u64, title: String },
+}
+
 pub struct TitleService;
 
 impl TitleService {
@@ -240,12 +248,14 @@ impl TitleService {
 
     /// Create a title from manual form input. Story 17-3 (#565): the ISBN
     /// goes through the one rule (`utils::normalize_isbn_input`) and is
-    /// refused when another live title holds it (as the edit form does).
+    /// refused when another live title holds it (as the edit form does) —
+    /// story 19-4 (#679 item 7): that title is handed back
+    /// ([`ManualCreate::IsbnTaken`]) so the refusal can name and link it.
     pub async fn create_manual(
         pool: &DbPool,
         form: &TitleForm,
         loc: &str,
-    ) -> Result<TitleModel, AppError> {
+    ) -> Result<ManualCreate, AppError> {
         if form.title.trim().is_empty() {
             return Err(AppError::BadRequest(
                 rust_i18n::t!("error.title.required", locale = loc).to_string(),
@@ -316,11 +326,12 @@ impl TitleService {
             Some(Err(e)) => return Err(AppError::BadRequest(e.message(loc))),
         };
         if let Some(isbn) = &isbn
-            && TitleModel::find_by_isbn(pool, isbn).await?.is_some()
+            && let Some(holder) = TitleModel::find_by_isbn(pool, isbn).await?
         {
-            return Err(AppError::Conflict(
-                rust_i18n::t!("error.isbn.already_used", locale = loc).to_string(),
-            ));
+            return Ok(ManualCreate::IsbnTaken {
+                id: holder.id,
+                title: holder.title,
+            });
         }
 
         let new_title = NewTitle {
@@ -347,7 +358,9 @@ impl TitleService {
             original_title: None,
         };
 
-        TitleModel::create(pool, &new_title).await
+        TitleModel::create(pool, &new_title)
+            .await
+            .map(|t| ManualCreate::Created(Box::new(t)))
     }
 
     pub async fn find_default_genre_id(pool: &DbPool) -> Result<u64, AppError> {

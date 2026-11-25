@@ -23,6 +23,7 @@
  */
 import { test, expect, request as playwrightRequest, Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 import { specIsbn } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
 import { createApiKey, revokeApiKey } from "../../helpers/api-keys";
@@ -72,11 +73,16 @@ async function rejectFromDetail(page: Page, reason: string) {
   if (reason) {
     await dialog.locator("textarea[name=reason]").fill(reason);
   }
-  await dialog.locator("[data-modal-confirm]").click();
+  const confirm = dialog.locator("[data-modal-confirm]");
+  await expectHtmxProcessed(confirm);
+  await confirm.click();
   await expect(dialog).toBeHidden({ timeout: 10000 });
   await expect(page.locator("#feedback-list").getByText(REJECTED)).toBeVisible({
     timeout: 10000,
   });
+  // Story 19-4 (#538) — the answer swapped the Reject button away: focus
+  // goes to the back link above the heading, not to <body>.
+  await expect(page.locator("#proposal-back-link")).toBeFocused();
   await expect(page.locator("#proposal-detail-body")).toHaveAttribute(
     "data-proposal-status",
     "rejected",

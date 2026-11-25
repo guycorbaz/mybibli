@@ -461,7 +461,7 @@ error:
   isbn:
     invalid_checksum: "Invalid ISBN: the check digit does not match — check for a typo"
     invalid_format: "Not an ISBN — expected 10 or 13 digits, e.g. 978-2-07-036024-6"
-    already_used: "Another title already uses this ISBN — refusing to create a duplicate"
+    already_used: "“%{title}” already has this ISBN. Check the number, or open that title."
     not_found: ISBN not found
   upc:
     invalid_checksum: "Invalid UPC: the check digit does not match — check for a typo"
@@ -484,7 +484,7 @@ error:
     username_empty: Username is required
     username_too_short: Username must be at least 3 characters
     username_too_long: Username must be at most 255 characters
-    username_taken: "Username '%{username}' is already taken"
+    username_taken: "The account was not saved: the username “%{username}” is already taken. Choose another username."
     password_too_short: Password must be at least 8 characters
     password_too_long: Password must be at most 72 characters
     role_invalid: Role must be Librarian or Admin
@@ -492,17 +492,17 @@ error:
     last_admin: At least one active admin must remain
     last_admin_demote: "You are the only active admin — create another before changing your role"
     not_found: User not found
-    version_mismatch: "User was modified by another admin — reload and retry"
+    version_mismatch: "Your change was not saved: another administrator changed this account meanwhile. Reload the page, then make your change again."
   reference_data:
     name_empty: Name is required
     name_too_long: Name must be at most 255 characters
-    name_taken: "'%{name}' already exists"
+    name_taken: "“%{name}” was not saved: this list already has an entry with that name. Choose another name, or use the existing entry."
     in_use_with_link: "Cannot delete: %{count} %{plural} use this %{singular}. %{link_html}"
     in_use_no_link: "Cannot delete: %{count} %{plural} use this %{singular}."
-    version_mismatch: "Entry was modified by another admin — reload and retry"
+    version_mismatch: "Your change was not saved: another administrator changed this entry meanwhile. Reload the page, then make your change again."
     not_found: Entry not found
-    invalid_version: "Invalid version — reload the page and retry"
-    node_type_name_too_long_for_cascade: "Name must be at most %{max} characters (location node types cascade to storage_locations)"
+    invalid_version: "Your change was not saved: the page is out of date. Reload it, then make your change again."
+    node_type_name_too_long_for_cascade: "Name must be at most %{max} characters."
     name_invalid_chars: "Name contains invisible or directional Unicode characters that are not allowed"
   system:
     overdue_threshold_invalid: "Threshold must be ≥ 1 day"
