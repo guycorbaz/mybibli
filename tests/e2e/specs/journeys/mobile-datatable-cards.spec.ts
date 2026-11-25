@@ -15,8 +15,10 @@ import {
   scanTitleAndVolume,
   createBorrower,
   createLoan,
+  borrowerIdByName,
 } from "../../helpers/loans";
 import { specIsbn } from "../../helpers/isbn";
+import { specVcode } from "../../helpers/vcode";
 
 const MOBILE_VIEWPORT = { width: 375, height: 667 };
 
@@ -30,7 +32,7 @@ test.describe("Story 10-3 — mobile DataTable card mode", () => {
   }) => {
     // Seed: borrower + title + volume + loan.
     const isbn = specIsbn("MC", 1);
-    const volumeLabel = "V8001";
+    const volumeLabel = specVcode("MC", 0);
     const borrowerName = "MC-Loans-User-1";
     await scanTitleAndVolume(page, isbn, volumeLabel);
     await createBorrower(page, borrowerName);
@@ -56,13 +58,15 @@ test.describe("Story 10-3 — mobile DataTable card mode", () => {
   test("/borrowers renders mobile cards on small viewport", async ({
     page,
   }) => {
-    await createBorrower(page, "MC-Borrower-User-2");
+    // Story 19-2: the list is sorted by name and paginated (25 a page); a
+    // leading digit keeps this borrower on page 1 whatever else exists.
+    await createBorrower(page, "0MC-Borrower-User-2");
     await page.setViewportSize(MOBILE_VIEWPORT);
     await page.goto("/borrowers");
     const mobileCards = page.locator("#borrowers-cards-mobile");
     await expect(mobileCards).toBeVisible();
     await expect(
-      mobileCards.locator("article", { hasText: "MC-Borrower-User-2" }),
+      mobileCards.locator("article", { hasText: "0MC-Borrower-User-2" }),
     ).toBeVisible();
   });
 
@@ -71,17 +75,14 @@ test.describe("Story 10-3 — mobile DataTable card mode", () => {
   }) => {
     // Seed: borrower + title + volume + loan
     const isbn = specIsbn("MC", 3);
-    const volumeLabel = "V8003";
+    const volumeLabel = specVcode("MC", 1);
     const borrowerName = "MC-Borrower-Detail-User-3";
     await scanTitleAndVolume(page, isbn, volumeLabel);
     await createBorrower(page, borrowerName);
     await createLoan(page, volumeLabel, borrowerName);
 
-    // Resolve the borrower's detail URL via the /borrowers list
-    await page.goto("/borrowers");
-    const link = page.locator(`a:has-text("${borrowerName}")`).first();
-    const href = await link.getAttribute("href");
-    expect(href).toMatch(/\/borrower\/\d+/);
+    // Story 19-2: by id — the /borrowers list is paginated by name.
+    const href = `/borrower/${await borrowerIdByName(page, borrowerName)}`;
 
     await page.setViewportSize(MOBILE_VIEWPORT);
     await page.goto(href!);

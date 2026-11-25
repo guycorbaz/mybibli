@@ -13,8 +13,7 @@
  * (the series page still shows no expected tome).
  *
  * Spec ID "SQ" for ISBNs; unique series names and key label; assertions
- * only on rows this test creates. The spec sorts after the specs that
- * assume no series exists (D-11-11-6).
+ * only on rows this test creates.
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";

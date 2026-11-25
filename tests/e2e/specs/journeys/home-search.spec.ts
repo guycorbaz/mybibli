@@ -1,27 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
-import { specIsbn } from "../../helpers/isbn";
+import { specIsbn, specLcode } from "../../helpers/isbn";
 import { simulateScan, simulateTyping } from "../../helpers/scanner";
 import { scanTitleAndVolume } from "../../helpers/loans";
 import { createLocation } from "../../helpers/locations";
+import { specVcode, vcodeSlot } from "../../helpers/vcode";
 
 const SPEC_ID = "HS";
-
-/**
- * Per-test unique CHAR(5) label generator (V0001 … V0999 …).
- * Combines a process-local counter with `Date.now() % 1000` so two
- * parallel tests in the same wall-clock millisecond can't collide on
- * the UNIQUE constraint of `volumes.label` / `storage_locations.label`.
- * Story-9-9 review fix — the prior `Date.now() % 10000` formula was
- * collision-prone under `fullyParallel: true`.
- */
-let labelCounter = 0;
-function uniqueLabel(prefix: "V" | "L"): string {
-  labelCounter = (labelCounter + 1) % 100;
-  const counterPart = labelCounter.toString().padStart(2, "0");
-  const timePart = (Date.now() % 100).toString().padStart(2, "0");
-  return `${prefix}${counterPart}${timePart}`;
-}
 
 test.describe("Home page search", () => {
   test("should display search field on home page", async ({ page }) => {
@@ -92,8 +77,9 @@ test.describe("Home page search", () => {
 
   test("should focus search field when pressing / key", async ({ page }) => {
     await page.goto("/");
-    // Click body first to ensure no input is focused
-    await page.locator("body").click();
+    // Ensure no input is focused — without a click: the centre of <body>
+    // can be a title link once the library is large (story 19-2).
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press("/");
     const searchField = page.locator("#search-field");
     await expect(searchField).toBeFocused();
@@ -201,11 +187,8 @@ test.describe("Home page scanner detection — scan to navigate", () => {
   });
 
   test("scanning a known V-code redirects to /volume/<id>", async ({ page }) => {
-    // Per story-9-8 catch + 9-9 review fix — V-code derived from
-    // `uniqueLabel("V")` which combines a per-test counter with
-    // `Date.now() % 1000` so two parallel tests in the same wall-clock
-    // ms can't collide on the UNIQUE constraint of `volumes.label`.
-    const vcode = uniqueLabel("V");
+    // The V-code comes from the spec's `specVcode` block.
+    const vcode = specVcode(SPEC_ID, 0);
     const isbn = specIsbn(SPEC_ID, 1);
 
     // Seed: create a title + volume with the unique V-code via the catalog
@@ -223,9 +206,9 @@ test.describe("Home page scanner detection — scan to navigate", () => {
   test("scanning a known L-code redirects to /location/<id>", async ({
     page,
   }) => {
-    // L-code via `uniqueLabel("L")` for the same parallel-collision
-    // resistance as V-codes. CHAR(5) constrained.
-    const lcode = uniqueLabel("L");
+    // Story 19-2: bucket 7 from L7500, one code per attempt slot (the old
+    // counter + clock draw spanned every other spec's L-codes).
+    const lcode = specLcode(7, 500 + vcodeSlot());
     const locationName = `HS-9-9 Shelf ${Date.now()}`;
 
     await createLocation(page, locationName, lcode);

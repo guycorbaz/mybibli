@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume, createBorrower, seedOverdueLoan } from "../../helpers/loans";
+import { specVcode } from "../../helpers/vcode";
 
 test.describe("Home page", () => {
   test("should display mybibli title", async ({ page }) => {
@@ -239,8 +240,7 @@ test.describe("Home page — What needs attention / Unshelved indicator", () => 
     // #unshelved-list rendering would NOT be caught (Foundation Rule
     // #7 violation).
     const isbn = specIsbn("UH", 1);
-    // 4-digit V-code unique per test run; helper expects `V` prefix.
-    const vcode = `V${(Date.now() % 9000 + 1000).toString()}`;
+    const vcode = specVcode("UH", 0);
     await scanTitleAndVolume(page, isbn, vcode);
 
     await page.goto("/");
@@ -306,7 +306,7 @@ test.describe("Home page — Overdue loans indicator", () => {
     await loginAs(page, "librarian");
     const seq = Math.floor(Math.random() * 99999);
     const isbn = specIsbn("OV", seq);
-    const vcode = `V${(Date.now() % 9000 + 1000).toString()}`;
+    const vcode = specVcode("UH", 1);
     const borrowerName = `OV-Overdue Borrower ${seq}`;
     await scanTitleAndVolume(page, isbn, vcode);
     await createBorrower(page, borrowerName);

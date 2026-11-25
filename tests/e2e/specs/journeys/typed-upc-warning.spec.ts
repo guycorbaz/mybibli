@@ -17,6 +17,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { badUpcA, titleIdByName as titleId } from "../../helpers/catalog";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 /** `length` random digits, never starting like an ISBN or an ISSN prefix. */
 function digits(length: number): string {
@@ -35,7 +36,7 @@ function validEan13(): string {
 async function openTitleForm(page: Page, name: string) {
   await page.locator("#new-title-btn").click();
   const form = page.locator("#title-form-container form");
-  await expect(form).toBeVisible({ timeout: 10000 });
+  await expectHtmxProcessed(form);
   await form.locator("#title-field").fill(name);
   await form.locator("#media-type-field").selectOption("book");
   await page.waitForSelector("#page-count-field", { timeout: 10000 });
@@ -90,6 +91,7 @@ test.describe("Story 17-4 — typed codes warned like scanned ones", () => {
     await page.getByRole("button", { name: /Edit metadata|Modifier les métadonnées/i }).click();
     const upc = page.locator("#edit-upc");
     await expect(upc).toBeVisible({ timeout: 5000 });
+    await expectHtmxProcessed(page.locator("#title-edit-form"));
     const pc = page.locator("#edit-page-count");
     if (await pc.isVisible({ timeout: 500 }).catch(() => false)) {
       if (!(await pc.inputValue())) await pc.fill("0");

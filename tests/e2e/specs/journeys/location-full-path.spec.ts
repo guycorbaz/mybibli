@@ -4,14 +4,16 @@ import { specIsbn, specLcode } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
 import { createLocation, createChildLocation } from "../../helpers/locations";
 import { checkAccessibility } from "../../helpers/accessibility";
+import { specVcode } from "../../helpers/vcode";
 
 /**
  * Story 13-6 (#582) — the title page lists each volume with the FULL path
  * of its location (root → … → leaf, L-code kept), so "Shelf 3" is never
  * ambiguous. Spec ID "FP" ("LP" is taken by labels-page.spec.ts).
  *
- * Codes are derived from the clock inside bands no other spec hardcodes
- * (L6000–L6998, V0600–V0999) so a retry against an un-reset DB starts fresh.
+ * L-codes are derived from the clock inside a band no other spec hardcodes
+ * (L6000–L6998) so a retry against an un-reset DB starts fresh; the V-code
+ * comes from the spec's `specVcode` block (a fresh slot on a retry).
  */
 test.describe("Full location path on the title page (story 13-6)", () => {
   test("a volume shelved three levels deep shows root → room → shelf", async ({
@@ -21,8 +23,7 @@ test.describe("Full location path on the title page (story 13-6)", () => {
 
     // Collision-free codes derived from the clock. L-codes: bucket 6 of
     // `specLcode` (no other spec uses it), three consecutive sequences.
-    // V-codes: band V0600–V0999 — no hardcoded V-code of another spec, and
-    // disjoint from home.spec.ts (`V${Date.now() % 9000 + 1000}` ≥ V1000).
+    // V-code: the spec's `specVcode` block.
     const now = Date.now();
     const suffix = `${now % 100000}`;
     const root = `FP-House-${suffix}`;
@@ -32,7 +33,7 @@ test.describe("Full location path on the title page (story 13-6)", () => {
     const rootCode = specLcode(6, seq);
     const roomCode = specLcode(6, seq + 1);
     const shelfCode = specLcode(6, seq + 2);
-    const vcode = `V0${600 + (now % 400)}`;
+    const vcode = specVcode("FP", 0);
     const isbn = specIsbn("FP", 1000 + Math.floor(Math.random() * 8999));
 
     await createLocation(page, root, rootCode);

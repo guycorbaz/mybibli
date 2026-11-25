@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { borrowerIdByName, createBorrower } from "../../helpers/loans";
 
 test.describe("Borrower CRUD & Search (Story 4-1)", () => {
   test.beforeEach(async ({ page }) => {
@@ -36,44 +37,40 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
 
     // Should redirect back to /borrowers with new borrower in list
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
-    await expect(page.locator("body")).toContainText("BW-Jean Dupont");
+    // Story 19-2: confirmed by id, not in the list (paginated by name).
+    await page.goto(`/borrower/${await borrowerIdByName(page, "BW-Jean Dupont")}`);
+    await expect(page.locator("h1")).toContainText("BW-Jean Dupont");
   });
 
   // AC3: Borrower detail page
   test("click borrower name → detail page", async ({ page }) => {
-    // Ensure borrower exists
+    // Story 19-2: its own borrower, found on the list page that holds it
+    // (Rule #23 — never "the first row", which belongs to whichever spec).
+    const id = await createBorrower(page, "0BW-Detail Borrower");
     await page.goto("/borrowers");
-    const link = page.locator("table tbody tr td a").first();
-    if (await link.isVisible()) {
-      await link.click();
-      await expect(page.locator("h1")).toBeVisible({ timeout: 3000 });
-    }
+    await page.locator(`tbody a[href="/borrower/${id}"]`).click();
+    await expect(page.locator("h1")).toContainText("0BW-Detail Borrower", { timeout: 3000 });
   });
 
   // AC4: Edit borrower
   test("edit borrower → changes saved", async ({ page }) => {
-    await page.goto("/borrowers");
-    const link = page.locator("table tbody tr td a").first();
-    if (await link.isVisible()) {
-      await link.click();
-      await expect(page.locator("h1")).toBeVisible({ timeout: 3000 });
+    // Story 19-2: its own borrower (Rule #23 — editing "the first row"
+    // changed another spec's borrower).
+    const id = await createBorrower(page, `BW-Phone Borrower ${Date.now()}`);
+    await page.goto(`/borrower/${id}`);
+    await expect(page.locator("h1")).toBeVisible({ timeout: 3000 });
 
-      // Click Edit
-      const editLink = page.getByText(/Edit borrower|Modifier/i);
-      if (await editLink.isVisible()) {
-        await editLink.click();
-        await expect(page.locator("#edit-name")).toBeVisible({ timeout: 3000 });
+    await page.getByRole("link", { name: /Edit borrower|Modifier l.emprunteur/i }).click();
+    await expect(page.locator("#edit-name")).toBeVisible({ timeout: 3000 });
 
-        // Modify phone
-        await page.locator("#edit-phone").fill("+33699887766");
-        await page.locator('form button[type="submit"]').last().click();
+    // Modify phone
+    await page.locator("#edit-phone").fill("+33699887766");
+    await page.locator(`form[action="/borrower/${id}"] button[type="submit"]`).click();
 
-        // Should redirect to detail page
-        await expect(page.locator("body")).toContainText("+33699887766", {
-          timeout: 5000,
-        });
-      }
-    }
+    // Should redirect to detail page
+    await expect(page.locator("body")).toContainText("+33699887766", {
+      timeout: 5000,
+    });
   });
 
   // AC6: Delete borrower with no active loans
@@ -85,8 +82,9 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await page.locator('main button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
 
-    // Navigate to the borrower detail
-    await page.locator("tbody").getByText("BW-Temp Borrower").click();
+    // Navigate to the borrower detail (story 19-2: by id — the list is
+    // paginated by name).
+    await page.goto(`/borrower/${await borrowerIdByName(page, "BW-Temp Borrower")}`);
     await expect(page.locator("h1")).toContainText("BW-Temp Borrower");
 
     // Delete
@@ -129,10 +127,8 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await page.locator("#new-email").fill("smoke@test.com");
     await page.locator('main button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
-    await expect(page.locator("body")).toContainText("BW-Smoke Borrower");
-
-    // Click into detail
-    await page.locator("tbody").getByText("BW-Smoke Borrower").click();
+    // Into the detail, by id (story 19-2: the list is paginated by name).
+    await page.goto(`/borrower/${await borrowerIdByName(page, "BW-Smoke Borrower")}`);
     await expect(page.locator("h1")).toContainText("BW-Smoke Borrower");
   });
 });

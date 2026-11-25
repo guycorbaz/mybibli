@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 const ISBN_EDIT = specIsbn("ME", 1);
 const ISBN_CANCEL = specIsbn("ME", 2);
@@ -36,6 +37,7 @@ test.describe("Metadata Editing & Re-Download (Story 3-5)", () => {
 
       // Wait for edit form to appear
       await expect(page.locator("#edit-title")).toBeVisible({ timeout: 3000 });
+      await expectHtmxProcessed(page.locator("#title-edit-form"));
 
       // Modify the publisher field
       const publisherField = page.locator("#edit-publisher");
@@ -78,6 +80,7 @@ test.describe("Metadata Editing & Re-Download (Story 3-5)", () => {
     if (await editButton.isVisible()) {
       await editButton.click();
       await expect(page.locator("#edit-title")).toBeVisible({ timeout: 3000 });
+      await expectHtmxProcessed(page.locator("#title-edit-form"));
 
       // Click Cancel
       const cancelButton = page.locator("#cancel-edit");
@@ -117,6 +120,7 @@ test.describe("Metadata Editing & Re-Download (Story 3-5)", () => {
     // Click edit, modify, save
     await editButton.click();
     await expect(page.locator("#edit-title")).toBeVisible({ timeout: 3000 });
+    await expectHtmxProcessed(page.locator("#title-edit-form"));
 
     // Verify form is pre-filled
     const titleInput = page.locator("#edit-title");

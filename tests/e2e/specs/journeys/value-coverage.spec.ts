@@ -13,8 +13,7 @@
  *
  * The DB is shared with parallel specs: every assertion is on the series
  * this test creates (unique name), never on library-wide counts. Spec ID
- * "VC" for ISBNs (random sequence); V-code band V7500–V7999 (unused by any
- * other spec).
+ * "VC" for ISBNs (random sequence); V-codes from its `specVcode` block.
  */
 import { test, expect, request as playwrightRequest, Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
@@ -24,6 +23,7 @@ import { volumeIdByLabel } from "../../helpers/catalog";
 import { checkAccessibility } from "../../helpers/accessibility";
 import { mcpCallTool } from "../../helpers/mcp";
 import { acceptFromDetail, newProposeKey, revokeProposeKey } from "../../helpers/proposals";
+import { specVcode } from "../../helpers/vcode";
 
 const SOURCE = "https://example.org/serie-vc";
 const SHARE_0 = /^0 ?%$/;
@@ -45,7 +45,7 @@ test.describe("Story 15-6 — value coverage", () => {
       await loginAs(page, "librarian");
 
       const isbn = specIsbn("VC", 1 + Math.floor(Math.random() * 89999));
-      const vcode = `V${7500 + Math.floor(Math.random() * 500)}`;
+      const vcode = specVcode("VC", 0);
       await scanTitleAndVolume(page, isbn, vcode);
       await page.goto(`/?q=${isbn}`);
       await page

@@ -18,8 +18,7 @@
  * a parallel repeat may reuse a fixed one; the title name carries one unique
  * token (`E7x` + clock and random in base 36), the only word searched — the
  * full-text search ORs its words, so common words would let older titles
- * push this one off the first page; V-code band V5000–V5499, random (home.spec.ts and loans.spec.ts draw
- * widely, so a collision is rare but possible). Assertions only on this
+ * push this one off the first page; V-code from the spec's `specVcode` block. Assertions only on this
  * spec's rows (Rule #23); the default skill is a row every database has,
  * read only, asserted by name.
  */
@@ -27,6 +26,8 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { simulateScan, simulateTyping } from "../../helpers/scanner";
+import { specVcode } from "../../helpers/vcode";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 /** Random over the whole `specIsbn` range: a collision is ~1 in 100 000. */
 function seq(): number {
@@ -46,8 +47,8 @@ test.describe("Epic 17 smoke — everyday entry", () => {
     const isbn13 = specIsbn("E7", seq());
     const token = `E7x${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
     const name = `Everyday entry ${token}`;
-    const digits = String(5000 + Math.floor(Math.random() * 500));
-    const label = `V${digits}`;
+    const label = specVcode("E7", 0);
+    const digits = label.slice(1);
     test.info().annotations.push({ type: "data", description: `${isbn13} ${token} ${label}` });
     const browseRows = page.locator("#browse-results table.browse-table tbody tr");
     const byName = browseRows.locator("a[href^='/title/']").filter({ hasText: name });
@@ -57,7 +58,7 @@ test.describe("Epic 17 smoke — everyday entry", () => {
       await page.goto("/catalog");
       await page.locator("#new-title-btn").click();
       const form = page.locator("#title-form-container form");
-      await expect(form).toBeVisible({ timeout: 10000 });
+      await expectHtmxProcessed(form);
       await form.locator("#title-field").fill(name);
       await form.locator("#media-type-field").selectOption("book");
       await page.waitForSelector("#page-count-field", { timeout: 10000 });

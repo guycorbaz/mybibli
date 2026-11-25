@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume } from "../../helpers/loans";
+import { specVcode } from "../../helpers/vcode";
 
 /**
  * Issue #479 — a cover that is small on the wire and enormous once decoded
@@ -67,9 +68,10 @@ test.describe("Cover decode limits (#479)", () => {
   test("a decompression-bomb cover is refused in the modal, and the app survives", async ({
     page,
   }) => {
+    const vcode = specVcode("CB", 0);
     await loginAs(page, "librarian");
     const isbn = specIsbn("CB", 1);
-    await scanTitleAndVolume(page, isbn, "V0479");
+    await scanTitleAndVolume(page, isbn, vcode);
 
     await page.goto("/?q=" + isbn);
     const detailHref = await page

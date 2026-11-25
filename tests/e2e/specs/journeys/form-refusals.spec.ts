@@ -17,6 +17,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { badUpcA, titleIdByName as titleId } from "../../helpers/catalog";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 const CHECK_DIGIT = /check digit does not match|clé de contrôle ne correspond pas/i;
 const ISBN_TAKEN = /Another title already uses this ISBN|Un autre titre utilise déjà cet ISBN/i;
@@ -33,7 +34,7 @@ async function editNewTitle(page: Page, name: string) {
   await page.goto("/catalog");
   await page.locator("#new-title-btn").click();
   const form = page.locator("#title-form-container form");
-  await expect(form).toBeVisible({ timeout: 10000 });
+  await expectHtmxProcessed(form);
   await form.locator("#title-field").fill(name);
   await form.locator("#media-type-field").selectOption("book");
   await page.waitForSelector("#page-count-field", { timeout: 10000 });
@@ -46,7 +47,9 @@ async function editNewTitle(page: Page, name: string) {
 
   await page.goto(`/title/${id}`);
   await page.getByRole("button", { name: /Edit metadata|Modifier les métadonnées/i }).click();
-  await expect(page.locator("#title-edit-form")).toBeVisible({ timeout: 5000 });
+  // #685 — the edit form has only `hx-post`: an Enter before HTMX wires it
+  // is a native GET submit that reloads the page read-only.
+  await expectHtmxProcessed(page.locator("#title-edit-form"));
   return id as string;
 }
 
@@ -155,7 +158,7 @@ test.describe("Issue #676 — form refusals show their message", () => {
     await page.goto("/catalog");
     await page.locator("#new-title-btn").click();
     const form = page.locator("#title-form-container form");
-    await expect(form).toBeVisible({ timeout: 10000 });
+    await expectHtmxProcessed(form);
     const name = `Manual refusal FR ${Date.now()}`;
     await form.locator("#title-field").fill(name);
     await form.locator("#media-type-field").selectOption("cd");

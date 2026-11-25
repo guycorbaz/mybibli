@@ -54,9 +54,9 @@ test.describe("Series CRUD & Listing (Story 5-3)", () => {
     await page.waitForURL(/\/series\/\d+$/);
     await expect(page.locator("h1")).toContainText(EDITED_NAME);
 
-    // Go back to list and verify updated name appears
-    await page.goto("/series");
-    await expect(page.getByText(EDITED_NAME)).toBeVisible();
+    // (Story 19-2: no check in the /series list — it is sorted by name and
+    // paginated, so the row may sit past page 1 on a grown database; the
+    // detail page above is the spec's own scope, Rule #23.)
   });
 
   // AC5: Anonymous access — public read

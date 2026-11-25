@@ -14,8 +14,7 @@
  *   this stack runs; it has no user-visible journey.
  *
  * Data: ISBN `specIsbn("E8", random)`; series names carry a per-run token;
- * assertions only on this spec's rows (Rule #23). The file creates series,
- * so its name sorts after the specs that assume none exists (#528).
+ * assertions only on this spec's rows (Rule #23).
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";

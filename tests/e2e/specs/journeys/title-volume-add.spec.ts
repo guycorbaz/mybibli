@@ -11,9 +11,10 @@
  * error of another control leaves it alone. An Anonymous visitor sees no
  * field. axe on the page.
  *
- * Data: ISBNs from specIsbn("TP", n); V-codes this spec's own, random in
- * disjoint ranges per test (V9900–V9959 in pairs, V9960–V9999); assertions
- * only on the rows each test creates (Rule #23).
+ * Data: ISBNs from specIsbn("TP", n); V-codes from the spec's `specVcode`
+ * block, one sequence per code (the error test's codes are never stored,
+ * the route is stubbed); assertions only on the rows each test creates
+ * (Rule #23).
  */
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
@@ -21,19 +22,10 @@ import { specIsbn } from "../../helpers/isbn";
 import { simulateScan } from "../../helpers/scanner";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
 import { checkAccessibility } from "../../helpers/accessibility";
+import { specVcode } from "../../helpers/vcode";
 
 const FIELD = "#title-volume-vcode";
 const FEEDBACK = "#title-volume-add-feedback";
-
-/** First of two consecutive labels in V9900–V9959. */
-function pairBase(): number {
-  return 9900 + 2 * Math.floor(Math.random() * 30);
-}
-
-/** One label in V9960–V9999 (disjoint from `pairBase`). */
-function singleLabel(): string {
-  return `V${9960 + Math.floor(Math.random() * 40)}`;
-}
 
 /** Scan `isbn` on /catalog and return the new title's id. */
 async function scanTitle(page: Page, isbn: string): Promise<string> {
@@ -54,8 +46,7 @@ test.describe("Story 17-2 — add a volume from the title page", () => {
     await expect(page.locator("#title-volumes-count")).toHaveText("(0)");
     await expect(page.locator("#title-delete-button")).toBeVisible();
 
-    const base = pairBase();
-    const first = `V${base}`;
+    const first = specVcode("TP", 0);
     await simulateScan(page, FIELD, first.toLowerCase());
     const created = page.locator(`${FEEDBACK} .feedback-entry[data-feedback-variant="success"]`);
     await expect(created).toContainText(first, { timeout: 10000 });
@@ -67,7 +58,7 @@ test.describe("Story 17-2 — add a volume from the title page", () => {
     await expect(field).toHaveValue("");
 
     // The title now has a volume: a new label asks the CR #300 confirmation.
-    const second = `V${base + 1}`;
+    const second = specVcode("TP", 1);
     await simulateScan(page, FIELD, second);
     const dialog = page.locator("#modal-slot dialog[open]");
     await expect(dialog).toBeVisible({ timeout: 10000 });
@@ -116,7 +107,7 @@ test.describe("Story 17-2 — add a volume from the title page", () => {
   test("a label of another title links to its volume and adds nothing", async ({ page }) => {
     await loginAs(page, "librarian");
     const owner = await scanTitle(page, specIsbn("TP", 2));
-    const label = singleLabel();
+    const label = specVcode("TP", 2);
     await simulateScan(page, "#scan-field", label);
     await expect(
       page.locator('#feedback-list .feedback-entry[data-feedback-variant="success"]').filter({ hasText: label }),
@@ -141,7 +132,7 @@ test.describe("Story 17-2 — add a volume from the title page", () => {
     const errors = page.locator('#feedback-list .feedback-entry[data-feedback-variant="error"]');
 
     // The field's own post fails: the code comes back, focus stays in it.
-    const label = singleLabel();
+    const label = specVcode("TP", 3);
     await page.route(`**/title/${titleId}/volumes`, (route) =>
       route.fulfill({ status: 500, body: "boom" }),
     );
@@ -155,7 +146,7 @@ test.describe("Story 17-2 — add a volume from the title page", () => {
     // feedback entry): its own message shows instead of the generic line,
     // and the code still comes back (HTMX keeps it an error, so the
     // restore runs).
-    const label2 = singleLabel();
+    const label2 = specVcode("TP", 4);
     const serverEntry =
       '<div class="p-3 border-l-4 rounded-r feedback-entry" role="status" data-feedback-variant="error">' +
       '<p>Server-side refusal 18-5</p></div>';

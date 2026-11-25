@@ -22,6 +22,16 @@ pub async fn seed_admin(pool: &DbPool, username: &str) {
         .unwrap();
 }
 
+/// An active librarian (story 19-2: shared instead of one copy per test file).
+pub async fn seed_librarian(pool: &DbPool, username: &str) {
+    sqlx::query("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'librarian')")
+        .bind(username)
+        .bind(PW_HASH)
+        .execute(pool)
+        .await
+        .unwrap();
+}
+
 fn session_cookie(res: &axum::response::Response) -> Option<String> {
     let header = res
         .headers()

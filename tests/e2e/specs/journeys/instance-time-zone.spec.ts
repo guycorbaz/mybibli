@@ -14,18 +14,20 @@
  * timeout). Switching to UTC cannot break a parallel spec: the others cut
  * their web days so that both zones agree, or compare instants.
  *
- * Spec ID "TZ" for ISBNs; V-codes V5600–V5699, clock-derived, and the
- * loan is returned at the end so a rerun's V-code is free again.
+ * Spec ID "TZ" for ISBNs and for its `specVcode` block; the loan is
+ * returned at the end.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import {
+  borrowerIdByName,
   createBorrower,
   returnLoanFromBorrowerDetail,
   scanTitleAndVolume,
   seedOverdueLoan,
 } from "../../helpers/loans";
+import { specVcode } from "../../helpers/vcode";
 
 async function saveTimeZone(page: Page, zone: string) {
   await page.goto("/admin?tab=system");
@@ -64,7 +66,7 @@ test.describe("Story 15-1 — instance time zone", () => {
 
     const seq = Math.floor(Date.now() / 1000) % 100;
     const isbn = specIsbn("TZ", seq);
-    const vcode = `V56${String(seq).padStart(2, "0")}`;
+    const vcode = specVcode("TZ", 0);
     const borrowerName = `TZ-Borrower ${crypto.randomUUID().slice(0, 8)}`;
     await scanTitleAndVolume(page, isbn, vcode);
     await createBorrower(page, borrowerName);
@@ -75,11 +77,7 @@ test.describe("Story 15-1 — instance time zone", () => {
     });
 
     const openBorrower = async () => {
-      await page.goto("/borrowers");
-      await page
-        .locator('tbody a[href^="/borrower/"]')
-        .filter({ hasText: borrowerName })
-        .click();
+      await page.goto(`/borrower/${await borrowerIdByName(page, borrowerName)}`);
       await expect(page).toHaveURL(/\/borrower\/\d+/);
     };
     const loanRow = () => page.locator("tbody tr").filter({ hasText: vcode });

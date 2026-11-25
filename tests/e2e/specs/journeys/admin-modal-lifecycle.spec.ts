@@ -17,6 +17,7 @@
  */
 import { test, expect, Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { borrowerIdByName } from "../../helpers/loans";
 
 /**
  * Seed a soft-deleted borrower so it appears in /admin?tab=trash.
@@ -54,14 +55,8 @@ async function seedSoftDeletedBorrower(
       `seedSoftDeletedBorrower create failed: ${createResp.status()} ${await createResp.text()}`,
     );
   }
-  // Look up the id from /borrowers list.
-  await page.goto("/borrowers");
-  const link = page
-    .locator('tbody a[href^="/borrower/"]')
-    .filter({ hasText: new RegExp(`^\\s*${name}\\s*$`) });
-  await expect(link).toHaveCount(1, { timeout: 5000 });
-  const href = await link.getAttribute("href");
-  const id = href?.split("/").pop();
+  // Look up the id (story 19-2: not from the paginated /borrowers list).
+  const id = await borrowerIdByName(page, name);
   if (!id) throw new Error(`seedSoftDeletedBorrower: could not parse id`);
   // Soft-delete (DELETE /borrower/{id}).
   const delResp = await page.request.delete(`/borrower/${id}`, {

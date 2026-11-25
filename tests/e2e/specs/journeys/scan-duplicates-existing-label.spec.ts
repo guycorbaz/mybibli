@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { specVcode } from "../../helpers/vcode";
 
 // Story 13-1 — scan duplicates and an existing label (#574, #585).
 // (a) a scanner double read of a label is ignored client-side: one volume,
@@ -46,21 +47,22 @@ test.describe("Scan duplicates and an existing label (#574, #585)", () => {
   test("a label read twice by the scanner creates one volume and no error", async ({
     page,
   }) => {
+    const vcode = specVcode("DL", 0);
     const isbn = specIsbn("DL", 1);
     await scanIsbn(page, isbn);
 
     // Two submits of the same label, back to back (well under 200 ms).
     const field = page.locator("#scan-field");
-    await field.fill("V0590");
+    await field.fill(vcode);
     await field.press("Enter");
-    await field.fill("V0590");
+    await field.fill(vcode);
     await field.press("Enter");
 
     await expect(
-      page.locator(SUCCESS).filter({ hasText: /\bV0590\b/ }),
+      page.locator(SUCCESS).filter({ hasText: new RegExp(`\\b${vcode}\\b`) }),
     ).toBeVisible({ timeout: 10000 });
 
-    // A later, different scan: once its answer is in, any second V0590
+    // A later, different scan: once its answer is in, any second label
     // post would have been answered too.
     await scan(page, isbn);
     await expect(page.locator(INFO).filter({ hasText: TITLE_EXISTS })).toBeVisible({
@@ -68,7 +70,7 @@ test.describe("Scan duplicates and an existing label (#574, #585)", () => {
     });
 
     await expect(
-      page.locator(".feedback-entry").filter({ hasText: /\bV0590\b/ }),
+      page.locator(".feedback-entry").filter({ hasText: new RegExp(`\\b${vcode}\\b`) }),
     ).toHaveCount(1);
     await expect(page.locator(ERROR)).toHaveCount(0);
     await expect(page.locator("#context-banner")).toContainText(/\b1 vol/i);
@@ -77,19 +79,20 @@ test.describe("Scan duplicates and an existing label (#574, #585)", () => {
   test("the ISBN and label pair scanned again says the label is already recorded", async ({
     page,
   }) => {
+    const vcode = specVcode("DL", 1);
     const isbn = specIsbn("DL", 2);
     await scanIsbn(page, isbn);
-    await scanNewLabel(page, "V0591");
+    await scanNewLabel(page, vcode);
 
     // The pair again, as a librarian re-scanning a book of the pile.
     await scan(page, isbn);
     await expect(page.locator(INFO).filter({ hasText: TITLE_EXISTS })).toBeVisible({
       timeout: 10000,
     });
-    await scan(page, "V0591");
+    await scan(page, vcode);
 
     await expect(
-      page.locator(INFO).filter({ hasText: /\bV0591\b/ }),
+      page.locator(INFO).filter({ hasText: new RegExp(`\\b${vcode}\\b`) }),
     ).toContainText(/already recorded|déjà enregistré/i, { timeout: 10000 });
     await expect(page.locator(ERROR)).toHaveCount(0);
     await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0);
@@ -98,15 +101,16 @@ test.describe("Scan duplicates and an existing label (#574, #585)", () => {
   test("a label scanned under another title warns and links to the volume", async ({
     page,
   }) => {
+    const vcode = specVcode("DL", 2);
     const ownerIsbn = specIsbn("DL", 3);
     await scanIsbn(page, ownerIsbn);
-    await scanNewLabel(page, "V0592");
+    await scanNewLabel(page, vcode);
 
     // Another book in context, then the first book's label.
     await scanIsbn(page, specIsbn("DL", 4));
-    await scan(page, "V0592");
+    await scan(page, vcode);
 
-    const warning = page.locator(WARNING).filter({ hasText: /\bV0592\b/ });
+    const warning = page.locator(WARNING).filter({ hasText: new RegExp(`\\b${vcode}\\b`) });
     await expect(warning).toBeVisible({ timeout: 10000 });
     await expect(warning).toContainText(ownerIsbn);
     await expect(page.locator(ERROR)).toHaveCount(0);
@@ -116,6 +120,6 @@ test.describe("Scan duplicates and an existing label (#574, #585)", () => {
     await expect(link).toHaveCount(1);
     await link.click();
     await expect(page).toHaveURL(/\/volume\/\d+$/);
-    await expect(page.locator("main")).toContainText("V0592");
+    await expect(page.locator("main")).toContainText(vcode);
   });
 });

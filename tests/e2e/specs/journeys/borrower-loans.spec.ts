@@ -6,7 +6,9 @@ import {
   createLoan,
   returnLoanFromBorrowerDetail,
   scanTitleAndVolume,
+  borrowerIdByName,
 } from "../../helpers/loans";
+import { specVcode } from "../../helpers/vcode";
 
 // CR #300: per-test unique ISBNs so the V-code scan never hits the
 // phantom-volume confirmation modal (each test gets a fresh title).
@@ -39,19 +41,20 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
 
   // AC2: Loan details shown on borrower page
   test("borrower with loan shows loan details", async ({ page }) => {
+    const vcode = specVcode("BL", 0);
     await createBorrower(page, "BL-Loan Detail Borrower");
-    await scanTitleAndVolume(page, specIsbn("BL", 3), "V0080");
-    await createLoan(page, "V0080", "BL-Loan Detail Borrower");
+    await scanTitleAndVolume(page, specIsbn("BL", 3), vcode);
+    await createLoan(page, vcode, "BL-Loan Detail Borrower");
 
     // Navigate to borrower detail
-    await page.goto("/borrowers");
-    await page.locator("tbody").getByText("BL-Loan Detail Borrower").click();
+    // Story 19-2: by id — the /borrowers list is paginated by name.
+    await page.goto(`/borrower/${await borrowerIdByName(page, "BL-Loan Detail Borrower")}`);
     await expect(page.locator("h1")).toContainText("BL-Loan Detail Borrower", {
       timeout: 3000,
     });
 
     // Should show the loan with volume label and title
-    await expect(page.locator("body")).toContainText("V0080", { timeout: 5000 });
+    await expect(page.locator("body")).toContainText(vcode, { timeout: 5000 });
 
     // Should show Return button — story 10-3 scope to tbody so the
     // desktop-table copy (visible at default viewport) is asserted.
@@ -63,24 +66,25 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
 
   // AC3: Return loan from borrower detail
   test("return loan from borrower detail → loan disappears", async ({ page }) => {
+    const vcode = specVcode("BL", 1);
     await createBorrower(page, "BL-Return Detail Borrower");
-    await scanTitleAndVolume(page, specIsbn("BL", 4), "V0081");
-    await createLoan(page, "V0081", "BL-Return Detail Borrower");
+    await scanTitleAndVolume(page, specIsbn("BL", 4), vcode);
+    await createLoan(page, vcode, "BL-Return Detail Borrower");
 
     // Navigate to borrower detail
-    await page.goto("/borrowers");
-    await page.locator("tbody").getByText("BL-Return Detail Borrower").click();
-    await expect(page.locator("#active-loans-section")).toContainText("V0081", {
+    // Story 19-2: by id — the /borrowers list is paginated by name.
+    await page.goto(`/borrower/${await borrowerIdByName(page, "BL-Return Detail Borrower")}`);
+    await expect(page.locator("#active-loans-section")).toContainText(vcode, {
       timeout: 5000,
     });
 
     // Return via the canonical helper
-    await returnLoanFromBorrowerDetail(page, "V0081");
+    await returnLoanFromBorrowerDetail(page, vcode);
 
     // Reload the borrower detail page and verify the empty state
     await page.reload();
     const activeLoans = page.locator("#active-loans-section");
-    await expect(activeLoans).not.toContainText("V0081", { timeout: 5000 });
+    await expect(activeLoans).not.toContainText(vcode, { timeout: 5000 });
     await expect(activeLoans).toContainText(
       /no active loans|aucun prêt actif/i,
       { timeout: 3000 },
@@ -92,6 +96,7 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
     context,
     page,
   }) => {
+    const vcode = specVcode("BL", 2);
     await context.clearCookies();
 
     // Real login via shared helper (Foundation Rule #7)
@@ -99,22 +104,22 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
 
     // Create borrower + title + volume + loan
     await createBorrower(page, "BL-Smoke Detail Borrower");
-    await scanTitleAndVolume(page, specIsbn("BL", 5), "V0082");
-    await createLoan(page, "V0082", "BL-Smoke Detail Borrower");
+    await scanTitleAndVolume(page, specIsbn("BL", 5), vcode);
+    await createLoan(page, vcode, "BL-Smoke Detail Borrower");
 
     // Navigate to borrower detail — should see loan
-    await page.goto("/borrowers");
-    await page.locator("tbody").getByText("BL-Smoke Detail Borrower").click();
+    // Story 19-2: by id — the /borrowers list is paginated by name.
+    await page.goto(`/borrower/${await borrowerIdByName(page, "BL-Smoke Detail Borrower")}`);
     const activeLoans = page.locator("#active-loans-section");
-    await expect(activeLoans).toContainText("V0082", { timeout: 5000 });
+    await expect(activeLoans).toContainText(vcode, { timeout: 5000 });
 
     // Return from detail page
-    await returnLoanFromBorrowerDetail(page, "V0082");
+    await returnLoanFromBorrowerDetail(page, vcode);
 
     // Reload and verify
     await page.reload();
     await expect(page.locator("#active-loans-section")).not.toContainText(
-      "V0082",
+      vcode,
       { timeout: 5000 },
     );
   });

@@ -1,4 +1,5 @@
 import { Page, Locator, expect } from "@playwright/test";
+import { expectReallySeen } from "./visibility";
 
 /**
  * Story 14-2 (#547, UX-DR39) — the small-screen navigation drawer.
@@ -25,7 +26,11 @@ export async function openDrawer(page: Page): Promise<Locator> {
 export async function expectDrawerOpen(page: Page): Promise<void> {
   await expect(page.locator(MENU_BUTTON)).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator(DRAWER_DIALOG)).toHaveAttribute("aria-modal", "true");
-  await expect(page.locator(DRAWER)).toBeVisible();
+  // Really seen (story 19-2, D9): displayed, not `invisible`, opaque, in
+  // the viewport — and the scrim behind it shown too, not left at
+  // `opacity-0` by a missing `nav-open:` class.
+  await expectReallySeen(page.locator(DRAWER), { inViewport: true });
+  await expectReallySeen(page.locator(SCRIM), { inViewport: true });
   // The slide is over (no transition under reduced motion; otherwise wait
   // until the drawer's left edge is at the viewport's left edge).
   await expect

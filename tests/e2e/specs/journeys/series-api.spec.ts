@@ -7,10 +7,6 @@
  * own series; whatever else the shared table holds, at least 26 sort
  * before the last one, which used to fall off the first page), creates a
  * read-only API key, reads `/api/v1/series` with it, and revokes the key.
- *
- * File name: it creates series, so it must sort after the specs that
- * assume none exists (`classification-fieldset`, `dewey-code`,
- * `empty-states` — #528, D-11-11-6); `api-series` ran first and broke them.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";

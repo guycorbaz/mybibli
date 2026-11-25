@@ -18,8 +18,8 @@
  *
  * Cleanup: the skill is deactivated, the key revoked.
  *
- * Spec ID "E5" for ISBNs (random sequence); V-code band V8000–V8499
- * (unused by any other spec); unique skill and series names; assertions
+ * Spec ID "E5" for ISBNs (random sequence); V-codes from its
+ * `specVcode` block; unique skill and series names; assertions
  * only on rows this test creates.
  */
 import { test, expect, request as playwrightRequest, Page } from "@playwright/test";
@@ -30,6 +30,7 @@ import { volumeIdByLabel } from "../../helpers/catalog";
 import { createApiKey } from "../../helpers/api-keys";
 import { mcpCallTool, mcpPost } from "../../helpers/mcp";
 import { acceptFromDetail, revokeProposeKey } from "../../helpers/proposals";
+import { specVcode } from "../../helpers/vcode";
 
 const SOURCE = "https://example.org/epic15";
 const SKILLS_TAB = /^(Skills|Compétences|Skill)$/i;
@@ -103,7 +104,7 @@ test.describe("Epic 15 smoke — the agent's next tasks", () => {
       await page.context().clearCookies();
       await loginAs(page, "librarian");
       const isbn = specIsbn("E5", 1 + Math.floor(Math.random() * 89999));
-      const vcode = `V${8000 + Math.floor(Math.random() * 500)}`;
+      const vcode = specVcode("E5", 0);
       await scanTitleAndVolume(page, isbn, vcode);
       await page.goto(`/?q=${isbn}`);
       await page

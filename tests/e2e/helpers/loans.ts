@@ -1,4 +1,5 @@
 import { expect, Page, request } from "@playwright/test";
+import { expectHtmxProcessed } from "./htmx";
 
 /**
  * Loan-related E2E helpers — canonical patterns for Epic 4 specs.
@@ -75,68 +76,68 @@ export async function scanTitleAndVolume(
     timeout: 10000,
   });
   if (await phantomConfirm.isVisible()) {
+    // The modal arrived in a swap: click Confirm once HTMX wired it (19-2).
+    await expectHtmxProcessed(phantomConfirm);
     await phantomConfirm.click();
   }
-  await expect(volumeFeedback.first()).toBeVisible({ timeout: 10000 });
+  // Story 19-2 — the volume must have been CREATED here: an answer that only
+  // names the label (#585 "already assigned to another title", a duplicate
+  // or race refusal) is a warning/error, and a test going on with it fails
+  // much later and far from the cause (V-code collisions, #674).
+  await expect(
+    volumeFeedback.and(page.locator('[data-feedback-variant="success"]')).first(),
+    `scanning ${volumeLabel} must create the volume (success entry)`,
+  ).toBeVisible({ timeout: 10000 });
 }
 
 /**
- * Create a borrower via /borrowers form.
+ * Create a borrower via /borrowers form and return its id.
  *
- * Navigates to /borrowers, clicks the Add button, fills the form, submits, and
- * waits for the new borrower row to appear in the table. Waiting for the row
- * (not just the URL) proves the server committed the insert.
+ * Navigates to /borrowers, clicks the Add button, fills the form, submits,
+ * then confirms the insert through `/borrowers/search` (exact name). Story
+ * 19-2: it used to wait for the row in the list, which is sorted by name and
+ * paginated — once the shared database holds a page of borrowers sorting
+ * before this one, the row is on page 2 and the wait failed (Rule #23).
  */
-export async function createBorrower(page: Page, name: string): Promise<void> {
+export async function createBorrower(page: Page, name: string): Promise<string> {
   await page.goto("/borrowers");
-  // #470 — was getByText(/Add borrower|Ajouter/i), which matches TWO
-  // elements once the page renders in French ("Ajouter un emprunteur" and
-  // "Ajouter un nouveau titre") and fails strict mode. It only ever passed
-  // because the librarian account was sometimes left in English by a
-  // parallel language-toggle test — the very leak #470 fixed. The link has
-  // a stable id; use it, per the selector policy in CLAUDE.md.
+  // #470 — the Add link has a stable id (selector policy in CLAUDE.md).
   await page.locator("#borrowers-show-add-form").click();
   await page.locator("#new-name").fill(name);
+  // The form posts natively (303 → /borrowers, the page we are on): wait
+  // for the POST's answer and the reload, not for the URL.
+  const posted = page.waitForResponse(
+    (r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/borrowers",
+  );
   await page.locator('main button[type="submit"]').last().click();
-  // Assertion-as-wait: the borrower anchor appearing in the list confirms
-  // the server committed the INSERT. Scoped to `tbody` so the assertion
-  // works correctly across viewports — story 10-3 added a parallel
-  // mobile-card surface (`md:hidden`) that also carries the borrower
-  // anchor. The `tbody` scope picks only the desktop-table copy, which
-  // is the surface visible at default Playwright viewport (1280x720).
-  const exactName = new RegExp(`^\\s*${escapeRegex(name)}\\s*$`);
-  await expect(
-    page.locator('tbody a[href^="/borrower/"]').filter({ hasText: exactName }),
-  ).toBeVisible({ timeout: 5000 });
+  await posted;
+  await page.waitForLoadState("domcontentloaded");
+  const id = await borrowerIdByName(page, name);
+  return id;
 }
 
 /**
- * Look up a borrower id by exact name from the /borrowers page.
- *
- * Uses the borrower list on /borrowers which renders an `<a href="/borrower/{id}">`
- * per active borrower. Finds the anchor whose text matches the name exactly.
+ * The id of the live borrower named exactly `name`, through
+ * `/borrowers/search` (story 19-2: the /borrowers list is sorted by name and
+ * paginated, so reading it fails once the shared database holds a page of
+ * borrowers sorting first). Polls until found; fails loud when two live
+ * borrowers share the name (the loan would go to the wrong one).
  */
-async function getBorrowerIdByName(page: Page, name: string): Promise<string> {
-  await page.goto("/borrowers");
-  // Scoped to `tbody` (story 10-3): the borrowers list now renders the
-  // same row in two surfaces (desktop table + mobile card list). Counting
-  // matches across both would inflate the count by 2× and break the
-  // ambiguity-detection assertion. Only the table has a `<tbody>`.
-  const link = page
-    .locator('tbody a[href^="/borrower/"]')
-    .filter({ hasText: new RegExp(`^\\s*${escapeRegex(name)}\\s*$`) });
-  // Fail loud on ambiguity: if two borrowers share the exact name, .first()
-  // would silently pick the wrong id and the loan would be created against
-  // an unrelated borrower, producing misleading assertion failures later.
-  await expect(link).toHaveCount(1, { timeout: 5000 });
-  const href = await link.getAttribute("href");
-  if (!href) {
-    throw new Error(`Borrower not found by name: ${name}`);
-  }
-  const id = href.split("/").pop();
-  if (!id) {
-    throw new Error(`Could not parse borrower id from href: ${href}`);
-  }
+export async function borrowerIdByName(page: Page, name: string): Promise<string> {
+  let id = "";
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get(`/borrowers/search?q=${encodeURIComponent(name)}`);
+        if (!res.ok()) return "error";
+        const rows = (await res.json()) as { id: number; name: string }[];
+        const exact = rows.filter((r) => r.name === name);
+        id = exact.length === 1 ? String(exact[0]!.id) : "";
+        return exact.length > 1 ? "ambiguous" : id ? "found" : "missing";
+      },
+      { message: `exactly one live borrower named ${name}`, timeout: 10000 },
+    )
+    .toBe("found");
   return id;
 }
 
@@ -165,7 +166,7 @@ export async function createLoan(
   volumeLabel: string,
   borrowerName: string,
 ): Promise<void> {
-  const borrowerId = await getBorrowerIdByName(page, borrowerName);
+  const borrowerId = await borrowerIdByName(page, borrowerName);
   // Story 8-2: the direct `page.request.post(...)` path does NOT fire
   // HTMX's `htmx:configRequest`, so `csrf.js` cannot inject the token.
   // Read the meta tag off the current /loans page and echo it via the
@@ -236,6 +237,7 @@ export async function returnLoanFromLoansPage(
   // modal entered the slot before we click Confirm.
   const modalDialog = page.locator("#modal-slot dialog[open]");
   await expect(modalDialog).toBeVisible({ timeout: 5000 });
+  await expectHtmxProcessed(modalDialog.locator("[data-modal-confirm]"));
   await modalDialog.locator("[data-modal-confirm]").click();
   // Wait for the row to disappear — POST /loans/:id/return commits, then
   // the modal closes and the feedback HTML lands in `#loan-feedback`.
@@ -270,6 +272,7 @@ export async function returnLoanFromBorrowerDetail(
   await returnBtn.click();
   const modalDialog = page.locator("#modal-slot dialog[open]");
   await expect(modalDialog).toBeVisible({ timeout: 5000 });
+  await expectHtmxProcessed(modalDialog.locator("[data-modal-confirm]"));
   await modalDialog.locator("[data-modal-confirm]").click();
   await expect(activeLoans).not.toContainText(volumeLabel, {
     timeout: 10000,

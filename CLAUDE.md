@@ -221,7 +221,7 @@ Scan ISBN → create title → `tokio::spawn(fetch_metadata_chain)` → return s
 
 Playwright E2E suite lives in `tests/e2e/`. Implementation details below are load-bearing — violating them causes the cascading flake failures documented in story 5-1 (2026-04-05).
 
-**Execution mode:** `fullyParallel: true` (parallel, default workers). Each spec uses unique ISBNs via `specIsbn()` from `tests/e2e/helpers/isbn.ts` and unique V-codes/L-codes/borrower names to ensure no data collisions between specs. All non-smoke specs use `loginAs()` for per-test session isolation.
+**Execution mode:** `fullyParallel: true` (parallel, default workers). Each spec uses unique ISBNs via `specIsbn()` from `tests/e2e/helpers/isbn.ts`, V-codes via `specVcode()` (`helpers/vcode.ts`) and unique L-codes / borrower names to ensure no data collisions between specs. All non-smoke specs use `loginAs()` for per-test session isolation. **No spec depends on file order** (story 19-2, #528): a spec targets its own controls by id (`#edit-title-submit`, never "the last submit button") and asserts only on its own rows (Rule #23); library-wide emptiness is a fresh-database Rust test (`tests/series_empty_state.rs`). **Specs whose instance-wide setting disturbs other workers' sessions or pages** (`admin-system-settings`, `session-inactivity-timeout`: session timeout, toast) run in their own Playwright projects, chained after every other test (`dependencies`, `playwright.config.ts`); a spec saving a setting that only its own pages read (time zone, provider timeouts, bulk delay) may stay and restore it. Run one of them alone with `npx playwright test --no-deps <spec>` (without `--no-deps` the whole `chromium` project runs first, and a failure there skips them). **In CI a flaky test fails the job** (`failOnFlakyTests`, story 19-2): retries still run so the report shows which attempt failed, and the job prints the application log when Playwright does not pass.
 
 **Login strategy:**
 
@@ -236,9 +236,11 @@ Playwright E2E suite lives in `tests/e2e/`. Implementation details below are loa
 **HTMX wait strategies:** Never use arbitrary `waitForTimeout(N)`. This is enforced by a CI grep gate in the `e2e` job — new `waitForTimeout` calls fail the PR. Use the DOM-state assertions below instead:
 ```ts
 // For V-code creation feedback — wait for the specific V-code text to avoid stale entries
-await expect(page.locator(".feedback-entry").first()).toContainText(/V0060/i, { timeout: 10000 });
+await expect(page.locator(".feedback-entry").first()).toContainText(label, { timeout: 10000 });
 ```
-For OOB swaps (e.g., context-banner, pending-updates), wait for the specific swap target to update before asserting.
+For OOB swaps (e.g., context-banner, pending-updates), wait for the specific swap target to update before asserting. **Before typing into or submitting a form HTMX just swapped in**, call `expectHtmxProcessed(form)` (`helpers/htmx.ts`, story 19-2 / #685): htmx 2 wires a swapped node in a settle task ~20 ms later (`htmx-added` class until then), and an Enter in that window on a form with only `hx-post` is a native GET submit that reloads the page. Any node inside the swap works (it checks the node and its ancestors: htmx marks only the fragment's top-level nodes); the locator must not match pre-swap content.
+
+**Really seen, not just laid out:** Playwright's `toBeVisible()` counts `opacity: 0` (own or an ancestor's) as visible. For a control whose visibility is the point of the test (dimmed or fading UI, drawers, scrims, Rust-built controls), use `expectReallySeen(locator, { minOpacity, inViewport })` / `effectiveOpacity(locator)` from `helpers/visibility.ts` (story 19-2, retro v1.28.1 A1 — #695 shipped invisible controls under a green suite).
 
 **Selector policy:** Prefer stable selectors in this priority order:
 1. `page.getByRole(...)` — semantic, accessibility-aware
@@ -251,14 +253,15 @@ For OOB swaps (e.g., context-banner, pending-updates), wait for the specific swa
 await expect(page.locator("h1")).toContainText(/Active loans|Prêts actifs/i);
 ```
 
-**Data isolation:** Each spec file generates unique ISBNs via `specIsbn(specId, seq)` from `tests/e2e/helpers/isbn.ts`. The 2-character `specId` is unique per spec file (e.g., `"CT"` for catalog-title, `"LN"` for loans). The mock metadata server (`tests/e2e/mock-metadata-server/server.py`) has a catch-all that returns synthetic metadata for any unknown ISBN, so generated ISBNs always resolve. V-codes must also be unique across specs (no shared V0042, V0071, etc.). Only `provider-chain.spec.ts` uses the real known ISBNs (`9782070360246`, `9780134685991`) because it tests provider-specific metadata content.
+**Data isolation:** Each spec file generates unique ISBNs via `specIsbn(specId, seq)` from `tests/e2e/helpers/isbn.ts`. The 2-character `specId` is unique per spec file (e.g., `"CT"` for catalog-title, `"LN"` for loans). The mock metadata server (`tests/e2e/mock-metadata-server/server.py`) has a catch-all that returns synthetic metadata for any unknown ISBN, so generated ISBNs always resolve. V-codes come from `specVcode(specId, seq)` (`tests/e2e/helpers/vcode.ts`, story 19-2 / #674): one 200-code block per spec file in the typed `VCODE_BLOCKS` map (a new spec adds its id there; a duplicate block throws at load), slots per `--repeat-each` / retry so neither collides with itself; codes are deterministic, so a re-run needs `./scripts/e2e-reset.sh`. A hard-coded V-code literal in a spec fails `tests/e2e/vcode-literals.sh` (CI gate) unless it creates nothing and is allow-listed there. With `CI=true`, `--repeat-each` above ~3 overflows a block: add `--retries=0`. Only V-codes are slot-aware: a spec whose other data (ISBN, L-code, borrower name) is fixed needs a stack reset between repetitions, unless it derives that data from `vcodeSlot()`. Borrowers are looked up with `borrowerIdByName` (`helpers/loans.ts`, via `/borrowers/search`) — never from the paginated `/borrowers` list. Only `provider-chain.spec.ts` uses the real known ISBNs (`9782070360246`, `9780134685991`) because it tests provider-specific metadata content.
 
 **Helper files:**
 - `tests/e2e/helpers/auth.ts` — `loginAs()` (real browser login), `logout()` (clears cookies)
 - `tests/e2e/helpers/isbn.ts` — `specIsbn(specId, seq)` generates unique valid EAN-13 ISBNs per spec
 - `tests/e2e/helpers/accessibility.ts` — axe-core a11y assertions
 - `tests/e2e/helpers/loans.ts` — `scanTitleAndVolume`, `createBorrower`, `createLoan`, `returnLoanFromLoansPage`. Canonical loan-flow helpers. `createLoan` submits via direct `page.request.post('/loans', ...)` instead of the HTMX form — the HTMX path proved racy under parallel load (story 5-1c) because `waitForURL(/\/loans/)` was a no-op when the form lives on /loans.
-- `tests/e2e/helpers/scanner.ts` — `simulateScan` (scanner burst, 20 ms inter-key) and `simulateTyping` (human pace, 100 ms inter-key). Uses Playwright's native `{ delay }` option — do NOT re-roll `waitForTimeout` sequences.
+- `tests/e2e/helpers/scanner.ts` — `simulateScan` (scanner burst, 20 ms inter-key) and `simulateTyping` (human pace, `TYPING_DELAY_MS` = 150 ms inter-key; throws when the field's `data-scanner-threshold` leaves less than 30 ms of margin — `search.js` reads typing only strictly above it). Uses Playwright's native `{ delay }` option — do NOT re-roll `waitForTimeout` sequences.
+- `tests/e2e/helpers/htmx.ts` — `expectHtmxProcessed` (see HTMX wait strategies); `tests/e2e/helpers/visibility.ts` — `expectReallySeen`, `effectiveOpacity`, `seenState`; `tests/e2e/helpers/vcode.ts` — `specVcode`, `VCODE_BLOCKS`.
 
 **Session cookie format:** The `DEV_SESSION_COOKIE` value `"ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2"` is base64 of a development session token seeded by `migrations/20260329000002_seed_dev_user.sql`. Cookie name is `session` (NOT `session_token`). The row exists **only** where `MYBIBLI_SEED_DEV_USERS` is set: on any other boot the seed gate deletes it along with the seeded users (issue #480), so never write a test — or a runbook — that assumes the token resolves on a production-shaped stack.
 

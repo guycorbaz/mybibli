@@ -16,8 +16,7 @@
  * surface before story 11-16: it is covered over the real router by
  * `tests/proposal_history.rs` (simulated clock).
  *
- * Spec ID "PH" for ISBNs; unique key labels; creates no series, so it
- * does not depend on file order (#528).
+ * Spec ID "PH" for ISBNs; unique key labels.
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";

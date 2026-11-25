@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume } from "../../helpers/loans";
+import { specVcode } from "../../helpers/vcode";
 
 /**
  * CR #443 tranche 3 — the /labels index and its drill-down.
@@ -60,7 +61,7 @@ test.describe("CR #443 — labels page and drill-down", () => {
     const label = await createLabel(page);
 
     const isbn = specIsbn("LP", 1);
-    const vcode = `V8${crypto.randomUUID().replace(/\D/g, "").slice(0, 3).padEnd(3, "0")}`;
+    const vcode = specVcode("LP", 0);
     await scanTitleAndVolume(page, isbn, vcode);
 
     // Attach on the title page.

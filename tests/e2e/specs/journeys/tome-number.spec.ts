@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 /**
  * Story 13-10 (#579) — the tome number. Spec ID "TN".
@@ -9,7 +10,7 @@ import { specIsbn } from "../../helpers/isbn";
  * "Tome 3 : Le Mystère des tomes": the title is stored without the
  * marker, the number shows as "Tome 3 (detected)", pre-fills the series
  * position, and the position is then edited from the title page.
- * Creates its own uniquely named series (#528). Each attempt scans fresh
+ * Creates its own uniquely named series. Each attempt scans fresh
  * ISBNs, so a retry never meets the state an earlier attempt left.
  */
 const freshSeq = (base: number, span: number) => base + (Date.now() % span);
@@ -105,6 +106,8 @@ test.describe("The tome number (story 13-10, #579)", () => {
     await page.locator("button[hx-get$='/edit']").first().click();
     const titleField = page.locator("#edit-title");
     await expect(titleField).toBeVisible({ timeout: 5000 });
+    // #685 — the edit form has only `hx-post`: wait until HTMX wired it.
+    await expectHtmxProcessed(page.locator("#title-edit-form"));
     const handTitle = `Saga TN Tome 5 : à la main ${Date.now()}`;
     await titleField.fill(handTitle);
     await page.locator("#edit-title-submit").click();

@@ -14,6 +14,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn, specIsbn10 } from "../../helpers/isbn";
 import { simulateScan } from "../../helpers/scanner";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 // Review round 1: manual creation refuses an ISBN another title holds, so
 // a rerun on a database that was not reset must not draw a used ISBN. The
@@ -30,7 +31,7 @@ function hyphenated(isbn13: string): string {
 async function openTitleForm(page: Page, name: string, isbn: string) {
   await page.locator("#new-title-btn").click();
   const form = page.locator("#title-form-container form");
-  await expect(form).toBeVisible({ timeout: 10000 });
+  await expectHtmxProcessed(form);
   await form.locator("#title-field").fill(name);
   await form.locator("#media-type-field").selectOption("book");
   await page.waitForSelector("#page-count-field", { timeout: 10000 });
