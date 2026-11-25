@@ -1,6 +1,6 @@
 # Story 19.3: Simultaneous actions on volumes and contributors (closes #541; #663 items 1–3)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -252,6 +252,14 @@ Fixed in passing: two module doc comments still mentioned "#442 reuse" (`routes/
 Low findings:
 
 - **CR #300 modal before the D9 refusal.** On a title that already has volumes, a trashed label first opens "Add another copy?", and the refusal only comes after Confirm, which then closes the modal. This is correct but costs one extra step; a pre-check with `find_by_label_any_state` would answer at once. The spec allows the current behaviour.
-- **The same unwired-Confirm pattern in other specs.** Several specs click a `#modal-slot` Confirm without `expectHtmxProcessed` (e.g. `catalog-volume.spec.ts`, `wishlist.spec.ts`, `borrower-delete-modal.spec.ts`), so they can flake the same way. They are outside this story; to be filed as an issue.
+- **The same unwired-Confirm pattern in other specs.** Several specs click a `#modal-slot` Confirm without `expectHtmxProcessed` (e.g. `catalog-volume.spec.ts`, `wishlist.spec.ts`, `borrower-delete-modal.spec.ts`), so they can flake the same way. They are outside this story; filed as #723.
 
 Verification: `cargo clippy --all-targets -- -D warnings` is clean. `cargo test --test integration volume_label_in_trash:: title_volume_add:: volume_add_races:: locale_parity::` are green (35 passed), and so are the lib tests `services::volume`, `routes::title_volume_add` and `routes::vcode_volume` (48 passed). `npx tsc --noEmit` passes in `tests/e2e`, and the `waitForTimeout` gate is clean. Playwright was not run, because a full E2E run was in progress; the two specs must pass in the next E2E run before this pass is closed. Status stays `review`, since the Medium finding means another pass is due (Rule #6).
+
+### Review pass 4: no Medium+ finding
+
+**Date:** 2026-11-25. A pass over the pass-3 fixes (`efc1b77`): `trashVolumeFromTitlePage`, the `expectHtmxProcessed` wait in the recovery spec's title delete, and the two doc comments. The helper waits for the wired Confirm, for the `DELETE` answer and for the navigation its `HX-Redirect` starts, then asserts the row is gone. Nothing is left racing, and no product code changed.
+
+Also on the branch: `24eaf65` fixes a flaky test outside the story (`connection-lost-overlay.spec.ts`, "Retry button polls /health immediately"). Chromium applies `setOffline(false)` asynchronously, so the first Retry could still fail. The test now clicks Retry until the overlay goes, within 3 s, well short of the 5 s automatic poll (45/45 with `--repeat-each=15 --retries=0`).
+
+Verification: full E2E suite on a freshly reset stack, `CI=true --workers=2`: 489 passed, 2 skipped, no flaky test, none failed. The Low findings of passes 1–2 are in #722, the latent modal-Confirm pattern in #723. Status: done.
