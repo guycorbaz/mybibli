@@ -454,7 +454,7 @@ error:
   isbn:
     invalid_checksum: "Ungültige ISBN: Die Prüfziffer stimmt nicht — bitte auf Tippfehler prüfen"
     invalid_format: "Keine ISBN — 10 oder 13 Ziffern erwartet, z. B. 978-2-07-036024-6"
-    already_used: "Diese ISBN wird bereits von einem anderen Titel verwendet — Duplikat wird nicht angelegt"
+    already_used: "„%{title}“ hat bereits diese ISBN. Prüfen Sie die Nummer oder öffnen Sie diesen Titel."
     not_found: ISBN nicht gefunden
   upc:
     invalid_checksum: "Ungültige UPC: Die Prüfziffer stimmt nicht — bitte auf Tippfehler prüfen"
@@ -477,7 +477,7 @@ error:
     username_empty: Benutzername ist erforderlich
     username_too_short: Der Benutzername muss mindestens 3 Zeichen lang sein
     username_too_long: Der Benutzername darf höchstens 255 Zeichen lang sein
-    username_taken: "Benutzername \"%{username}\" ist bereits vergeben"
+    username_taken: "Das Konto wurde nicht gespeichert: Der Benutzername „%{username}“ ist bereits vergeben. Wählen Sie einen anderen Benutzernamen."
     password_too_short: Das Passwort muss mindestens 8 Zeichen lang sein
     password_too_long: Das Passwort darf höchstens 72 Zeichen lang sein
     role_invalid: Die Rolle muss Bibliothekar oder Administrator sein
@@ -485,17 +485,17 @@ error:
     last_admin: Mindestens ein aktiver Administrator muss verbleiben
     last_admin_demote: "Sie sind der einzige aktive Administrator — erstellen Sie einen weiteren, bevor Sie Ihre Rolle ändern"
     not_found: Benutzer nicht gefunden
-    version_mismatch: "Der Benutzer wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
+    version_mismatch: "Ihre Änderung wurde nicht gespeichert: Ein anderer Administrator hat dieses Konto inzwischen geändert. Laden Sie die Seite neu und nehmen Sie Ihre Änderung dann erneut vor."
   reference_data:
     name_empty: Name ist erforderlich
     name_too_long: Der Name darf höchstens 255 Zeichen lang sein
-    name_taken: "\"%{name}\" existiert bereits"
+    name_taken: "„%{name}“ wurde nicht gespeichert: Diese Liste enthält bereits einen Eintrag mit diesem Namen. Wählen Sie einen anderen Namen oder verwenden Sie den vorhandenen Eintrag."
     in_use_with_link: "Löschen nicht möglich: %{count} %{plural} verwenden dieses %{singular}. %{link_html}"
     in_use_no_link: "Löschen nicht möglich: %{count} %{plural} verwenden dieses %{singular}."
-    version_mismatch: "Der Eintrag wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
+    version_mismatch: "Ihre Änderung wurde nicht gespeichert: Ein anderer Administrator hat diesen Eintrag inzwischen geändert. Laden Sie die Seite neu und nehmen Sie Ihre Änderung dann erneut vor."
     not_found: Eintrag nicht gefunden
-    invalid_version: "Ungültige Version — bitte Seite neu laden und erneut versuchen"
-    node_type_name_too_long_for_cascade: "Der Name darf höchstens %{max} Zeichen lang sein (Standorttypen werden in storage_locations kaskadiert)"
+    invalid_version: "Ihre Änderung wurde nicht gespeichert: Die Seite ist nicht mehr aktuell. Laden Sie sie neu und nehmen Sie Ihre Änderung dann erneut vor."
+    node_type_name_too_long_for_cascade: "Der Name darf höchstens %{max} Zeichen lang sein."
     name_invalid_chars: "Der Name enthält unsichtbare oder bidirektionale Unicode-Zeichen, die nicht zulässig sind"
   system:
     overdue_threshold_invalid: "Die Grenze muss ≥ 1 Tag sein"

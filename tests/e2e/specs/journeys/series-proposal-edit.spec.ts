@@ -80,12 +80,17 @@ async function acceptFromDetail(page: Page) {
   await page.locator("#proposal-accept-button").click();
   const dialog = page.locator("#modal-slot dialog");
   await expect(dialog).toBeVisible();
-  await dialog.locator("[data-modal-confirm]").click();
+  const confirm = dialog.locator("[data-modal-confirm]");
+  await expectHtmxProcessed(confirm);
+  await confirm.click();
   await expect(dialog).toBeHidden({ timeout: 10000 });
   await expect(page.locator("#proposal-detail-body")).toHaveAttribute(
     "data-proposal-status",
     "accepted",
   );
+  // Story 19-4 (#538) — the Accept button left with the swap: focus goes
+  // to the back link, not to <body>.
+  await expect(page.locator("#proposal-back-link")).toBeFocused();
   await expect(
     page.locator("#feedback-list .feedback-entry").filter({ hasText: ACCEPTED }),
   ).toBeVisible({ timeout: 10000 });
@@ -164,12 +169,26 @@ test.describe("Story 11-19 — edit a proposal before accepting it", () => {
       const dialog = page.locator("#modal-slot dialog");
       await expect(dialog).toBeVisible();
       await expect(dialog).toContainText("PE tome retiré");
-      await dialog.locator("[data-modal-confirm]").click();
+      const confirm = dialog.locator("[data-modal-confirm]");
+      await expectHtmxProcessed(confirm);
+      await confirm.click();
       await expect(dialog).toBeHidden({ timeout: 10000 });
       await expect(
         page.locator("#feedback-list .feedback-entry").filter({ hasText: REMOVED }),
       ).toBeVisible({ timeout: 10000 });
       await expect(items.filter({ hasText: "PE tome retiré" })).toHaveCount(0);
+      // Story 19-4 (#538) — the removed line's button is gone: focus goes
+      // to the first line action left, not to <body>.
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const a = document.activeElement;
+            return !!a && a.matches(
+              "#proposal-items [data-remove-line], #proposal-items [data-action='inline-form-add-toggle']",
+            );
+          }),
+        )
+        .toBe(true);
       await expect(page.locator("#proposal-removed")).toContainText("PE tome retiré");
 
       await acceptFromDetail(page);

@@ -1546,3 +1546,81 @@ fn scroll_offset_utilities_stay_on_main_and_inner_scrollers() {
         violations.join("\n")
     );
 }
+
+/// Story 19-4 (#712) — Tailwind v3 utilities that v4 dropped or renamed
+/// (`bg-opacity-*` and its siblings are gone: `bg-black bg-opacity-50`
+/// gave a solid black backdrop; `flex-shrink-*`, `flex-grow-*` and
+/// `overflow-ellipsis` are the deprecated spellings of `shrink-*`,
+/// `grow-*` and `text-ellipsis`). Matched as a class token: after the
+/// start, a space, a quote, a backslash or a variant's `:` / `!`, so
+/// `shrink-0`, `grow` and `text-ellipsis` pass.
+fn tailwind_v3_utility_re() -> Regex {
+    Regex::new(
+        r#"(?:^|[\s"'`\\:!])((?:bg|text|border|divide|ring|placeholder)-opacity-[\w./\[\]-]+|flex-(?:shrink|grow)-[\w./\[\]-]+|(?:overflow-ellipsis|decoration-slice|decoration-clone)(?:$|[\s"'`\\]))"#,
+    )
+    .unwrap()
+}
+
+/// Story 19-4 (#712) — no template, Rust-built markup (production part)
+/// or own JS file (vendored and `.min.js` left out) uses a Tailwind v3-only
+/// utility: Tailwind v4 generates nothing for it, silently.
+#[test]
+fn no_tailwind_v3_only_utilities() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let re = tailwind_v3_utility_re();
+    let mut violations = Vec::new();
+    let mut check = |rel: String, code: &str| {
+        for (n, line) in code.lines().enumerate() {
+            for cap in re.captures_iter(line) {
+                violations.push(format!("  {rel}:{}: `{}`", n + 1, cap[1].trim_end()));
+            }
+        }
+    };
+    let relative = |path: &Path| {
+        path.strip_prefix(&root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/")
+    };
+    visit(&root.join("templates"), &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let Ok(raw) = fs::read_to_string(path) else { return };
+        check(relative(path), &strip_html_comments(&raw));
+    });
+    for (rel, code) in production_rust_sources(&root) {
+        check(rel, &code);
+    }
+    visit(&root.join("static/js"), &mut |path| {
+        let rel = relative(path);
+        if path.extension().and_then(|e| e.to_str()) != Some("js")
+            || rel.ends_with(".min.js")
+            || rel.contains("/vendor/")
+        {
+            return;
+        }
+        let Ok(raw) = fs::read_to_string(path) else { return };
+        check(rel, &raw);
+    });
+    assert!(
+        violations.is_empty(),
+        "Tailwind v3-only utilities (v4 generates nothing for them; use \
+         `bg-black/50`, `shrink-0`, `grow`, `text-ellipsis`…):\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn tailwind_v3_pattern_matches_class_tokens_only() {
+    let re = tailwind_v3_utility_re();
+    assert!(re.is_match(r#"<div class="fixed bg-black bg-opacity-50">"#));
+    assert!(re.is_match(r#"class=\"flex-shrink-0 w-5\""#));
+    assert!(re.is_match(r#"class="dark:text-opacity-75""#));
+    assert!(re.is_match(r#"class="truncate overflow-ellipsis""#));
+    assert!(re.is_match(r#"'<svg class="flex-grow-0">'"#));
+    assert!(!re.is_match(r#"<div class="fixed bg-black/50 shrink-0 grow">"#));
+    assert!(!re.is_match(r#"class="text-ellipsis overflow-hidden""#));
+    assert!(!re.is_match("let flex_shrink = 0; // flex-shrink: 0 in CSS"));
+    assert!(!re.is_match(r#"class="my-bg-opacity-50""#));
+}

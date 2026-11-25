@@ -181,7 +181,7 @@ fn resolved_feedback_html(message: &str, title_id: u64) -> String {
     format!(
         r#"<div id="feedback-entry-{title_id}" hx-swap-oob="true" class="p-3 border-l-4 border-green-500 bg-green-50 dark:bg-green-900/20 rounded-r feedback-entry" role="status" data-feedback-variant="success" data-resolved-at="{ts}">
   <div class="flex items-start gap-2">
-    <svg class="text-green-600 dark:text-green-400 w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" /></svg>
+    <svg class="text-green-600 dark:text-green-400 w-5 h-5 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" /></svg>
     <div class="flex-1">
       <p class="text-stone-700 dark:text-stone-300">{escaped}</p>
     </div>
@@ -198,7 +198,7 @@ fn failed_feedback_html(message: &str, title_id: u64, loc: &str) -> String {
     format!(
         r#"<div id="feedback-entry-{title_id}" hx-swap-oob="true" class="p-3 border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-900/20 rounded-r feedback-entry" role="status" data-feedback-variant="warning">
   <div class="flex items-start gap-2">
-    <svg class="text-amber-600 dark:text-amber-400 w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
+    <svg class="text-amber-600 dark:text-amber-400 w-5 h-5 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
     <div class="flex-1">
       <p class="text-stone-700 dark:text-stone-300">{escaped}</p>
       <p class="text-sm mt-1"><a href="/title/{title_id}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{edit_escaped}</a></p>

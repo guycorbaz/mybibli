@@ -292,8 +292,26 @@ impl SeriesService {
         pool: &DbPool,
         series: &SeriesModel,
     ) -> Result<Vec<SeriesPositionInfo>, AppError> {
-        let assignments = TitleSeriesModel::find_by_series(pool, series.id).await?;
+        Ok(Self::get_series_positions_and_gaps(pool, series).await?.0)
+    }
 
+    /// #519 — the position grid and the gaps of [`series_gaps`] (the
+    /// counting rule shared with `/series`, the dashboard and the MCP
+    /// tools), from one read of the assignments.
+    pub async fn get_series_positions_and_gaps(
+        pool: &DbPool,
+        series: &SeriesModel,
+    ) -> Result<(Vec<SeriesPositionInfo>, SeriesGaps), AppError> {
+        let assignments = TitleSeriesModel::find_by_series(pool, series.id).await?;
+        let held: Vec<i32> = assignments.iter().map(|a| a.position_number).collect();
+        let gaps = series_gaps(series.series_type, series.total_volume_count, &held);
+        Ok((Self::position_grid(series, assignments)?, gaps))
+    }
+
+    fn position_grid(
+        series: &SeriesModel,
+        assignments: Vec<TitleSeriesRow>,
+    ) -> Result<Vec<SeriesPositionInfo>, AppError> {
         if series.series_type == SeriesType::Open {
             // Open series: just return assigned positions
             return Ok(assignments

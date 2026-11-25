@@ -4,7 +4,7 @@
    closes the modal AND triggers a row re-render so the checkbox visual
    reverts (HTMX OOB swap on the row). Same `<dialog>` shell as the simple
    delete modal so scanner-guard 7-5 covers it. #}
-<dialog open aria-modal="true" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 rounded-lg">
+<dialog open aria-modal="true" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 rounded-lg">
     <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-lg w-full mx-4 border border-stone-200 dark:border-stone-700">
         <div class="p-6">
             <h3 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ warning_heading }}</h3>

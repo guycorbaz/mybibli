@@ -186,7 +186,7 @@
             "fixed bottom-4 right-4 z-50 bg-emerald-50 dark:bg-emerald-900/90 border border-emerald-300 dark:border-emerald-600 rounded-lg shadow-lg p-4 max-w-sm motion-safe:transition-opacity motion-safe:duration-200";
         toast.innerHTML =
             '<div class="flex items-start gap-3">' +
-            '<svg class="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>' +
+            '<svg class="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>' +
             '<p class="flex-1 text-sm text-emerald-800 dark:text-emerald-200"></p>' +
             "</div>";
         // Set text via .textContent (CSP-safe — no innerHTML interpolation

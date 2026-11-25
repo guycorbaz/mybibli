@@ -15,6 +15,7 @@
  */
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { backgroundAlpha } from "../../helpers/visibility";
 
 test.describe("Story 9-16 — connection-lost overlay", () => {
   test("overlay appears on network drop, dismisses on restore with toast", async ({
@@ -40,6 +41,10 @@ test.describe("Story 9-16 — connection-lost overlay", () => {
     const overlay = page.locator("#connection-lost-overlay");
     await expect(overlay).not.toHaveClass(/\bhidden\b/);
     await expect(overlay).toHaveAttribute("aria-live", "assertive");
+    // Story 19-4 (#712) — the backdrop dims the page (`bg-black/50`); the
+    // Tailwind v3 `bg-opacity-50` it had made it solid black. Read while
+    // the overlay is shown, before the network comes back.
+    expect(await backgroundAlpha(overlay)).toBeCloseTo(0.5, 2);
 
     // Scan field disabled if present on the page.
     const scanField = page.locator("#scan-field");

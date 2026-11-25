@@ -100,8 +100,12 @@ async function acceptProposal(page: Page, id: number) {
   const dialog = page.locator("#modal-slot dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("[data-modal-confirm]")).toHaveText(ACCEPT);
+  await expectHtmxProcessed(dialog.locator("[data-modal-confirm]"));
   await dialog.locator("[data-modal-confirm]").click();
   await expect(dialog).toBeHidden({ timeout: 10000 });
+  // Story 19-4 (#538) — the decision swapped the Accept button away:
+  // focus goes to the back link above the heading, not to <body>.
+  await expect(page.locator("#proposal-back-link")).toBeFocused();
 }
 
 test.describe("Story 11-18 — accept a metadata or cover proposal", () => {

@@ -14,7 +14,7 @@ use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
 use crate::middleware::locale::Locale;
 use crate::models::session::SessionModel;
-use crate::services::title::{TitleForm, TitleService};
+use crate::services::title::{ManualCreate, TitleForm, TitleService};
 use crate::utils::feedback_html;
 
 struct GenreOption {
@@ -145,7 +145,16 @@ pub async fn create_title(
     }
 
     match TitleService::create_manual(pool, &form, loc).await {
-        Ok(title) => {
+        // Story 19-4 (#679 item 7) — the refusal names the title holding
+        // the ISBN, as a link (#679 item 8, the field slot, is out of scope).
+        Ok(ManualCreate::IsbnTaken { id, title }) => Ok(Html(crate::utils::feedback_html_with_inline_link(
+            "error",
+            &rust_i18n::t!("error.isbn.already_used", locale = loc, title = crate::utils::LINK_PLACEHOLDER),
+            &format!("/title/{id}"),
+            &title,
+        ))
+        .into_response()),
+        Ok(ManualCreate::Created(title)) => {
             tracing::info!(title_id = title.id, title = %title.title, "Manual title created");
 
             // Update current title in session

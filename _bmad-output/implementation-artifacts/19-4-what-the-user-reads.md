@@ -1,6 +1,6 @@
 # Story 19.4: What the user reads (closes #519, #538, #712; #689 items 1 and 3; #679 items 6–7)
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -76,16 +76,16 @@ Practice A3 (patch v1.28.1 retro): the copy and the two visible behaviours below
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `/series` list from the shared rule (D1, AC1): query, route, template unchanged or adapted, tests; check the detail header against `series_gaps`.
-- [ ] T2 — feedback-list OOB innerHTML (D3, AC3): `HtmxResponse::body` or helper, every call site, unit test.
-- [ ] T3 — scroll late error/warning entries into view (D2, AC2): `static/js/mybibli.js`, one function used by the swap, OOB and responseError paths.
-- [ ] T4 — focus fallbacks on the proposal triggers + `#proposal-back-link` (D4, AC4).
-- [ ] T5 — copy (D5, AC5): four locale files; `touch src/lib.rs`; update the unit and E2E assertions on the old text (`grep -rn "already exists\|existe déjà\|already taken\|refusing to create" src tests`).
-- [ ] T6 — edit-form field refusals (D6, AC6): slots, `aria-describedby`, route.
-- [ ] T7 — ISBN holder named and linked (D6, AC7): `field_refusal` link variant; creation path returns the holder; escaping test.
-- [ ] T8 — backdrops `bg-black/50` + Tailwind v3 audit (D7, AC9).
-- [ ] T9 — E2E (AC2–AC4, AC6–AC9): extend existing specs where they own the surface (`series-feedback-region.spec.ts`, `proposals-review.spec.ts`, `admin-reference-data.spec.ts`, `admin-user-validation.spec.ts`, a title-edit spec, `connection-lost-overlay.spec.ts`), with their own data (Rule #23) and `expectHtmxProcessed` before clicking a swapped Confirm (#723).
-- [ ] T10 — gates (AC10); `CLAUDE.md`: one line under Key Patterns (feedback-list OOB is innerHTML; late errors scrolled into view; Tailwind v3 audit).
+- [x] T1 — `/series` list from the shared rule (D1, AC1): query, route, template unchanged or adapted, tests; check the detail header against `series_gaps`.
+- [x] T2 — feedback-list OOB innerHTML (D3, AC3): `HtmxResponse::body` or helper, every call site, unit test.
+- [x] T3 — scroll late error/warning entries into view (D2, AC2): `static/js/mybibli.js`, one function used by the swap, OOB and responseError paths.
+- [x] T4 — focus fallbacks on the proposal triggers + `#proposal-back-link` (D4, AC4).
+- [x] T5 — copy (D5, AC5): four locale files; `touch src/lib.rs`; update the unit and E2E assertions on the old text (`grep -rn "already exists\|existe déjà\|already taken\|refusing to create" src tests`).
+- [x] T6 — edit-form field refusals (D6, AC6): slots, `aria-describedby`, route.
+- [x] T7 — ISBN holder named and linked (D6, AC7): `field_refusal` link variant; creation path returns the holder; escaping test.
+- [x] T8 — backdrops `bg-black/50` + Tailwind v3 audit (D7, AC9).
+- [x] T9 — E2E (AC2–AC4, AC6–AC9): extend existing specs where they own the surface (`series-feedback-region.spec.ts`, `proposals-review.spec.ts`, `admin-reference-data.spec.ts`, `admin-user-validation.spec.ts`, a title-edit spec, `connection-lost-overlay.spec.ts`), with their own data (Rule #23) and `expectHtmxProcessed` before clicking a swapped Confirm (#723).
+- [x] T10 — gates (AC10); `CLAUDE.md`: one line under Key Patterns (feedback-list OOB is innerHTML; late errors scrolled into view; Tailwind v3 audit).
 
 ## Dev Notes
 
@@ -131,8 +131,51 @@ Checked against the code: the series list, `filled_positions_join!` and `list_su
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- First `cargo test --lib` run hit the dev DB from `.env` (access denied); rerun against the test DB on 3317.
+- Clippy `large_enum_variant` on `ManualCreate` → `Created(Box<TitleModel>)`.
+- E2E first pass: the expected-tome delete-modal answers its own "tome no longer exists" copy (not `error.not_found`); the FR username copy arrives HTML-escaped (`&#x27;`) in a raw `page.request` body — both assertions adjusted.
 
 ### Completion Notes List
 
+- **T1 (D1, #519):** `/series` reads `SeriesModel::list_summaries(pool, "", false, page)` (shared `filled_positions_join!`, one page query + its count, same name/id sort and paging); `SeriesListRow.series` is now a `SeriesSummaryRow`; `compute_gap(type, total, owned)`. The detail header did **not** agree with `series_gaps` for an open series holding a position twice (it counted grid cells = rows) and for a closed series without a total (empty grid → 0): it now takes `owned_positions` from `series_gaps` via the new `SeriesService::get_series_positions_and_gaps` (one read of the assignments). `active_count_titles` is still used by the delete guard and `update_series` (unchanged, out of scope). Tests: `tests/series_list_counts.rs` (model, rendered columns, detail header, dashboard / `/series` / MCP `list_series` agreement). "One query per page" is by construction (no per-row call left); no query counter exists to assert it.
+- **T2 (D3):** in one place, `HtmxResponse::body`: a `Replace` on `feedback-list` renders `hx-swap-oob="innerHTML"`; unit test `feedback_list_replace_swaps_the_content_not_the_region`. No call site changed.
+- **T3 (D2):** `mybibli.js::revealLateFeedback` + one `MutationObserver` on `document.body` (subtree) — covers main swaps, OOB and the responseError insert; error/warning only, only when not in the viewport, `block: "nearest"`, smooth unless `prefers-reduced-motion`, never focus. Note: on `/catalog`, a late metadata *warning* (pending-updates OOB) for an older entry lower in a long list would also be scrolled into view; focus is untouched.
+- **T4 (D4):** `#proposal-back-link`; Accept/Reject carry `data-modal-focus-fallback="#proposal-back-link"`, remove-line the ordered value of D4; `focusFallbackOf` splits on ` || ` (a value without it behaves as in 19-1).
+- **T5 (D5):** EN/FR exactly as approved; DE („…“) and IT («…») translated. `error.reference_data.version_mismatch` and `error.user.version_mismatch` turn out to be unused by the code today (no `t!` call) — reworded anyway as decided. **Deviation (bug found):** user *creation* returned the model's raw `Conflict("username_taken")` marker as its message; it now goes through the same mapping as the update (`admin_users::username_taken_conflict`), so the new copy shows on the creation form as AC8 requires.
+- **T6 (D6):** slots `#edit-title-error` and `#edit-media-type-error` + `aria-describedby` (title: `edit-title-error` plus the tome hint when shown); `field_refusal` for both. The media-type check moved before the UPC check (which reads the media type), so an unknown type is refused under its own field first.
+- **T7 (D6):** `utils::message_with_link_html` + `LINK_PLACEHOLDER` (the message is translated with `title = LINK_PLACEHOLDER`, escaped, then the placeholder becomes the escaped `<a href="/title/{id}">name</a>`); `field_refusal_with_link` for the edit form; `TitleService::create_manual` returns `ManualCreate::{Created, IsbnTaken{id,title}}`. For the creation entry the link is **inline** in the message (`utils::feedback_html_with_inline_link`, sharing a new `feedback_html_entry` renderer) rather than `feedback_html_with_link`'s link-below pattern, so both forms show the same text with the name once, as the link (D6 "the message carries it once").
+- **T8 (D7):** nine `bg-black bg-opacity-50` → `bg-black/50`. Audit `no_tailwind_v3_only_utilities` + self-test `tailwind_v3_pattern_matches_class_tokens_only`. **Spec correction:** Tailwind 4.3.5 still emits `flex-shrink-0` (deprecated alias, present in `output.css`), so it was not broken; the audit keeps the spec's list, and the 26 `flex-shrink-0` sites (templates, Rust markup, `mybibli.js`, `scan-field.js`, `session-timeout.js`, `connection-monitor.js`) were renamed to `shrink-0` — identical CSS, no visible change.
+- **T9 (E2E):** `series-feedback-region` (late error scrolled into view, focus kept on the tome's Delete, UX-DR8 backdrop alpha 0.5), `connection-lost-overlay` (overlay alpha 0.5 while shown), `proposals-review` (focus on back link after both rejections), `series-proposal-edit` (focus on a remaining line action after removal, back link after accept), `metadata-cover-proposal-accept` (back link after every accept), `admin-reference-data` (new name-taken copy; two saves keep `aria-live` / `aria-relevant`), `admin-user-validation` (taken username), `form-refusals` (ISBN holder link on the edit form; empty title and unknown media type under their fields; manual creation names and links the holder). `expectHtmxProcessed` added before every touched modal Confirm. New helper `backgroundAlpha` (`helpers/visibility.ts`). No new spec file, no new spec id.
+- **T10:** one Key Patterns line in `CLAUDE.md`.
+- No query added through `sqlx::query!` → `.sqlx/` unchanged (`prepare --check` clean).
+
+**Gates (2026-11-25):**
+- `cargo clippy --all-targets -- -D warnings`: clean.
+- `cargo test --lib`: 1864 passed, 0 failed, 1 ignored.
+- `cargo test --test integration -- series_list_counts:: form_refusals:: isbn_one_rule:: locale_parity:: every_test_file_is_declared dashboard_gaps:: mcp_series_gaps_tools:: proposals_page:: admin_refdata_hx_trigger:: series_`: 138 passed, 0 failed.
+- `cargo sqlx prepare --check --workspace -- --all-targets`: clean.
+- `npx tsc --noEmit`, `waitForTimeout` grep gate, `vcode-literals.sh`: clean.
+- Full E2E on a freshly reset stack, `CI=true --workers=2`: 494 passed, 2 skipped, 0 failed, 0 flaky (3.4 min).
+
 ### File List
+
+- CLAUDE.md
+- _bmad-output/implementation-artifacts/19-4-what-the-user-reads.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- locales/{en,fr,de,it}.yml
+- src/middleware/htmx.rs, src/middleware/pending_updates.rs
+- src/routes/admin.rs, admin_users.rs, catalog.rs, catalog_title_form.rs, series.rs, titles.rs
+- src/services/series.rs, src/services/title.rs
+- src/templates_audit.rs, src/utils.rs
+- static/js/connection-monitor.js, modal.js, mybibli.js, scan-field.js, session-timeout.js
+- templates/components/cover.html, feedback_entry.html, modal.html
+- templates/fragments/admin_api_keys_{created,delete,revoke}_modal.html, admin_ref_{delete,loanable_warning}_modal.html, cover_upload_modal.html, proposal_detail_body.html, saved_search_rename_modal.html, title_edit_form.html
+- templates/layouts/base.html
+- templates/pages/catalog.html, home.html, proposal_detail.html, title_detail.html
+- tests/form_refusals.rs, tests/isbn_one_rule.rs, tests/integration.rs, tests/series_list_counts.rs (new)
+- tests/e2e/helpers/visibility.ts
+- tests/e2e/specs/journeys/{admin-reference-data,admin-user-validation,connection-lost-overlay,form-refusals,metadata-cover-proposal-accept,proposals-review,series-feedback-region,series-proposal-edit}.spec.ts

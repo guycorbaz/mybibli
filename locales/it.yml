@@ -448,7 +448,7 @@ error:
   isbn:
     invalid_checksum: "ISBN non valido: la cifra di controllo non corrisponde — controlla la digitazione"
     invalid_format: "Non è un ISBN — attese 10 o 13 cifre, ad es. 978-2-07-036024-6"
-    already_used: "Un altro titolo usa già questo ISBN — non viene creato un duplicato"
+    already_used: "«%{title}» ha già questo ISBN. Controlla il numero, oppure apri questo titolo."
     not_found: ISBN non trovato
   upc:
     invalid_checksum: "UPC non valido: la cifra di controllo non corrisponde — controlla la digitazione"
@@ -471,7 +471,7 @@ error:
     username_empty: Il nome utente è obbligatorio
     username_too_short: Il nome utente deve contenere almeno 3 caratteri
     username_too_long: Il nome utente deve contenere al massimo 255 caratteri
-    username_taken: "Il nome utente «%{username}» è già in uso"
+    username_taken: "L'account non è stato salvato: il nome utente «%{username}» è già in uso. Scegline un altro."
     password_too_short: La password deve avere almeno 8 caratteri
     password_too_long: La password deve avere al massimo 72 caratteri
     role_invalid: Il ruolo deve essere Bibliotecario o Amministratore
@@ -479,17 +479,17 @@ error:
     last_admin: Deve restare almeno un amministratore attivo
     last_admin_demote: "Sei l'unico amministratore attivo — creane un altro prima di cambiare ruolo"
     not_found: Utente non trovato
-    version_mismatch: "L'utente è stato modificato da un altro amministratore — ricarica e riprova"
+    version_mismatch: "La modifica non è stata salvata: un altro amministratore ha modificato questo account nel frattempo. Ricarica la pagina, poi rifai la modifica."
   reference_data:
     name_empty: Il nome è obbligatorio
     name_too_long: Il nome deve avere al massimo 255 caratteri
-    name_taken: "«%{name}» esiste già"
+    name_taken: "«%{name}» non è stato salvato: questo elenco contiene già una voce con questo nome. Scegli un altro nome, oppure usa la voce esistente."
     in_use_with_link: "Impossibile eliminare: %{count} %{plural} utilizza(no) questo(a) %{singular}. %{link_html}"
     in_use_no_link: "Impossibile eliminare: %{count} %{plural} utilizza(no) questo(a) %{singular}."
-    version_mismatch: "La voce è stata modificata da un altro amministratore — ricarica e riprova"
+    version_mismatch: "La modifica non è stata salvata: un altro amministratore ha modificato questa voce nel frattempo. Ricarica la pagina, poi rifai la modifica."
     not_found: Voce non trovata
-    invalid_version: "Versione non valida — ricarica la pagina e riprova"
-    node_type_name_too_long_for_cascade: "Il nome deve avere al massimo %{max} caratteri (i tipi di ubicazione si propagano a storage_locations)"
+    invalid_version: "La modifica non è stata salvata: la pagina non è più aggiornata. Ricaricala, poi rifai la modifica."
+    node_type_name_too_long_for_cascade: "Il nome deve avere al massimo %{max} caratteri."
     name_invalid_chars: "Il nome contiene caratteri Unicode invisibili o direzionali non consentiti"
   system:
     overdue_threshold_invalid: "La soglia deve essere ≥ 1 giorno"

@@ -95,7 +95,8 @@ async fn the_edit_form_refuses_a_wrong_isbn_check_digit_under_the_isbn_field(poo
 #[sqlx::test(migrations = "./migrations")]
 async fn the_edit_form_refuses_an_isbn_another_title_holds_under_the_isbn_field(pool: DbPool) {
     let (app, b) = admin(&pool).await;
-    let holder = seed_title(&pool, "Holder").await;
+    // Story 19-4 (#679 item 7) — the holder is named, as a link, escaped.
+    let holder = seed_title(&pool, "<b>Holder</b>").await;
     sqlx::query("UPDATE titles SET isbn = '9782205001211' WHERE id = ?")
         .bind(holder)
         .execute(&pool)
@@ -105,7 +106,40 @@ async fn the_edit_form_refuses_an_isbn_another_title_holds_under_the_isbn_field(
     let before = stored(&pool, id).await;
 
     let answer = edit(&app, &b, &pool, id, "isbn=2205001213").await;
-    answer.assert_refused_into(StatusCode::CONFLICT, "#edit-isbn-error", "Another title already uses this ISBN");
+    answer.assert_refused_into(StatusCode::CONFLICT, "#edit-isbn-error", "already has this ISBN. Check the number, or open that title.");
+    assert!(
+        answer.body.contains(&format!(
+            r#"“<a href="/title/{holder}" class="underline font-semibold">&lt;b&gt;Holder&lt;/b&gt;</a>” already has this ISBN."#
+        )),
+        "{}",
+        answer.body
+    );
+    assert!(!answer.body.contains("<b>"), "the name is escaped: {}", answer.body);
+    assert_eq!(stored(&pool, id).await, before, "nothing saved");
+}
+
+/// Story 19-4 (#679 item 6) — an empty title and an unknown media type
+/// are refused under their own field, not in the page's feedback list.
+#[sqlx::test(migrations = "./migrations")]
+async fn the_edit_form_refuses_an_empty_title_and_an_unknown_media_type_under_their_fields(pool: DbPool) {
+    let (app, b) = admin(&pool).await;
+    let id = seed_title(&pool, "To edit").await;
+    let before = stored(&pool, id).await;
+    let version: i32 = sqlx::query_scalar("SELECT version FROM titles WHERE id = ?")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let genre = genre_id(&pool, "Roman").await;
+
+    let answer = post(&app, &b, &format!("/title/{id}"), &format!("version={version}&title=%20%20&genre_id={genre}")).await;
+    answer.assert_refused_into(StatusCode::BAD_REQUEST, "#edit-title-error", "Title is required");
+
+    let answer = edit(&app, &b, &pool, id, "media_type=vinyl").await;
+    answer.assert_refused_into(StatusCode::BAD_REQUEST, "#edit-media-type-error", "Invalid media type");
+    // Checked before the UPC, which reads the media type.
+    let answer = edit(&app, &b, &pool, id, "media_type=vinyl&upc=036000291453").await;
+    answer.assert_refused_into(StatusCode::BAD_REQUEST, "#edit-media-type-error", "Invalid media type");
     assert_eq!(stored(&pool, id).await, before, "nothing saved");
 }
 
@@ -156,4 +190,35 @@ async fn the_wish_list_preview_refuses_an_invalid_isbn_under_the_isbn_field(pool
     let answer = post(&app, &b, "/wishlist/preview-isbn", "isbn=9782205001211").await;
     assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
     assert_eq!(answer.retarget, None, "{}", answer.body);
+}
+
+/// Story 19-4 (Rule #9, retro epic 18 Q2) — the name-taken refusals say
+/// what happened, why and what to do: a reference-data entry and a user
+/// account (whose creation showed the model's raw marker before).
+#[sqlx::test(migrations = "./migrations")]
+async fn taken_names_are_refused_with_what_to_do(pool: DbPool) {
+    let (app, b) = admin(&pool).await;
+
+    let (status, body) = b
+        .post_form(&app, "/admin/reference-data/genres", &format!("_csrf_token={}&name=Roman", b.csrf))
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body.contains("“Roman” was not saved: this list already has an entry with that name. Choose another name, or use the existing entry."),
+        "{body}"
+    );
+
+    let (status, body) = b
+        .post_form(
+            &app,
+            "/admin/users",
+            &format!("_csrf_token={}&username=refusal_admin&password=valid-password-123&role=librarian", b.csrf),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body.contains("The account was not saved: the username “refusal_admin” is already taken. Choose another username."),
+        "{body}"
+    );
+    assert!(!body.contains(">username_taken<"), "{body}");
 }

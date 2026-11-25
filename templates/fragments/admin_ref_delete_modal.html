@@ -2,7 +2,7 @@
    No type-the-name friction — soft-delete is reversible (re-create with the
    same name reactivates the row per §Cross-cutting decisions). Uses
    `<dialog open aria-modal="true">` so scanner-guard 7-5 protects it. #}
-<dialog open aria-modal="true" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 rounded-lg">
+<dialog open aria-modal="true" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 rounded-lg">
     <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-md w-full mx-4 border border-stone-200 dark:border-stone-700">
         <div class="p-6">
             <h3 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ modal_heading }}</h3>

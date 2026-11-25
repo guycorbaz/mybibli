@@ -78,7 +78,7 @@ fn scan_error_feedback_html(message: &str, scan_code: &str, loc: &str) -> String
     let mut html = String::new();
     html.push_str("<div class=\"p-3 border-l-4 border-red-500 bg-red-50 dark:bg-red-900/20 rounded-r feedback-entry\" role=\"status\" data-feedback-variant=\"error\" data-scan-code=\"");
     html.push_str(&escaped_code);
-    html.push_str("\"><div class=\"flex items-start gap-2\"><svg class=\"text-red-600 dark:text-red-400 w-5 h-5 flex-shrink-0 mt-0.5\" viewBox=\"0 0 20 20\" fill=\"currentColor\" aria-hidden=\"true\"><path fill-rule=\"evenodd\" d=\"M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z\" clip-rule=\"evenodd\" /></svg><div class=\"flex-1\"><p class=\"text-stone-700 dark:text-stone-300\">");
+    html.push_str("\"><div class=\"flex items-start gap-2\"><svg class=\"text-red-600 dark:text-red-400 w-5 h-5 shrink-0 mt-0.5\" viewBox=\"0 0 20 20\" fill=\"currentColor\" aria-hidden=\"true\"><path fill-rule=\"evenodd\" d=\"M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z\" clip-rule=\"evenodd\" /></svg><div class=\"flex-1\"><p class=\"text-stone-700 dark:text-stone-300\">");
     html.push_str(&escaped_msg);
     html.push_str("</p><div class=\"mt-2 flex gap-2\"><button type=\"button\" class=\"text-xs px-2 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded hover:bg-red-200\" hx-post=\"/catalog/scan\" hx-target=\"#feedback-list\" hx-swap=\"afterbegin\" hx-vals='");
     html.push_str(&hx_vals);
@@ -102,7 +102,7 @@ fn skeleton_feedback_html(title_id: u64, isbn: &str) -> String {
     // `<style>` block here was blocked by strict `style-src 'self'`.
     format!(
         r##"<div id="feedback-entry-{title_id}" class="feedback-skeleton flex items-start gap-3 px-4 py-3 border-l-4 border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-800/50 rounded-r-md" role="status" aria-live="polite">
-    <svg class="animate-spin w-5 h-5 text-stone-400 flex-shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+    <svg class="animate-spin w-5 h-5 text-stone-400 shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
     <div class="flex-1">
         <p class="text-sm text-stone-700 dark:text-stone-300">{message}</p>
         <div class="mt-1 h-2 bg-stone-200 dark:bg-stone-700 rounded shimmer-bar"></div>
@@ -192,7 +192,7 @@ fn push_guide_oob(oob: &mut Vec<OobUpdate>, message: &str) {
 
 pub(crate) fn guide_strip_html(message: &str) -> String {
     format!(
-        r#"<p class="text-sm text-stone-500 dark:text-stone-400 flex items-center gap-2"><svg class="w-4 h-4 text-indigo-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" /></svg>{}</p>"#,
+        r#"<p class="text-sm text-stone-500 dark:text-stone-400 flex items-center gap-2"><svg class="w-4 h-4 text-indigo-400 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" /></svg>{}</p>"#,
         html_escape(message)
     )
 }
@@ -1294,7 +1294,7 @@ fn media_type_selector_html(
         .unwrap_or_default();
     let question_icon = r#"<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>"#;
     format!(
-        r#"<div class="flex items-start gap-3 p-3 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950" role="status" aria-live="polite"><div class="flex-shrink-0 text-blue-500">{question_icon}</div><div class="flex-1"><p class="text-sm font-medium text-gray-800 dark:text-gray-200">UPC {escaped_code} — {select_label}</p>{warning_html}<div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="{select_label}">{buttons}</div></div></div>"#
+        r#"<div class="flex items-start gap-3 p-3 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950" role="status" aria-live="polite"><div class="shrink-0 text-blue-500">{question_icon}</div><div class="flex-1"><p class="text-sm font-medium text-gray-800 dark:text-gray-200">UPC {escaped_code} — {select_label}</p>{warning_html}<div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="{select_label}">{buttons}</div></div></div>"#
     )
 }
 

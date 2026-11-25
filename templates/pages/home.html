@@ -182,7 +182,7 @@
     {% if metadata_error_count > 0 %}
     <div id="metadata-error-count" class="w-full max-w-4xl mt-4">
         <a href="/?filter=metadata_errors" class="flex items-center gap-2 px-3 py-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors">
-            <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
+            <svg class="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
             {{ label_metadata_errors }}
         </a>
     </div>
@@ -192,7 +192,7 @@
     {% if wishlist_count > 0 %}
     <div id="wishlist-counter" class="w-full max-w-4xl mt-2">
         <a href="/wishlist" class="inline-flex items-center gap-2 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors">
-            <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+            <svg class="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
             {{ label_wishlist_counter }}: <span class="font-semibold tabular-nums">{{ wishlist_count }}</span>
         </a>
     </div>
@@ -206,7 +206,7 @@
     {% if stale_genre_filter %}
     <div id="stale-genre-filter-notice" class="w-full max-w-4xl mt-4" role="status" aria-live="polite">
         <div class="flex items-center gap-2 px-3 py-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-            <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
+            <svg class="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
             <span>{{ stale_genre_filter_label }}</span>
         </div>
     </div>
@@ -771,7 +771,7 @@
                 {% for slice in stats_by_genre.visible %}
                 <li>
                     <a href="/?filter=genre:{{ slice.id }}" class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors">
-                        <svg width="12" height="12" aria-hidden="true" class="flex-shrink-0"><circle cx="6" cy="6" r="6" fill="{{ slice.color }}"/></svg>
+                        <svg width="12" height="12" aria-hidden="true" class="shrink-0"><circle cx="6" cy="6" r="6" fill="{{ slice.color }}"/></svg>
                         <span class="font-medium text-stone-900 dark:text-stone-100 truncate flex-1">{{ slice.name }}</span>
                         <span class="text-xs text-stone-600 dark:text-stone-400 whitespace-nowrap"><span class="tabular-nums">{{ slice.count_label }}</span> · <span class="tabular-nums">{{ slice.percent_label }}</span></span>
                     </a>
@@ -780,7 +780,7 @@
                 {% if let Some(o) = stats_by_genre.other.as_ref() %}
                 <li>
                     <div class="flex items-center gap-2 px-3 py-2 rounded-md">
-                        <svg width="12" height="12" aria-hidden="true" class="flex-shrink-0"><circle cx="6" cy="6" r="6" fill="{{ o.color }}"/></svg>
+                        <svg width="12" height="12" aria-hidden="true" class="shrink-0"><circle cx="6" cy="6" r="6" fill="{{ o.color }}"/></svg>
                         <span class="font-medium text-stone-700 dark:text-stone-300 truncate flex-1">{{ o.other_label }}</span>
                         <span class="text-xs text-stone-600 dark:text-stone-400 whitespace-nowrap"><span class="tabular-nums">{{ o.count_label }}</span> · <span class="tabular-nums">{{ o.percent_label }}</span></span>
                     </div>

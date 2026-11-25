@@ -129,6 +129,45 @@
         observer.observe(feedbackList, { childList: true });
     }
 
+    // Story 19-4 (#689 item 1) — an error or warning entry that lands in a
+    // #feedback-list region out of the viewport (a main swap, an OOB update
+    // or the responseError insert below) is scrolled into view, so a
+    // refusal answered to a control low on a long page is seen. Focus is
+    // never touched (Rule #21); success and info entries never scroll.
+    // One observer on the body: it sees every path, and a region replaced
+    // by a swap is still covered.
+    function revealLateFeedback(entry) {
+        var variant = entry.getAttribute("data-feedback-variant");
+        if (variant !== "error" && variant !== "warning") return;
+        if (!entry.closest("#feedback-list")) return;
+        var rect = entry.getBoundingClientRect();
+        var viewHeight = window.innerHeight || document.documentElement.clientHeight;
+        if (rect.top >= 0 && rect.bottom <= viewHeight) return;
+        var reduce = false;
+        try {
+            reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        } catch (err) {
+            reduce = false;
+        }
+        entry.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+    }
+
+    function initLateFeedbackReveal() {
+        if (!document.body || typeof MutationObserver === "undefined") return;
+        var observer = new MutationObserver(function (mutations) {
+            mutations.forEach(function (mutation) {
+                mutation.addedNodes.forEach(function (node) {
+                    if (node.nodeType !== 1) return;
+                    var entry = node.classList && node.classList.contains("feedback-entry")
+                        ? node
+                        : (node.querySelector && node.querySelector(".feedback-entry"));
+                    if (entry) revealLateFeedback(entry);
+                });
+            });
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+
     // HTMX error recovery: restore UI state and show error feedback
     function initHtmxErrorRecovery() {
         // Scoped to catalog page only (search.js handles home page errors)
@@ -216,7 +255,7 @@
         if (!list) return;
         var escaped = message.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         var html = '<div class="feedback-entry flex items-start gap-3 p-3 rounded-lg border-l-4 border-red-500 bg-red-50 dark:bg-red-950" data-feedback-variant="error" role="status">'
-            + '<div class="flex-shrink-0 text-red-500"><svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></div>'
+            + '<div class="shrink-0 text-red-500"><svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></div>'
             + '<div class="flex-1"><p class="text-sm font-medium text-red-800 dark:text-red-200">' + escaped + '</p></div>'
             + '<button type="button" class="text-red-400 hover:text-red-600" data-action="dismiss-feedback" aria-label="Dismiss">×</button>'
             + '</div>';
@@ -481,6 +520,7 @@
         initFormEscapeHandler();
         initAudioFeedback();
         initHtmxErrorRecovery();
+        initLateFeedbackReveal();
         initFeedbackDismiss();
         initScanUndo();
         initProviderKeyClearToggle();

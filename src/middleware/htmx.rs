@@ -47,7 +47,8 @@ pub fn redirect(target: &'static str, htmx: bool) -> Response {
 ///
 /// - `Replace` (default): emits `hx-swap-oob="true"` — flushes the entire
 ///   container on every save. Best for the per-form "latest feedback"
-///   UX (admin-users save, reference-data save).
+///   UX (admin-users save, reference-data save). On `feedback-list` it
+///   emits `innerHTML` (story 19-4): the region element stays.
 /// - `Append`: emits `hx-swap-oob="beforeend"` — stacks every entry in
 ///   the container so multi-action saves (e.g. the provider-keys form
 ///   updating Google Books + OMDb + TMDb in one submit) surface every
@@ -60,13 +61,23 @@ pub enum OobSwapMode {
 }
 
 impl OobSwapMode {
-    fn as_hx_attr(self) -> &'static str {
+    /// The `hx-swap-oob` value for an update of `target`. Story 19-4
+    /// (#689 item 3): a `Replace` of the feedback region swaps its
+    /// **content** (`innerHTML`) — an outerHTML swap would put a bare
+    /// `<div id="feedback-list">` in its place, dropping `aria-live`,
+    /// `aria-relevant` and the page's classes, so later entries would no
+    /// longer be announced.
+    fn as_hx_attr(self, target: &str) -> &'static str {
         match self {
+            OobSwapMode::Replace if target == FEEDBACK_REGION_ID => "innerHTML",
             OobSwapMode::Replace => "true",
             OobSwapMode::Append => "beforeend",
         }
     }
 }
+
+/// The id of every page's feedback region (`layouts/base.html`, story 18-5).
+const FEEDBACK_REGION_ID: &str = "feedback-list";
 
 /// An out-of-band update to be appended to the response.
 #[derive(Debug, Clone, Default)]
@@ -121,10 +132,10 @@ impl HtmxResponse {
     fn body(self) -> String {
         let mut body = self.main;
         for update in &self.oob {
+            let target = sanitize_oob_target(&update.target);
+            let mode = update.swap_mode.as_hx_attr(&target);
             body.push_str(&format!(
-                r#"<div id="{}" hx-swap-oob="{}">{}</div>"#,
-                sanitize_oob_target(&update.target),
-                update.swap_mode.as_hx_attr(),
+                r#"<div id="{target}" hx-swap-oob="{mode}">{}</div>"#,
                 update.content
             ));
         }
@@ -216,6 +227,38 @@ pub fn field_refusal(status: axum::http::StatusCode, slot_id: &'static str, mess
         .into_response()
 }
 
+pub use crate::utils::{LINK_PLACEHOLDER, message_with_link_html};
+
+/// Story 19-4 (#679 item 7) — [`field_refusal_html`] whose message names
+/// a record as a link (see [`message_with_link_html`]).
+pub fn field_refusal_html_with_link(message: &str, href: &str, link_text: &str) -> String {
+    format!(
+        r#"<p data-field-error class="mt-1 text-sm font-medium text-red-700 dark:text-red-300">{}</p>"#,
+        crate::utils::message_with_link_html(message, href, link_text)
+    )
+}
+
+/// Story 19-4 (#679 item 7) — [`field_refusal`] whose message names a
+/// record as a link: the ISBN held by another title, on the edit form.
+pub fn field_refusal_with_link(
+    status: axum::http::StatusCode,
+    slot_id: &'static str,
+    message: &str,
+    href: &str,
+    link_text: &str,
+) -> Response {
+    (
+        status,
+        [
+            ("HX-Retarget", format!("#{slot_id}")),
+            ("HX-Reswap", "innerHTML".to_string()),
+            ("HX-Trigger", "validation-error".to_string()),
+        ],
+        Html(field_refusal_html_with_link(message, href, link_text)),
+    )
+        .into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,6 +339,61 @@ mod tests {
             body.contains(r#"<div id="feedback-list" hx-swap-oob="beforeend"><span>A</span></div>"#),
             "Append mode must emit hx-swap-oob=\"beforeend\""
         );
+    }
+
+    /// Story 19-4 (#689 item 3) — a `Replace` of the feedback region
+    /// swaps its content, so the region keeps `aria-live`,
+    /// `aria-relevant` and its classes; no feedback-list update ever
+    /// renders `hx-swap-oob="true"`. Other targets keep outerHTML.
+    #[test]
+    fn feedback_list_replace_swaps_the_content_not_the_region() {
+        let resp = HtmxResponse {
+            main: String::new(),
+            oob: vec![
+                OobUpdate {
+                    target: "feedback-list".to_string(),
+                    content: "<span>F</span>".to_string(),
+                    swap_mode: OobSwapMode::Replace,
+                },
+                OobUpdate {
+                    target: "admin-users-table".to_string(),
+                    content: "<span>T</span>".to_string(),
+                    swap_mode: OobSwapMode::Replace,
+                },
+            ],
+        };
+        let body = resp.body();
+        assert!(
+            body.contains(r#"<div id="feedback-list" hx-swap-oob="innerHTML"><span>F</span></div>"#),
+            "feedback-list Replace must swap innerHTML: {body}"
+        );
+        assert!(
+            !body.contains(r#"id="feedback-list" hx-swap-oob="true""#),
+            "no feedback-list OOB update renders hx-swap-oob=\"true\": {body}"
+        );
+        assert!(
+            body.contains(r#"<div id="admin-users-table" hx-swap-oob="true"><span>T</span></div>"#),
+            "other targets keep the outerHTML swap: {body}"
+        );
+    }
+
+    /// Story 19-4 (#679 item 7) — the holder's name is the link, escaped;
+    /// only the `<a>` built by the helper is markup.
+    #[test]
+    fn field_refusal_with_link_escapes_everything_but_its_link() {
+        let html = field_refusal_html_with_link(
+            "“[[link]]” already has this ISBN. <i>Check</i>",
+            "/title/42",
+            "<b>Bold</b> & co",
+        );
+        assert!(
+            html.contains(r#"“<a href="/title/42" class="underline font-semibold">&lt;b&gt;Bold&lt;/b&gt; &amp; co</a>” already has this ISBN. &lt;i&gt;Check&lt;/i&gt;"#),
+            "{html}"
+        );
+        assert!(!html.contains("<b>") && !html.contains("[[link]]"), "{html}");
+        // A message without the placeholder keeps the link, appended.
+        let plain = message_with_link_html("Taken.", "/title/7", "Dune");
+        assert_eq!(plain, r#"Taken. <a href="/title/7" class="underline font-semibold">Dune</a>"#);
     }
 
     #[test]
