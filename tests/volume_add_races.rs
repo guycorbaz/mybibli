@@ -53,12 +53,9 @@ fn spawn_add(
     pool: &DbPool,
     label: &'static str,
     title_id: u64,
-    actor: Option<u64>,
 ) -> tokio::task::JoinHandle<Result<VolumeAdd, AppError>> {
     let pool = pool.clone();
-    tokio::spawn(async move {
-        VolumeService::create_volume_in(&pool, label, title_id, actor, "en").await
-    })
+    tokio::spawn(async move { VolumeService::create_volume_in(&pool, label, title_id, "en").await })
 }
 
 /// The task is still running after [`WAIT`]: it waits on `tx_a`'s lock.
@@ -67,15 +64,6 @@ async fn assert_waiting<T>(handle: &mut tokio::task::JoinHandle<T>) {
         tokio::time::timeout(WAIT, handle).await.is_err(),
         "the task must wait for the competing transaction"
     );
-}
-
-async fn admin_id(pool: &DbPool) -> u64 {
-    seed_admin(pool, USER).await;
-    sqlx::query_scalar("SELECT id FROM users WHERE username = ?")
-        .bind(USER)
-        .fetch_one(pool)
-        .await
-        .unwrap()
 }
 
 // ─── AC1: an add and a delete of the same title serialise ────────────
@@ -87,7 +75,7 @@ async fn an_add_waiting_on_a_title_delete_answers_title_gone(pool: DbPool) {
     let mut tx_a = pool.begin().await.unwrap();
     assert!(lock_title_for_delete_in(&mut tx_a, title).await.unwrap());
 
-    let mut add = spawn_add(&pool, "V1931", title, None);
+    let mut add = spawn_add(&pool, "V1931", title);
     assert_waiting(&mut add).await;
 
     sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
@@ -136,7 +124,7 @@ async fn a_delete_waiting_on_an_add_is_refused(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn a_label_reuse_waiting_on_a_title_delete_answers_title_gone(pool: DbPool) {
+async fn a_trashed_label_add_waiting_on_a_title_delete_answers_title_gone(pool: DbPool) {
     let old = seed_title(&pool, "Old").await;
     let title = seed_title(&pool, "New").await;
     let vol = add_volume(&pool, old, "V1933", None).await;
@@ -145,7 +133,7 @@ async fn a_label_reuse_waiting_on_a_title_delete_answers_title_gone(pool: DbPool
     let mut tx_a = pool.begin().await.unwrap();
     assert!(lock_title_for_delete_in(&mut tx_a, title).await.unwrap());
 
-    let mut add = spawn_add(&pool, "V1933", title, None);
+    let mut add = spawn_add(&pool, "V1933", title);
     assert_waiting(&mut add).await;
 
     sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
@@ -158,7 +146,7 @@ async fn a_label_reuse_waiting_on_a_title_delete_answers_title_gone(pool: DbPool
     let outcome = add.await.unwrap();
     assert!(
         matches!(outcome, Err(AppError::NotFound(_))),
-        "the reuse must read the title gone; got {outcome:?}"
+        "the add must read the title gone; got {outcome:?}"
     );
     assert_eq!(
         volume_state(&pool, "V1933").await,
@@ -167,137 +155,46 @@ async fn a_label_reuse_waiting_on_a_title_delete_answers_title_gone(pool: DbPool
     );
 }
 
-/// Two adds that both read the label in the Trash: only the first reuses
-/// it; the second gets the live volume back (D1), not a second reuse that
-/// moves it to its own title and wipes it again.
+/// Story 19-3 D9 — an add of a trashed label during an uncommitted restore:
+/// the refusal takes no lock on the trashed row (the add neither waits for
+/// the restore nor blocks it) and answers what is committed — the label is
+/// still in the Trash. Once the restore commits, the same add answers the
+/// live volume (D2).
 #[sqlx::test(migrations = "./migrations")]
-async fn two_reuses_of_one_trashed_label_reuse_it_once(pool: DbPool) {
-    let admin = admin_id(&pool).await;
+async fn an_add_during_the_restore_of_its_label_neither_waits_nor_blocks(pool: DbPool) {
     let old = seed_title(&pool, "Old").await;
-    let first = seed_title(&pool, "First").await;
-    let second = seed_title(&pool, "Second").await;
+    let title = seed_title(&pool, "New").await;
     let vol = add_volume(&pool, old, "V1934", None).await;
     soft_delete(&pool, "volumes", vol).await;
 
-    // The first reuse, kept open.
+    // The restore, uncommitted.
     let mut tx_a = pool.begin().await.unwrap();
-    assert!(title_is_live_in(&mut tx_a, first).await.unwrap());
-    assert!(VolumeModel::reactivate_for_reuse_in(&mut tx_a, vol, first).await.unwrap());
-
-    let mut add = spawn_add(&pool, "V1934", second, Some(admin));
-    assert_waiting(&mut add).await;
-    tx_a.commit().await.unwrap();
-
-    let outcome = add.await.unwrap().expect("answered, not refused");
-    match outcome {
-        VolumeAdd::LabelLive(live) => {
-            assert_eq!(live.id, vol);
-            assert_eq!(live.title_id, first);
-        }
-        other => panic!("expected LabelLive, got {other:?}"),
-    }
-    assert_eq!(volume_state(&pool, "V1934").await, (first, false), "it stays on the first title");
-    let audits: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM admin_audit WHERE action = 'volume_label_reused'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(audits, 0, "the second add reused nothing");
-}
-
-/// Review of story 19-3 — the guarded reactivation itself (D1). The add's
-/// plain read sees the label in the Trash (the competitor holds the row but
-/// has not changed it yet), so it reaches the reactivation and waits there;
-/// the competitor then reuses the label and commits. The add's locking
-/// read by primary key (`FOR UPDATE`) then sees the row live: it reuses
-/// nothing, rolls back and answers the live volume. Without the guard it would move
-/// the volume to its own title and wipe it a second time.
-#[sqlx::test(migrations = "./migrations")]
-async fn a_reuse_losing_the_row_at_its_update_returns_the_live_volume(pool: DbPool) {
-    let admin = admin_id(&pool).await;
-    let old = seed_title(&pool, "Old").await;
-    let first = seed_title(&pool, "First").await;
-    let second = seed_title(&pool, "Second").await;
-    let vol = add_volume(&pool, old, "V1942", None).await;
-    soft_delete(&pool, "volumes", vol).await;
-
-    // The competitor holds the trashed row, unchanged so far.
-    let mut tx_a = pool.begin().await.unwrap();
-    assert!(title_is_live_in(&mut tx_a, first).await.unwrap());
-    sqlx::query("SELECT id FROM volumes WHERE id = ? FOR UPDATE")
+    sqlx::query("UPDATE volumes SET deleted_at = NULL, version = version + 1 WHERE id = ?")
         .bind(vol)
         .execute(&mut *tx_a)
         .await
         .unwrap();
 
-    let mut add = spawn_add(&pool, "V1942", second, Some(admin));
-    assert_waiting(&mut add).await;
-
-    assert!(VolumeModel::reactivate_for_reuse_in(&mut tx_a, vol, first).await.unwrap());
+    let add = spawn_add(&pool, "V1934", title);
+    let outcome = tokio::time::timeout(Duration::from_secs(5), add)
+        .await
+        .expect("the refusal must not wait for the restore")
+        .unwrap();
+    assert!(
+        matches!(outcome, Err(AppError::BadRequest(ref m)) if m.contains("in the Trash")),
+        "the committed state is the Trash; got {outcome:?}"
+    );
     tx_a.commit().await.unwrap();
 
-    match add.await.unwrap() {
+    match spawn_add(&pool, "V1934", title).await.unwrap() {
         Ok(VolumeAdd::LabelLive(live)) => {
             assert_eq!(live.id, vol);
-            assert_eq!(live.title_id, first);
+            assert_eq!(live.title_id, old);
         }
         other => panic!("expected LabelLive, got {other:?}"),
     }
-    assert_eq!(volume_state(&pool, "V1942").await, (first, false), "it stays on the first title");
-    let audits: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM admin_audit WHERE action = 'volume_label_reused'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(audits, 0, "the add reused nothing");
-}
-
-/// Review of story 19-3 (Rule #22) — a reuse locks its own volume row by
-/// primary key, not the range of trashed volumes: a volume going to the
-/// Trash and the reuse of that other label do not wait for it. (With a
-/// `deleted_at IS NOT NULL` in the reuse's UPDATE, MariaDB scanned
-/// `idx_volumes_deleted_at` when the Trash held one volume, next-key locking
-/// the range up to its end.)
-#[sqlx::test(migrations = "./migrations")]
-async fn a_reuse_of_one_label_does_not_lock_other_trashed_volumes(pool: DbPool) {
-    let old = seed_title(&pool, "Old").await;
-    let a = seed_title(&pool, "Titre A").await;
-    let b = seed_title(&pool, "Titre B").await;
-    let vol_a = add_volume(&pool, old, "V1943", None).await;
-    let vol_b = add_volume(&pool, old, "V1944", None).await;
-    add_volume(&pool, old, "V1945", None).await;
-    soft_delete(&pool, "volumes", vol_a).await;
-
-    // Transaction 1: the reuse of V1943, kept open.
-    let mut tx1 = pool.begin().await.unwrap();
-    assert!(title_is_live_in(&mut tx1, a).await.unwrap());
-    assert!(VolumeModel::reactivate_for_reuse_in(&mut tx1, vol_a, a).await.unwrap());
-
-    // Transaction 2: V1944 goes to the Trash, then its label is reused.
-    let mut tx2 = pool.begin().await.unwrap();
-    sqlx::query("SET SESSION innodb_lock_wait_timeout = 2")
-        .execute(&mut *tx2)
-        .await
-        .unwrap();
-    sqlx::query("UPDATE volumes SET deleted_at = NOW() WHERE id = ?")
-        .bind(vol_b)
-        .execute(&mut *tx2)
-        .await
-        .expect("trashing a volume must not wait for V1943's reuse");
-    assert!(title_is_live_in(&mut tx2, b).await.unwrap());
-    assert!(
-        VolumeModel::reactivate_for_reuse_in(&mut tx2, vol_b, b)
-            .await
-            .expect("reusing another trashed label must not wait for V1943's reuse")
-    );
-    tx2.commit().await.unwrap();
-    tx1.commit().await.unwrap();
-
-    assert_eq!(volume_state(&pool, "V1943").await, (a, false));
-    assert_eq!(volume_state(&pool, "V1944").await, (b, false));
-    assert_eq!(volume_state(&pool, "V1945").await, (old, false));
+    assert_eq!(volume_state(&pool, "V1934").await, (old, false));
+    assert_eq!(live_volumes_of(&pool, title).await, 0);
 }
 
 // ─── AC2: the add's lock is one title row ─────────────────────────────
@@ -343,7 +240,7 @@ async fn a_label_losing_the_insert_to_the_same_title_returns_the_live_volume(poo
     assert!(title_is_live_in(&mut tx_a, title).await.unwrap());
     let winner = VolumeModel::create_in(&mut tx_a, title, "V1936").await.unwrap();
 
-    let mut add = spawn_add(&pool, "V1936", title, None);
+    let mut add = spawn_add(&pool, "V1936", title);
     assert_waiting(&mut add).await;
     tx_a.commit().await.unwrap();
 
@@ -365,7 +262,7 @@ async fn a_label_losing_the_insert_to_another_title_returns_the_live_volume(pool
     let mut tx_a = pool.begin().await.unwrap();
     VolumeModel::create_in(&mut tx_a, other, "V1937").await.unwrap();
 
-    let mut add = spawn_add(&pool, "V1937", title, None);
+    let mut add = spawn_add(&pool, "V1937", title);
     assert_waiting(&mut add).await;
     tx_a.commit().await.unwrap();
 

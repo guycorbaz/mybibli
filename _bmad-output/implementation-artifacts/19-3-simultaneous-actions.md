@@ -1,6 +1,6 @@
 # Story 19.3: Simultaneous actions on volumes and contributors (closes #541; #663 items 1–3)
 
-Status: done
+Status: review
 
 ## Story
 
@@ -44,10 +44,11 @@ Other writers of `contributors.name`: the rename (`ContributorModel::update`, `s
 - **D6 — rename to a live namesake is refused** (copy confirmed by the project lead on 2026-11-25 — practice A3): `ContributorModel::update` maps MySQL 1062 (`db.number() == 1062`, as `models/mcp_skill.rs:95`, never a message match) to a new refusal; `update_details` returns `AppError::BadRequest(contributor.error.name_taken)` — field hint, terse (Rule #9): EN "Another contributor already has this name." / FR « Un autre contributeur porte déjà ce nom. » (+ de, it). It lands where `name_required` lands today (the feedback entry of `update_contributor`), in the **request locale** (`update_details` gains `loc`; the handler's `contributor.updated` / `error.internal` too). A rename that changes the name (under the column collation) also sets `legacy_duplicate_slot = 0` — assigned **before** `name` in the `SET` (MariaDB evaluates a single-table `SET` left to right), e.g. `SET legacy_duplicate_slot = IF(name = ?, legacy_duplicate_slot, 0), name = ?, …` — otherwise a legacy duplicate (slot = id) could be renamed onto any live name unrefused; a case-only fix of a legacy row keeps its slot. **No rename form exists today**: `POST /catalog/contributors/update` (`routes/mod.rs:180`) is posted by no template or script, so the E2E posts it through the logged-in page (`page.request.post` with the `X-CSRF-Token` from the meta tag) and asserts the refusal copy in the answer; adding a form is out of scope.
 - **D7 — Trash restore of a contributor whose name is live again is refused** (copy confirmed by the project lead on 2026-11-25 — A3): `TrashService::restore` / `restore_with_conflicts_cleared` map a 1062 on `contributors` to `AppError::Conflict` with `trash.restore_contributor_name_taken` (operation error, Rule #9): EN "“{name}” was not restored: another contributor already has this name. Rename one of them, then restore it again." The row stays in the Trash. Any other table's 1062 keeps its current behaviour. The services are locale-less and do not know the name: they return a typed refusal (or take `loc` + name), and `routes/admin.rs::admin_trash_restore` words it with `entry.item_name` in `loc`; propagated with `?`, the `Conflict` lands in `#feedback-list` from the panel's Restore button and in the modal's error region from the conflict modal's Confirm (`restore_with_conflicts_cleared`, `ModalConfirmRetargetGuard`) — cover both in tests. The contributor restore also sets `legacy_duplicate_slot = 0`, so a legacy duplicate restored next to a live namesake is refused like any other.
 - **D8 — out.** Reactivating a soft-deleted namesake instead of creating a row (#541 "Related"), merging existing duplicates (#591), #663 items 4–6.
+- **D9 — a label held by a volume in the Trash is refused, never reused** (approved by the project lead on 2026-11-25; supersedes the #442 "transparent reuse" and the reuse parts of D1). Reuse silently destroyed the trashed copy's data and broke the Trash's 30-day recovery promise. The label becomes free only once the row is gone (permanent delete from the Trash by an Admin, or the 30-day auto-purge), or live again after a restore (then #585, D2). Duplicate-key resolution: live → `LabelLive` (D2); in the Trash → `BadRequest(feedback.volume_label_in_trash)` naming the trashed volume's title (Trash included; `"?"` only if the row is gone), loans or not; vanished → `volume_label_race`. Nothing is written (no row, no audit). Same answer on `/catalog/scan` and `POST /title/{id}/volumes` (level `error`, as the label refusals next to it), closing the CR #300 modal when it answers its Confirm (`vcode_volume::closing_modal`). Copy (Rule #9, operation error, request locale): EN "Label {label} belongs to a volume of “{title}” that is in the Trash. Restore it, or delete it permanently from the Trash (administrator), then scan again." / FR « L'étiquette {label} appartient à un volume de « {title} » qui est dans la corbeille. Restaurez-le, ou supprimez-le définitivement depuis la corbeille (administrateur), puis scannez à nouveau. » (+ de, it). Removed: `VolumeCreation` (one variant left — `VolumeAdd::Created(VolumeModel)`), `reactivate_for_reuse_in` and its `FOR UPDATE` guard, `count_loans_in`, the `volume_label_reused` audit row, `feedback.volume_label_reused`, `feedback.volume_label_in_trash_with_loans`, the `actor_user_id` parameter of `create_volume(_in)` (it only attributed the audit row).
 
 ## Acceptance Criteria
 
-1. **AC1 (#663 item 2).** An add and a delete of the same title serialise: with the delete's lock held, the add waits; if the delete commits, the add answers "title gone" and no live volume references the trashed title; if the add commits first, the delete is refused (`title.delete_blocked_has_volumes`). Same for the label-reuse path. A DB integration test with two connections reproduces the race and fails on the old code.
+1. **AC1 (#663 item 2).** An add and a delete of the same title serialise: with the delete's lock held, the add waits; if the delete commits, the add answers "title gone" and no live volume references the trashed title; if the add commits first, the delete is refused (`title.delete_blocked_has_volumes`). Same for an add of a label held by a trashed volume (D9: it answers "title gone" and leaves the trashed row alone). A DB integration test with two connections reproduces the race and fails on the old code.
 2. **AC2 (Rule #22).** The add's lock is a share lock on one `titles` row by primary key; a lock-scope test shows an add on title A does not block the delete of title B (short `innodb_lock_wait_timeout`, as `an_acceptance_on_one_title_does_not_lock_proposals_of_another`), written with the query.
 3. **AC3 (#663 item 1).** A new V-code whose INSERT loses to a concurrent post for the same title answers the #585 "already recorded" info (other title: the #585 warning + link), on `/catalog/scan` and `POST /title/{id}/volumes`; reproduced with two connections; fails on the old code.
 4. **AC4 (#663 item 3).** On `/catalog`, a title deleted after the #441 check (e.g. while the CR #300 modal is open) and before the INSERT: the answer clears `current_title_id`, empties `context-banner`, resets `guide-strip`, and closes the modal when answering its Confirm.
@@ -55,6 +56,7 @@ Other writers of `contributors.name`: the rename (`ContributorModel::update`, `s
 6. **AC6.** The migration applies on a database holding live duplicate names (they all stay live, unchanged) and on a clean one; afterwards a new row with an existing live name is impossible; a soft-deleted namesake does not block a new row.
 7. **AC7 (D6, D7).** Renaming a contributor to a live namesake is refused with `contributor.error.name_taken` in the request language; restoring from the Trash a contributor whose name is live again is refused with `trash.restore_contributor_name_taken`, the row stays in the Trash. E2E for each refusal (Foundation Rule #3: a refusal is a user scenario; the rename one posts the route, no form exists — D6), plus an E2E for AC4. A legacy duplicate renamed onto a live name or restored next to one is refused too (D6, D7).
 8. **AC8.** Four locale files, `locale_parity` green; `.sqlx` up to date (`cargo sqlx prepare --check --workspace -- --all-targets`); clippy clean; every new test file declared in `tests/integration.rs`.
+9. **AC9 (D9).** A V-code held by a volume in the Trash is refused on `/catalog/scan` and `POST /title/{id}/volumes` with `feedback.volume_label_in_trash` naming that volume's title (also when the title is trashed, and whether the volume has loans or not); the trashed row is untouched and no row is created; the answer to the CR #300 Confirm closes the modal. After a permanent delete the label creates a new volume; after a restore it gets the #585 answer. DB integration tests and an E2E on both surfaces (Foundation Rule #3). User manual (EN, FR) updated.
 
 ## Tasks / Subtasks
 
@@ -69,6 +71,7 @@ Other writers of `contributors.name`: the rename (`ContributorModel::update`, `s
 - [x] T9 — DB integration tests: `tests/volume_add_races.rs`, `tests/contributor_live_name.rs` (declared in `tests/integration.rs`) (AC1–AC3, AC5, AC6)
 - [x] T10 — E2E: catalog title gone at Confirm; rename refused (route posted, no form); Trash restore refused (AC4, AC7)
 - [x] T11 — gates (below) and `CLAUDE.md` (a line under Key Patterns: contributor names unique among live rows + legacy slot; the add-volume share lock)
+- [x] T12 — D9: remove the reuse path; trashed label → `feedback.volume_label_in_trash` (×4 locales); tests (`tests/volume_label_in_trash.rs`, ex-`volume_label_reuse.rs`; `volume_add_races.rs`; `title_volume_add.rs`); E2E `vcode-label-recovery.spec.ts`; manual EN/FR; `CLAUDE.md` (AC9)
 
 ## Dev Notes
 
@@ -137,16 +140,23 @@ Claude Opus 5.5 (claude-opus-5-5)
 - **E2E:** new `contributor-live-name.spec.ts` (specId `CU`, no volumes: rename refused through the route; Trash restore refused — its removed credit opens the conflict modal, the refusal lands in `[data-modal-error]`); `catalog-phantom-volume-confirm.spec.ts` gains the AC4 journey (PV slots 4–5, ISBN PV/3). The panel-button path of the restore refusal (`#feedback-list`) is covered by the route-level Rust test.
 - **Out of scope, observed:** `catalog-contributor.spec.ts` "anonymous user cannot POST … (DB unchanged)" compares library-wide entity counts (Rule #23): it can flake whenever a parallel spec creates a title (seen once, as flaky, in a run over a non-reset stack; green on the clean run).
 
+- **D9 / AC9 (2026-11-25, after review pass 2).** Reuse removed: `VolumeCreation` gone (`VolumeAdd::Created(VolumeModel)`, `into_created`; `VcodeAdd::Created(VolumeModel)`), `VolumeModel::reactivate_for_reuse_in` and `count_loans_in` removed, no `volume_label_reused` audit row, the `actor_user_id` parameter of `create_volume(_in)` dropped (it only attributed that row). `resolve_duplicate_label` (on the add's transaction, writes nothing): live → `LabelLive`; trashed → `BadRequest(feedback.volume_label_in_trash)` with the title read by the new `TitleModel::name_any_state_in` (Trash included, `"?"` if the row is gone); vanished → `volume_label_race`. `add_to_title` words it `error` and closes the CR #300 modal on Confirm (unchanged path). Keys `feedback.volume_label_reused` / `feedback.volume_label_in_trash_with_loans` replaced by `feedback.volume_label_in_trash` ×4. Success wording on both surfaces is the plain `volume_created` / `volume_created_and_shelved`. `models/location.rs` doc comment and `CLAUDE.md` (story 19-3 line) updated; manual `03-usage.tex` EN/FR (not the 08 "what's new" entries; PDFs not rebuilt).
+  - Tests: `tests/volume_label_reuse.rs` → `tests/volume_label_in_trash.rs` (10 tests: refusal naming the title, row untouched and no new row / audit; same refusal with loan history; trashed title still named; after a permanent delete (`TrashService::permanent_delete`) a new volume; after a restore `LabelLive` and the title page's #585 warning; `/catalog/scan` refusal; Confirm closes the modal on both surfaces). `volume_add_races.rs`: the reuse-race and reuse-lock-scope tests dropped (`two_reuses_of_one_trashed_label_reuse_it_once`, `a_reuse_losing_the_row_at_its_update_returns_the_live_volume`, `a_reuse_of_one_label_does_not_lock_other_trashed_volumes`), the title-gone one kept and renamed (`a_trashed_label_add_waiting_on_a_title_delete_answers_title_gone`), new `an_add_during_the_restore_of_its_label_neither_waits_nor_blocks` (the refusal takes no lock on the trashed row: the INSERT's duplicate check does not wait for an uncommitted restore, whose change leaves the label index entry alone; it answers the committed Trash state; after the commit the add gets `LabelLive`). `title_volume_add.rs`: the reuse test became the refusal test; the locale test asserts the French D9 copy. Unit: `a_live_label_is_no_creation` adapted, new `the_trash_refusal_names_the_label_and_the_title_in_every_locale`; `the_success_message_names_the_label_and_the_title`.
+  - E2E: `vcode-label-recovery.spec.ts` #442 test rewritten — the trashed label is refused (FR|EN regex) on `/catalog` and in `#title-volume-add-feedback` on the second title's page, nothing added. The title name is not asserted in E2E (it depends on when the mock metadata landed); the Rust tests assert it. `admin-health-label-watermarks.spec.ts` only trashes a volume (comment mentions #442), unchanged.
+
 ### File List
 
 - `migrations/20261125090000_contributors_live_name_unique.sql` (new)
 - `src/db.rs`
 - `src/models/contributor.rs`
 - `src/models/mcp_skill.rs`
+- `src/models/location.rs` (D9: doc comment)
+- `src/models/title.rs` (D9: `name_any_state_in`)
 - `src/models/volume.rs`
 - `src/routes/admin.rs`
 - `src/routes/catalog.rs`
 - `src/routes/catalog_contributors.rs`
+- `src/routes/title_volume_add.rs` (D9)
 - `src/routes/vcode_volume.rs`
 - `src/services/contributor.rs`
 - `src/services/trash.rs`
@@ -156,7 +166,10 @@ Claude Opus 5.5 (claude-opus-5-5)
 - `tests/integration.rs`
 - `tests/volume_add_races.rs` (new)
 - `tests/contributor_live_name.rs` (new)
-- `tests/volume_label_reuse.rs`
+- `tests/volume_label_in_trash.rs` (renamed from `tests/volume_label_reuse.rs`, D9)
+- `tests/title_volume_add.rs` (D9)
+- `tests/e2e/specs/journeys/vcode-label-recovery.spec.ts` (D9)
+- `docs/manual/en/03-usage.tex`, `docs/manual/fr/03-usage.tex` (D9)
 - `tests/e2e/specs/journeys/contributor-live-name.spec.ts` (new)
 - `tests/e2e/specs/journeys/catalog-phantom-volume-confirm.spec.ts`
 - `CLAUDE.md`

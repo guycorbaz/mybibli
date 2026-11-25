@@ -101,12 +101,11 @@ impl LocationModel {
     /// [`Self::find_by_label`] cannot see. That is how creating a location after
     /// deleting one failed with a raw database error instead of an explanation.
     ///
-    /// Deliberately the read-only half of the `volumes` treatment in #442: there
-    /// the soft-deleted row is reactivated and reused, because a V-code is a
-    /// sticker meant to be re-applied to another book. An L-code is not
-    /// analogous — `storage_locations` is listed in the Trash panel, so
-    /// repurposing the row would silently destroy a restore that stays available
-    /// for 30 days. Here the caller only needs to tell the two situations apart.
+    /// Read-only, like the `volumes` treatment since story 19-3 (D9): a code
+    /// held by a row in the Trash is refused, never repurposed — the row is
+    /// listed in the Trash panel, and reusing it would silently destroy a
+    /// restore that stays available for 30 days. Here the caller only needs to
+    /// tell the two situations apart.
     ///
     /// Returns the row plus whether it is soft-deleted.
     pub async fn find_by_label_any_state(

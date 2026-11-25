@@ -8,10 +8,11 @@
  * active item, and clear the stale context so the next scan works.
  *
  * #442: a volume is deleted, then its physical label is re-stuck on another
- * book and re-scanned. The label used to stay locked by the UNIQUE index —
- * "déjà assigné à ?" — until an admin permanently deleted the row from the
- * Trash. It must now be reusable, with the librarian told that the previous
- * copy's data was discarded.
+ * book and re-scanned. The label used to answer "déjà assigné à ?". Story
+ * 19-3 (D9) settled it: the label of a volume in the Trash is refused, both on
+ * /catalog and on the title page, naming that volume's title and pointing at
+ * the Trash (restore it, or delete it permanently) — reusing it would destroy
+ * the trashed copy the Trash promises to keep for 30 days.
  *
  * Spec ID "VR" — generated ISBNs never collide with other specs.
  */
@@ -110,12 +111,16 @@ test.describe("Recovering a V-code label (#441, #442)", () => {
     );
   });
 
-  test("#442 — a deleted volume's label can be re-stuck on another book", async ({
+  test("#442 — a deleted volume's label is refused, naming its title and the Trash", async ({
     page,
   }) => {
     const label = specVcode("VR", 1);
     const firstIsbn = specIsbn("VR", 2);
     const secondIsbn = specIsbn("VR", 3);
+    // The title named is the first book's (asserted by the Rust tests; its
+    // name here depends on when the mock metadata landed).
+    const refusal =
+      /belongs to a volume of .+ that is in the Trash|appartient à un volume de .+ qui est dans la corbeille/i;
 
     // Catalog the first book and give it the label.
     await page.goto("/catalog");
@@ -147,22 +152,25 @@ test.describe("Recovering a V-code label (#441, #442)", () => {
     ]);
     await expect(page.locator("#title-volumes")).not.toContainText(label);
 
-    // Now the same physical sticker goes on a different book.
+    // The same physical sticker goes on a different book: /catalog refuses.
     await page.goto("/catalog");
     await catalogTitle(page, secondIsbn);
     await scanField.fill(label);
     await scanField.press("Enter");
 
-    const feedback = page.locator(".feedback-entry").first();
-    // It must succeed, and it must say the previous copy's data was dropped.
-    await expect(feedback).toContainText(label, { timeout: 10000 });
-    await expect(feedback).toContainText(
-      /reused|réutilisé|wiederverwendet|riutilizzata/i,
-    );
+    const feedback = page.locator(".feedback-entry").filter({ hasText: refusal });
+    await expect(feedback).toBeVisible({ timeout: 10000 });
+    await expect(feedback).toContainText(label);
     await expect(feedback).not.toContainText(/already assigned|déjà assigné/i);
 
-    // And the volume now hangs off the second title.
+    // The title page of the second book answers the same refusal, next to
+    // its field, and adds nothing.
     await openTitlePage(page, secondIsbn);
-    await expect(page.locator("#title-volumes")).toContainText(label);
+    const field = page.locator("#title-volume-vcode");
+    await field.fill(label);
+    await field.press("Enter");
+    const answer = page.locator("#title-volume-add-feedback");
+    await expect(answer).toContainText(refusal, { timeout: 10000 });
+    await expect(page.locator("#title-volumes-list")).not.toContainText(label);
   });
 });

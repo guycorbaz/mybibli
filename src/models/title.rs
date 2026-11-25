@@ -282,6 +282,21 @@ impl TitleModel {
         Ok(count > 0)
     }
 
+    /// The title's name, **Trash included** (story 19-3, D9: the refusal of
+    /// a label held by a trashed volume names that volume's title, itself
+    /// possibly trashed). Deliberately reads without `deleted_at IS NULL`;
+    /// `None` only when the row is gone.
+    pub async fn name_any_state_in(
+        conn: &mut sqlx::MySqlConnection,
+        id: u64,
+    ) -> Result<Option<String>, AppError> {
+        let name = sqlx::query_scalar::<_, String>("SELECT title FROM titles WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&mut *conn)
+            .await?;
+        Ok(name)
+    }
+
     pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<Option<TitleModel>, AppError> {
         let mut conn = pool.acquire().await?;
         Self::find_by_id_in(&mut conn, id, false).await

@@ -648,7 +648,7 @@ pub async fn handle_scan(
                 }
 
                 // #585, CR #300, creation and its refusals: the shared arm.
-                let creation = match super::vcode_volume::add_to_title(
+                let volume = match super::vcode_volume::add_to_title(
                     pool,
                     &session,
                     &code,
@@ -674,13 +674,8 @@ pub async fn handle_scan(
                                 .await,
                         );
                     }
-                    super::vcode_volume::VcodeAdd::Created(creation) => creation,
+                    super::vcode_volume::VcodeAdd::Created(volume) => volume,
                 };
-                // #442 — a reused label discards the previous copy's
-                // data, so the librarian must be told in as many words.
-                let reused_label =
-                    matches!(creation, crate::services::volume::VolumeCreation::ReusedLabel(_));
-                let volume = creation.into_volume();
                 if let Some(token) = &session.token {
                     // Store last volume label for subsequent L-code scan
                     if let Err(e) =
@@ -780,21 +775,7 @@ pub async fn handle_scan(
                             .map(|t| (t.title.clone(), t.media_type.clone()))
                             .unwrap_or_else(|| ("?".to_string(), "book".to_string()));
 
-                    let (message, suggestion) = if reused_label {
-                        // #442 — reuse takes precedence over the
-                        // shelved/not-shelved split: discarding the
-                        // previous copy's data is the thing the
-                        // librarian most needs to read.
-                        (
-                            rust_i18n::t!(
-                                "feedback.volume_label_reused", locale = loc,
-                                label = &volume.label,
-                                title = &title.0
-                            )
-                            .to_string(),
-                            String::new(),
-                        )
-                    } else if let Some(ref path) = shelved_path {
+                    let (message, suggestion) = if let Some(ref path) = shelved_path {
                         (
                             rust_i18n::t!(
                                 "feedback.volume_created_and_shelved", locale = loc,
