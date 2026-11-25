@@ -33,7 +33,7 @@ Practice A3: the format (D2), the tab (D7) and the messages (D8) are settled wit
   - mybibli **never creates it** (no `create_dir`, no `mkdir` in the Dockerfile).
   - If it is missing, not a directory, or not writable, a backup request is refused with D8's message, nothing is written anywhere, and the app keeps running.
   - The compose files get the mount `./backups:/app/backups`, commented with the reason. `tests/e2e/docker-compose.test.yml` mounts a folder that the E2E stack creates for the run.
-- **D2 — the format: one `.tar.gz` file.** *(To confirm with the project lead.)*
+- **D2 — the format: one `.tar.gz` file.** *(Approved by the project lead, 2026-11-25.)*
   - The tar stream holds, in order:
     1. `database.sql` — a standard SQL dump that the `mariadb` client loads into an empty database (`mariadb -u … newdb < database.sql`). It has a header (`SET NAMES utf8mb4; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0;`), then for each table: `DROP TABLE IF EXISTS`, the `SHOW CREATE TABLE` text, and multi-row `INSERT`s of at most 500 rows. Generated columns are left out of the column list (`information_schema.COLUMNS.GENERATION_EXPRESSION IS NOT NULL` / `EXTRA` contains `GENERATED`). The dump ends by restoring the checks. It covers every table, `_sqlx_migrations` included, so that a loaded copy is at the right migration level.
     2. `covers/<name>` — every regular file directly in `COVERS_DIR` whose name is `<digits>.jpg` (Rule #20, positive shape: what the app writes; the shape 19-9 uses too). `.staging/` and any other entry are skipped and counted in the manifest.
@@ -59,13 +59,13 @@ Practice A3: the format (D2), the tab (D7) and the messages (D8) are settled wit
   - On any failure, the temporary files are removed and nothing is renamed.
 - **D5 — one backup at a time.** A process-wide guard (a `tokio::sync::Mutex` `try_lock`) refuses a second request while one runs (D8's message). The writer runs in a spawned task, owning its own connection, so a client disconnect does not abort it halfway. The HTTP answer waits for it. The catalogue is small (seconds); if the write takes longer than the request timeout, the answer says it is still running.
 - **D6 — the writer API.** `services::backup::write_backup(pool, &BackupConfig) -> Result<BackupWritten, BackupError>`, with `BackupWritten { file_name, bytes, tables, rows, covers }` and `BackupError::{FolderMissing, FolderNotWritable, AlreadyRunning, Io, Database}`. Each error variant has `localized(loc)`. 19-7's scheduled task and 19-8's safety backup call the same function.
-- **D7 — the Backups tab.** *(To confirm.)* A new admin tab "Backups" (`AdminTab::Backups`, `/admin?tab=backups`, `/admin/backups`, `routes/admin_backups.rs`, Admin only, story 8-1 pattern). In this story it shows:
+- **D7 — the Backups tab.** *(Approved by the project lead, 2026-11-25.)* A new admin tab "Backups" (`AdminTab::Backups`, `/admin?tab=backups`, `/admin/backups`, `routes/admin_backups.rs`, Admin only, story 8-1 pattern). In this story it shows:
   - the folder path and its state (present and writable / missing / not writable);
   - a "Back up now" button;
   - the answer in the tab's feedback region.
   
   The list of backups present (UX-DR46) comes with 19-8; the schedule setting with 19-7.
-- **D8 — copy (Rule #9, four locales).** *(To confirm; EN and FR shown.)*
+- **D8 — copy (Rule #9, four locales).** *(Approved by the project lead, 2026-11-25; EN and FR shown, DE and IT follow them.)*
   - Folder missing:
     - EN: "No backup was written: the backups folder %{path} does not exist. Mount a folder there (see the manual, “Backups”), then try again."
     - FR: « Aucune sauvegarde n'a été écrite : le dossier de sauvegarde %{path} n'existe pas. Montez un dossier à cet endroit (voir le manuel, « Sauvegardes »), puis réessayez. »
@@ -138,6 +138,15 @@ Practice A3: the format (D2), the tab (D7) and the messages (D8) are settled wit
 ### References
 
 - #657 (decisions + epic 17 retro comment), epic 19 Story 19.6 in `_bmad-output/planning-artifacts/epics.md`, FR179, NFR49, UX-DR46.
+
+## Validation (2026-11-25)
+
+Checked against the code and the stacks:
+- **Covers.** They are written as `<digits>.jpg` directly in `COVERS_DIR`, and proposed covers as `<32 hex>.jpg` in `.staging/`: D2's positive shape keeps the first and skips the second.
+- **E2E stack.** It has no host folder: `tests/e2e/docker-compose.test.yml` sets `COVERS_DIR=/tmp/test-covers`, and `scripts/e2e-reset.sh` runs `down -v` / `up --build`. D1 is made precise: the test compose mounts the backups folder as a `tmpfs` (`/app/backups`), which exists, is writable and needs nothing on the host or in CI. The production compose files get the bind mount `./backups:/app/backups`.
+- **Round-trip test.** The Rust test database (root user) allows the test to `CREATE DATABASE` a second, empty schema for the load, and to drop it afterwards.
+
+D2, D7 and D8 were approved by the project lead before development (practice A3).
 
 ## Dev Agent Record
 
