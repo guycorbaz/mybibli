@@ -20,6 +20,8 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { specVcode } from "../../helpers/vcode";
+import { trashVolumeFromTitlePage } from "../../helpers/catalog";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 async function catalogTitle(
   page: import("@playwright/test").Page,
@@ -46,16 +48,15 @@ async function confirmDeleteModal(
   page: import("@playwright/test").Page,
   leavingUrl: RegExp,
 ) {
-  const dialog = page.locator("#modal-slot dialog[open]");
-  await expect(dialog).toBeVisible();
+  // Confirm only once HTMX has wired the swapped-in form: clicked earlier, it
+  // is a native GET submit that deletes nothing (story 19-3 review).
+  const confirm = page.locator("#modal-slot dialog[open] [data-modal-confirm]");
+  await expectHtmxProcessed(confirm);
   await Promise.all([
     page.waitForURL((url) => !leavingUrl.test(url.pathname), {
       timeout: 15000,
     }),
-    dialog
-      .getByRole("button", { name: /Delete|Supprimer|Confirm|Confirmer/i })
-      .last()
-      .click(),
+    confirm.click(),
   ]);
 }
 
@@ -134,23 +135,7 @@ test.describe("Recovering a V-code label (#441, #442)", () => {
 
     // The librarian realises it went on the wrong book and deletes the volume.
     await openTitlePage(page, firstIsbn);
-    const volumeRow = page.locator("#title-volumes table tbody tr").first();
-    await expect(volumeRow).toContainText(label);
-    await volumeRow.getByRole("button", { name: /Delete|Supprimer/i }).click();
-    // Volume delete redirects back to the same /title/:id — wait for the
-    // reload rather than racing it.
-    await Promise.all([
-      page.waitForLoadState("load"),
-      (async () => {
-        const dialog = page.locator("#modal-slot dialog[open]");
-        await expect(dialog).toBeVisible();
-        await dialog
-          .getByRole("button", { name: /Delete|Supprimer|Confirm|Confirmer/i })
-          .last()
-          .click();
-      })(),
-    ]);
-    await expect(page.locator("#title-volumes")).not.toContainText(label);
+    await trashVolumeFromTitlePage(page, label);
 
     // The same physical sticker goes on a different book: /catalog refuses.
     await page.goto("/catalog");

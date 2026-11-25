@@ -4,7 +4,8 @@
 //! the volumes section of `/title/{id}` and attaches a volume to **this**
 //! title through the V-code arm shared with `/catalog/scan`
 //! (`routes::vcode_volume`): same validation, same answers (existing label,
-//! CR #300 confirmation, label taken, #442 reuse).
+//! CR #300 confirmation, label taken, label of a volume in the Trash —
+//! story 19-3 D9).
 //!
 //! The page names its title, so the handler reads and writes nothing of the
 //! `/catalog` scanning session — no current title, last label, counter,

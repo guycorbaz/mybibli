@@ -232,3 +232,26 @@ New Low findings (to file as issues):
 - **The migration backfill has no index on `name`.** The self-join is a nested loop over the live contributors. It takes seconds for a few thousand rows, at one boot only.
 
 Verification: `cargo test --test integration -- volume_add_races:: contributor_live_name:: volume_label_reuse:: title_volume_add::` → 47 passed. No source change in this pass, so clippy was not re-run; the first pass's run stands. E2E not run (out of scope here); nothing E2E-visible changed.
+
+### Review pass 3 (D9)
+
+**Date:** 2026-11-25. A manual pass over the D9 commit (`0190b0d`), read against `git diff main...HEAD`: the duplicate-key resolution, both web answers, the four locale entries, the Rust tests, the E2E specs, the manual, `CLAUDE.md`, and the Health-tab watermark code.
+
+Checked and found sound:
+
+- **No reuse path left.** Nothing in the code, templates, JS, locale files, specs, manual chapters 01–07 or `CLAUDE.md` still refers to `VolumeCreation`, `reactivate_for_reuse_in`, `count_loans_in`, `volume_label_reused` or `volume_label_in_trash_with_loans`. The "#442" entries in chapter 08 are historical release notes and are left alone. The Health-tab watermarks still count trashed volumes, which matches D9, since a trashed volume keeps its label.
+- **Duplicate-key resolution.** Every read before the INSERT is a locking read, so the plain lookup after a 1062 opens its snapshot at that moment and sees the latest commit. Each path rolls back explicitly: live, trashed and vanished. Nothing is written, and the only lock the refusal holds is the duplicate check's S lock on the label entry, released at once. A restore changes no label entry, so an add during an uncommitted restore neither waits nor blocks; `an_add_during_the_restore_of_its_label_neither_waits_nor_blocks` covers this. A concurrent permanent delete makes the INSERT wait and then succeed.
+- **Answers.** The refusal is a `200` with an `error` entry in the request locale. On `/catalog` it lands in `#feedback-list` and on the title page in `#title-volume-add-feedback`. On a Confirm it carries `HX-Trigger-After-Swap: modal-close`, for both routes (`the_refusal_after_confirm_closes_the_modal`). The other callers of `create_volume` are tests only.
+- **Copy.** DE (`„…“`, "Administrator") and IT (`«…»`, "amministratore") follow the approved FR/EN text and the guide.
+- **Tests.** The refusal tests compare the trashed row before and after, count the rows and assert no audit row. Each of these fails on the reuse code.
+
+**Medium, fixed: a real race in the two E2E specs that trash a volume.** `admin-health-label-watermarks.spec.ts` ("the watermark survives the volume going to the trash", the flaky one) and `vcode-label-recovery.spec.ts` (the D9 test, and the title delete of #441) clicked the delete modal's Confirm as soon as the dialog was visible. The modal is swapped into `#modal-slot` by HTMX, which wires its form (`hx-delete`, no `method` / `action`) in a settle task after the swap. A Confirm clicked in that window is a native GET submit: the page reloads, nothing is deleted, and `not.toContainText(vcode)` on `#title-volumes` fails. The `Promise.all` with `waitForLoadState("load")` around it resolved at once, so it gave no protection. Fix: a new helper, `trashVolumeFromTitlePage(page, vcode)` in `tests/e2e/helpers/catalog.ts`, used by both specs. It waits for `expectHtmxProcessed` on `[data-modal-confirm]`, then for the `DELETE /volume/{id}` answer and the main-frame navigation its `HX-Redirect` starts, so a following `page.goto` cannot abort it, and then asserts the row is gone. The title-delete helper of the recovery spec waits for `expectHtmxProcessed` the same way. No product behaviour changed.
+
+Fixed in passing: two module doc comments still mentioned "#442 reuse" (`routes/catalog_existing_label.rs`, `routes/title_volume_add.rs`).
+
+Low findings:
+
+- **CR #300 modal before the D9 refusal.** On a title that already has volumes, a trashed label first opens "Add another copy?", and the refusal only comes after Confirm, which then closes the modal. This is correct but costs one extra step; a pre-check with `find_by_label_any_state` would answer at once. The spec allows the current behaviour.
+- **The same unwired-Confirm pattern in other specs.** Several specs click a `#modal-slot` Confirm without `expectHtmxProcessed` (e.g. `catalog-volume.spec.ts`, `wishlist.spec.ts`, `borrower-delete-modal.spec.ts`), so they can flake the same way. They are outside this story; to be filed as an issue.
+
+Verification: `cargo clippy --all-targets -- -D warnings` is clean. `cargo test --test integration volume_label_in_trash:: title_volume_add:: volume_add_races:: locale_parity::` are green (35 passed), and so are the lib tests `services::volume`, `routes::title_volume_add` and `routes::vcode_volume` (48 passed). `npx tsc --noEmit` passes in `tests/e2e`, and the `waitForTimeout` gate is clean. Playwright was not run, because a full E2E run was in progress; the two specs must pass in the next E2E run before this pass is closed. Status stays `review`, since the Medium finding means another pass is due (Rule #6).

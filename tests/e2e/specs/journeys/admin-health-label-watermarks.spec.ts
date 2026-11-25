@@ -4,6 +4,7 @@ import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume } from "../../helpers/loans";
 import { createLocation } from "../../helpers/locations";
 import { specVcode } from "../../helpers/vcode";
+import { trashVolumeFromTitlePage } from "../../helpers/catalog";
 
 /**
  * Issue #489 — Admin → Health shows the last V-code / L-code in use and
@@ -106,24 +107,7 @@ test.describe("Issue #489 — Health tab label watermarks", () => {
     await expect(titleLink).toBeVisible({ timeout: 15000 });
     await page.goto((await titleLink.getAttribute("href"))!);
     await page.waitForURL(/\/title\/\d+/);
-    const volumeRow = page
-      .locator("#title-volumes table tbody tr")
-      .filter({ hasText: vcode })
-      .first();
-    await expect(volumeRow).toBeVisible();
-    await volumeRow.getByRole("button", { name: /Delete|Supprimer/i }).click();
-    await Promise.all([
-      page.waitForLoadState("load"),
-      (async () => {
-        const dialog = page.locator("#modal-slot dialog[open]");
-        await expect(dialog).toBeVisible();
-        await dialog
-          .getByRole("button", { name: /Delete|Supprimer|Confirm|Confirmer/i })
-          .last()
-          .click();
-      })(),
-    ]);
-    await expect(page.locator("#title-volumes")).not.toContainText(vcode);
+    await trashVolumeFromTitlePage(page, vcode);
 
     await page.goto("/admin?tab=health");
     const after = await readWatermark(page, "health-last-vcode");

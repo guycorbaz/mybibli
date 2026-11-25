@@ -8,6 +8,7 @@
  * cap under parallel load).
  */
 import { Page, Locator, expect } from "@playwright/test";
+import { expectHtmxProcessed } from "./htmx";
 
 /**
  * Select the first non-placeholder option of a `<select>` by its value rather
@@ -100,4 +101,41 @@ export function badUpcA(): string {
   const sum = [...body].reduce((acc, c, i) => acc + Number(c) * (i % 2 === 0 ? 3 : 1), 0);
   const valid = (10 - (sum % 10)) % 10;
   return body + String((valid + 1) % 10);
+}
+
+/**
+ * Trash the volume labelled `vcode` from the title page the browser is on
+ * (UX-DR8 delete modal), and wait until it is really gone.
+ *
+ * Story 19-3 review: the modal is swapped into `#modal-slot` by HTMX, which
+ * wires its form (`hx-delete`) in a settle task after the swap. A Confirm
+ * clicked before that is a native GET submit: the page reloads and nothing is
+ * deleted, so a later "row gone" assertion fails — the intermittent failure
+ * of the watermark spec. Wait for the wiring, then for the DELETE answer and
+ * the navigation its `HX-Redirect` starts (back to this title page), so the
+ * caller's next `page.goto` cannot abort that redirect.
+ */
+export async function trashVolumeFromTitlePage(page: Page, vcode: string): Promise<void> {
+  const volumeRow = page
+    .locator("#title-volumes table tbody tr")
+    .filter({ hasText: vcode })
+    .first();
+  await expect(volumeRow).toBeVisible();
+  await volumeRow.getByRole("button", { name: /Delete|Supprimer/i }).click();
+
+  const confirm = page.locator("#modal-slot dialog[open] [data-modal-confirm]");
+  await expectHtmxProcessed(confirm);
+  await Promise.all([
+    page.waitForResponse(
+      (r) =>
+        r.request().method() === "DELETE" &&
+        /^\/volume\/\d+$/.test(new URL(r.url()).pathname) &&
+        r.ok(),
+    ),
+    page.waitForEvent("framenavigated", { predicate: (f) => f === page.mainFrame() }),
+    confirm.click(),
+  ]);
+  await page.waitForLoadState("load");
+  await expect(page.locator("#title-volumes")).toBeVisible();
+  await expect(page.locator("#title-volumes")).not.toContainText(vcode);
 }
