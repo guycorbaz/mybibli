@@ -29,7 +29,7 @@
 use mybibli::db::DbPool;
 use mybibli::error::AppError;
 use mybibli::models::volume::VolumeModel;
-use mybibli::services::volume::{VolumeCreation, VolumeService};
+use mybibli::services::volume::{VolumeAdd, VolumeCreation, VolumeService};
 
 const LABEL: &str = "V4420";
 
@@ -84,6 +84,8 @@ async fn soft_delete_hides_the_row_but_keeps_the_label_locked(pool: DbPool) {
     let id = VolumeService::create_volume(&pool, LABEL, title, Some(admin))
         .await
         .unwrap()
+        .into_creation()
+        .unwrap()
         .volume()
         .id;
     soft_delete_volume(&pool, id).await;
@@ -121,13 +123,17 @@ async fn deleted_label_without_loans_is_reused_for_the_new_title(pool: DbPool) {
 
     let created = VolumeService::create_volume(&pool, LABEL, old_title, Some(admin))
         .await
+        .unwrap()
+        .into_creation()
         .unwrap();
     let original_id = created.volume().id;
     soft_delete_volume(&pool, original_id).await;
 
     let outcome = VolumeService::create_volume(&pool, LABEL, new_title, Some(admin))
         .await
-        .expect("#442: a deleted label with no loan history must be reusable");
+        .expect("#442: a deleted label with no loan history must be reusable")
+        .into_creation()
+        .expect("a reuse, not a live label");
 
     assert!(
         matches!(outcome, VolumeCreation::ReusedLabel(_)),
@@ -148,6 +154,8 @@ async fn reuse_wipes_the_previous_copys_data(pool: DbPool) {
 
     let created = VolumeService::create_volume(&pool, LABEL, old_title, Some(admin))
         .await
+        .unwrap()
+        .into_creation()
         .unwrap();
     let id = created.volume().id;
 
@@ -166,6 +174,8 @@ async fn reuse_wipes_the_previous_copys_data(pool: DbPool) {
 
     let volume = VolumeService::create_volume(&pool, LABEL, new_title, Some(admin))
         .await
+        .unwrap()
+        .into_creation()
         .unwrap()
         .into_volume();
 
@@ -189,6 +199,8 @@ async fn reuse_records_an_audit_entry_naming_what_was_discarded(pool: DbPool) {
 
     let id = VolumeService::create_volume(&pool, LABEL, old_title, Some(admin))
         .await
+        .unwrap()
+        .into_creation()
         .unwrap()
         .volume()
         .id;
@@ -230,6 +242,8 @@ async fn deleted_label_with_loan_history_is_refused(pool: DbPool) {
 
     let id = VolumeService::create_volume(&pool, LABEL, old_title, Some(admin))
         .await
+        .unwrap()
+        .into_creation()
         .unwrap()
         .volume()
         .id;
@@ -276,30 +290,35 @@ async fn deleted_label_with_loan_history_is_refused(pool: DbPool) {
     assert_eq!(volume.title_id, old_title);
 }
 
-// ─── The live-collision path keeps working, minus the "?" ─────────────
+// ─── The live-collision path: the live volume, named by the caller ────
 
+/// Story 19-3 (D2) — a live label is no longer a `BadRequest` naming the
+/// owner: the service returns the live volume (`LabelLive`) and the V-code
+/// arm answers it with #585 (`existing_label_response` names the owner).
 #[sqlx::test(migrations = "./migrations")]
-async fn live_label_collision_names_the_owning_title(pool: DbPool) {
+async fn live_label_collision_returns_the_live_volume(pool: DbPool) {
     let admin = seed_admin(&pool).await;
     let owner = seed_title(&pool, "Mon potager de vivaces").await;
     let other = seed_title(&pool, "Mémento du bibliothécaire").await;
 
-    VolumeService::create_volume(&pool, LABEL, owner, Some(admin))
+    let id = VolumeService::create_volume(&pool, LABEL, owner, Some(admin))
         .await
-        .unwrap();
+        .unwrap()
+        .into_creation()
+        .unwrap()
+        .volume()
+        .id;
 
-    let err = VolumeService::create_volume(&pool, LABEL, other, Some(admin))
+    let outcome = VolumeService::create_volume(&pool, LABEL, other, Some(admin))
         .await
-        .expect_err("a live label is genuinely taken");
+        .expect("a live label is answered, not refused");
 
-    match err {
-        AppError::BadRequest(msg) => {
-            assert!(
-                msg.contains("Mon potager de vivaces"),
-                "the owning title must be named; got: {msg}"
-            );
+    match outcome {
+        VolumeAdd::LabelLive(live) => {
+            assert_eq!(live.id, id);
+            assert_eq!(live.title_id, owner, "the owning title is the one to name");
         }
-        other => panic!("expected BadRequest, got {other:?}"),
+        other => panic!("expected LabelLive, got {other:?}"),
     }
 }
 
@@ -314,6 +333,8 @@ async fn no_path_ever_reports_the_owner_as_a_bare_question_mark(pool: DbPool) {
 
     let id = VolumeService::create_volume(&pool, LABEL, old_title, Some(admin))
         .await
+        .unwrap()
+        .into_creation()
         .unwrap()
         .volume()
         .id;

@@ -1,6 +1,6 @@
 # Story 19.3: Simultaneous actions on volumes and contributors (closes #541; #663 items 1–3)
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -58,17 +58,17 @@ Other writers of `contributors.name`: the rename (`ContributorModel::update`, `s
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `create_volume_in` in one transaction with the title share lock; `_in` variants of the volume model calls it uses (AC1, AC2, D1)
-- [ ] T2 — live duplicate → `LabelLive` outcome → `existing_label_response` in `add_to_title`; drop `volume_duplicate` if unused (AC3, D2)
-- [ ] T3 — `/catalog` title-gone helper shared by the #441 check and the `TitleGone` branch, with `closing_modal` (AC4, D3)
-- [ ] T4 — migration: `name_live`, `legacy_duplicate_slot` backfill, unique key (AC6, D4)
-- [ ] T5 — `ContributorModel::find_or_create_in` (ODKU + PK share-locked read); service and `metadata_fetch::add_author_contributor` use it (AC5, D5)
-- [ ] T6 — rename refusal (1062 → `contributor.error.name_taken`, request locale) (AC7, D6)
-- [ ] T7 — Trash restore refusal for contributors (AC7, D7)
-- [ ] T8 — locale keys ×4 (AC8)
-- [ ] T9 — DB integration tests: `tests/volume_add_races.rs`, `tests/contributor_live_name.rs` (declared in `tests/integration.rs`) (AC1–AC3, AC5, AC6)
-- [ ] T10 — E2E: catalog title gone at Confirm; rename refused (route posted, no form); Trash restore refused (AC4, AC7)
-- [ ] T11 — gates (below) and `CLAUDE.md` (a line under Key Patterns: contributor names unique among live rows + legacy slot; the add-volume share lock)
+- [x] T1 — `create_volume_in` in one transaction with the title share lock; `_in` variants of the volume model calls it uses (AC1, AC2, D1)
+- [x] T2 — live duplicate → `LabelLive` outcome → `existing_label_response` in `add_to_title`; drop `volume_duplicate` if unused (AC3, D2)
+- [x] T3 — `/catalog` title-gone helper shared by the #441 check and the `TitleGone` branch, with `closing_modal` (AC4, D3)
+- [x] T4 — migration: `name_live`, `legacy_duplicate_slot` backfill, unique key (AC6, D4)
+- [x] T5 — `ContributorModel::find_or_create_in` (ODKU + PK share-locked read); service and `metadata_fetch::add_author_contributor` use it (AC5, D5)
+- [x] T6 — rename refusal (1062 → `contributor.error.name_taken`, request locale) (AC7, D6)
+- [x] T7 — Trash restore refusal for contributors (AC7, D7)
+- [x] T8 — locale keys ×4 (AC8)
+- [x] T9 — DB integration tests: `tests/volume_add_races.rs`, `tests/contributor_live_name.rs` (declared in `tests/integration.rs`) (AC1–AC3, AC5, AC6)
+- [x] T10 — E2E: catalog title gone at Confirm; rename refused (route posted, no form); Trash restore refused (AC4, AC7)
+- [x] T11 — gates (below) and `CLAUDE.md` (a line under Key Patterns: contributor names unique among live rows + legacy slot; the add-volume share lock)
 
 ## Dev Notes
 
@@ -117,8 +117,47 @@ Other writers of `contributors.name`: the rename (`ContributorModel::update`, `s
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- Contributor E2E: the add answer lists every credit of the title, including the author the mock metadata fetch adds — the junction id is read from the remove button of the spec's own name.
 
 ### Completion Notes List
 
+- **D1 / AC1–AC2.** `VolumeService::create_volume_in` runs in one transaction: `models::volume_move::title_is_live_in` (reused, not copied) → `VolumeModel::create_in`; on 1062 the #442 resolution runs on the same transaction (`find_by_label_any_state_in`, `count_loans_in`, `reactivate_for_reuse_in` with `AND deleted_at IS NOT NULL`; 0 rows → rollback, then `find_by_label` on the pool → `LabelLive`). Pool wrappers kept for `create` and `find_by_label_any_state` (tests use them); `count_loans` / `reactivate_for_reuse` had no other caller and became `_in` only.
+- **D2 / AC3.** New `VolumeAdd { Created(VolumeCreation), LabelLive(VolumeModel) }` (+ `into_creation`). `vcode_volume::add_to_title` answers `LabelLive` with `existing_label_response` wrapped in `closing_modal` (shared helper `label_live_answer`, also used by the pre-check). `feedback.volume_duplicate` removed from the four locales; `VolumeService::get_volume_title_name` removed (no caller). `volume_label_reuse.rs::live_label_collision_names_the_owning_title` rewritten as `live_label_collision_returns_the_live_volume`.
+- **D3 / AC4.** `catalog::title_gone_reset` builds the #441 answer for both the check and the `TitleGone` branch. **Deviation (small):** it applies `closing_modal(…, confirmed)` in both branches, not only `TitleGone` — the realistic case of AC4 (title deleted while the CR #300 modal is open) is caught by the Confirm request's own #441 check, which left the modal open before.
+- **D4 / AC6.** Migration `20261125090000_contributors_live_name_unique.sql` as specified; the backfill also writes `updated_at = updated_at` so the ON UPDATE timestamp does not move on legacy rows (nothing visible changes — asserted by test). `name` / `name_live` collations checked equal via `information_schema`.
+- **D5 / AC5.** `ContributorModel::find_or_create_in` (read → ODKU `id = LAST_INSERT_ID(id)` → PK `LOCK IN SHARE MODE` read). `ContributorService::find_or_create(_in)` keep validation and call it; `metadata_fetch::add_author_contributor` calls `ContributorService::find_or_create` (hand copy removed). `ContributorModel::create` / `create_in` removed (no caller left; a raw insert would bypass the find-or-create). The background-fetch path is covered through `ContributorService::find_or_create` (the function is private to the task module).
+- **D6.** `ContributorModel::update` returns `ContributorUpdate { Updated, NotFound, NameTaken }` (1062 via the shared `db::is_duplicate_entry`, moved from `models/mcp_skill.rs`); `SET legacy_duplicate_slot = IF(name = ?, legacy_duplicate_slot, 0), name = ?, …`. `update_details` takes `loc`; the route words `contributor.updated` / `error.internal` in the request locale.
+- **D7.** Restores of `contributors` also set `legacy_duplicate_slot = 0`. The services stay locale-less and keep their signatures: `trash::restore_refusal(table, &err) -> Option<RestoreRefusal>` reads the typed 1062 (error number, contributors only); `admin_trash_restore` words it with `entry.item_name` in `loc` as `AppError::Conflict`. **Deviation (key path):** the key is `admin.trash.restore_contributor_name_taken`, next to the other Trash restore keys (`admin.trash.restore_*`); there is no root `trash:` namespace. Copy as approved.
+- **Race tests fail on the old code** (run once on an emulation of the old logic — pre-19-3 `create_volume_in` body: unlocked `TitleModel::find_by_id`, pool `VolumeModel::create`, pool resolution returning `BadRequest(volume_duplicate)` for a live label and an unguarded reactivation; old `find_or_create_in` read-then-plain-INSERT; migration replaced by a column-only stub): FAILED `an_add_waiting_on_a_title_delete_answers_title_gone` (the INSERT waited on the FK share lock, then committed a live volume on the trashed title), `a_label_reuse_waiting_on_a_title_delete_answers_title_gone`, `two_reuses_of_one_trashed_label_reuse_it_once` (moved to the second title), `a_label_losing_the_insert_to_the_same_title…` / `…_another_title…` / `the_title_page_answers…` / `the_catalog_scan_answers…` (got `volume_duplicate`), `the_catalog_resets_its_context_when_the_title_goes_at_the_insert`, `two_find_or_creates_of_one_new_name_leave_one_contributor` (no wait, two rows), `an_acceptance_resolves_a_name_committed_after_its_snapshot` (two rows), `an_add_waits_for_an_acceptance_that_created_the_name`, plus every migration / rename / restore test. Passing there as expected: `a_delete_waiting_on_an_add_is_refused` (delete side, unchanged) and the lock-scope test. `the_catalog_title_gone_check_closes_the_modal_on_confirm` fails on the old `catalog.rs` by construction (no `hx-trigger-after-swap`; the emulation did not revert catalog.rs).
+- **Gates:** `cargo clippy --all-targets -- -D warnings` clean; `cargo test --lib` 1856 passed (then 3 unit tests added — `restore_set_clause`, `restore_refusal`, `VolumeAdd::into_creation` — green in a targeted run); `cargo test --test integration` 950 passed (incl. `locale_parity`, 34 new/rewritten tests); `cargo sqlx prepare --check --workspace -- --all-targets` OK (no typed query changed; 3317 DB migrated); `npx tsc --noEmit`, flake grep, `vcode-literals.sh` clean; E2E: after `e2e-reset.sh`, `CI=true --workers=2` over the new and affected specs (`catalog-phantom-volume-confirm`, `contributor-live-name`, `catalog-contributor`, `catalog-volume`, `scan-duplicates-existing-label`, `admin-trash-restore`): 29 passed, 0 flaky. Full suite not run (left to the lead).
+- **E2E:** new `contributor-live-name.spec.ts` (specId `CU`, no volumes: rename refused through the route; Trash restore refused — its removed credit opens the conflict modal, the refusal lands in `[data-modal-error]`); `catalog-phantom-volume-confirm.spec.ts` gains the AC4 journey (PV slots 4–5, ISBN PV/3). The panel-button path of the restore refusal (`#feedback-list`) is covered by the route-level Rust test.
+- **Out of scope, observed:** `catalog-contributor.spec.ts` "anonymous user cannot POST … (DB unchanged)" compares library-wide entity counts (Rule #23): it can flake whenever a parallel spec creates a title (seen once, as flaky, in a run over a non-reset stack; green on the clean run).
+
 ### File List
+
+- `migrations/20261125090000_contributors_live_name_unique.sql` (new)
+- `src/db.rs`
+- `src/models/contributor.rs`
+- `src/models/mcp_skill.rs`
+- `src/models/volume.rs`
+- `src/routes/admin.rs`
+- `src/routes/catalog.rs`
+- `src/routes/catalog_contributors.rs`
+- `src/routes/vcode_volume.rs`
+- `src/services/contributor.rs`
+- `src/services/trash.rs`
+- `src/services/volume.rs`
+- `src/tasks/metadata_fetch.rs`
+- `locales/en.yml`, `locales/fr.yml`, `locales/de.yml`, `locales/it.yml`
+- `tests/integration.rs`
+- `tests/volume_add_races.rs` (new)
+- `tests/contributor_live_name.rs` (new)
+- `tests/volume_label_reuse.rs`
+- `tests/e2e/specs/journeys/contributor-live-name.spec.ts` (new)
+- `tests/e2e/specs/journeys/catalog-phantom-volume-confirm.spec.ts`
+- `CLAUDE.md`
+- `_bmad-output/implementation-artifacts/19-3-simultaneous-actions.md`

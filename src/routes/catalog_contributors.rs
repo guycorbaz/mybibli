@@ -204,9 +204,10 @@ pub async fn update_contributor(
     let pool = &state.pool;
     let bio = form.biography.as_deref();
 
-    match ContributorService::update_details(pool, form.id, &form.name, bio).await {
+    let loc = locale.0;
+    match ContributorService::update_details(pool, form.id, &form.name, bio, loc).await {
         Ok(()) => {
-            let message = rust_i18n::t!("contributor.updated").to_string();
+            let message = rust_i18n::t!("contributor.updated", locale = loc).to_string();
 
             // Refresh contributor list if title_id provided
             if let Some(title_id) = form.title_id {
@@ -227,7 +228,7 @@ pub async fn update_contributor(
         Err(e) => {
             let message = match &e {
                 AppError::BadRequest(msg) => msg.clone(),
-                _ => rust_i18n::t!("error.internal").to_string(),
+                _ => rust_i18n::t!("error.internal", locale = loc).to_string(),
             };
             Ok(Html(feedback_html("error", &message, "")).into_response())
         }

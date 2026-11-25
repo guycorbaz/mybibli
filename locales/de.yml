@@ -241,7 +241,6 @@ feedback:
   isbn_invalid: "Dieser Code scheint keine gültige ISBN zu sein. Bitte den Barcode prüfen und erneut scannen."
   volume_created: "Exemplar %{label} an %{title} angehängt."
   volume_created_suggestion: "L-Code scannen zum Einsortieren, oder weiteren V-Code scannen."
-  volume_duplicate: "Etikett %{label} ist bereits %{title} zugeordnet. Bitte ein anderes Etikett scannen."
   volume_already_recorded: "Etikett %{label} ist für diesen Titel bereits erfasst."
   volume_on_other_title: "Etikett %{label} ist bereits „%{title}“%{isbn} zugeordnet."
   volume_on_other_title_hint: "Scannen Sie ein anderes Etikett für dieses Buch, oder öffnen Sie das Exemplar: Auf seiner Seite können Sie es dem richtigen Titel zuordnen."
@@ -300,6 +299,7 @@ contributor:
     name_required: Der Name des Mitwirkenden ist erforderlich.
     name_too_long: Der Name darf höchstens 255 Zeichen lang sein.
     role_not_found: Die ausgewählte Rolle existiert nicht.
+    name_taken: "Ein anderer Mitwirkender trägt bereits diesen Namen."
   form:
     name: Name
     role: Rolle
@@ -934,6 +934,7 @@ admin:
     days_remaining_critical: "<7 Tage"
     restore_success: "Wiederhergestellt: %{name}"
     restore_error_not_found: "Dieser Eintrag liegt nicht mehr im Papierkorb. Er wurde vermutlich schon wiederhergestellt oder endgültig gelöscht."
+    restore_contributor_name_taken: "„%{name}“ wurde nicht wiederhergestellt: Ein anderer Mitwirkender trägt bereits diesen Namen. Benennen Sie einen der beiden um und stellen Sie ihn dann erneut wieder her."
     delete_permanent_success: "Endgültig gelöscht: %{name}"
     delete_permanent_modal_title: "Endgültig löschen?"
     delete_permanent_modal_warning: "Dies kann nicht rückgängig gemacht werden."

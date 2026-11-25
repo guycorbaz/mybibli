@@ -3,6 +3,7 @@ import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { scanTitleAndVolume } from "../../helpers/loans";
 import { specVcode } from "../../helpers/vcode";
+import { csrfHeaders } from "../../helpers/csrf";
 
 // CR #300 — phantom-volume guard. `current_title_id` is sticky in the session
 // (set on ISBN scan, never cleared). Scanning a fresh V-code without
@@ -69,6 +70,52 @@ test.describe("Catalog — phantom-volume guard on V-code scan (#300)", () => {
     await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0);
 
     // No feedback entry mentions the second code — Cancel did not create the volume.
+    await expect(
+      page.locator(".feedback-entry").filter({ hasText: new RegExp(second, "i") }),
+    ).toHaveCount(0);
+  });
+
+  // Story 19-3 (AC4, #663 item 3) — the title is deleted while the modal is
+  // open: the Confirm's answer says there is no title any more, clears the
+  // context banner and resets the guide, and closes the modal (it used to
+  // stay open over the warning).
+  test("confirming after the title was deleted meanwhile closes the modal and resets the context", async ({
+    page,
+  }) => {
+    const first = specVcode("PV", 4);
+    const second = specVcode("PV", 5);
+    await loginAs(page, "librarian");
+    const isbn = specIsbn("PV", 3);
+    await scanTitleAndVolume(page, isbn, first);
+
+    // Re-scan the ISBN so the context banner names the title.
+    await page.goto("/catalog");
+    await page.locator("#scan-field").fill(isbn);
+    await page.locator("#scan-field").press("Enter");
+    await expect(page.locator("#context-banner")).not.toBeEmpty({ timeout: 10000 });
+    await page.locator("#scan-field").fill(second);
+    await page.locator("#scan-field").press("Enter");
+    const modal = page.locator("#modal-slot dialog[open]");
+    await expect(modal).toBeVisible();
+
+    // Meanwhile (another tab): the volume, then the title, are deleted.
+    const headers = { ...(await csrfHeaders(page)), "HX-Request": "true" };
+    const volumePage = await page.request.get(`/scan?code=${first}`);
+    const volumeId = /\/volume\/(\d+)/.exec(volumePage.url())?.[1];
+    expect(volumeId, volumePage.url()).toBeTruthy();
+    expect((await page.request.delete(`/volume/${volumeId}`, { headers })).ok()).toBe(true);
+    const titlePage = await page.request.get(`/scan?code=${isbn}`);
+    const titleId = /\/title\/(\d+)/.exec(titlePage.url())?.[1];
+    expect(titleId, titlePage.url()).toBeTruthy();
+    expect((await page.request.delete(`/title/${titleId}`, { headers })).ok()).toBe(true);
+
+    await modal.getByRole("button", { name: CONFIRM_LABEL }).click();
+
+    await expect(
+      page.locator(".feedback-entry").filter({ hasText: /No title selected|Aucun titre sélectionné/i }).first(),
+    ).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0);
+    await expect(page.locator("#context-banner")).toBeEmpty();
     await expect(
       page.locator(".feedback-entry").filter({ hasText: new RegExp(second, "i") }),
     ).toHaveCount(0);
