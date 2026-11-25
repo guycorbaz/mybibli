@@ -465,7 +465,7 @@ impl TitleContributorModel {
                         "DUPLICATE_CONTRIBUTOR_ROLE".to_string(),
                     ))
                 } else {
-                    Err(AppError::Database(e))
+                    Err(AppError::from(e))
                 }
             }
         }

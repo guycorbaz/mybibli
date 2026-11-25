@@ -18,6 +18,8 @@ configuration file. The panel has six tabs:
         number (V-code) and last shelf number (L-code) ever printed,
         trashed items included, each with the next free number — the
         place to look before printing a new sheet of barcode labels.
+        Since 1.29.0 it also shows the \emph{production watching}
+        counts (section~\ref{sec:health-watch}).
   \item \textbf{Users} — create / deactivate users, change roles.
   \item \textbf{Reference data} — the taxonomy tables, and the
         management-label vocabulary (section~\ref{sec:management-labels}).
@@ -32,6 +34,46 @@ configuration file. The panel has six tabs:
 Only the \texttt{Admin} role sees the panel; \texttt{Librarian} and
 \texttt{Anonymous} users get a 403 from every \texttt{/admin/*}
 route.
+
+\subsection*{Production watching}\label{sec:health-watch}
+\index{production watching}
+
+Since 1.29.0 the Health tab has a \textbf{Production watching}
+section, between the entity counts and the highest label numbers. It lets you see
+from time to time how the instance is doing without reading the logs
+(chapter~\ref{ch:operations-debugging}): four counts, each for the
+\emph{last 24 hours} and \emph{since start}, the column header naming
+the start time in the library's time zone.
+
+\begin{itemize}
+  \item \textbf{Slow database statements (over 1 s)} — statements the
+        database took more than a second to answer. A healthy instance
+        has none; a count above \textbf{50} in 24 hours is shown as
+        unusual.
+  \item \textbf{Database connection waits that failed (30 s)} — requests
+        that waited 30 seconds for a database connection and failed.
+        A single one is shown as unusual (threshold \textbf{0}).
+  \item \textbf{Requests refused for an invalid security token (CSRF)}
+        — forms posted with a missing or outdated token. Expired
+        sessions produce a few a day; above \textbf{20} in 24 hours is
+        unusual.
+  \item \textbf{API requests refused (missing, wrong or insufficient
+        key)} — calls to the HTTP API or the MCP server
+        (chapters~\ref{ch:api} and~\ref{ch:agents}) refused for their
+        key. A misconfigured agent retries far more often than
+        \textbf{20} times a day, the threshold.
+\end{itemize}
+
+Under the two refusal rows, the three client addresses that were
+refused most often over the last 24 hours are listed with their
+counts (or ``none''). A count above its threshold is written in the
+warning colour \emph{and} followed by ``above the usual level''.
+
+The counts are kept in memory only: nothing is written to the
+database, and a restart sets them back to zero, as the note under the
+table says. The details (time, path, address) of each event are in
+the logs. The counts do not depend on the log level: a slow statement
+is counted even when the level is set to \texttt{error}.
 
 \section{Storage locations and hierarchy}\label{sec:locations}
 

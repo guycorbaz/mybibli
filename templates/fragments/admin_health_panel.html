@@ -28,6 +28,9 @@
         </tbody>
     </table>
 
+    {# Story 19-5 (#708) — production watching (in-memory counters). #}
+    {% include "fragments/admin_health_watch.html" %}
+
     {# #489 — label high-water marks: highest V-code / L-code ever printed
        (soft-deleted rows included) and the next free number, so a fresh
        label sheet starts right after the occupied range. #}

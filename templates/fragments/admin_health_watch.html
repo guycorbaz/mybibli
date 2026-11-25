@@ -1,0 +1,45 @@
+{# Admin → Health: "Production watching" (story 19-5, #708). Included by
+   `admin_health_panel.html`; reads only `watch` (`routes::admin_health_watch::WatchPanel`).
+   A count above its threshold gets the warning colour AND a text marker
+   (not colour alone, NFR12). Addresses are escaped by Askama. #}
+<section id="health-watch" aria-labelledby="health-watch-heading">
+    <h2 id="health-watch-heading" class="text-lg font-semibold text-stone-900 dark:text-stone-100 mb-4">{{ watch.heading }}</h2>
+    <table class="min-w-full divide-y divide-stone-200 dark:divide-stone-700 mb-2">
+        <thead>
+            <tr>
+                <td class="px-3 py-2"></td>
+                <th scope="col" class="px-3 py-2 text-right text-sm font-medium text-stone-700 dark:text-stone-300">{{ watch.col_last_24h }}</th>
+                <th scope="col" id="watch-since-start-heading" class="px-3 py-2 text-right text-sm font-medium text-stone-700 dark:text-stone-300">{{ watch.col_since_start }}</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-stone-100 dark:divide-stone-800">
+            {% for r in watch.rows %}
+            <tr id="{{ r.id }}">
+                <th scope="row" class="px-3 py-2 text-left text-sm text-stone-500 dark:text-stone-400 font-normal">{{ r.label }}</th>
+                <td id="{{ r.id }}-24h" class="px-3 py-2 text-right text-sm font-mono {% if r.above %}text-amber-800 dark:text-amber-300 font-semibold{% else %}text-stone-900 dark:text-stone-100{% endif %}"><span data-watch-count>{{ r.last_24h }}</span>{% if r.above %} — <span data-watch-marker class="font-sans">{{ r.marker }}</span>{% endif %}</td>
+                <td id="{{ r.id }}-total" class="px-3 py-2 text-right text-sm font-mono text-stone-900 dark:text-stone-100"><span data-watch-count>{{ r.since_start }}</span></td>
+            </tr>
+            {% if r.tracks_addresses %}
+            <tr id="{{ r.id }}-addresses">
+                <td colspan="3" class="px-3 pb-3 pt-0 text-sm text-stone-600 dark:text-stone-400">
+                    {{ watch.addresses_label }}
+                    {% if r.addresses.is_empty() %}
+                    <span>{{ r.none_label }}</span>
+                    {% else %}
+                    <ul class="inline">
+                        {% for a in r.addresses %}
+                        <li class="inline mr-3"><span class="font-mono">{{ a.address }}</span> ({{ a.count }})</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if !r.other_label.is_empty() %}
+                    <span>{{ r.other_label }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="text-sm text-stone-500 dark:text-stone-400 mb-8">{{ watch.footnote }}</p>
+</section>

@@ -155,6 +155,9 @@ struct AdminHealthPanel {
     count_borrowers: i64,
     count_active_loans_label: String,
     count_active_loans: i64,
+    // Story 19-5 (#708) — "Production watching", rendered by its own
+    // fragment (`admin_health_watch.html`).
+    watch: crate::routes::admin_health_watch::WatchPanel,
     // #489 — label high-water marks: "V0142 (next: V0143)" per family,
     // or the "none yet" placeholder. Pre-formatted so the template only
     // prints two strings.
@@ -1510,6 +1513,7 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
         count_active_loans_label: rust_i18n::t!("admin.health.count_active_loans", locale = loc)
             .to_string(),
         count_active_loans: counts.active_loans,
+        watch: crate::routes::admin_health_watch::current_watch_panel(state.time_zone(), loc),
         labels_heading: rust_i18n::t!("admin.health.labels_heading", locale = loc).to_string(),
         labels_hint: rust_i18n::t!("admin.health.labels_hint", locale = loc).to_string(),
         last_vcode_label: rust_i18n::t!("admin.health.last_vcode", locale = loc).to_string(),

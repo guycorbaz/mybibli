@@ -988,6 +988,19 @@ admin:
     provider_status_na: "n/a"
     last_checked: "Dernier contrôle : %{when}"
     last_checked_never: Jamais
+    watch:
+      heading: Surveillance de la production
+      slow_statements: "Requêtes lentes à la base (plus de 1 s)"
+      pool_timeouts: "Attentes de connexion à la base échouées (30 s)"
+      csrf_refusals: "Requêtes refusées pour un jeton de sécurité invalide (CSRF)"
+      api_key_refusals: "Requêtes API refusées (clé absente, fausse ou insuffisante)"
+      col_last_24h: Dernières 24 heures
+      col_since_start: "Depuis le démarrage (%{time})"
+      addresses_label: "Adresses les plus fréquentes :"
+      addresses_none: aucune
+      addresses_other: "et %{count} autres non listées"
+      above_marker: au-dessus du niveau habituel
+      footnote: "Comptés en mémoire depuis le dernier démarrage ; un redémarrage les remet à zéro. Le détail est dans les journaux."
     maintenance_heading: Maintenance
     bulk_cover_fetch:
       missing_covers_label: "Titres sans couverture"

@@ -233,7 +233,7 @@ impl UserModel {
                     Err(AppError::Database(sqlx::Error::Database(e)))
                 }
             }
-            Err(e) => Err(AppError::Database(e)),
+            Err(e) => Err(AppError::from(e)),
         }
     }
 
@@ -288,7 +288,7 @@ impl UserModel {
                     Err(AppError::Database(sqlx::Error::Database(e)))
                 }
             }
-            Err(e) => Err(AppError::Database(e)),
+            Err(e) => Err(AppError::from(e)),
         }
     }
 

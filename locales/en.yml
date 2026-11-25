@@ -991,6 +991,19 @@ admin:
     provider_status_na: n/a
     last_checked: "Last checked: %{when}"
     last_checked_never: Never
+    watch:
+      heading: Production watching
+      slow_statements: "Slow database statements (over 1 s)"
+      pool_timeouts: "Database connection waits that failed (30 s)"
+      csrf_refusals: "Requests refused for an invalid security token (CSRF)"
+      api_key_refusals: "API requests refused (missing, wrong or insufficient key)"
+      col_last_24h: Last 24 hours
+      col_since_start: "Since start (%{time})"
+      addresses_label: "Most frequent addresses:"
+      addresses_none: none
+      addresses_other: "and %{count} more not listed"
+      above_marker: above the usual level
+      footnote: "Counted in memory since the last start; a restart resets them. The details are in the logs."
     maintenance_heading: Maintenance
     bulk_cover_fetch:
       missing_covers_label: "Titles with missing covers"
