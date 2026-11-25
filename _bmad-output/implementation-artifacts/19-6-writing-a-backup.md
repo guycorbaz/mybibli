@@ -1,0 +1,150 @@
+# Story 19.6: Writing a backup (#657, part 1)
+
+Status: ready-for-dev
+
+## Story
+
+As the operator,
+I want mybibli to write a complete, checkable backup on request,
+so that the library can be recovered, or loaded elsewhere, without restoring all of MariaDB.
+
+## Context
+
+On 2026-11-09 the production database was erased by a mishandling. It was restored from the NAS nightly backup, and a day of entries was lost. mybibli has no backup of its own. The decisions recorded on #657 (2026-11-10, plus the epic 17 retro Q4 comment) are the specification. This story writes one backup on request.
+- Story 19-7 adds the schedule, the rotation and the Health status line.
+- Story 19-8 adds the restore and the list of backups.
+- Story 19-9 adds the cover consistency tool.
+
+Covers FR179 (format and writer) and NFR49 (round trip in CI).
+
+What exists:
+- **Database.** MariaDB 10.11 with 33 tables, all InnoDB (the server default; nine migrations also say it explicitly). The migrations are tracked in `_sqlx_migrations`. `contributors.name_live` is a generated column (story 19-3): a loader must skip it.
+- **Covers.** `COVERS_DIR` (`main.rs:424`, default `./covers`, `/app/covers` in the image) holds `<digits>.jpg` covers, plus `.staging/` for proposed covers, which is excluded from backups (#657).
+- **Image.** No `/app/backups` exists in the image (`Dockerfile`), and it must stay that way. mybibli never creates the folder; the operator mounts it.
+- **Crates.** `sha2` and `rand` are already dependencies. No archive or compression crate is.
+- **Admin.** The admin page has seven tabs (`AdminTab` in `routes/admin.rs:42`, a file of 1857 lines). A tab lives in its own `routes/admin_<name>.rs` (story 8-1 pattern).
+
+Practice A3: the format (D2), the tab (D7) and the messages (D8) are settled with the project lead before the first review pass.
+
+## Decisions
+
+- **D1 — the folder.**
+  - `MYBIBLI_BACKUP_DIR`, default `/app/backups` (in the image; `./backups` for `cargo run`), read once at startup.
+  - mybibli **never creates it** (no `create_dir`, no `mkdir` in the Dockerfile).
+  - If it is missing, not a directory, or not writable, a backup request is refused with D8's message, nothing is written anywhere, and the app keeps running.
+  - The compose files get the mount `./backups:/app/backups`, commented with the reason. `tests/e2e/docker-compose.test.yml` mounts a folder that the E2E stack creates for the run.
+- **D2 — the format: one `.tar.gz` file.** *(To confirm with the project lead.)*
+  - The tar stream holds, in order:
+    1. `database.sql` — a standard SQL dump that the `mariadb` client loads into an empty database (`mariadb -u … newdb < database.sql`). It has a header (`SET NAMES utf8mb4; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0;`), then for each table: `DROP TABLE IF EXISTS`, the `SHOW CREATE TABLE` text, and multi-row `INSERT`s of at most 500 rows. Generated columns are left out of the column list (`information_schema.COLUMNS.GENERATION_EXPRESSION IS NOT NULL` / `EXTRA` contains `GENERATED`). The dump ends by restoring the checks. It covers every table, `_sqlx_migrations` included, so that a loaded copy is at the right migration level.
+    2. `covers/<name>` — every regular file directly in `COVERS_DIR` whose name is `<digits>.jpg` (Rule #20, positive shape: what the app writes; the shape 19-9 uses too). `.staging/` and any other entry are skipped and counted in the manifest.
+    3. `manifest.json`, last — `format` (`"mybibli-backup"`), `format_version` (1), `instance_id`, `mybibli_version` (`CARGO_PKG_VERSION`), `last_migration` (highest `_sqlx_migrations.version`), `created_at` (UTC, RFC 3339), the row count of each table, the cover count and bytes, and `members`: the SHA-256 and size of each preceding member.
+  - The manifest's own SHA-256 is written to a sidecar `<name>.sha256` (`sha256sum` format), so that the whole file can be checked with `sha256sum -c` and a truncated archive is detected even before it is opened. 19-8 verifies both.
+  - Values are written as SQL literals built by the server, not in Rust:
+    - text-like columns: `QUOTE(col)`;
+    - binary, BLOB and JSON columns: `IF(col IS NULL, 'NULL', CONCAT('0x', HEX(col)))`;
+    - numbers: `CAST` to text.
+    
+    The column kinds come from `information_schema.COLUMNS`. Every value survives a byte-exact round trip (AC5).
+  - Crates: `tar` and `flate2` (both widely used; exact versions pinned in `Cargo.toml` / `Cargo.lock`; `cargo audit` green).
+- **D3 — a consistent snapshot without a global lock.**
+  - The dump reads on one dedicated pool connection, inside `SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ; START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY`. Every table is InnoDB, so readers and writers go on as usual, and no `LOCK TABLES` or `FLUSH TABLES WITH READ LOCK` is taken.
+  - `SHOW CREATE TABLE` is read before the snapshot starts (DDL does not run while the app is up).
+  - Covers are copied after the dump. A cover written in between may be in the archive without its row, or missing for a row: 19-9's consistency tool reports and repairs that, and the manual says so.
+  - Rows are streamed (`fetch`, not `fetch_all`) into the gzip writer, so memory stays flat.
+- **D4 — the name, the instance id and the permissions.**
+  - The name is `mybibli-<instance_id>-<YYYYMMDD>T<HHMMSS>Z.tar.gz` (UTC). This positive shape is what 19-7's rotation will recognise.
+  - `instance_id` is 16 lowercase hex characters, generated once per database by `data_repairs::run_once("19-6-instance-id", …)` into a new K/V setting `instance_id`. It is shown on the Health tab, under Versions, and is not editable.
+  - The archive is written as `.tmp-<name>`, flushed and `sync_all`ed, then renamed. The sidecar is written the same way, after the archive's rename.
+  - Both files are created with mode `0600` (`OpenOptions::mode`), never wider: they hold password hashes, API-key hashes and provider keys (#657).
+  - On any failure, the temporary files are removed and nothing is renamed.
+- **D5 — one backup at a time.** A process-wide guard (a `tokio::sync::Mutex` `try_lock`) refuses a second request while one runs (D8's message). The writer runs in a spawned task, owning its own connection, so a client disconnect does not abort it halfway. The HTTP answer waits for it. The catalogue is small (seconds); if the write takes longer than the request timeout, the answer says it is still running.
+- **D6 — the writer API.** `services::backup::write_backup(pool, &BackupConfig) -> Result<BackupWritten, BackupError>`, with `BackupWritten { file_name, bytes, tables, rows, covers }` and `BackupError::{FolderMissing, FolderNotWritable, AlreadyRunning, Io, Database}`. Each error variant has `localized(loc)`. 19-7's scheduled task and 19-8's safety backup call the same function.
+- **D7 — the Backups tab.** *(To confirm.)* A new admin tab "Backups" (`AdminTab::Backups`, `/admin?tab=backups`, `/admin/backups`, `routes/admin_backups.rs`, Admin only, story 8-1 pattern). In this story it shows:
+  - the folder path and its state (present and writable / missing / not writable);
+  - a "Back up now" button;
+  - the answer in the tab's feedback region.
+  
+  The list of backups present (UX-DR46) comes with 19-8; the schedule setting with 19-7.
+- **D8 — copy (Rule #9, four locales).** *(To confirm; EN and FR shown.)*
+  - Folder missing:
+    - EN: "No backup was written: the backups folder %{path} does not exist. Mount a folder there (see the manual, “Backups”), then try again."
+    - FR: « Aucune sauvegarde n'a été écrite : le dossier de sauvegarde %{path} n'existe pas. Montez un dossier à cet endroit (voir le manuel, « Sauvegardes »), puis réessayez. »
+  - Folder not writable:
+    - EN: "No backup was written: mybibli cannot write in %{path}. Give the container's user write access to that folder (see the manual), then try again."
+    - FR: « Aucune sauvegarde n'a été écrite : mybibli ne peut pas écrire dans %{path}. Donnez au compte du conteneur le droit d'écrire dans ce dossier (voir le manuel), puis réessayez. »
+  - Already running:
+    - EN: "A backup is already being written. Wait for it to finish; it will show here."
+    - FR: « Une sauvegarde est déjà en cours d'écriture. Attendez qu'elle se termine ; elle s'affichera ici. »
+  - Failed (I/O or database):
+    - EN: "The backup could not be written, so nothing was kept. Try again; if it keeps failing, the logs say why."
+    - FR: « La sauvegarde n'a pas pu être écrite ; rien n'a été conservé. Réessayez ; si l'échec se répète, les journaux en donnent la raison. »
+  - Success:
+    - EN: "Backup written: %{file} (%{size}, %{titles} titles, %{covers} covers)."
+    - FR: « Sauvegarde écrite : %{file} (%{size}, %{titles} titres, %{covers} couvertures). »
+  - Tab and folder states: "Backups" / « Sauvegardes », "Back up now" / « Sauvegarder maintenant », "Folder: %{path} — ready" / « Dossier : %{path} — prêt », "— missing" / « — absent », "— not writable" / « — non accessible en écriture ».
+
+## Acceptance Criteria
+
+1. **AC1** — With the folder mounted, "Back up now" writes exactly one `mybibli-<id>-<UTC>.tar.gz` and its `.sha256` there, with mode `0600`, and answers D8's success message. Nothing else stays in the folder: no `.tmp-` file after success or failure.
+2. **AC2** — The archive holds `database.sql`, `covers/…` (no `.staging`) and `manifest.json` (D2 fields). `sha256sum -c` passes on the sidecar, and each member matches its manifest hash. A test truncates the archive and shows the check fails.
+3. **AC3** — With the folder missing or not writable, the request is refused with D8's message, nothing is written (the test lists the parent folder and the container's `/app`), and the app keeps serving. A second request during a backup is refused with "already running".
+4. **AC4** — Writing does not block the catalogue: while a backup runs (slowed in the test with a large table or a hook), a title edit on another connection commits without waiting (integration test). The dump is the consistent state at its snapshot: a row inserted after the snapshot started is not in it.
+5. **AC5 (NFR49)** — A round-trip integration test runs in CI:
+   1. seed a database with every table non-empty where possible, including UTF-8 (accents, emoji), binary, JSON, NULLs, the generated column and covers;
+   2. back up;
+   3. load `database.sql` into a fresh database (multi-statement execution) and extract the covers;
+   4. compare every table, row by row (`CHECKSUM TABLE` or a sorted dump of each), and every cover byte by byte.
+
+   The test fails if any table is added to the schema without being dumped (it compares against `information_schema.TABLES`).
+6. **AC6** — `instance_id` is created once, kept across restarts, and shown on the Health tab. The manifest carries it.
+7. **AC7** — Only an Admin reaches the tab and the action (Librarian → 403 feedback, anonymous → login), and the action requires the CSRF token. E2E: an Admin backs up from a blank browser login and sees the success line naming the file; the refusal for a missing folder is covered by a route test (the E2E stack has the folder).
+8. **AC8** — Manual (EN / FR), new "Backups" section:
+   - adding the mount to `docker-compose.yml`, and that mybibli never creates the folder;
+   - writing a backup;
+   - what the file holds and that it is sensitive (`0600`, contents);
+   - loading `database.sql` into another MariaDB, which is the Rule #20 corpus (#657 comment);
+   - that a cover written during the backup is reconciled by the 19-9 tool.
+
+   PDFs are rebuilt at release.
+9. **AC9** — Gates: clippy (`-D warnings`), unit and integration tests, `sqlx prepare --check`, `cargo audit` with the two new crates, tsc and E2E gates; the full E2E suite with `CI=true --workers=2` has no flaky test.
+
+## Tasks / Subtasks
+
+- [ ] T1 — `instance_id` setting via `run_once` + Health line (D4, AC6).
+- [ ] T2 — `services/backup/` (split by concern, Rule #12: `mod.rs` API + guard, `dump.rs` SQL writer, `archive.rs` tar/gzip + manifest + sidecar, `covers.rs`) (D2–D6).
+- [ ] T3 — `routes/admin_backups.rs` + `AdminTab::Backups` + template + nav of admin tabs (D7, AC7).
+- [ ] T4 — locales ×4 (D8).
+- [ ] T5 — Config `MYBIBLI_BACKUP_DIR`; compose files and the E2E compose mount (D1).
+- [ ] T6 — Tests: unit tests (literal building, name shape, manifest), integration tests `tests/backup_write.rs` (AC1–AC4), `tests/backup_round_trip.rs` (AC5), declared in `tests/integration.rs`; E2E `admin-backups.spec.ts` (new spec id).
+- [ ] T7 — Manual EN/FR, `CLAUDE.md` Key Patterns line, `docs/auth-threat-model.md` note (sensitive file), gates.
+
+## Dev Notes
+
+### Guardrails
+
+- Never create the backup folder; never write outside it (temporary files live in it).
+- Read-only snapshot transaction for the dump; no `LOCK TABLES`, no `FLUSH`.
+- `deleted_at IS NULL` does **not** apply: a backup copies every row, Trash included (a deliberate exception, like `models/isbn_repair.rs`). Say so in the module doc.
+- No user data in log lines beyond counts and the file name.
+- File mode `0600` at creation (not a `chmod` afterwards).
+- Heavy commands under `flock -w 10800 /tmp/station-heavy.lock mem-guard …`; never run `cargo fmt`; do not touch kesh's containers, ports or databases.
+
+### Couplings (Rule #24)
+
+- 19-7 builds on `write_backup`, the name shape and the Backups tab.
+- 19-8 reads the manifest and sidecar.
+- 19-9 reads the covers folder too; only 19-9 deletes, and only `<digits>.jpg`.
+
+### References
+
+- #657 (decisions + epic 17 retro comment), epic 19 Story 19.6 in `_bmad-output/planning-artifacts/epics.md`, FR179, NFR49, UX-DR46.
+
+## Dev Agent Record
+
+### Agent Model Used
+
+### Debug Log References
+
+### Completion Notes List
+
+### File List
