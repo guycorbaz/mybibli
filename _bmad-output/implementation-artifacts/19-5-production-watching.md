@@ -44,14 +44,14 @@ Practice A3: the thresholds (D5) and the panel's wording (D6) are settled with t
   - A four-row table: kind, last 24 hours, since start. Under the two refusal rows, the three most frequent client addresses over 24 h, each with its count (or "none").
   - The "since start" header names the start time, in the instance zone (`format_local_date_time`, story 15-1). Below the table: "Counted in memory since the last start; a restart resets them."
   - The panel is read on each Health tab render, with no polling.
-- **D5 — thresholds (over the last 24 hours).** *(To confirm with the project lead.)*
+- **D5 — thresholds (over the last 24 hours).** *(Approved by the project lead, 2026-11-25.)*
   - Slow statements above **50**. In normal use the instance has none; #696 produced about 1 000 a day.
   - Pool timeouts above **0**. A single one means requests waited 30 s and failed.
   - CSRF refusals above **20**. Expired sessions produce a few a day.
   - API-key refusals above **20**. A misconfigured agent retries far more often than that.
 
   These are constants in `watch.rs` (v1, not settings, like `RECENT_ACTIVITY_DAYS`), each locked by a unit test. A count above its threshold shows its cell in the warning colour (`text-amber-800 dark:text-amber-300`, `font-semibold`) **and** a text marker after the number ("— above the usual level", screen-reader visible): not colour alone (NFR12).
-- **D6 — copy (four locales).** *(To confirm; EN and FR shown.)*
+- **D6 — copy (four locales).** *(Approved by the project lead, 2026-11-25; EN and FR shown, DE and IT follow them.)*
   - Heading: "Production watching" / « Surveillance de la production ».
   - Rows:
     - "Slow database statements (over 1 s)" / « Requêtes lentes à la base (plus de 1 s) »
@@ -112,6 +112,10 @@ Practice A3: the thresholds (D5) and the panel's wording (D6) are settled with t
 ### References
 
 - Epic: `_bmad-output/planning-artifacts/epics.md`, Story 19.5 (:3709), FR178 (:207), UX-DR45 (:347). Issue #708. sqlx: `sqlx-core-0.8.6/src/logger.rs:93-145`.
+
+## Validation (2026-11-25)
+
+Checked against the code: sqlx 0.8.6 logs slow statements at target `sqlx::query`, `WARN`, message "slow statement: …" (`logger.rs:124-140`), and its enabled check also asks `tracing`, so a per-layer filter that enables that callsite is enough for it to fire. The log-level reload goes through the `LogLevelReloader` closure (`main.rs:471-485`); only its handle changes with the filter move, so the System tab handler stays as it is. `tracing-subscriber` 0.3 supports `reload::Layer` as a per-layer filter (`Handle::modify` rebuilds the callsite interest). D5 and D6 were approved by the project lead before development (practice A3).
 
 ## Dev Agent Record
 
