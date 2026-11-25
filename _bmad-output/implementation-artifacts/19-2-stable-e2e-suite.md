@@ -1,6 +1,6 @@
 # Story 19.2: A stable E2E suite
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -46,16 +46,16 @@ Research (two read-only agents, 2026-11-18; last 40 CI runs on `main`, 2026-11-1
 
 ## Tasks / Subtasks
 
-- [ ] T1 — CI: `failOnFlakyTests`, list reporter, app-log steps (AC5, D1, D2)
-- [ ] T2 — `helpers/htmx.ts` `expectHtmxProcessed` + #685 fix + other swapped-form sites (AC1, AC4, D3)
-- [ ] T3 — `helpers/vcode.ts` `specVcode` + migrate every volume-creating spec + guard (AC2, D4)
-- [ ] T4 — #499 shelving (D7), #554 item 2 (D6), comments
-- [ ] T5 — #528: stable ids, `empty-states` rework, Rust test for the empty `/series` list, remove ordering comments (AC3, D5)
-- [ ] T6 — `simulateTyping` margin (D8)
-- [ ] T7 — `helpers/visibility.ts` + uses (AC4, D9)
-- [ ] T8 — the three other flakes (D10)
-- [ ] T9 — CLAUDE.md (E2E patterns: HTMX wait, really seen, data isolation / `specVcode`, typing)
-- [ ] T10 — gates: `npx tsc --noEmit`, flake grep gate, `--repeat-each` runs, three full runs (AC6)
+- [x] T1 — CI: `failOnFlakyTests`, list reporter, app-log steps (AC5, D1, D2)
+- [x] T2 — `helpers/htmx.ts` `expectHtmxProcessed` + #685 fix + other swapped-form sites (AC1, AC4, D3)
+- [x] T3 — `helpers/vcode.ts` `specVcode` + migrate every volume-creating spec + guard (AC2, D4)
+- [x] T4 — #499 shelving (D7), #554 item 2 (D6), comments
+- [x] T5 — #528: stable ids, `empty-states` rework, Rust test for the empty `/series` list, remove ordering comments (AC3, D5)
+- [x] T6 — `simulateTyping` margin (D8)
+- [x] T7 — `helpers/visibility.ts` + uses (AC4, D9)
+- [x] T8 — the three other flakes (D10)
+- [x] T9 — CLAUDE.md (E2E patterns: HTMX wait, really seen, data isolation / `specVcode`, typing)
+- [x] T10 — gates: `npx tsc --noEmit`, flake grep gate, `--repeat-each` runs, three full runs (AC6)
 
 ## Dev Notes
 
@@ -91,5 +91,8 @@ Research (two read-only agents, 2026-11-18; last 40 CI runs on `main`, 2026-11-1
 - Review pass 3 (one reviewer, sweep of the whole suite): fixed M1 (`series.spec` read its renamed series in the paginated `/series` list — the detail page is its scope), M2 (`tome-number` edit form: the #685 wait), M3 (`session-inactivity-timeout` drops the instance's session timeout to 9 s while the other worker runs; `admin-system-settings` saves global settings — both now run in their own Playwright projects chained after all other tests), L1 (modal Confirm clicks in `helpers/loans.ts` wait for `expectHtmxProcessed`), L2 (`shelving` undo button), L5 (stale comments); found by the partial re-proof: `borrowers.spec`'s edit case matched its own heading ("BW-Edit Borrower" contains "Edit borrower" — renamed, link by role, false-green `if` removed) and `home-search`'s "/" case clicked the centre of `<body>`, a title link on a grown library (now blurs without clicking). Deferred Lows (proposal list reads, auto-proposed L-code race, false-green branches, gate quoting, non-V data slot-awareness) → #713.
 - Review pass 4 (one reviewer, the pass-3 diff only): no defect in the code. Documented the two chained-project costs (run one alone with `--no-deps`; a `chromium` failure skips them — accepted, the job is red anyway); narrowed the CLAUDE.md rule to settings that disturb other workers (time zone, provider timeouts, bulk delay restore their value and stay); `borrowers.spec`'s save button targeted by its form action instead of "the last submit button".
 - Partial proof before pass 2 (stopped to apply it): `--repeat-each 10 --retries=0` over the seven specs without fixed data, one database: 150 passed; four reset-then-run cycles of `loans` + `shelving` + `dewey-code`: 20/20 each.
+
+- Final proof (2026-11-25, on a02e543 rebased onto main with #718 — single integration-test binary — plus the `series_empty_state` declaration), every heavy command under the station lock and `mem-guard`: `--repeat-each=10 --retries=0 --workers=2` over `form-refusals`, `highest-label-codes`, `home-search`, `volume-value-proposal`, `title-detail-volumes`, `admin-trash-restore`, `tome-number`, `empty-states` on one database: 310/310 passed; ten reset-then-run cycles of `loans` + `shelving` + `dewey-code` + `borrowers` + `borrower-loans` + `series`: 39/39 each; `cargo clippy --all-targets -- -D warnings` clean; `cargo test`: 1856 unit + 923 integration passed; `npx tsc --noEmit` and the `waitForTimeout` gate clean; three full runs `CI=true npx playwright test --workers=2`, each on a fresh stack (`e2e-reset.sh`): 486 passed, 2 skipped, 0 flaky, 0 failed (3.4 min each). AC6 met.
+- #554: item 1 closed by story 13-14 (PR #593, `tests/api_key_revocation_lock_scope.rs`, no recurrence); item 2 fixed here (D6).
 
 ### File List
