@@ -289,6 +289,10 @@ pub async fn write_backup(pool: &DbPool, cfg: &BackupConfig) -> Result<BackupWri
 
 async fn run(pool: &DbPool, cfg: &BackupConfig) -> Result<BackupWritten, BackupError> {
     let instance_id = crate::services::instance_id::ensure(pool).await?;
+    // Review of story 19-6 (L2): temporary files left by a backup cut short
+    // (crash, OOM kill, container restart) are removed under the guard —
+    // only names of this instance's shape (Rule #20).
+    sweep_stale_temporaries(&cfg.dir, &instance_id);
 
     // Two requests within the same second would get the same name: wait
     // for the next second rather than overwrite (bounded).
@@ -373,6 +377,38 @@ async fn run(pool: &DbPool, cfg: &BackupConfig) -> Result<BackupWritten, BackupE
 }
 
 /// The sidecar of a backup: `<name>.sha256`.
+/// Review of story 19-6 (L2) — whether `name` is a temporary file a backup
+/// of instance `instance_id` writes: `.tmp-` + a backup name of that
+/// instance, alone or followed by `.database.sql` / `.sha256`.
+pub fn is_stale_temporary(name: &str, instance_id: &str) -> bool {
+    let Some(rest) = name.strip_prefix(TMP_PREFIX) else {
+        return false;
+    };
+    let base = rest
+        .strip_suffix(".database.sql")
+        .or_else(|| rest.strip_suffix(".sha256"))
+        .unwrap_or(rest);
+    is_backup_name(base) && base.starts_with(&format!("mybibli-{instance_id}-"))
+}
+
+fn sweep_stale_temporaries(dir: &Path, instance_id: &str) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let is_file = entry.file_type().map(|t| t.is_file()).unwrap_or(false);
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        if is_file && is_stale_temporary(&name, instance_id) {
+            match std::fs::remove_file(entry.path()) {
+                Ok(()) => tracing::info!(file = %name, "Removed a temporary file of an interrupted backup"),
+                Err(e) => tracing::warn!(file = %name, error = %e, "Could not remove a temporary backup file"),
+            }
+        }
+    }
+}
+
 pub fn sidecar_path(dir: &Path, file_name: &str) -> PathBuf {
     dir.join(format!("{file_name}.sha256"))
 }
@@ -402,6 +438,22 @@ fn folder_error(dir: &Path, e: std::io::Error) -> BackupError {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_this_instance_temporaries_are_stale() {
+        let id = "0123456789abcdef";
+        let base = format!("mybibli-{id}-20261126T101500Z.tar.gz");
+        assert!(is_stale_temporary(&format!(".tmp-{base}"), id));
+        assert!(is_stale_temporary(&format!(".tmp-{base}.database.sql"), id));
+        assert!(is_stale_temporary(&format!(".tmp-{base}.sha256"), id));
+        assert!(!is_stale_temporary(&base, id), "a finished backup");
+        assert!(!is_stale_temporary(&format!(".tmp-{base}.other"), id));
+        assert!(!is_stale_temporary(
+            ".tmp-mybibli-fedcba9876543210-20261126T101500Z.tar.gz",
+            id
+        ), "another instance's file");
+        assert!(!is_stale_temporary(".tmp-notes.txt", id));
+    }
+
     use super::*;
     use chrono::TimeZone;
 

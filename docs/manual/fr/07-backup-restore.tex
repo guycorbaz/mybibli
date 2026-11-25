@@ -99,7 +99,10 @@ cd backups && sha256sum -c mybibli-*.tar.gz.sha256
 
 \textbf{Le fichier est sensible.}\index{sauvegarde!sensible} Il
 contient les empreintes des mots de passe des utilisateurs, celles des
-clés d'API et les clés des fournisseurs de l'onglet Système. mybibli
+clés d'API et les clés des fournisseurs de l'onglet Système. Il ne
+contient pas les sessions ouvertes : leur table est sauvegardée vide,
+si bien qu'après le chargement ou la restauration d'une sauvegarde,
+chacun se reconnecte. mybibli
 l'écrit avec le mode \texttt{0600} (lisible par son seul propriétaire)
 ; gardez le dossier de l'hôte, et chaque copie que vous en faites,
 tout aussi privés.

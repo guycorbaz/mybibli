@@ -35,7 +35,7 @@ Practice A3: the format (D2), the tab (D7) and the messages (D8) are settled wit
   - The compose files get the mount `./backups:/app/backups`, commented with the reason. `tests/e2e/docker-compose.test.yml` mounts a folder that the E2E stack creates for the run.
 - **D2 — the format: one `.tar.gz` file.** *(Approved by the project lead, 2026-11-25.)*
   - The tar stream holds, in order:
-    1. `database.sql` — a standard SQL dump that the `mariadb` client loads into an empty database (`mariadb -u … newdb < database.sql`). It has a header (`SET NAMES utf8mb4; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0;`), then for each table: `DROP TABLE IF EXISTS`, the `SHOW CREATE TABLE` text, and multi-row `INSERT`s of at most 500 rows. Generated columns are left out of the column list (`information_schema.COLUMNS.GENERATION_EXPRESSION IS NOT NULL` / `EXTRA` contains `GENERATED`). The dump ends by restoring the checks. It covers every table, `_sqlx_migrations` included, so that a loaded copy is at the right migration level.
+    1. `database.sql` — a standard SQL dump that the `mariadb` client loads into an empty database (`mariadb -u … newdb < database.sql`). It has a header (`SET NAMES utf8mb4; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0;`), then for each table: `DROP TABLE IF EXISTS`, the `SHOW CREATE TABLE` text, and multi-row `INSERT`s of at most 500 rows. Generated columns are left out of the column list (`information_schema.COLUMNS.GENERATION_EXPRESSION IS NOT NULL` / `EXTRA` contains `GENERATED`). The dump ends by restoring the checks. It covers every table, `_sqlx_migrations` included, so that a loaded copy is at the right migration level. **Amended 2026-11-26 (review M2, project lead): `sessions` is dumped without its rows** — the definition only; its tokens are live credentials, and a restore logs everyone out anyway. The `INSERT`s also close at about 1 MiB (review M1).
     2. `covers/<name>` — every regular file directly in `COVERS_DIR` whose name is `<digits>.jpg` (Rule #20, positive shape: what the app writes; the shape 19-9 uses too). `.staging/` and any other entry are skipped and counted in the manifest.
     3. `manifest.json`, last — `format` (`"mybibli-backup"`), `format_version` (1), `instance_id`, `mybibli_version` (`CARGO_PKG_VERSION`), `last_migration` (highest `_sqlx_migrations.version`), `created_at` (UTC, RFC 3339), the row count of each table, the cover count and bytes, and `members`: the SHA-256 and size of each preceding member.
   - The manifest's own SHA-256 is written to a sidecar `<name>.sha256` (`sha256sum` format), so that the whole file can be checked with `sha256sum -c` and a truncated archive is detected even before it is opened. 19-8 verifies both.
@@ -206,3 +206,37 @@ Claude Opus 5.5 (`claude-opus-5-5`), BMAD dev-story workflow.
 - docs/manual/en/07-backup-restore.tex, docs/manual/fr/07-backup-restore.tex, docs/manual/en/02-configuration.tex, docs/manual/fr/02-configuration.tex
 - docs/auth-threat-model.md, CLAUDE.md
 - _bmad-output/implementation-artifacts/sprint-status.yaml, this story file
+
+## Senior Developer Review (AI)
+
+### Review pass 1
+
+**Date:** 2026-11-26. Two passes were run side by side:
+- a manual pass over the dev commit (`b8f2fb3`), with no Medium+ finding;
+- an independent pass that probed MariaDB 10.11.19 read-only (`max_allowed_packet`, the behaviour of `QUOTE()`, `EXTRA`, the CHECK constraints, engines, charsets, primary keys).
+
+**Medium, fixed — M1: `INSERT`s were cut by row count only.**
+- **The risk:** 500 rows of `titles` with long descriptions, `QUOTE` doubling the worst characters, could reach about 130 MB, and 500 cached metadata responses in hex about 6 MB. The `mariadb` client and the server both default to 16 MiB `max_allowed_packet`. A backup reported as written would then fail to load.
+- **The fix:** `dump::InsertBatcher` closes a statement at 500 rows **or** once it reaches `INSERT_BYTE_BUDGET` (1 MiB), whichever comes first; a single larger row is written alone. A unit test covers small rows, big rows and a row above the budget.
+
+**Medium, fixed by decision of the project lead (2026-11-26, option 1) — M2: the file held live session tokens.**
+- **The risk:** `sessions.token` is the cookie value itself, stored in clear. A reader of a copy of the file could act as a signed-in user, an admin included, on the running instance while that session lived.
+- **The fix:** `dump::ROWLESS_TABLES` = `["sessions"]`, so the definition is dumped but no row.
+  - The round-trip test seeds a session, then asserts that the loaded table is empty and that the manifest count is 0.
+  - The manual (EN/FR, "The file is sensitive") and threat model § 5.13 now say so.
+  - D2 is amended above.
+
+Low, fixed:
+- **L1:** a server-side NULL literal (a value above `max_allowed_packet`, warning 1301) now fails the backup instead of being written as `NULL`.
+- **L2:** temporary files left by an interrupted backup (`.tmp-` + this instance's name shape, Rule #20) are swept under the guard at the start of the next backup, with a unit test.
+
+Low, deferred (issue to be filed):
+- **L3:** blocking file I/O runs on the async worker (`sync_all`, `list_covers`, `rename`).
+- **L4:** a cover listed as a regular file is read following symlinks (`O_NOFOLLOW`).
+- **L5:** the round trip loads through sqlx (UTC session) rather than the `mariadb` client. It cannot see a missing `SET time_zone` or the packet limit, although the dev checked both by hand with the real client.
+- **L6:** the AC4 test does not write during an open `fetch`.
+- **L7:** a malformed `instance_id` row blocks backups (reachable only by a hand edit).
+- **L8:** a copy loaded elsewhere keeps the same `instance_id` (to note for 19-7).
+- **L9:** the manual names the 19-9 tool before it ships (same release).
+
+Verification: `cargo clippy --all-targets -- -D warnings` is clean, `cargo test --lib backup` passes (22), and the integration tests `backup_` pass (9, round trip included).

@@ -196,6 +196,13 @@ async fn round_trip(pool: &DbPool, target: &str) {
     for t in &source_tables {
         let src = checksum(pool, &source, t).await;
         let dst = checksum(pool, target, t).await;
+        if mybibli::services::backup::dump::is_rowless(t) {
+            // Review of story 19-6 (M2): the definition only, no rows.
+            assert!(src.1 > 0, "{t} is seeded in the source");
+            assert_eq!(dst.1, 0, "{t}: no row is copied");
+            assert_eq!(manifest.tables.get(t), Some(&0), "manifest row count of {t}");
+            continue;
+        }
         assert_eq!(src, dst, "table {t}: (checksum, rows) differ after the round trip");
         assert_eq!(manifest.tables.get(t), Some(&(src.1 as u64)), "manifest row count of {t}");
     }

@@ -5,7 +5,7 @@
 //! `NO_AUTO_VALUE_ON_ZERO`, foreign-key and unique checks off), then for
 //! every base table of the schema — `_sqlx_migrations` included — its
 //! `DROP TABLE IF EXISTS`, its `SHOW CREATE TABLE` text and multi-row
-//! `INSERT`s of at most [`ROWS_PER_INSERT`] rows, in primary-key order;
+//! `INSERT`s of at most [`ROWS_PER_INSERT`] rows and about [`INSERT_BYTE_BUDGET`] bytes, in primary-key order;
 //! the footer restores the checks and the SQL mode.
 //!
 //! Every row is copied, **Trash included** (`deleted_at IS NULL` does not
@@ -30,6 +30,17 @@ use super::BackupError;
 
 /// At most this many rows per `INSERT` statement.
 pub const ROWS_PER_INSERT: usize = 500;
+
+/// Review of story 19-6 (M2, decided by the project lead 2026-11-26) —
+/// tables whose definition is dumped but not their rows. `sessions` holds
+/// the session tokens in clear (the cookie value itself): a copy of the
+/// file must never let its reader act as a signed-in user. Sessions are
+/// ephemeral, and a restore logs everyone out anyway (#657).
+pub const ROWLESS_TABLES: &[&str] = &["sessions"];
+
+pub fn is_rowless(table: &str) -> bool {
+    ROWLESS_TABLES.contains(&table)
+}
 
 /// How a column's values are written as SQL literals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,7 +236,10 @@ pub async fn dump_tables<W: Write>(
         out.write_all(format!("DROP TABLE IF EXISTS {};\n", quote_ident(&spec.name)).as_bytes())?;
         out.write_all(spec.create_sql.as_bytes())?;
         out.write_all(b";\n")?;
-        let count = if spec.columns.is_empty() {
+        let count = if spec.columns.is_empty() || is_rowless(&spec.name) {
+            if is_rowless(&spec.name) {
+                out.write_all(b"-- Rows not copied: session tokens are live credentials.\n")?;
+            }
             0
         } else {
             dump_rows(conn, spec, out).await?
@@ -248,37 +262,94 @@ async fn dump_rows<W: Write>(
     spec: &TableSpec,
     out: &mut W,
 ) -> Result<u64, BackupError> {
-    let head = spec.insert_head();
     let select = spec.select_sql();
     let mut rows = sqlx::query(&select).fetch(&mut *conn);
-    let mut count: u64 = 0;
-    let mut in_batch = 0usize;
+    let mut batch = InsertBatcher::new(spec.insert_head());
+    let mut literals: Vec<Vec<u8>> = Vec::with_capacity(spec.columns.len());
     while let Some(row) = rows.try_next().await? {
-        if in_batch == 0 {
-            out.write_all(head.as_bytes())?;
+        literals.clear();
+        for i in 0..spec.columns.len() {
+            // Review of story 19-6 (L1): every literal expression yields a
+            // string, `'NULL'` included. A server-side NULL means the value
+            // could not be rendered (e.g. above `max_allowed_packet`,
+            // warning 1301): fail the backup rather than write a NULL.
+            let literal: Option<Vec<u8>> = row.try_get(i)?;
+            let Some(literal) = literal else {
+                return Err(BackupError::Database(format!(
+                    "a value of {}.{} could not be rendered as SQL",
+                    spec.name, spec.columns[i].name
+                )));
+            };
+            literals.push(literal);
+        }
+        batch.push_row(out, &literals)?;
+    }
+    batch.finish(out)
+}
+
+/// Review of story 19-6 (M1) — the most bytes an `INSERT` grows to before
+/// the next row starts a new one (mysqldump's `net_buffer_length` order of
+/// magnitude), well under the 16 MiB `max_allowed_packet` the `mariadb`
+/// client and server default to. A single row larger than this is written
+/// alone.
+pub const INSERT_BYTE_BUDGET: usize = 1 << 20;
+
+/// Multi-row `INSERT`s closed at [`ROWS_PER_INSERT`] rows **or** once they
+/// reach [`INSERT_BYTE_BUDGET`] bytes, whichever comes first (pure: unit
+/// tested on a fake row stream).
+pub struct InsertBatcher {
+    head: String,
+    rows_in: usize,
+    bytes_in: usize,
+    total: u64,
+}
+
+impl InsertBatcher {
+    pub fn new(head: String) -> Self {
+        InsertBatcher {
+            head,
+            rows_in: 0,
+            bytes_in: 0,
+            total: 0,
+        }
+    }
+
+    pub fn push_row<W: Write>(&mut self, out: &mut W, literals: &[Vec<u8>]) -> std::io::Result<()> {
+        if self.rows_in == 0 {
+            out.write_all(self.head.as_bytes())?;
+            self.bytes_in = self.head.len();
         } else {
             out.write_all(b",\n")?;
+            self.bytes_in += 2;
         }
         out.write_all(b"(")?;
-        for i in 0..spec.columns.len() {
+        self.bytes_in += 2;
+        for (i, literal) in literals.iter().enumerate() {
             if i > 0 {
                 out.write_all(b",")?;
+                self.bytes_in += 1;
             }
-            let literal: Option<Vec<u8>> = row.try_get(i)?;
-            out.write_all(literal.as_deref().unwrap_or(b"NULL"))?;
+            out.write_all(literal)?;
+            self.bytes_in += literal.len();
         }
         out.write_all(b")")?;
-        count += 1;
-        in_batch += 1;
-        if in_batch == ROWS_PER_INSERT {
+        self.rows_in += 1;
+        self.total += 1;
+        if self.rows_in == ROWS_PER_INSERT || self.bytes_in >= INSERT_BYTE_BUDGET {
             out.write_all(b";\n")?;
-            in_batch = 0;
+            self.rows_in = 0;
+            self.bytes_in = 0;
         }
+        Ok(())
     }
-    if in_batch > 0 {
-        out.write_all(b";\n")?;
+
+    /// Close the open statement, if any; the number of rows written.
+    pub fn finish<W: Write>(self, out: &mut W) -> Result<u64, BackupError> {
+        if self.rows_in > 0 {
+            out.write_all(b";\n")?;
+        }
+        Ok(self.total)
     }
-    Ok(count)
 }
 
 /// The whole dump: definitions, snapshot, rows, end of the transaction.
@@ -330,6 +401,52 @@ mod tests {
     fn identifiers_are_backquoted() {
         assert_eq!(quote_ident("titles"), "`titles`");
         assert_eq!(quote_ident("a`b"), "`a``b`");
+    }
+
+    #[test]
+    fn sessions_are_dumped_without_their_rows() {
+        assert!(is_rowless("sessions"));
+        assert!(!is_rowless("users"));
+        assert!(!is_rowless("api_keys"));
+    }
+
+    #[test]
+    fn inserts_close_at_the_row_count_or_the_byte_budget() {
+        // Small rows: closed every ROWS_PER_INSERT rows.
+        let mut out = Vec::new();
+        let mut b = InsertBatcher::new("INSERT INTO `t` (`a`) VALUES\n".to_string());
+        for _ in 0..(ROWS_PER_INSERT + 1) {
+            b.push_row(&mut out, &[b"1".to_vec()]).unwrap();
+        }
+        assert_eq!(b.finish(&mut out).unwrap(), ROWS_PER_INSERT as u64 + 1);
+        let text = String::from_utf8(out).unwrap();
+        assert_eq!(text.matches("INSERT INTO").count(), 2);
+        assert_eq!(text.matches(";\n").count(), 2);
+
+        // Big rows: closed once the budget is reached, long before 500 rows.
+        let big = vec![b'x'; INSERT_BYTE_BUDGET / 4];
+        let mut out = Vec::new();
+        let mut b = InsertBatcher::new("INSERT INTO `t` (`a`) VALUES\n".to_string());
+        for _ in 0..10 {
+            b.push_row(&mut out, std::slice::from_ref(&big)).unwrap();
+        }
+        assert_eq!(b.finish(&mut out).unwrap(), 10);
+        let text = String::from_utf8(out).unwrap();
+        let statements: Vec<&str> = text.split(";\n").filter(|s| !s.is_empty()).collect();
+        assert_eq!(statements.len(), 3, "4 + 4 + 2 rows");
+        for st in &statements {
+            assert!(st.starts_with("INSERT INTO"), "{}", &st[..20]);
+            assert!(st.len() <= INSERT_BYTE_BUDGET + big.len() + 64, "{}", st.len());
+        }
+
+        // A single row above the budget is written alone.
+        let huge = vec![b'y'; INSERT_BYTE_BUDGET + 10];
+        let mut out = Vec::new();
+        let mut b = InsertBatcher::new("INSERT INTO `t` (`a`) VALUES\n".to_string());
+        b.push_row(&mut out, std::slice::from_ref(&huge)).unwrap();
+        b.push_row(&mut out, &[b"1".to_vec()]).unwrap();
+        b.finish(&mut out).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap().matches("INSERT INTO").count(), 2);
     }
 
     fn spec() -> TableSpec {

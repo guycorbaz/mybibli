@@ -90,7 +90,9 @@ cd backups && sha256sum -c mybibli-*.tar.gz.sha256
 
 \textbf{The file is sensitive.}\index{backup!sensitive} It holds the
 password hashes of the users, the hashes of the API keys and the
-provider keys of the System tab. mybibli writes it with mode
+provider keys of the System tab. It does not hold the open sessions:
+their table is saved empty, so after loading or restoring a backup
+everyone signs in again. mybibli writes it with mode
 \texttt{0600} (readable by its owner only); keep the host folder, and
 every copy you make of it, just as private.
 
