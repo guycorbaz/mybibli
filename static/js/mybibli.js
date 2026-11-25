@@ -145,7 +145,16 @@
         // down. An entry below the viewport (an older entry of a long
         // /catalog list updated by a late OOB, e.g. a metadata warning)
         // stays where it is — the page must not jump while scanning.
-        if (entry.getBoundingClientRect().top >= 0) return;
+        // "Above" counts the entry's scroll margin: below `lg` it is the
+        // sticky slim bar's height (`**:scroll-mt-*` on <main>), so an
+        // entry hidden under the bar is revealed too.
+        var margin = 0;
+        try {
+            margin = parseFloat(window.getComputedStyle(entry).scrollMarginTop) || 0;
+        } catch (err) {
+            margin = 0;
+        }
+        if (entry.getBoundingClientRect().top >= margin) return;
         var reduce = false;
         try {
             reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -161,10 +170,20 @@
             mutations.forEach(function (mutation) {
                 mutation.addedNodes.forEach(function (node) {
                     if (node.nodeType !== 1) return;
-                    var entry = node.classList && node.classList.contains("feedback-entry")
-                        ? node
-                        : (node.querySelector && node.querySelector(".feedback-entry"));
-                    if (entry) revealLateFeedback(entry);
+                    // The added node and every entry inside it: a fragment
+                    // may carry a success entry before an error entry.
+                    var entries = [];
+                    if (node.classList && node.classList.contains("feedback-entry")) entries.push(node);
+                    if (node.querySelectorAll) {
+                        Array.prototype.push.apply(entries, node.querySelectorAll(".feedback-entry"));
+                    }
+                    for (var i = 0; i < entries.length; i++) {
+                        var v = entries[i].getAttribute("data-feedback-variant");
+                        if (v === "error" || v === "warning") {
+                            revealLateFeedback(entries[i]);
+                            break;
+                        }
+                    }
                 });
             });
         });

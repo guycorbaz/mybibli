@@ -1,6 +1,6 @@
 # Story 19.4: What the user reads (closes #519, #538, #712; #689 items 1 and 3; #679 items 6–7)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -205,3 +205,15 @@ Low, not fixed:
 - `error.reference_data.version_mismatch` and `error.user.version_mismatch` are reworded, but no code path uses them; the dev notes already record this.
 
 Verification: `npx tsc --noEmit` is clean. On a reset stack, `series-feedback-region` and `proposals-review` were run with `--repeat-each=3 --retries=0`. The first repetition was green; the later repetitions of the two proposal tests that use fixed ISBNs fail by design (a rejection blocks a re-filing, as the conventions note: only V-codes are repeat-aware). Full E2E on a freshly reset stack (`CI=true --workers=2`): 495 passed, 2 skipped, no flaky test, none failed. A Medium finding was fixed, so a second pass is due (Rule #6).
+
+### Review pass 2: no Medium+ finding
+
+**Date:** 2026-11-25. An independent pass over `git diff main...HEAD`, made without the conclusions of pass 1. It found no High or Medium issue and five Low findings:
+
+1. **D2 as narrowed in pass 1** (an entry *above* the viewport only) was not stated as such in `CLAUDE.md`. Fixed: the Key Patterns line now says "above the viewport (or under the slim bar)… never one below it". This narrowing keeps the approved intent: an error answered low on a long page is seen, and nothing moves on `/catalog` while scanning.
+2. **Under the slim bar.** Below `lg`, an entry hidden under the sticky bar (top between 0 and the bar height) was not revealed. Fixed: the threshold is the entry's own `scroll-margin-top`, which is the bar height below `lg` and 0 at `lg` and above.
+3. **Only the first entry of an added fragment was checked.** A success entry before an error entry hid the error. Fixed: every entry of the added node is read, and the first error or warning entry is revealed.
+4. **`form-refusals.spec.ts` "the manual title form names the title that holds the ISBN"** creates its holder with a fixed ISBN, so it cannot be re-run without a stack reset. Like the other fixed-ISBN specs, it passes on a fresh stack. Not fixed; filed in the deferred issue.
+5. **AC1 "one query per page"** holds by construction (no loop left in the handler) but has no test, and `SeriesModel::active_list` / `active_count_titles` lose their `/series` caller. Not fixed; filed in the deferred issue.
+
+Verification after the fixes: `npx tsc --noEmit` is clean. Full E2E on a freshly reset stack (`CI=true --workers=2`): 495 passed, 2 skipped, no flaky test, none failed. Deferred Lows (4, 5, and the unused keys of pass 1) are in #725. Status: done.
