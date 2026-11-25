@@ -140,9 +140,12 @@
         var variant = entry.getAttribute("data-feedback-variant");
         if (variant !== "error" && variant !== "warning") return;
         if (!entry.closest("#feedback-list")) return;
-        var rect = entry.getBoundingClientRect();
-        var viewHeight = window.innerHeight || document.documentElement.clientHeight;
-        if (rect.top >= 0 && rect.bottom <= viewHeight) return;
+        // Only an entry above the viewport: the regions sit at the top of
+        // the page, so that is a refusal answered to a control further
+        // down. An entry below the viewport (an older entry of a long
+        // /catalog list updated by a late OOB, e.g. a metadata warning)
+        // stays where it is — the page must not jump while scanning.
+        if (entry.getBoundingClientRect().top >= 0) return;
         var reduce = false;
         try {
             reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

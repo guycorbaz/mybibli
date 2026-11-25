@@ -179,3 +179,29 @@ Claude Opus 5.5 (claude-opus-5-5)
 - tests/form_refusals.rs, tests/isbn_one_rule.rs, tests/integration.rs, tests/series_list_counts.rs (new)
 - tests/e2e/helpers/visibility.ts
 - tests/e2e/specs/journeys/{admin-reference-data,admin-user-validation,connection-lost-overlay,form-refusals,metadata-cover-proposal-accept,proposals-review,series-feedback-region,series-proposal-edit}.spec.ts
+
+## Senior Developer Review (AI)
+
+### Review pass 1
+
+**Date:** 2026-11-25. A manual pass over the dev commit (`adc2a21`) against `git diff main...HEAD`: `middleware/htmx.rs`, `utils.rs` (link helpers), `mybibli.js`, `modal.js`, `routes/titles.rs`, `services/title.rs`, `routes/catalog_title_form.rs`, `routes/admin_users.rs`, `routes/series.rs`, `services/series.rs`, the templates, the new audit, and the copy in the four locales.
+
+**Medium, fixed: a late entry low in a long list made the page jump.** `revealLateFeedback` scrolled any error or warning entry outside the viewport, including one **below** it. On `/catalog`, an older entry far down a long list can be replaced late by an OOB update, for example a metadata warning delivered by `PendingUpdates`. The page then scrolled down, away from the scan field, while the librarian was scanning; D2 had said nothing moves there. Fix: only an entry **above** the viewport is brought into view (`rect.top < 0`). That is the #689 case, since the regions sit at the top of the page. A new E2E case (`series-feedback-region.spec.ts`, "an error entry below the viewport does not scroll the page") appends a warning below the fold and asserts `scrollY` stays 0.
+
+Checked and found sound:
+
+- The OOB `innerHTML` swap is decided in one place, on the sanitized target, and leaves other targets on outerHTML.
+- `message_with_link_html` escapes the message and the name, and the only markup is its own `<a>`. The href is built from an integer id. The placeholder replaces one occurrence.
+- `ManualCreate::IsbnTaken` writes nothing, and its answer has the same shape as the earlier Conflict arm (a 200 feedback entry).
+- The media-type check now runs before the UPC check. This is needed, because the UPC check reads the media type, and nothing is written before either.
+- `username_taken_conflict` fixes a raw marker shown on user creation.
+- The `/series` list uses one page query (`list_summaries`). The detail header uses `series_gaps`.
+- The ordered focus fallback keeps the 19-1 single-selector behaviour.
+- The audit regex matches class tokens only, and its self-test covers both directions.
+- The four locales match the approved copy (DE „…“, IT «…»).
+
+Low, not fixed:
+
+- `error.reference_data.version_mismatch` and `error.user.version_mismatch` are reworded, but no code path uses them; the dev notes already record this.
+
+Verification: `npx tsc --noEmit` is clean. On a reset stack, `series-feedback-region` and `proposals-review` were run with `--repeat-each=3 --retries=0`. The first repetition was green; the later repetitions of the two proposal tests that use fixed ISBNs fail by design (a rejection blocks a re-filing, as the conventions note: only V-codes are repeat-aware). Full E2E on a freshly reset stack (`CI=true --workers=2`): 495 passed, 2 skipped, no flaky test, none failed. A Medium finding was fixed, so a second pass is due (Rule #6).

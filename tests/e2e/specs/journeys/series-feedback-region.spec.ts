@@ -132,4 +132,41 @@ test.describe("Story 18-5 — errors visible on the series page (#526)", () => {
     await expect(del).toBeFocused();
     await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0);
   });
+  test("an error entry below the viewport does not scroll the page (story 19-4 review)", async ({
+    page,
+  }) => {
+    // On /catalog an older entry low in a long list can be updated late
+    // (an OOB metadata warning): the page must not jump while scanning.
+    // Only an entry above the viewport is brought into view.
+    await loginAs(page, "librarian");
+    await page.goto("/series");
+    await page.evaluate(() => {
+      const list = document.getElementById("feedback-list");
+      if (!list) throw new Error("no #feedback-list");
+      for (let i = 0; i < 60; i++) {
+        const filler = document.createElement("p");
+        filler.className = "feedback-entry p-3";
+        filler.setAttribute("data-feedback-variant", "info");
+        filler.textContent = `filler ${i}`;
+        list.appendChild(filler);
+      }
+      window.scrollTo(0, 0);
+    });
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const list = document.getElementById("feedback-list")!;
+          const late = document.createElement("div");
+          late.id = "sf-late-warning";
+          late.className = "feedback-entry p-3";
+          late.setAttribute("data-feedback-variant", "warning");
+          late.textContent = "late warning";
+          list.appendChild(late);
+          // The observer runs as a microtask; two frames let any scroll start.
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
+    );
+    await expect(page.locator("#sf-late-warning")).not.toBeInViewport();
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
 });
