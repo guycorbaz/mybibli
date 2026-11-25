@@ -1,6 +1,6 @@
 # Story 19.3: Simultaneous actions on volumes and contributors (closes #541; #663 items 1–3)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -196,3 +196,26 @@ Layers: a manual adversarial pass over the whole diff, plus an Edge Case Hunter 
 - `cargo test --test integration -- volume_add_races:: contributor_live_name:: volume_label_reuse:: title_volume_add:: scan_vcode_case:: volume_move::`: 69 passed.
 - No typed query changed (`.sqlx` unaffected).
 - The fix changes no E2E-visible copy or HTMX answer.
+
+### Review pass 2: no Medium+ finding
+
+**Date:** 2026-11-25. A full manual pass over `git diff main...HEAD` (code, migration, locales, Rust and E2E tests), with the first pass's fix (`reactivate_for_reuse_in`: PK `FOR UPDATE` read + PK `UPDATE`) read closely.
+
+Checked and found sound:
+
+- Lock order and scope: add = title S (PK) → label record; delete = title X (PK); move = volume X → title S; two adds S + S. No S→X upgrade on the title in any of them, and no trigger on `volumes`. The reuse guard locks one volume row by PK and changes no `label` entry, so two reuses of one label serialise without a cycle.
+- Snapshots: every read before the INSERT is a locking read, so the plain duplicate lookup opens its snapshot after any lock wait. The reuse guard re-reads the row with a current read, and the lost-reuse answer reads it again after the rollback.
+- Transaction boundaries: every early return rolls back (explicitly, or by dropping the transaction on `?`), and the audit row and the refreshed read come after the commit.
+- Migration: `name_live` and `name` both take the table default collation, and the backfill join and the key compare names the same way. Trashed rows (NULL) never collide.
+- HTMX answers: the title-gone reset closes the CR #300 modal on Confirm. The restore `Conflict` lands in `#feedback-list` from the panel and in the modal's error region from the Confirm (route test). Locale keys exist in all four files, and `volume_duplicate` is no longer used anywhere.
+- Tests: the race tests wait on a real lock before the competitor finishes, so they fail without the fix.
+
+Fixed in passing: the doc comment of `a_reuse_losing_the_row_at_its_update_returns_the_live_volume` still described the old `AND deleted_at IS NOT NULL` guard.
+
+New Low findings (to file as issues):
+
+- **Three-way insert deadlock on a new contributor name.** When the first inserter rolls back while two find-or-creates of the same name wait on its key, both waiters can deadlock (1213, the classic InnoDB duplicate-key case). This needs a rollback, so it is very rare. The background fetch logs a warning, and an acceptance retries on 40001.
+- **An acceptance can now fail on a credit added meanwhile.** A metadata acceptance's `credits` set is read from its snapshot. If a title-page add links the same new name, with the same role, to the same title during the acceptance, the acceptance now resolves to that same contributor. Its credit INSERT can then hit the junction's duplicate instead of creating a second contributor. Result: the acceptance answers an error and stays pending, and retrying it works.
+- **The migration backfill has no index on `name`.** The self-join is a nested loop over the live contributors. It takes seconds for a few thousand rows, at one boot only.
+
+Verification: `cargo test --test integration -- volume_add_races:: contributor_live_name:: volume_label_reuse:: title_volume_add::` → 47 passed. No source change in this pass, so clippy was not re-run; the first pass's run stands. E2E not run (out of scope here); nothing E2E-visible changed.

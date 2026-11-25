@@ -209,9 +209,9 @@ async fn two_reuses_of_one_trashed_label_reuse_it_once(pool: DbPool) {
 /// Review of story 19-3 — the guarded reactivation itself (D1). The add's
 /// plain read sees the label in the Trash (the competitor holds the row but
 /// has not changed it yet), so it reaches the reactivation and waits there;
-/// the competitor then reuses the label and commits. The add's UPDATE
-/// re-reads the row live: it reuses nothing (`AND deleted_at IS NOT NULL`),
-/// rolls back and answers the live volume. Without the guard it would move
+/// the competitor then reuses the label and commits. The add's locking
+/// read by primary key (`FOR UPDATE`) then sees the row live: it reuses
+/// nothing, rolls back and answers the live volume. Without the guard it would move
 /// the volume to its own title and wipe it a second time.
 #[sqlx::test(migrations = "./migrations")]
 async fn a_reuse_losing_the_row_at_its_update_returns_the_live_volume(pool: DbPool) {
