@@ -8,7 +8,7 @@
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test title_volume_add
 
-mod common;
+use crate::common;
 
 use axum::http::StatusCode;
 use common::mcp::{add_volume, router, seed_title, soft_delete};

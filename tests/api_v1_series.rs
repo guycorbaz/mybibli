@@ -4,7 +4,7 @@
 //! a library with more series lost every one after the 25th by name. The
 //! regression test seeds more than a page, plus a soft-deleted series.
 
-mod common;
+use crate::common;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};

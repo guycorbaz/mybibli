@@ -6,7 +6,7 @@
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test cover_uploads
 
-mod common;
+use crate::common;
 
 use std::time::Duration;
 

@@ -14,7 +14,7 @@
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test mcp_cover_proposals
 
-mod common;
+use crate::common;
 
 use std::path::Path;
 use std::time::{Duration, SystemTime};

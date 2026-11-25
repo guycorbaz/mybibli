@@ -16,9 +16,12 @@ cargo test config::                  # Run tests in a specific module
 cargo test test_name -- --nocapture  # Run single test with output
 
 # DB-backed integration tests (tests/find_similar.rs uses #[sqlx::test])
-docker compose -f tests/docker-compose.rust-test.yml up -d  # Starts dedicated MariaDB on port 3307
+# One test binary (#717): every tests/*.rs file is a module of tests/integration.rs
+# (`autotests = false`); a new file is declared there, or `every_test_file_is_declared` fails.
+# Use `crate::common` in a test file (never `mod common;`). Filter by module: `<file_stem>::`.
+docker compose -f tests/docker-compose.rust-test.yml up -d  # Starts dedicated MariaDB on port 3307 (MYBIBLI_RUST_TEST_DB_PORT=3317 when 3307 is taken; adjust DATABASE_URL)
 SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
-    cargo test --test find_similar --test seed_gate   # Each test gets a fresh DB via #[sqlx::test(migrations = "./migrations")]
+    cargo test --test integration find_similar:: seed_gate::   # Each test gets a fresh DB via #[sqlx::test(migrations = "./migrations")]
 
 # E2E tests (requires running app + MariaDB)
 cd tests/e2e && npm test             # Run all Playwright E2E tests
@@ -68,6 +71,8 @@ mem-guard --status                   # slots in use, oomd policy, recent OOM kil
 ```
 
 Why: `systemd-oomd` kills the whole terminal cgroup — the Claude Code session included — when memory pressure on the user slice exceeds 50 % for 20 s. Two sessions died that way on 2026-10-27 (a full `cargo test` in a fresh worktree while another project was building). Under `mem-guard` a peak kills the command (exit 137) and the session survives. Fast, light commands (`cargo check`, a single targeted test, `cargo fmt`) need no guard. Without user systemd (CI), the tool runs the command unguarded.
+
+The station is shared with another project: take the station lock around each heavy command, one command per lock, released between two (`flock -w 10800 /tmp/station-heavy.lock mem-guard …`) — heavy jobs of both projects then queue instead of overlapping. The image build of `./scripts/e2e-reset.sh` runs in the Docker daemon, outside the `mem-guard` cgroup; its BuildKit cache (#717) keeps it short after the first build (`docker builder prune` frees the cache).
 
 ### Where versions live
 
@@ -155,7 +160,7 @@ If/when multi-tenancy is on the roadmap, both #54 and #16 should be re-opened to
 
 - **Error handling:** `AppError` enum with `IntoResponse`. Conflict = 409, Unauthorized = 303 redirect with HX-Redirect.
 - **Logging:** `tracing` macros only — no `println!`.
-- **i18n:** `rust_i18n::t!("key")` for ALL user-facing text. Keys in **all four** locale files — `locales/{en,fr,de,it}.yml`. `tests/locale_parity.rs` fails the build on any key present in one file and missing from another, so a key added to en/fr alone turns the DB-integration job red; run `cargo test --test locale_parity` after touching a locale. JS strings: read `<html lang>` and use embedded string map. **CRITICAL YAML FORMAT: locale files must NOT have `en:` or `fr:` as top-level wrapper — the filename determines the locale. Keys start at root level (e.g., `nav:` not `en: nav:`). After adding/changing keys, run `touch src/lib.rs` before `cargo build` to force proc macro recompilation.**
+- **i18n:** `rust_i18n::t!("key")` for ALL user-facing text. Keys in **all four** locale files — `locales/{en,fr,de,it}.yml`. `tests/locale_parity.rs` fails the build on any key present in one file and missing from another, so a key added to en/fr alone turns the DB-integration job red; run `cargo test --test integration locale_parity::` after touching a locale. JS strings: read `<html lang>` and use embedded string map. **CRITICAL YAML FORMAT: locale files must NOT have `en:` or `fr:` as top-level wrapper — the filename determines the locale. Keys start at root level (e.g., `nav:` not `en: nav:`). After adding/changing keys, run `touch src/lib.rs` before `cargo build` to force proc macro recompilation.**
 - **DB queries:** MUST include `deleted_at IS NULL` in every SELECT/JOIN on entity tables. Every entity table has `deleted_at`, `version`, `created_at`, `updated_at` columns. **MariaDB type gotchas:** (1) `JSON` columns are stored as `BLOB` — use `CAST(col AS CHAR)` to read as String. (2) `BIGINT UNSIGNED NULL` columns — use `CAST(col AS SIGNED)` and read as `Option<i64>`, then convert to `u64`. (3) Never use `CAST(... AS UNSIGNED)` in SELECT — SQLx can't decode `BIGINT UNSIGNED` into Rust integers reliably. (4) `TIMESTAMP` columns in dynamic queries (`sqlx::query()`) — use `CAST(col AS DATETIME) AS col` to read as `NaiveDateTime`. Without CAST, SQLx returns a type mismatch error. This does NOT affect typed macros (`sqlx::query!`) which handle conversion automatically.
 - **Optimistic locking:** UPDATE with `WHERE id = ? AND version = ?`, then `check_update_result()` from `services/locking.rs`.
 - **Soft delete:** `services/soft_delete.rs` with table whitelist. Never hard-delete.

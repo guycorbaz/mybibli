@@ -7,7 +7,7 @@
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test expected_tomes
 
-mod common;
+use crate::common;
 
 use common::mcp::{Agent, add_title, router, soft_delete};
 use common::web::{Browser, seed_admin};

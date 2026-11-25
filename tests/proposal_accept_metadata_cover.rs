@@ -13,7 +13,7 @@
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test proposal_accept_metadata_cover
 
-mod common;
+use crate::common;
 
 use axum::Router;
 use axum::http::StatusCode;

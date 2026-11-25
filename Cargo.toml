@@ -3,6 +3,9 @@ name = "mybibli"
 version = "1.28.1"
 edition = "2024"
 license = "AGPL-3.0-or-later"
+# #717: one integration-test binary (tests/integration.rs declares every
+# tests/*.rs file as a module) instead of one crate per file.
+autotests = false
 
 [dependencies]
 axum = { version = "0.8.8", features = ["multipart"] }
@@ -75,3 +78,12 @@ tracing-test = "0.2"
 # CR #301 (v1.7.0) — temp directories for the log_purge retention tests.
 # Pure unit tests; no DB needed.
 tempfile = "3"
+
+# #717: line tables only (backtraces keep file:line) — full debug info made
+# the link of the test binary the memory peak of a local `cargo test`.
+[profile.dev]
+debug = "line-tables-only"
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

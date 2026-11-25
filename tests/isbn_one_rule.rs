@@ -7,7 +7,7 @@
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test isbn_one_rule
 
-mod common;
+use crate::common;
 
 use axum::http::StatusCode;
 use common::mcp::*;

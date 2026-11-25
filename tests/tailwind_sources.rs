@@ -9,9 +9,7 @@
 //! `group-hover:opacity-100` lived only in `src/routes/locations.rs`.
 
 // Only the file reader: `mod common;` would compile the MCP / web helpers
-// and link the whole crate into a test that reads text files.
-#[path = "common/repo.rs"]
-mod repo;
+use crate::common::repo;
 
 use repo::read;
 
