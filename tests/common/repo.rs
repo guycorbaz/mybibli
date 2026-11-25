@@ -1,6 +1,5 @@
 //! Repository files read by configuration tests (`toolchain_pins`,
-//! `tailwind_sources`), which include this file alone with
-//! `#[path = "common/repo.rs"] mod repo;` — not through `mod common;`.
+//! `tailwind_sources`), through `use crate::common::repo;`.
 
 use std::fs;
 use std::path::Path;

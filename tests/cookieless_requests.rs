@@ -4,7 +4,7 @@
 //! The whole router runs (`tower::oneshot`), so the session resolver, the
 //! CSRF layer and the fallback are exercised in their real order.
 
-mod common;
+use crate::common;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};

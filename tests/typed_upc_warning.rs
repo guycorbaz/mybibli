@@ -8,7 +8,7 @@
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test typed_upc_warning
 
-mod common;
+use crate::common;
 
 use axum::Router;
 use common::mcp::{genre_id, router, seed_title};

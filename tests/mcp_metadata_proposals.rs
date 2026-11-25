@@ -12,7 +12,7 @@
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test mcp_metadata_proposals
 
-mod common;
+use crate::common;
 
 use common::mcp::*;
 use mybibli::db::DbPool;

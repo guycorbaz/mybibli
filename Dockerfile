@@ -28,7 +28,15 @@ ENV SQLX_OFFLINE=true
 # which is the honest answer for a local build.
 ARG MYBIBLI_BUILD_SHA
 ENV MYBIBLI_BUILD_SHA=$MYBIBLI_BUILD_SHA
-RUN cargo build --release --target x86_64-unknown-linux-musl
+# #717 — BuildKit cache mounts keep the cargo registry and the compiled
+# dependencies between builds of this machine, so a source change rebuilds
+# mybibli only, not every crate (each ./scripts/e2e-reset.sh after an edit).
+# A cache mount is not part of the image: the binary is copied out of it.
+# A machine without the cache (CI, release) builds from scratch as before.
+RUN --mount=type=cache,id=mybibli-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=mybibli-target,target=/app/target,sharing=locked \
+    cargo build --release --target x86_64-unknown-linux-musl \
+    && cp target/x86_64-unknown-linux-musl/release/mybibli /app/mybibli
 
 # Stage 2: Generate CSS
 FROM node:24.22.3-alpine3.24 AS css
@@ -57,7 +65,7 @@ RUN apk add --no-cache ca-certificates
 # correct ownership + visibility from `docker exec` even before the
 # named volume is mounted.
 RUN mkdir -p /var/log/mybibli && chmod 0755 /var/log/mybibli
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/mybibli /usr/local/bin/
+COPY --from=builder /app/mybibli /usr/local/bin/
 COPY --from=css /app/static/css/output.css /app/static/css/output.css
 COPY static/css/browse.css /app/static/css/browse.css
 COPY static/js/ /app/static/js/

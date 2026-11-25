@@ -3,7 +3,8 @@ services:
     image: mariadb:10.11
     container_name: mybibli-rust-test-db
     ports:
-      - "3307:3306"
+      # Host port overridable when 3307 is taken on the machine (#717).
+      - "127.0.0.1:${MYBIBLI_RUST_TEST_DB_PORT:-3307}:3306"
     environment:
       MARIADB_ROOT_PASSWORD: root_test
       MARIADB_DATABASE: mybibli_rust_test

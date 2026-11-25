@@ -10,7 +10,7 @@
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test upc_isbn10_conversion
 
-mod common;
+use crate::common;
 
 use std::sync::{Arc, Mutex};
 

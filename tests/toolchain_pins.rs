@@ -11,9 +11,7 @@
 //! `stable` (it builds only cargo-audit, whose minimum Rust may move past
 //! our pin) and says so with `RUSTUP_TOOLCHAIN: stable`.
 
-// Only the file reader (see tests/tailwind_sources.rs).
-#[path = "common/repo.rs"]
-mod repo;
+use crate::common::repo;
 
 use std::fs;
 use std::path::Path;
