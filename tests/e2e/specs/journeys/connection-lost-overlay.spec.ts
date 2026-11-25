@@ -99,16 +99,23 @@ test.describe("Story 9-16 — connection-lost overlay", () => {
     // Restore network + click Retry again — should dismiss within ~500ms
     // (immediate poll, no wait for the 5s tick).
     await context.setOffline(false);
+    // Chromium applies the network change asynchronously: a fetch sent right
+    // after `setOffline(false)` can still fail, and the next automatic poll
+    // is 5 s away. Click Retry until the overlay goes — each click stops the
+    // 5 s timer and polls at once, so a dismissal within 3 s can only come
+    // from a Retry poll (the property under test), never from the timer.
     // Use evaluate-dispatch instead of Playwright's actionability click —
     // the overlay backdrop's z-50 + flex layout can fail Playwright's
     // stable-element check even when the button is functionally clickable.
-    await page.evaluate(() => {
-      const btn = document.querySelector<HTMLButtonElement>(
-        '#connection-lost-overlay [data-action="retry"]',
-      );
-      if (btn) btn.click();
-    });
-    await expect(overlay).toHaveClass(/\bhidden\b/, { timeout: 2000 });
+    await expect(async () => {
+      await page.evaluate(() => {
+        const btn = document.querySelector<HTMLButtonElement>(
+          '#connection-lost-overlay [data-action="retry"]',
+        );
+        if (btn) btn.click();
+      });
+      await expect(overlay).toHaveClass(/\bhidden\b/, { timeout: 300 });
+    }).toPass({ intervals: [100, 200, 300], timeout: 3000 });
   });
 
   test("overlay does NOT appear on application errors (4xx/5xx)", async ({
