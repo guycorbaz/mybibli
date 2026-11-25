@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod admin_api_keys;
+pub mod admin_health_watch;
 pub mod audit;
 pub mod stats;
 pub mod title_lifecycle;

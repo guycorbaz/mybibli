@@ -964,6 +964,19 @@ admin:
     provider_status_na: n/d
     last_checked: "Ultimo controllo: %{when}"
     last_checked_never: Mai
+    watch:
+      heading: Sorveglianza della produzione
+      slow_statements: "Query lente al database (oltre 1 s)"
+      pool_timeouts: "Attese di connessione al database fallite (30 s)"
+      csrf_refusals: "Richieste rifiutate per un token di sicurezza non valido (CSRF)"
+      api_key_refusals: "Richieste API rifiutate (chiave assente, errata o insufficiente)"
+      col_last_24h: Ultime 24 ore
+      col_since_start: "Dall'avvio (%{time})"
+      addresses_label: "Indirizzi più frequenti:"
+      addresses_none: nessuno
+      addresses_other: "e altri %{count} non elencati"
+      above_marker: sopra il livello abituale
+      footnote: "Contati in memoria dall'ultimo avvio; un riavvio li azzera. I dettagli sono nei log."
     maintenance_heading: Manutenzione
     bulk_cover_fetch:
       missing_covers_label: "Titoli con copertina mancante"

@@ -19,7 +19,9 @@ configuration séparé. Le panneau a six onglets :
         il affiche le dernier numéro de volume (code V) et le dernier
         numéro d'étagère (code L) jamais imprimés, corbeille comprise,
         chacun avec le prochain numéro libre — à consulter avant
-        d'imprimer une nouvelle planche d'étiquettes.
+        d'imprimer une nouvelle planche d'étiquettes. Depuis la
+        1.29.0, il porte aussi les compteurs de \emph{surveillance de la
+        production} (section~\ref{sec:health-watch}).
   \item \textbf{Users} — créer/désactiver des utilisateurs, changer
         de rôle.
   \item \textbf{Reference data} — les tables taxonomiques, et le
@@ -37,6 +39,51 @@ configuration séparé. Le panneau a six onglets :
 Seul le rôle \texttt{Admin} voit le panneau ; les utilisateurs
 \texttt{Librarian} et \texttt{Anonymous} reçoivent un 403 sur toute
 route \texttt{/admin/*}.
+
+\subsection*{Surveillance de la production}\label{sec:health-watch}
+\index{surveillance de la production}
+
+Depuis la 1.29.0, l'onglet Health porte une section
+\textbf{Surveillance de la production}, entre les compteurs d'entités
+et les fournisseurs. Elle permet de voir de temps en temps comment se
+porte l'instance sans lire les journaux
+(chapitre~\ref{ch:operations-debugging}) : quatre compteurs, chacun pour les
+\emph{dernières 24 heures} et \emph{depuis le démarrage}, l'en-tête de
+colonne donnant l'heure du démarrage dans le fuseau de la
+bibliothèque.
+
+\begin{itemize}
+  \item \textbf{Requêtes lentes à la base (plus de 1 s)} — les requêtes
+        auxquelles la base a mis plus d'une seconde à répondre. Une
+        instance saine n'en a aucune ; au-delà de \textbf{50} en
+        24 heures, le compteur est signalé comme inhabituel.
+  \item \textbf{Attentes de connexion à la base échouées (30 s)} — les
+        requêtes qui ont attendu 30 secondes une connexion à la base et
+        ont échoué. Une seule suffit à être signalée (seuil
+        \textbf{0}).
+  \item \textbf{Requêtes refusées pour un jeton de sécurité invalide
+        (CSRF)} — des formulaires envoyés avec un jeton absent ou
+        périmé. Les sessions expirées en produisent quelques-unes par
+        jour ; au-delà de \textbf{20} en 24 heures, c'est inhabituel.
+  \item \textbf{Requêtes API refusées (clé absente, fausse ou
+        insuffisante)} — des appels à l'API HTTP ou au serveur MCP
+        (chapitres~\ref{ch:api} et~\ref{ch:agents}) refusés à cause de
+        leur clé. Un agent mal configuré réessaie bien plus souvent que
+        \textbf{20} fois par jour, le seuil.
+\end{itemize}
+
+Sous les deux lignes de refus, les trois adresses clientes refusées le
+plus souvent au cours des dernières 24 heures sont listées avec leur
+nombre (ou « aucune »). Un compteur au-dessus de son seuil est écrit
+dans la couleur d'avertissement \emph{et} suivi de « au-dessus du
+niveau habituel ».
+
+Les compteurs ne vivent qu'en mémoire : rien n'est écrit dans la base,
+et un redémarrage les remet à zéro, comme le dit la note sous le
+tableau. Le détail de chaque événement (heure, chemin, adresse) est
+dans les journaux. Les compteurs ne dépendent pas du niveau de
+journalisation : une requête lente est comptée même au niveau
+\texttt{error}.
 
 \section{Lieux de stockage et hiérarchie}\label{sec:locations}
 

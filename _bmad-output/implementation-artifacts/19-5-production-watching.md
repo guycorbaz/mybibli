@@ -1,6 +1,6 @@
 # Story 19.5: Production watching at a glance (closes #708)
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -81,12 +81,12 @@ Practice A3: the thresholds (D5) and the panel's wording (D6) are settled with t
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `src/services/watch.rs`: `WatchKind`, `WatchStore` (buckets, totals, addresses, cap), `snapshot_at`, thresholds, the global `WATCH` and `watch::record(kind, client)`; unit tests (AC4).
-- [ ] T2 — `SlowStatementLayer` + the `main.rs` filter move (per-layer filter, one reload handle); tests (AC4, AC5).
-- [ ] T3 — counting sites: `From<sqlx::Error>` (PoolTimedOut), `csrf.rs::reject`, `api_key.rs::unauthorized` / `insufficient_scope` (D3).
-- [ ] T4 — `routes/admin_health_watch.rs` + `templates/fragments/admin_health_watch.html`, included in the Health panel; labels in four locales (D4, D6, AC1, AC3).
-- [ ] T5 — E2E in the Health tab spec (or a new `admin-health-watch.spec.ts` with its own spec id if none fits) (AC6).
-- [ ] T6 — gates (AC7); `CLAUDE.md`: a Key Patterns line (watch store, where counts are taken, per-layer log filter); user manual EN/FR (Health tab section: the panel, what each count means, thresholds, reset on restart). PDFs are rebuilt at release.
+- [x] T1 — `src/services/watch.rs`: `WatchKind`, `WatchStore` (buckets, totals, addresses, cap), `snapshot_at`, thresholds, the global `WATCH` and `watch::record(kind, client)`; unit tests (AC4).
+- [x] T2 — `SlowStatementLayer` + the `main.rs` filter move (per-layer filter, one reload handle); tests (AC4, AC5).
+- [x] T3 — counting sites: `From<sqlx::Error>` (PoolTimedOut), `csrf.rs::reject`, `api_key.rs::unauthorized` / `insufficient_scope` (D3).
+- [x] T4 — `routes/admin_health_watch.rs` + `templates/fragments/admin_health_watch.html`, included in the Health panel; labels in four locales (D4, D6, AC1, AC3).
+- [x] T5 — E2E in the Health tab spec (or a new `admin-health-watch.spec.ts` with its own spec id if none fits) (AC6).
+- [x] T6 — gates (AC7); `CLAUDE.md`: a Key Patterns line (watch store, where counts are taken, per-layer log filter); user manual EN/FR (Health tab section: the panel, what each count means, thresholds, reset on restart). PDFs are rebuilt at release.
 
 ## Dev Notes
 
@@ -121,8 +121,32 @@ Checked against the code: sqlx 0.8.6 logs slow statements at target `sqlx::query
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- Log output checked on the E2E stack after the filter move: same JSON shape (`timestamp`, `level`, `fields`, `target`), e.g. the "File logging enabled" and "CSRF validation failed" lines.
 
 ### Completion Notes List
 
+- T1: `services/watch.rs` — `WatchKind`, `WatchStore` (24 hourly buckets stamped with their hour, totals, per-bucket addresses capped at 64 + `other`), `snapshot_at`, D5 constants, global `WATCH` (`LazyLock<Watch>`, `Mutex`, poison recovered), `watch::record` / `snapshot` / `start` (forced at boot so the start time is the process start).
+- Window granularity: the "last 24 hours" is the current hour bucket and the 23 before it (a bucket counts when its hour started less than 24 h before now), so it covers between 23 and 24 hours. The AC4 test reads at hh:59:30, where an event 23 h 59 min earlier is in and one 24 h earlier is out.
+- T2: `SlowStatementLayer` (target `sqlx::query`, `WARN`, message starting "slow statement") under its own `Targets` filter. The subscriber composition moved into `watch::subscriber(output, filter, watch)` so the unit tests build it exactly like `main.rs`: the two output layers (`stdout.and_then(Option<file>)`) take the operator `EnvFilter` as a per-layer filter through one `reload::Layer`, whose handle (`LogFilterHandle`) the existing `LogLevelReloader` closure still drives (unchanged). Tests: counted under an `error` level (and not written), other `sqlx::query` events ignored, a reload to `warn` drops an `info` line, per-target directives still apply.
+- T3: counted in `From<sqlx::Error> for AppError` (PoolTimedOut), `csrf.rs::reject`, `api_key.rs::{unauthorized, insufficient_scope}` (client address computed once, used for the log and the count). No code matches `sqlx::Error::PoolTimedOut` before the conversion (only tests, and `metadata_retry::is_expected_outage`, which matches the converted `AppError`). Two places built `AppError::Database(e)` by hand from a raw sqlx error and would have skipped the count: `ExpectedTomeError::from` and `ContributorModel` (title-contributor insert); both now go through `AppError::from`. Known limits, not changed: a task that logs a raw `sqlx::Error` without converting it is not counted; `ProposalService::revoke_key` unwraps an `AppError::Database` and re-converts it, so a pool timeout there could count twice.
+- T4: `routes/admin_health_watch.rs` + `fragments/admin_health_watch.html`, included in the Health panel right after the entity counts (one field + one include in `admin.rs`). Copy as D6 in EN/FR; DE/IT translate the same meaning. The table's corner cell is an empty `<td>` (D6 gives no column header for the kind). Marker on the last-24-hours cell only (D5 thresholds are over 24 h). "and N more not listed" is shown only when the D2 `other` count is above 0. View unit tests: threshold at/above, escaping, cap announcement, four locales.
+- T5: new spec `admin-health-watch.spec.ts` (spec id "HW", no ISBN/V-code): 21 tampered-token POSTs to `/logout` via `page.request` → since-start count +≥21, 24 h count ≥21, marker shown, an address listed, footnote, axe check; a wrong `Bearer` on `/api/v1/series` → API-key count +≥1; a Librarian does not see the panel.
+- T6: `CLAUDE.md` Key Patterns line; manual EN/FR chapter 2 (Health tab item + new "Production watching" subsection, "Since 1.29.0"). PDFs not rebuilt.
+- Noted, not changed: chapter 2 of the manual says the admin panel "has six tabs"; it has seven since the Skills tab.
+
+### Gate results
+
+- `cargo clippy --all-targets -- -D warnings`: clean.
+- Lib tests (`cargo test --lib`, with the test DB): 1886 passed, 0 failed, 1 ignored (16 new in `services::watch`, 5 in `routes::admin_health_watch`, 1 in `error`).
+- Integration (`--test integration` filtered on `locale_parity::`, `every_test_file_is_declared`, `admin_system_integration::`, `api_v1_auth::`, `api_key_propose_scope::`, `cookieless_requests::`, `contributor_live_name::`, `expected_tome`): 115 passed, 0 failed.
+- E2E: `npx tsc --noEmit` clean; `waitForTimeout` grep gate clean; `vcode-literals.sh` clean.
+- Full E2E on a freshly reset stack (`CI=true --workers=2`): 498 passed, 2 skipped, 0 failed, 0 flaky (3.4 min).
+
 ### File List
+
+- New: `src/services/watch.rs`, `src/routes/admin_health_watch.rs`, `templates/fragments/admin_health_watch.html`, `tests/e2e/specs/journeys/admin-health-watch.spec.ts`
+- Changed: `src/main.rs`, `src/services/mod.rs`, `src/routes/mod.rs`, `src/routes/admin.rs`, `templates/fragments/admin_health_panel.html`, `src/error/mod.rs`, `src/middleware/csrf.rs`, `src/middleware/api_key.rs`, `src/services/expected_tomes.rs`, `src/models/contributor.rs`, `locales/{en,fr,de,it}.yml`, `docs/manual/en/02-configuration.tex`, `docs/manual/fr/02-configuration.tex`, `CLAUDE.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`, this story file

@@ -315,13 +315,16 @@ fn reject(
     is_form: bool,
     session: &Session,
 ) -> Response {
+    let client = crate::middleware::client_addr::client_addr(&parts.extensions, &parts.headers);
     tracing::warn!(
         method = %method,
         path = %path,
         reason,
-        client = %crate::middleware::client_addr::client_addr(&parts.extensions, &parts.headers),
+        client = %client,
         "CSRF validation failed"
     );
+    // Story 19-5 (#708): counted for the Health tab's production watching.
+    crate::services::watch::record(crate::services::watch::WatchKind::CsrfRefusal, Some(&client));
     build_rejection_response(request_locale(parts), parts, is_form, session)
 }
 

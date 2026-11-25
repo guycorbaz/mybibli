@@ -289,7 +289,13 @@ impl IntoResponse for AppError {
 }
 
 impl From<sqlx::Error> for AppError {
+    /// Story 19-5 (#708): every handler and task reaches the database error
+    /// through here, so a failed connection wait is counted for the
+    /// production-watching panel at this one place.
     fn from(err: sqlx::Error) -> Self {
+        if matches!(err, sqlx::Error::PoolTimedOut) {
+            crate::services::watch::record(crate::services::watch::WatchKind::PoolTimeout, None);
+        }
         AppError::Database(err)
     }
 }
@@ -297,6 +303,19 @@ impl From<sqlx::Error> for AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Story 19-5: a pool timeout converted to `AppError` is counted; other
+    /// database errors are not. The store is process-wide and other tests
+    /// may add timeouts, so the check is "at least".
+    #[test]
+    fn a_pool_timeout_is_counted_for_production_watching() {
+        use crate::services::watch::{self, WatchKind};
+        let before = watch::snapshot().kind(WatchKind::PoolTimeout).since_start;
+        let err = AppError::from(sqlx::Error::PoolTimedOut);
+        assert!(matches!(err, AppError::Database(sqlx::Error::PoolTimedOut)));
+        let after = watch::snapshot().kind(WatchKind::PoolTimeout).since_start;
+        assert!(after > before, "before {before}, after {after}");
+    }
 
     #[test]
     fn test_conflict_display() {

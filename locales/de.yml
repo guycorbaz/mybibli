@@ -976,6 +976,19 @@ admin:
     provider_status_na: nicht zutreffend
     last_checked: "Zuletzt geprüft: %{when}"
     last_checked_never: Nie
+    watch:
+      heading: Überwachung des Betriebs
+      slow_statements: "Langsame Datenbankabfragen (über 1 s)"
+      pool_timeouts: "Fehlgeschlagene Wartezeiten auf eine Datenbankverbindung (30 s)"
+      csrf_refusals: "Wegen eines ungültigen Sicherheitstokens abgelehnte Anfragen (CSRF)"
+      api_key_refusals: "Abgelehnte API-Anfragen (Schlüssel fehlt, falsch oder unzureichend)"
+      col_last_24h: Letzte 24 Stunden
+      col_since_start: "Seit dem Start (%{time})"
+      addresses_label: "Häufigste Adressen:"
+      addresses_none: keine
+      addresses_other: "und %{count} weitere, nicht aufgeführt"
+      above_marker: über dem üblichen Niveau
+      footnote: "Seit dem letzten Start im Speicher gezählt; ein Neustart setzt sie zurück. Die Einzelheiten stehen in den Protokollen."
     maintenance_heading: Wartung
     bulk_cover_fetch:
       missing_covers_label: "Titel mit fehlendem Cover"

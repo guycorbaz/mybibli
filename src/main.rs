@@ -77,7 +77,7 @@ async fn main() {
     // specific subsystem, set `MYBIBLI_LOG_LEVEL=mybibli=debug` on the
     // NAS's `docker-compose.yml` `environment:` block and restart the
     // container; for a deep one-shot investigation, `mybibli=trace`.
-    use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+    use tracing_subscriber::{EnvFilter, Layer, util::SubscriberInitExt};
     let operator_directive: String = std::env::var("MYBIBLI_LOG_LEVEL")
         .or_else(|_| std::env::var("RUST_LOG"))
         .unwrap_or_else(|_| "info".to_string());
@@ -103,28 +103,39 @@ async fn main() {
     // the handle stored in AppState. Closes the v1.7.0 #301 gap — the
     // release notes promised this surface but only the env-var
     // bootstrap shipped.
-    let (filter_layer, filter_reload_handle) =
-        tracing_subscriber::reload::Layer::new(env_filter);
+    //
+    // Story 19-5 (#708): the operator filter is a **per-layer** filter on
+    // the two output layers (stdout + optional file, combined), no longer a
+    // global layer, so the production-watching slow-statement counter —
+    // under its own filter — keeps counting whatever the log level. Same
+    // filter, same output layers: the log output is unchanged.
     let stdout_layer = tracing_subscriber::fmt::layer()
         .json()
         .with_target(true)
         .with_timer(tracing_subscriber::fmt::time::UtcTime::rfc_3339());
-    let registry = tracing_subscriber::registry().with(filter_layer).with(stdout_layer);
-    if let Some(file_writer) = file_writer {
-        let file_layer = tracing_subscriber::fmt::layer()
+    let file_enabled = file_writer.is_some();
+    let file_layer = file_writer.map(|file_writer| {
+        tracing_subscriber::fmt::layer()
             .json()
             .with_target(true)
             .with_ansi(false)
             .with_timer(tracing_subscriber::fmt::time::UtcTime::rfc_3339())
-            .with_writer(file_writer);
-        registry.with(file_layer).init();
+            .with_writer(file_writer)
+    });
+    mybibli::services::watch::start();
+    let (subscriber, filter_reload_handle) = mybibli::services::watch::subscriber(
+        stdout_layer.and_then(file_layer),
+        env_filter,
+        &mybibli::services::watch::WATCH,
+    );
+    subscriber.init();
+    if file_enabled {
         tracing::info!(
             log_dir = %log_dir,
             log_level = %log_level_directive,
             "File logging enabled (daily rotation)"
         );
     } else {
-        registry.init();
         tracing::warn!(
             log_dir = %log_dir,
             log_level = %log_level_directive,

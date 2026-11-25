@@ -115,13 +115,16 @@ async fn resolve_api_key(parts: &Parts, state: &AppState) -> Result<ApiKeyContex
 /// A 401 envelope, logged with the client address (#696): a client
 /// retrying with a wrong or missing key is otherwise invisible.
 fn unauthorized(parts: &Parts, reason: &'static str) -> Response {
+    let client = client_addr(&parts.extensions, &parts.headers);
     tracing::warn!(
         reason,
         method = %parts.method,
         path = %parts.uri.path(),
-        client = %client_addr(&parts.extensions, &parts.headers),
+        client = %client,
         "API key authentication failed"
     );
+    // Story 19-5 (#708): counted for the Health tab's production watching.
+    crate::services::watch::record(crate::services::watch::WatchKind::ApiKeyRefusal, Some(&client));
     unauthorized_response(reason)
 }
 
@@ -139,14 +142,16 @@ fn unauthorized_response(reason: &str) -> Response {
 /// A 403 for a key whose scope does not allow the endpoint, logged with the
 /// client address (#696).
 fn insufficient_scope(parts: &Parts, ctx: &ApiKeyContext, required: &'static str) -> Response {
+    let client = client_addr(&parts.extensions, &parts.headers);
     tracing::warn!(
         key_id = ctx.key_id,
         scope = ctx.scope.as_str(),
         scope_required = required,
         path = %parts.uri.path(),
-        client = %client_addr(&parts.extensions, &parts.headers),
+        client = %client,
         "API key without the required scope refused"
     );
+    crate::services::watch::record(crate::services::watch::WatchKind::ApiKeyRefusal, Some(&client));
     forbidden_response("insufficient_scope", required)
 }
 

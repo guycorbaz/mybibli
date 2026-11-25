@@ -55,4 +55,5 @@ pub mod volume_audit;
 pub mod volume_value_acceptance;
 pub mod volume_value_proposals;
 pub mod volume_value_review;
+pub mod watch;
 pub mod wishlist_pdf;

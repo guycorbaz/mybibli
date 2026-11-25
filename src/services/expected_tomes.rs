@@ -142,7 +142,7 @@ impl From<AppError> for ExpectedTomeError {
 
 impl From<sqlx::Error> for ExpectedTomeError {
     fn from(e: sqlx::Error) -> Self {
-        ExpectedTomeError::Database(AppError::Database(e))
+        ExpectedTomeError::Database(AppError::from(e))
     }
 }
 
