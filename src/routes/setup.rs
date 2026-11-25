@@ -572,7 +572,7 @@ async fn build_recap(state: &AppState) -> Result<RecapData, AppError> {
     .map(Some)
     .or_else(|e| match e {
         sqlx::Error::RowNotFound => Ok(None),
-        other => Err(AppError::Database(other)),
+        other => Err(AppError::from(other)),
     })?;
     let admin_username = admin_row.map(|(u,)| u).unwrap_or_default();
 

@@ -32,7 +32,8 @@ pub struct WatchRow {
     pub tracks_addresses: bool,
     pub addresses: Vec<WatchAddress>,
     pub none_label: String,
-    /// "and N more not listed", empty when no address fell outside the cap.
+    /// "and N more not listed" (`KindSnapshot::unlisted_addresses`), empty
+    /// when every address of the last 24 hours is listed.
     pub other_label: String,
 }
 

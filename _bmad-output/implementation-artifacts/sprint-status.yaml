@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-11-25 (epic 19 in progress — story 19-5 review.)
+# last_updated: 2026-11-25 (epic 19 in progress — story 19-5 done.)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -372,7 +372,7 @@ development_status:
   19-2-stable-e2e-suite: done
   19-3-simultaneous-actions: done
   19-4-what-the-user-reads: done
-  19-5-production-watching: review
+  19-5-production-watching: done
   19-6-writing-a-backup: backlog
   19-7-scheduled-backups-and-rotation: backlog
   19-8-restoring-a-backup: backlog

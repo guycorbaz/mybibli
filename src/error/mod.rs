@@ -289,9 +289,12 @@ impl IntoResponse for AppError {
 }
 
 impl From<sqlx::Error> for AppError {
-    /// Story 19-5 (#708): every handler and task reaches the database error
+    /// Story 19-5 (#708): handlers and tasks reach the database error
     /// through here, so a failed connection wait is counted for the
-    /// production-watching panel at this one place.
+    /// production-watching panel here — build `AppError::Database` with
+    /// `AppError::from`, never by hand. The few paths that keep a raw
+    /// `sqlx::Error` count it themselves (`middleware::pending_updates`);
+    /// boot-time reads (settings load, seed gate) are not counted.
     fn from(err: sqlx::Error) -> Self {
         if matches!(err, sqlx::Error::PoolTimedOut) {
             crate::services::watch::record(crate::services::watch::WatchKind::PoolTimeout, None);

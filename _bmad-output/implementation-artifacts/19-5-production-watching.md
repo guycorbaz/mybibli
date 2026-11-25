@@ -1,6 +1,6 @@
 # Story 19.5: Production watching at a glance (closes #708)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -175,3 +175,18 @@ Low, not fixed:
 2. `ProposalService::revoke_key` converts a database error twice, so a pool timeout there could be counted twice (dev notes).
 3. The corner cell of the table head is an empty `<td>`; axe passes.
 4. Manual chapter 2 says the admin page "has six tabs"; it has seven (outside this story).
+
+Verification of pass 1: `cargo test --lib watch` is green (23 tests). Full E2E on a freshly reset stack (`CI=true --workers=2`): 498 passed, 2 skipped, no flaky test, none failed. A Medium finding was fixed, so a second pass is due (Rule #6).
+
+### Review pass 2: no Medium+ finding
+
+**Date:** 2026-11-25. An independent pass over `git diff main...HEAD`, made without the conclusions of pass 1. It checked the filter move against the `tracing-subscriber` 0.3.23 / `tracing-core` 0.1.36 sources: the reload filter forwards every `Filter` method, and `Handle::modify` rebuilds the interest cache and the maximum level, in both directions. It found no High or Medium issue, and six Low findings.
+
+Fixed:
+- **Pool timeouts that escaped the count.** `models/user.rs` (two sites) and `routes/setup.rs` now build `AppError::from`. `middleware::pending_updates`, which keeps a raw `sqlx::Error` after every request, counts `PoolTimedOut` itself. The doc comment of `From<sqlx::Error>` now names the exceptions.
+- **The manual placed the section** "between the entity counts and the providers". It now reads "the highest label numbers" (EN / FR).
+- **A stale doc comment** on `WatchRow::other_label`.
+
+Deferred to #727: the reload test does not exercise a cached callsite or the loosening direction; there are no unit tests on the CSRF and API-key counting sites; the address cell's headers and list semantics; the now test-only `other_addresses`; together with the pass-1 Lows.
+
+Verification after the fixes: `cargo clippy --all-targets -- -D warnings` is clean, and `cargo test --lib` passes (1887 passed, 0 failed, 1 ignored). Full E2E on a freshly reset stack (`CI=true --workers=2`): 498 passed, 2 skipped, no flaky test, none failed. Status: done.

@@ -62,6 +62,12 @@ pub async fn pending_updates_middleware(request: Request, next: Next) -> Respons
     // Query resolved pending updates for this session
     let updates = match fetch_resolved_updates(&pool, &token).await {
         Ok(updates) if !updates.is_empty() => updates,
+        // Story 19-5 (#708): this error stays a raw `sqlx::Error` (never an
+        // `AppError`), so a failed connection wait is counted here.
+        Err(sqlx::Error::PoolTimedOut) => {
+            crate::services::watch::record(crate::services::watch::WatchKind::PoolTimeout, None);
+            return response;
+        }
         _ => return response,
     };
 
