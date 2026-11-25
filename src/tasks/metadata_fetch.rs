@@ -497,23 +497,12 @@ async fn add_author_contributor(
     title_id: u64,
     author_name: &str,
 ) -> Result<(), AppError> {
-    // Find or create contributor
-    let contributor_id: u64 = match sqlx::query_as::<_, (u64,)>(
-        "SELECT id FROM contributors WHERE name = ? AND deleted_at IS NULL LIMIT 1",
-    )
-    .bind(author_name)
-    .fetch_optional(pool)
-    .await?
-    {
-        Some((id,)) => id,
-        None => {
-            let result = sqlx::query("INSERT INTO contributors (name) VALUES (?)")
-                .bind(author_name)
-                .execute(pool)
-                .await?;
-            result.last_insert_id()
-        }
-    };
+    // Story 19-3 (#541, D5): the one find-or-create, race-free against a
+    // parallel fetch of another title by the same new author.
+    let contributor_id =
+        crate::services::contributor::ContributorService::find_or_create(pool, author_name)
+            .await?
+            .id;
 
     // CR #19: find the canonical primary-author role by stable flag, not by
     // its display name — the admin reference-data CRUD can rename roles.

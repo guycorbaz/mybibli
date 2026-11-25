@@ -1,33 +1,26 @@
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::location::LocationModel;
-use crate::models::title::TitleModel;
 use crate::models::volume::VolumeModel;
 
-/// Outcome of a V-code scan that lands a volume on a title (#442).
-///
-/// A soft-deleted volume keeps its label locked by the global `UNIQUE` index,
-/// so re-sticking a physical label used to be impossible without an admin
-/// round-trip through the Trash. `ReusedLabel` is the transparent-reactivation
-/// path — same shape as `CreateOutcome::Reactivated` for reference data — and
-/// is reported differently to the librarian, because it discards the previous
-/// copy's data.
+/// What an add of a V-code to a title did (story 19-3, D2).
 #[derive(Debug)]
-pub enum VolumeCreation {
+pub enum VolumeAdd {
+    /// A new volume of the title now carries the label.
     Created(VolumeModel),
-    ReusedLabel(VolumeModel),
+    /// The label already labels a live volume — of this title or another;
+    /// typically a concurrent post of the same code won the INSERT. The
+    /// caller answers it as #585 (`existing_label_response`), never as a
+    /// refusal.
+    LabelLive(VolumeModel),
 }
 
-impl VolumeCreation {
-    pub fn volume(&self) -> &VolumeModel {
+impl VolumeAdd {
+    /// The created volume, `None` when the label was already live.
+    pub fn into_created(self) -> Option<VolumeModel> {
         match self {
-            VolumeCreation::Created(v) | VolumeCreation::ReusedLabel(v) => v,
-        }
-    }
-
-    pub fn into_volume(self) -> VolumeModel {
-        match self {
-            VolumeCreation::Created(v) | VolumeCreation::ReusedLabel(v) => v,
+            VolumeAdd::Created(c) => Some(c),
+            VolumeAdd::LabelLive(_) => None,
         }
     }
 }
@@ -72,133 +65,111 @@ impl VolumeService {
     /// Create a new volume attached to the given title.
     /// Validates V-code format, checks title exists, checks label uniqueness.
     ///
-    /// `actor_user_id` is the librarian performing the scan; it is only used to
-    /// attribute the audit entry written when a soft-deleted label is reused
-    /// (#442), and may be `None` for non-interactive callers.
+    /// A label held by a volume in the Trash is refused (story 19-3, D9).
     pub async fn create_volume(
         pool: &DbPool,
         label: &str,
         title_id: u64,
-        actor_user_id: Option<u64>,
-    ) -> Result<VolumeCreation, AppError> {
+    ) -> Result<VolumeAdd, AppError> {
         let loc = rust_i18n::locale();
-        Self::create_volume_in(pool, label, title_id, actor_user_id, &loc).await
+        Self::create_volume_in(pool, label, title_id, &loc).await
     }
 
     /// [`Self::create_volume`] with its refusals worded in `loc`, the
     /// request locale (story 17-2: the shared V-code arm answers in the
     /// librarian's language, #661).
+    ///
+    /// Story 19-3 (D1, Rule #22): one transaction that share-locks the title
+    /// row by primary key first, then inserts.
+    /// A title delete takes that row `FOR UPDATE`, so the two serialise: the
+    /// add first → the delete counts the new volume and refuses; the delete
+    /// first → the add waits, reads the title gone and answers `NotFound`.
+    /// No live volume ever lands on a trashed title. Every read before the
+    /// INSERT is a locking read, so the plain duplicate lookup after a
+    /// refused INSERT sees the row the INSERT waited for.
     pub async fn create_volume_in(
         pool: &DbPool,
         label: &str,
         title_id: u64,
-        actor_user_id: Option<u64>,
         loc: &str,
-    ) -> Result<VolumeCreation, AppError> {
+    ) -> Result<VolumeAdd, AppError> {
         if !Self::validate_vcode(label) {
             return Err(AppError::BadRequest(
                 rust_i18n::t!("feedback.vcode_invalid", locale = loc).to_string(),
             ));
         }
 
-        // Verify title exists
-        let title = TitleModel::find_by_id(pool, title_id).await?;
-        if title.is_none() {
+        let mut tx = pool.begin().await?;
+        if !crate::models::volume_move::title_is_live_in(&mut tx, title_id).await? {
+            tx.rollback().await?;
             return Err(AppError::NotFound(
                 rust_i18n::t!("error.not_found", locale = loc).to_string(),
             ));
         }
 
         // Create volume — handle UNIQUE constraint with user-friendly message
-        match VolumeModel::create(pool, title_id, label).await {
-            Ok(vol) => Ok(VolumeCreation::Created(vol)),
+        match VolumeModel::create_in(&mut tx, title_id, label).await {
+            Ok(vol) => {
+                tx.commit().await?;
+                Ok(VolumeAdd::Created(vol))
+            }
             Err(AppError::BadRequest(msg)) if msg.starts_with("DUPLICATE_LABEL:") => {
-                Self::resolve_duplicate_label(pool, label, title_id, actor_user_id, loc).await
+                Self::resolve_duplicate_label(tx, label, loc).await
             }
             Err(e) => Err(e),
         }
     }
 
-    /// #442 — the label already exists. Decide between "taken", "reusable" and
-    /// "in the Trash but not reusable".
+    /// The label already exists (#442). Live → `LabelLive` (story 19-3 D2:
+    /// the caller answers it like its own #585 pre-check); in the Trash →
+    /// refused (story 19-3 D9); vanished → "scan it again". Runs on the add's
+    /// transaction `tx`, which still holds the title's share lock, and
+    /// writes nothing.
     ///
     /// The lookup MUST include soft-deleted rows: `volumes.label` is globally
     /// UNIQUE and soft-deletion does not release it, so the previous
     /// `find_by_label` (which filters `deleted_at IS NULL`) returned `None` for
     /// exactly the collision it was trying to explain — and the message named
     /// the owner `"?"`.
+    ///
+    /// D9 (2026-11-25, supersedes the #442 reuse): a label held by a volume
+    /// in the Trash is never reused — reusing it discarded the trashed
+    /// copy's data and broke the Trash's 30-day recovery. The label is free
+    /// again once the row is gone (permanent delete, auto-purge) or live
+    /// again after a restore.
     async fn resolve_duplicate_label(
-        pool: &DbPool,
+        mut tx: sqlx::Transaction<'_, sqlx::MySql>,
         label: &str,
-        title_id: u64,
-        actor_user_id: Option<u64>,
         loc: &str,
-    ) -> Result<VolumeCreation, AppError> {
+    ) -> Result<VolumeAdd, AppError> {
         let Some((existing, is_deleted)) =
-            VolumeModel::find_by_label_any_state(pool, label).await?
+            VolumeModel::find_by_label_any_state_in(&mut tx, label).await?
         else {
             // The row vanished between the failed INSERT and this lookup — a
             // concurrent hard delete. Retrying is the honest advice.
+            tx.rollback().await?;
             return Err(AppError::Conflict(
                 rust_i18n::t!("feedback.volume_label_race", locale = loc, label = label).to_string(),
             ));
         };
 
         if !is_deleted {
-            // Live volume — the label is genuinely taken.
-            let owner = Self::get_volume_title_name(pool, &existing).await;
-            return Err(AppError::BadRequest(
-                rust_i18n::t!("feedback.volume_duplicate", locale = loc, label = label, title = &owner)
-                    .to_string(),
-            ));
+            // Live volume — the label is taken (by this title or another).
+            tx.rollback().await?;
+            return Ok(VolumeAdd::LabelLive(existing));
         }
 
-        // Soft-deleted. Reuse is safe only when nothing references the row.
-        let loans = VolumeModel::count_loans(pool, existing.id).await?;
-        if loans > 0 {
-            return Err(AppError::BadRequest(
-                rust_i18n::t!("feedback.volume_label_in_trash_with_loans", locale = loc, label = label)
-                    .to_string(),
-            ));
-        }
-
-        // Record what we are about to discard BEFORE the update, so the audit
-        // entry can restore it by hand if the reuse was a mistake.
-        let discarded = serde_json::json!({
-            "label": label,
-            "previous_title_id": existing.title_id,
-            "previous_location_id": existing.location_id,
-            "previous_condition_state_id": existing.condition_state_id,
-            "previous_edition_comment": existing.edition_comment,
-            "previous_purchase_price": existing.purchase_price,
-            "previous_purchase_currency": existing.purchase_currency,
-            "previous_current_value": existing.current_value,
-            "previous_current_value_currency": existing.current_value_currency,
-            "new_title_id": title_id,
-        });
-
-        VolumeModel::reactivate_for_reuse(pool, existing.id, title_id).await?;
-
-        if let Some(user_id) = actor_user_id
-            && let Err(e) = crate::models::admin_audit::AdminAuditModel::create(
-                pool,
-                user_id,
-                "volume_label_reused",
-                Some("volumes"),
-                Some(existing.id),
-                Some(discarded),
-            )
-            .await
-        {
-            // Best-effort: a missing audit row must not undo a successful
-            // reuse, but it is worth shouting about.
-            tracing::warn!(error = %e, volume_id = existing.id, "Failed to audit volume label reuse");
-        }
-
-        let refreshed = VolumeModel::find_by_label(pool, label)
+        // In the Trash: name the trashed volume's title, itself possibly in
+        // the Trash.
+        let title = crate::models::title::TitleModel::name_any_state_in(&mut tx, existing.title_id)
             .await?
-            .ok_or_else(|| AppError::Internal("reactivated volume vanished".to_string()))?;
-        Ok(VolumeCreation::ReusedLabel(refreshed))
+            .unwrap_or_else(|| "?".to_string());
+        tx.rollback().await?;
+        tracing::info!(label = %label, volume_id = existing.id, "V-code held by a volume in the Trash; refused");
+        Err(AppError::BadRequest(
+            rust_i18n::t!("feedback.volume_label_in_trash", locale = loc, label = label, title = &title)
+                .to_string(),
+        ))
     }
 
     /// Assign a location to a volume by their labels.
@@ -251,13 +222,6 @@ impl VolumeService {
         Ok((updated_volume, path))
     }
 
-    /// Get the title name for a volume (for error messages like "already assigned to {title}").
-    pub async fn get_volume_title_name(pool: &DbPool, volume: &VolumeModel) -> String {
-        match TitleModel::find_by_id(pool, volume.title_id).await {
-            Ok(Some(title)) => title.title,
-            _ => String::from("?"),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -287,6 +251,41 @@ mod tests {
         assert_eq!(VolumeService::label_from_input("V0042"), "V0042");
         assert_eq!(VolumeService::label_from_input(" v12a4"), "v12a4");
         assert_eq!(VolumeService::label_from_input("l0042"), "l0042");
+    }
+
+    fn volume(id: u64) -> VolumeModel {
+        VolumeModel {
+            id,
+            title_id: 1,
+            label: "V0042".to_string(),
+            condition_state_id: None,
+            edition_comment: None,
+            location_id: None,
+            version: 1,
+            purchase_price: None,
+            purchase_currency: None,
+            current_value: None,
+            current_value_currency: None,
+            current_value_updated_at: None,
+            under_audit_since: None,
+        }
+    }
+
+    #[test]
+    fn a_live_label_is_no_creation() {
+        assert!(VolumeAdd::LabelLive(volume(7)).into_created().is_none());
+        let created = VolumeAdd::Created(volume(7)).into_created().expect("a creation");
+        assert_eq!(created.id, 7);
+    }
+
+    #[test]
+    fn the_trash_refusal_names_the_label_and_the_title_in_every_locale() {
+        for loc in ["en", "fr", "de", "it"] {
+            let msg = rust_i18n::t!("feedback.volume_label_in_trash", locale = loc, label = "V0042", title = "Tintin")
+                .to_string();
+            assert!(msg.contains("V0042") && msg.contains("Tintin"), "{loc}: {msg}");
+            assert!(!msg.contains("feedback."), "{loc}: key resolved");
+        }
     }
 
     #[test]

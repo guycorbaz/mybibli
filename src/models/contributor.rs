@@ -77,6 +77,51 @@ impl ContributorModel {
         }
     }
 
+    /// Story 19-3 (#541, D5) — the live contributor named `name` (column
+    /// collation, as [`Self::find_by_name_exact_in`]), created when there is
+    /// none. Race-free through `uq_contributors_live_name`: a concurrent
+    /// insert of the same name waits for the winner's uncommitted key, then
+    /// resolves to it (`ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`
+    /// touches no column, so `updated_at` / `version` do not move), or
+    /// inserts if the winner rolled back. The row is then read by primary
+    /// key under a share lock: a current read, so inside a transaction whose
+    /// snapshot predates the winner's commit it still finds the row (one
+    /// table, one primary key — Rule #22). `name` is already validated and
+    /// trimmed by the caller.
+    pub async fn find_or_create_in(
+        conn: &mut MySqlConnection,
+        name: &str,
+    ) -> Result<ContributorModel, AppError> {
+        if let Some(existing) = Self::find_by_name_exact_in(conn, name).await? {
+            return Ok(existing);
+        }
+
+        let done = sqlx::query(
+            "INSERT INTO contributors (name) VALUES (?) \
+             ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
+        )
+        .bind(name)
+        .execute(&mut *conn)
+        .await?;
+        let id = done.last_insert_id();
+        tracing::debug!(name = %name, id, "Contributor found or created");
+
+        let row = sqlx::query(
+            "SELECT id, name, biography, version FROM contributors \
+             WHERE id = ? AND deleted_at IS NULL LOCK IN SHARE MODE",
+        )
+        .bind(id)
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or_else(|| AppError::Internal(format!("contributor {id} vanished after find-or-create")))?;
+        Ok(ContributorModel {
+            id: row.try_get("id")?,
+            name: row.try_get("name")?,
+            biography: row.try_get("biography")?,
+            version: row.try_get("version")?,
+        })
+    }
+
     pub async fn search_by_name(
         pool: &DbPool,
         query: &str,
@@ -161,61 +206,42 @@ impl ContributorModel {
         ))
     }
 
-    pub async fn create(
-        pool: &DbPool,
-        name: &str,
-        biography: Option<&str>,
-    ) -> Result<ContributorModel, AppError> {
-        let mut conn = pool.acquire().await?;
-        Self::create_in(&mut conn, name, biography).await
-    }
-
-    /// [`Self::create`] on the given connection.
-    pub async fn create_in(
-        conn: &mut MySqlConnection,
-        name: &str,
-        biography: Option<&str>,
-    ) -> Result<ContributorModel, AppError> {
-        tracing::info!(name = %name, "Creating contributor");
-
-        let result = sqlx::query("INSERT INTO contributors (name, biography) VALUES (?, ?)")
-            .bind(name)
-            .bind(biography)
-            .execute(&mut *conn)
-            .await?;
-
-        let id = result.last_insert_id();
-        Ok(ContributorModel {
-            id,
-            name: name.to_string(),
-            biography: biography.map(String::from),
-            version: 1,
-        })
-    }
-
+    /// Rename / re-describe a live contributor.
+    ///
+    /// Story 19-3 (D6): a name another live contributor holds is refused
+    /// (`uq_contributors_live_name`, error 1062) → `Ok(NameTaken)`. A rename
+    /// that changes the name (column collation) also resets
+    /// `legacy_duplicate_slot` to 0 — assigned before `name`, since MariaDB
+    /// evaluates a single-table `SET` left to right — so a legacy duplicate
+    /// cannot be renamed onto a live name unrefused; a case-only fix keeps
+    /// its slot.
     pub async fn update(
         pool: &DbPool,
         id: u64,
         name: &str,
         biography: Option<&str>,
-    ) -> Result<(), AppError> {
+    ) -> Result<ContributorUpdate, AppError> {
         tracing::info!(id = id, name = %name, "Updating contributor");
 
         let result = sqlx::query(
-            "UPDATE contributors SET name = ?, biography = ? WHERE id = ? AND deleted_at IS NULL",
+            "UPDATE contributors \
+             SET legacy_duplicate_slot = IF(name = ?, legacy_duplicate_slot, 0), \
+                 name = ?, biography = ? \
+             WHERE id = ? AND deleted_at IS NULL",
         )
+        .bind(name)
         .bind(name)
         .bind(biography)
         .bind(id)
         .execute(pool)
-        .await?;
+        .await;
 
-        if result.rows_affected() == 0 {
-            return Err(AppError::NotFound(
-                rust_i18n::t!("error.not_found").to_string(),
-            ));
+        match result {
+            Ok(done) if done.rows_affected() == 0 => Ok(ContributorUpdate::NotFound),
+            Ok(_) => Ok(ContributorUpdate::Updated),
+            Err(e) if crate::db::is_duplicate_entry(&e) => Ok(ContributorUpdate::NameTaken),
+            Err(e) => Err(e.into()),
         }
-        Ok(())
     }
 
     pub async fn count_title_associations(pool: &DbPool, id: u64) -> Result<u64, AppError> {
@@ -288,6 +314,16 @@ impl ContributorModel {
 
         Ok(())
     }
+}
+
+/// What [`ContributorModel::update`] did (story 19-3, D6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContributorUpdate {
+    Updated,
+    /// No live contributor has this id.
+    NotFound,
+    /// Another live contributor already has this name.
+    NameTaken,
 }
 
 /// Row returned from contributor detail page query (title + role).

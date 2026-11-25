@@ -171,8 +171,12 @@ is refused with the expected shape; a label already recorded for this
 title gets an information message; a label held by another title gets a
 warning with a link to that volume, and nothing moves. When the title
 already has volumes, the same \emph{Add another copy?} dialog as on the
-catalog page asks for confirmation first. A label that belonged to a
-deleted volume is reused under the usual conditions.
+catalog page asks for confirmation first. A label still held by a
+volume in the Trash is refused, on this page as on the catalog page:
+the message names that volume's title. Restore the volume, or have an
+administrator delete it permanently from the Trash, then scan the label
+again. Since 1.29.0 such a label is no longer reused, so that the
+deleted copy can still be restored for 30 days.
 
 The title page leaves your catalog scanning run alone: it neither
 changes the current title of the catalog page nor shelves the volume at

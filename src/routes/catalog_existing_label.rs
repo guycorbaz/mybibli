@@ -11,8 +11,8 @@
 //!   link to the volume page, nothing written.
 //!
 //! The active-location shelve path, the new-label path (CR #300 modal +
-//! `create_volume`) and the soft-deleted-label path (#442 reuse rules in
-//! `VolumeService::resolve_duplicate_label`) are untouched.
+//! `create_volume`) and the soft-deleted-label path (refused since story
+//! 19-3 D9, `VolumeService::resolve_duplicate_label`) are untouched.
 //!
 //! Kept out of `routes/catalog.rs` (Rule #12): the V-code arm makes one
 //! call and returns the response.

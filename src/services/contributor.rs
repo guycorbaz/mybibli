@@ -2,7 +2,8 @@ use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::PaginatedList;
 use crate::models::contributor::{
-    ContributorModel, ContributorRoleModel, ContributorSearchRow, TitleContributorModel,
+    ContributorModel, ContributorRoleModel, ContributorSearchRow, ContributorUpdate,
+    TitleContributorModel,
 };
 use crate::models::title::TitleModel;
 
@@ -49,11 +50,8 @@ impl ContributorService {
             ));
         }
 
-        if let Some(existing) = ContributorModel::find_by_name_exact_in(conn, trimmed).await? {
-            return Ok(existing);
-        }
-
-        ContributorModel::create_in(conn, trimmed, None).await
+        // Story 19-3 (#541, D5): race-free through the live-name key.
+        ContributorModel::find_or_create_in(conn, trimmed).await
     }
 
     /// Add a contributor to a title with a specific role.
@@ -134,25 +132,40 @@ impl ContributorService {
         TitleContributorModel::remove_from_title(pool, junction_id).await
     }
 
+    /// Rename / re-describe contributor `id`; refusals worded in `loc`, the
+    /// request locale. Story 19-3 (D6): a name another live contributor
+    /// holds is refused (`contributor.error.name_taken`).
     pub async fn update_details(
         pool: &DbPool,
         id: u64,
         name: &str,
         biography: Option<&str>,
+        loc: &str,
     ) -> Result<(), AppError> {
         let trimmed = name.trim();
         if trimmed.is_empty() {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("contributor.error.name_required").to_string(),
+                rust_i18n::t!("contributor.error.name_required", locale = loc).to_string(),
             ));
         }
         if trimmed.len() > MAX_CONTRIBUTOR_NAME_BYTES {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("contributor.error.name_too_long").to_string(),
+                rust_i18n::t!("contributor.error.name_too_long", locale = loc).to_string(),
             ));
         }
 
-        ContributorModel::update(pool, id, trimmed, biography).await
+        match ContributorModel::update(pool, id, trimmed, biography).await? {
+            ContributorUpdate::Updated => Ok(()),
+            ContributorUpdate::NotFound => Err(AppError::NotFound(
+                rust_i18n::t!("error.not_found", locale = loc).to_string(),
+            )),
+            ContributorUpdate::NameTaken => {
+                tracing::info!(id, name = %trimmed, "Contributor rename refused: name taken");
+                Err(AppError::BadRequest(
+                    rust_i18n::t!("contributor.error.name_taken", locale = loc).to_string(),
+                ))
+            }
+        }
     }
 
     pub async fn delete_contributor(pool: &DbPool, id: u64) -> Result<(), AppError> {

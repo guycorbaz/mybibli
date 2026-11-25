@@ -19,7 +19,7 @@
 use chrono::NaiveDateTime;
 use sqlx::{MySqlConnection, Row};
 
-use crate::db::DbPool;
+use crate::db::{DbPool, is_duplicate_entry};
 use crate::error::AppError;
 use crate::services::mcp_skills::ValidSkill;
 
@@ -85,14 +85,6 @@ impl From<sqlx::Error> for SkillWriteError {
     fn from(err: sqlx::Error) -> Self {
         SkillWriteError::Db(AppError::from(err))
     }
-}
-
-/// Story 17-6 review — a duplicate entry exactly (error 1062), not the
-/// whole 23000 class (foreign key, NOT NULL, CHECK…).
-fn is_duplicate_entry(err: &sqlx::Error) -> bool {
-    err.as_database_error()
-        .and_then(|db| db.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>())
-        .is_some_and(|db| db.number() == 1062)
 }
 
 fn is_duplicate_key(err: &sqlx::Error) -> bool {

@@ -12,6 +12,38 @@ pub struct ConflictInfo {
 
 pub struct TrashService;
 
+/// Why a restore was refused, for the route to word in the request locale
+/// (story 19-3, D7). The services are locale-less.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestoreRefusal {
+    /// The contributor's name is live again on another contributor
+    /// (`uq_contributors_live_name`): the row stays in the Trash.
+    ContributorNameTaken,
+}
+
+/// The refusal behind a failed restore of `table`, if `err` is one: a
+/// duplicate entry (error 1062) on `contributors`. Any other table's 1062
+/// keeps its behaviour (an internal error).
+pub fn restore_refusal(table: &str, err: &AppError) -> Option<RestoreRefusal> {
+    match err {
+        AppError::Database(e) if table == "contributors" && crate::db::is_duplicate_entry(e) => {
+            Some(RestoreRefusal::ContributorNameTaken)
+        }
+        _ => None,
+    }
+}
+
+/// The `SET` of a restore. A contributor also leaves its legacy duplicate
+/// slot (story 19-3, D4/D7): restored next to a live namesake, it is
+/// refused like any other row.
+fn restore_set_clause(table: &str) -> &'static str {
+    if table == "contributors" {
+        "legacy_duplicate_slot = 0, deleted_at = NULL, version = version + 1"
+    } else {
+        "deleted_at = NULL, version = version + 1"
+    }
+}
+
 impl TrashService {
     /// Restore a soft-deleted item: clear deleted_at, bump version
     pub async fn restore(
@@ -32,8 +64,9 @@ impl TrashService {
         let mut tx = pool.begin().await?;
         let result = sqlx::query(
             &format!(
-                "UPDATE {} SET deleted_at = NULL, version = version + 1 WHERE id = ? AND deleted_at IS NOT NULL AND version = ?",
-                table
+                "UPDATE {} SET {} WHERE id = ? AND deleted_at IS NOT NULL AND version = ?",
+                table,
+                restore_set_clause(table)
             ),
         )
         .bind(id as i64)
@@ -212,8 +245,9 @@ impl TrashService {
         // Now restore: UPDATE with optimistic locking
         let result = sqlx::query(
             &format!(
-                "UPDATE {} SET deleted_at = NULL, version = version + 1 WHERE id = ? AND deleted_at IS NOT NULL AND version = ?",
-                table
+                "UPDATE {} SET {} WHERE id = ? AND deleted_at IS NOT NULL AND version = ?",
+                table,
+                restore_set_clause(table)
             ),
         )
         .bind(id as i64)
@@ -397,6 +431,25 @@ impl TrashService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_contributor_restore_leaves_its_legacy_slot() {
+        assert!(restore_set_clause("contributors").starts_with("legacy_duplicate_slot = 0, "));
+        for table in ["titles", "volumes", "borrowers", "series", "mcp_skills"] {
+            assert_eq!(restore_set_clause(table), "deleted_at = NULL, version = version + 1");
+        }
+    }
+
+    #[test]
+    fn a_restore_refusal_is_read_only_from_a_contributor_database_error() {
+        // Not a database error: never a refusal, whatever the table.
+        let conflict = AppError::Conflict("x".to_string());
+        assert_eq!(restore_refusal("contributors", &conflict), None);
+        // A database error that is not a duplicate entry.
+        let db = AppError::Database(sqlx::Error::RowNotFound);
+        assert_eq!(restore_refusal("contributors", &db), None);
+        assert_eq!(restore_refusal("titles", &db), None);
+    }
 
     #[sqlx::test(migrations = "./migrations")]
     async fn test_restore_clears_deleted_at_and_bumps_version(

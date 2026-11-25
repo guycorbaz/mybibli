@@ -131,6 +131,18 @@ impl VolumeModel {
         pool: &DbPool,
         label: &str,
     ) -> Result<Option<(VolumeModel, bool)>, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::find_by_label_any_state_in(&mut conn, label).await
+    }
+
+    /// [`Self::find_by_label_any_state`] on the given connection (story
+    /// 19-3: inside the add-a-volume transaction). A plain read: in that
+    /// transaction it follows only locking reads and the failed INSERT, so
+    /// it sees the row the INSERT waited for.
+    pub async fn find_by_label_any_state_in(
+        conn: &mut sqlx::MySqlConnection,
+        label: &str,
+    ) -> Result<Option<(VolumeModel, bool)>, AppError> {
         tracing::debug!(label = %label, "Looking up volume by label (any state)");
 
         // Same DECIMAL/TIMESTAMP casts as `find_by_label` (fix #288 and the
@@ -146,7 +158,7 @@ impl VolumeModel {
                WHERE label = ?"#,
         )
         .bind(label)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await?;
 
         match row {
@@ -175,51 +187,19 @@ impl VolumeModel {
         }
     }
 
-    /// How many loans — past or present — reference this volume (#442).
-    ///
-    /// Reusing a soft-deleted volume's row keeps its `id`, and `loans` point at
-    /// `volume_id`. Re-pointing a row that carries loan history would silently
-    /// re-attribute that history to a different physical copy, so the reuse
-    /// path refuses when this is non-zero.
-    pub async fn count_loans(pool: &DbPool, volume_id: u64) -> Result<i64, AppError> {
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM loans WHERE volume_id = ?")
-            .bind(volume_id)
-            .fetch_one(pool)
-            .await?;
-        Ok(row.0)
-    }
-
-    /// Reuse a soft-deleted volume row for a different physical copy (#442).
-    ///
-    /// Clears `deleted_at`, re-points `title_id`, and **wipes every
-    /// copy-specific field** — the sticker is going onto a different object, so
-    /// its condition, shelf, purchase price and valuation do not carry over.
-    /// The caller is responsible for the loan-history guard and for the audit
-    /// entry; this method deliberately does not decide policy.
-    pub async fn reactivate_for_reuse(
-        pool: &DbPool,
-        id: u64,
-        title_id: u64,
-    ) -> Result<(), AppError> {
-        tracing::info!(volume_id = id, title_id = title_id, "Reusing soft-deleted volume label");
-
-        sqlx::query(
-            "UPDATE volumes SET deleted_at = NULL, title_id = ?, condition_state_id = NULL, \
-             edition_comment = NULL, location_id = NULL, purchase_price = NULL, \
-             purchase_currency = NULL, current_value = NULL, current_value_currency = NULL, \
-             current_value_updated_at = NULL, under_audit_since = NULL, version = version + 1 \
-             WHERE id = ?",
-        )
-        .bind(title_id)
-        .bind(id)
-        .execute(pool)
-        .await?;
-
-        Ok(())
-    }
-
     pub async fn create(
         pool: &DbPool,
+        title_id: u64,
+        label: &str,
+    ) -> Result<VolumeModel, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::create_in(&mut conn, title_id, label).await
+    }
+
+    /// [`Self::create`] on the given connection (story 19-3: the add runs
+    /// in one transaction under the title's share lock).
+    pub async fn create_in(
+        conn: &mut sqlx::MySqlConnection,
         title_id: u64,
         label: &str,
     ) -> Result<VolumeModel, AppError> {
@@ -228,7 +208,7 @@ impl VolumeModel {
         let result = sqlx::query("INSERT INTO volumes (title_id, label) VALUES (?, ?)")
             .bind(title_id)
             .bind(label)
-            .execute(pool)
+            .execute(&mut *conn)
             .await;
 
         match result {

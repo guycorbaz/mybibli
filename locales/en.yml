@@ -241,7 +241,6 @@ feedback:
   isbn_invalid: "This code doesn't appear to be a valid ISBN. Please check the barcode and scan again."
   volume_created: "Volume %{label} attached to %{title}."
   volume_created_suggestion: "Scan L-code to shelve, or scan another V-code."
-  volume_duplicate: "Label %{label} is already assigned to %{title}. Scan a different label."
   volume_already_recorded: "Label %{label} is already recorded for this title."
   volume_on_other_title: "Label %{label} is already assigned to “%{title}”%{isbn}."
   volume_on_other_title_hint: "Scan another label for this book, or open the volume: from its page you can move it to the right title."
@@ -250,8 +249,7 @@ feedback:
   volume_on_unknown_title: "Label %{label} is already assigned to another title."
   volume_shelve_failed: "Volume %{label} was not shelved: the change could not be saved. Scan the label again; if it keeps failing, reload the page."
   active_location_gone: "Volume %{label} was not shelved: the active location no longer exists. Scan a location label to choose another one."
-  volume_label_reused: "Label %{label} reused for %{title}. It belonged to a deleted volume, whose condition, shelf and purchase details were discarded."
-  volume_label_in_trash_with_loans: "Label %{label} belongs to a deleted volume that still has loan history, so it can't be reused. Restore that volume, or delete it permanently from the Trash."
+  volume_label_in_trash: "Label %{label} belongs to a volume of “%{title}” that is in the Trash. Restore it, or delete it permanently from the Trash (administrator), then scan again."
   volume_label_race: "Label %{label} was being changed at the same moment. Scan it again."
   volume_no_title: "No title selected. Scan an ISBN first to establish a title context."
   title_page_title_gone: "This title was deleted meanwhile, so no volume was added. Open the title the volume belongs to, then enter its V-code again."
@@ -300,6 +298,7 @@ contributor:
     name_required: Contributor name is required.
     name_too_long: Contributor name must be 255 characters or less.
     role_not_found: Selected role does not exist.
+    name_taken: "Another contributor already has this name."
   form:
     name: Name
     role: Role
@@ -949,6 +948,7 @@ admin:
     days_remaining_critical: "<7 days"
     restore_success: "Restored: %{name}"
     restore_error_not_found: "That item is no longer in the trash. It may have been restored or purged already."
+    restore_contributor_name_taken: "“%{name}” was not restored: another contributor already has this name. Rename one of them, then restore it again."
     delete_permanent_success: "Deleted permanently: %{name}"
     delete_permanent_modal_title: "Delete permanently?"
     delete_permanent_modal_warning: "This cannot be undone."

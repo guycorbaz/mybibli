@@ -4,7 +4,8 @@
 //! the volumes section of `/title/{id}` and attaches a volume to **this**
 //! title through the V-code arm shared with `/catalog/scan`
 //! (`routes::vcode_volume`): same validation, same answers (existing label,
-//! CR #300 confirmation, label taken, #442 reuse).
+//! CR #300 confirmation, label taken, label of a volume in the Trash —
+//! story 19-3 D9).
 //!
 //! The page names its title, so the handler reads and writes nothing of the
 //! `/catalog` scanning session — no current title, last label, counter,
@@ -28,7 +29,6 @@ use crate::middleware::locale::Locale;
 use crate::models::title::TitleModel;
 use crate::models::volume::{VolumeModel, VolumeWithLocation};
 use crate::routes::vcode_volume::{self, ConfirmTarget, VcodeAdd};
-use crate::services::volume::VolumeCreation;
 use crate::utils::feedback_html;
 
 /// Where the field's answers land (replaced on each answer).
@@ -120,7 +120,7 @@ pub async fn add_volume(
 
     let existing = VolumeModel::find_by_label(pool, &code).await?;
     let action_url = format!("/title/{id}/volumes");
-    let creation = match vcode_volume::add_to_title(
+    let volume = match vcode_volume::add_to_title(
         pool,
         &session,
         &code,
@@ -138,14 +138,14 @@ pub async fn add_volume(
     {
         VcodeAdd::Answered(resp) => return Ok(resp),
         VcodeAdd::TitleGone => return Ok(title_gone_response(id, form.confirmed, loc)),
-        VcodeAdd::Created(creation) => creation,
+        VcodeAdd::Created(volume) => volume,
     };
 
     let title_name = TitleModel::find_by_id(pool, id)
         .await?
         .map(|t| t.title)
         .unwrap_or_else(|| "?".to_string());
-    let message = success_message(&creation, &title_name, loc);
+    let message = success_message(&volume.label, &title_name, loc);
     let volumes = VolumeModel::find_by_title(pool, id).await?;
     let count = volumes.len();
     let view = TitleVolumesView::new(volumes, true, loc);
@@ -181,20 +181,9 @@ fn title_gone_response(title_id: u64, confirmed: bool, loc: &str) -> Response {
     )
 }
 
-/// "Volume V0042 attached to …", or the #442 reuse wording, which takes
-/// precedence: the librarian must read that a previous copy's data was
-/// discarded.
-fn success_message(creation: &VolumeCreation, title: &str, loc: &str) -> String {
-    let label = &creation.volume().label;
-    match creation {
-        VolumeCreation::ReusedLabel(_) => {
-            rust_i18n::t!("feedback.volume_label_reused", locale = loc, label = label, title = title)
-        }
-        VolumeCreation::Created(_) => {
-            rust_i18n::t!("feedback.volume_created", locale = loc, label = label, title = title)
-        }
-    }
-    .to_string()
+/// "Volume V0042 attached to …".
+fn success_message(label: &str, title: &str, loc: &str) -> String {
+    rust_i18n::t!("feedback.volume_created", locale = loc, label = label, title = title).to_string()
 }
 
 /// The counts the page shows, swapped out of band as `<span>`s (not the
@@ -218,24 +207,6 @@ fn count_oob_html(count: usize, loc: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn volume(id: u64, label: &str) -> VolumeModel {
-        VolumeModel {
-            id,
-            label: label.to_string(),
-            title_id: 1,
-            location_id: None,
-            condition_state_id: None,
-            edition_comment: None,
-            version: 1,
-            purchase_price: None,
-            purchase_currency: None,
-            current_value: None,
-            current_value_currency: None,
-            current_value_updated_at: None,
-            under_audit_since: None,
-        }
-    }
 
     fn row(id: u64, label: &str) -> VolumeWithLocation {
         VolumeWithLocation {
@@ -283,12 +254,9 @@ mod tests {
     }
 
     #[test]
-    fn the_success_message_names_a_reused_label() {
-        let created = success_message(&VolumeCreation::Created(volume(1, "V0042")), "Tintin", "en");
-        let reused =
-            success_message(&VolumeCreation::ReusedLabel(volume(1, "V0042")), "Tintin", "en");
+    fn the_success_message_names_the_label_and_the_title() {
+        let created = success_message("V0042", "Tintin", "en");
         assert!(created.contains("V0042") && created.contains("Tintin"), "{created}");
-        assert_ne!(created, reused);
     }
 
     #[test]

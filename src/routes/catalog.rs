@@ -286,6 +286,46 @@ impl CatalogTemplate {
     }
 }
 
+/// #441 / story 19-3 (D3) — the title in context is gone when a V-code is
+/// scanned: drop the stale `current_title_id`, say so, empty the context
+/// banner and reset the guide; close the CR #300 modal when this answers its
+/// Confirm (`confirmed`). One answer for the check before the add and for
+/// the add's own "title gone" (deleted in between).
+async fn title_gone_reset(
+    pool: &crate::db::DbPool,
+    session: &Session,
+    stale_title_id: u64,
+    code: &str,
+    confirmed: bool,
+    loc: &str,
+) -> axum::response::Response {
+    if let Some(token) = &session.token {
+        let _ = SessionModel::clear_current_title(pool, token).await;
+    }
+    tracing::info!(
+        stale_title_id,
+        code = %code,
+        "V-code scanned with a deleted active title; context cleared"
+    );
+    let message = rust_i18n::t!("feedback.volume_no_title", locale = loc).to_string();
+    let resp = HtmxResponse {
+        main: feedback_html("warning", &message, ""),
+        oob: vec![
+            OobUpdate {
+                swap_mode: Default::default(),
+                target: "context-banner".to_string(),
+                content: String::new(),
+            },
+            OobUpdate {
+                swap_mode: Default::default(),
+                target: "guide-strip".to_string(),
+                content: guide_strip_html(rust_i18n::t!("guide.initial", locale = loc).as_ref()),
+            },
+        ],
+    };
+    super::vcode_volume::closing_modal(resp.into_response(), confirmed)
+}
+
 /// Compute guide message from session state.
 async fn compute_guide_message(pool: &crate::db::DbPool, session: &Session, loc: &str) -> String {
     let Some(token) = &session.token else {
@@ -602,37 +642,13 @@ pub async fn handle_scan(
                     .await?
                     .is_none()
                 {
-                    if let Some(token) = &session.token {
-                        let _ = SessionModel::clear_current_title(pool, token).await;
-                    }
-                    tracing::info!(
-                        stale_title_id = title_id,
-                        code = %code,
-                        "V-code scanned with a deleted active title; context cleared"
+                    return Ok(
+                        title_gone_reset(pool, &session, title_id, &code, form.confirmed, loc).await,
                     );
-                    let message = rust_i18n::t!("feedback.volume_no_title", locale = loc).to_string();
-                    let resp = HtmxResponse {
-                        main: feedback_html("warning", &message, ""),
-                        oob: vec![
-                            OobUpdate {
-                                swap_mode: Default::default(),
-                                target: "context-banner".to_string(),
-                                content: String::new(),
-                            },
-                            OobUpdate {
-                                swap_mode: Default::default(),
-                                target: "guide-strip".to_string(),
-                                content: guide_strip_html(
-                                    rust_i18n::t!("guide.initial", locale = loc).as_ref(),
-                                ),
-                            },
-                        ],
-                    };
-                    return Ok(resp.into_response());
                 }
 
                 // #585, CR #300, creation and its refusals: the shared arm.
-                let creation = match super::vcode_volume::add_to_title(
+                let volume = match super::vcode_volume::add_to_title(
                     pool,
                     &session,
                     &code,
@@ -649,18 +665,17 @@ pub async fn handle_scan(
                 .await?
                 {
                     super::vcode_volume::VcodeAdd::Answered(resp) => return Ok(resp),
+                    // Story 19-3 (D3) — deleted after the check above (e.g.
+                    // while the CR #300 modal was open): the same reset,
+                    // closing the modal when this answers its Confirm.
                     super::vcode_volume::VcodeAdd::TitleGone => {
-                        let message =
-                            rust_i18n::t!("feedback.volume_no_title", locale = loc).to_string();
-                        return Ok(Html(feedback_html("warning", &message, "")).into_response());
+                        return Ok(
+                            title_gone_reset(pool, &session, title_id, &code, form.confirmed, loc)
+                                .await,
+                        );
                     }
-                    super::vcode_volume::VcodeAdd::Created(creation) => creation,
+                    super::vcode_volume::VcodeAdd::Created(volume) => volume,
                 };
-                // #442 — a reused label discards the previous copy's
-                // data, so the librarian must be told in as many words.
-                let reused_label =
-                    matches!(creation, crate::services::volume::VolumeCreation::ReusedLabel(_));
-                let volume = creation.into_volume();
                 if let Some(token) = &session.token {
                     // Store last volume label for subsequent L-code scan
                     if let Err(e) =
@@ -760,21 +775,7 @@ pub async fn handle_scan(
                             .map(|t| (t.title.clone(), t.media_type.clone()))
                             .unwrap_or_else(|| ("?".to_string(), "book".to_string()));
 
-                    let (message, suggestion) = if reused_label {
-                        // #442 — reuse takes precedence over the
-                        // shelved/not-shelved split: discarding the
-                        // previous copy's data is the thing the
-                        // librarian most needs to read.
-                        (
-                            rust_i18n::t!(
-                                "feedback.volume_label_reused", locale = loc,
-                                label = &volume.label,
-                                title = &title.0
-                            )
-                            .to_string(),
-                            String::new(),
-                        )
-                    } else if let Some(ref path) = shelved_path {
+                    let (message, suggestion) = if let Some(ref path) = shelved_path {
                         (
                             rust_i18n::t!(
                                 "feedback.volume_created_and_shelved", locale = loc,

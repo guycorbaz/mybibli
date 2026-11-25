@@ -20,7 +20,7 @@ use crate::middleware::auth::Session;
 use crate::models::title::TitleModel;
 use crate::models::volume::VolumeModel;
 use crate::routes::catalog_volumes::VolumeConfirmAddModalTemplate;
-use crate::services::volume::{VolumeCreation, VolumeService};
+use crate::services::volume::{VolumeAdd, VolumeService};
 use crate::utils::{feedback_html, html_escape};
 
 /// The canonical V-code of `input` (`v0042` → `V0042`), or `None` when it
@@ -53,8 +53,8 @@ pub enum VcodeAdd {
     Answered(Response),
     /// The title vanished before the volume could be attached (#441).
     TitleGone,
-    /// The volume now labels a volume of the title.
-    Created(VolumeCreation),
+    /// A new volume of the title now carries the label.
+    Created(VolumeModel),
 }
 
 /// Add the volume labelled `code` (already canonical, see [`read_vcode`]) to
@@ -74,11 +74,7 @@ pub async fn add_to_title(
     // #585 — the label already labels a live volume: never try to create it
     // again; say whose it is instead.
     if let Some(existing) = existing {
-        let resp = super::catalog_existing_label::existing_label_response(
-            pool, existing, title_id, loc,
-        )
-        .await?;
-        return Ok(VcodeAdd::Answered(closing_modal(resp, confirmed)));
+        return label_live_answer(pool, existing, title_id, confirmed, loc).await;
     }
 
     // CR #300: when the title already has volumes and the librarian has not
@@ -103,8 +99,15 @@ pub async fn add_to_title(
         }
     }
 
-    match VolumeService::create_volume_in(pool, code, title_id, session.user_id, loc).await {
-        Ok(creation) => Ok(VcodeAdd::Created(creation)),
+    match VolumeService::create_volume_in(pool, code, title_id, loc).await {
+        Ok(VolumeAdd::Created(volume)) => Ok(VcodeAdd::Created(volume)),
+        // Story 19-3 (D2) — the label went live between the caller's
+        // pre-check and the INSERT (a concurrent post of the same code):
+        // the same #585 answer as the pre-check.
+        Ok(VolumeAdd::LabelLive(live)) => {
+            tracing::info!(code = %code, title_id, "V-code taken meanwhile; answered as an existing label");
+            label_live_answer(pool, &live, title_id, confirmed, loc).await
+        }
         Err(e) => {
             // #585 — a refusal of the librarian's input is not a server
             // fault: warn, keep `error` for the rest.
@@ -114,6 +117,8 @@ pub async fn add_to_title(
                 tracing::error!(error = %e, code = %code, "V-code scan failed");
             }
             let (level, message) = match e {
+                // Including story 19-3 D9: a label held by a volume in the
+                // Trash.
                 AppError::BadRequest(msg) => ("error", msg),
                 // Already user-facing copy (e.g. volume_label_race).
                 AppError::Conflict(msg) => ("warning", msg),
@@ -130,9 +135,24 @@ pub async fn add_to_title(
     }
 }
 
+/// #585 — `existing` (live) already carries the label: "already recorded"
+/// for this title, a warning + link for another one.
+async fn label_live_answer(
+    pool: &DbPool,
+    existing: &VolumeModel,
+    title_id: u64,
+    confirmed: bool,
+    loc: &str,
+) -> Result<VcodeAdd, AppError> {
+    let resp =
+        super::catalog_existing_label::existing_label_response(pool, existing, title_id, loc)
+            .await?;
+    Ok(VcodeAdd::Answered(closing_modal(resp, confirmed)))
+}
+
 /// An answer to the CR #300 modal's Confirm (`confirmed`) closes the modal
 /// too, after the swap: a refusal at that point (the label taken meanwhile,
-/// a label in the Trash with loans) must not sit behind an open dialog.
+/// a label held by a volume in the Trash) must not sit behind an open dialog.
 pub fn closing_modal(mut resp: Response, confirmed: bool) -> Response {
     if confirmed {
         resp.headers_mut().insert(

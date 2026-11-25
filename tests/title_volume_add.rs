@@ -227,36 +227,30 @@ async fn an_anonymous_visitor_sees_no_field_and_cannot_add(pool: DbPool) {
     assert_eq!(volume_count(&pool).await, 0);
 }
 
-/// Insert a deleted volume `label` on `title_id`, with a returned loan when
-/// `with_loan` (#442: such a label cannot be reused).
-async fn trashed_volume(pool: &DbPool, title_id: u64, label: &str, with_loan: bool) {
+/// Insert a deleted volume `label` on `title_id`.
+async fn trashed_volume(pool: &DbPool, title_id: u64, label: &str) {
     let volume = add_volume(pool, title_id, label, None).await;
-    if with_loan {
-        let borrower = sqlx::query("INSERT INTO borrowers (name) VALUES ('Past borrower')")
-            .execute(pool)
-            .await
-            .unwrap()
-            .last_insert_id();
-        sqlx::query("INSERT INTO loans (volume_id, borrower_id, returned_at) VALUES (?, ?, NOW())")
-            .bind(volume)
-            .bind(borrower)
-            .execute(pool)
-            .await
-            .unwrap();
-    }
     soft_delete(pool, "volumes", volume).await;
 }
 
+/// Story 19-3 D9 — a label held by a volume in the Trash is refused, naming
+/// that volume's title; nothing is created.
 #[sqlx::test(migrations = "./migrations")]
-async fn a_label_in_the_trash_follows_the_reuse_rules(pool: DbPool) {
+async fn a_label_in_the_trash_is_refused(pool: DbPool) {
     let (router, browser, title) = setup(&pool).await;
-    let old = seed_title(&pool, "L'Oreille cassée").await;
-    trashed_volume(&pool, old, "V0660", false).await;
+    let old = seed_title(&pool, "Tintin au Congo").await;
+    trashed_volume(&pool, old, "V0660").await;
+    let before = volume_count(&pool).await;
 
     let (status, body) = add(&router, &browser, title, "V0660", false).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("reused"), "#442 reuse named: {body}");
-    assert_eq!(labels_of(&pool, title).await, vec!["V0660".to_string()]);
+    assert!(body.contains("border-red-500"), "refused: {body}");
+    assert!(
+        body.contains("Label V0660 belongs to a volume of “Tintin au Congo” that is in the Trash."),
+        "D9 refusal: {body}"
+    );
+    assert!(labels_of(&pool, title).await.is_empty());
+    assert_eq!(volume_count(&pool).await, before);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -267,15 +261,18 @@ async fn a_service_refusal_is_in_the_request_locale(pool: DbPool) {
         .execute(&pool)
         .await
         .unwrap();
-    let old = seed_title(&pool, "Le Sceptre d'Ottokar").await;
-    trashed_volume(&pool, old, "V0661", true).await;
+    let old = seed_title(&pool, "Objectif Lune").await;
+    trashed_volume(&pool, old, "V0661").await;
 
     let (status, body) = add(&router, &browser, title, "V0661", false).await;
 
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("border-red-500"), "refused: {body}");
-    assert!(body.contains("historique de prêts"), "French: {body}");
-    assert!(!body.contains("loan history"), "not English: {body}");
+    assert!(
+        body.contains("appartient à un volume de « Objectif Lune » qui est dans la corbeille"),
+        "French: {body}"
+    );
+    assert!(!body.contains("in the Trash"), "not English: {body}");
     assert!(labels_of(&pool, title).await.is_empty());
 }
 

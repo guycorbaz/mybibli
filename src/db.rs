@@ -6,6 +6,15 @@ use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
 /// Type alias for the database connection pool.
 pub type DbPool = MySqlPool;
 
+/// Story 17-6 review — a duplicate entry exactly (MySQL error 1062), not
+/// the whole 23000 class (foreign key, NOT NULL, CHECK…). Shared since
+/// story 19-3 (contributor names).
+pub fn is_duplicate_entry(err: &sqlx::Error) -> bool {
+    err.as_database_error()
+        .and_then(|db| db.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>())
+        .is_some_and(|db| db.number() == 1062)
+}
+
 /// Create a database connection pool from the given URL.
 /// The URL must include `?charset=utf8mb4` for proper Unicode support.
 ///

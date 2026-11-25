@@ -237,7 +237,6 @@ feedback:
   isbn_invalid: "Questo codice non sembra un ISBN valido. Controlla il codice a barre e ripeti la scansione."
   volume_created: "Esemplare %{label} collegato a %{title}."
   volume_created_suggestion: "Scansiona un codice L per collocare, oppure un altro codice V."
-  volume_duplicate: "L'etichetta %{label} è già assegnata a %{title}. Scansiona un'etichetta diversa."
   volume_already_recorded: "L'etichetta %{label} è già registrata per questo titolo."
   volume_on_other_title: "L'etichetta %{label} è già assegnata a «%{title}»%{isbn}."
   volume_on_other_title_hint: "Scansiona un'altra etichetta per questo libro, oppure apri l'esemplare: dalla sua pagina puoi spostarlo sul titolo giusto."
@@ -246,8 +245,7 @@ feedback:
   volume_on_unknown_title: "L'etichetta %{label} è già assegnata a un altro titolo."
   volume_shelve_failed: "L'esemplare %{label} non è stato collocato: la modifica non è stata salvata. Scansiona di nuovo l'etichetta; se il problema persiste, ricarica la pagina."
   active_location_gone: "L'esemplare %{label} non è stato collocato: la posizione attiva non esiste più. Scansiona l'etichetta di una posizione per sceglierne un'altra."
-  volume_label_reused: "Etichetta %{label} riutilizzata per %{title}. Apparteneva a un esemplare eliminato, di cui stato, collocazione e dati di acquisto sono stati scartati."
-  volume_label_in_trash_with_loans: "L'etichetta %{label} appartiene a un esemplare eliminato che ha uno storico prestiti, quindi non può essere riutilizzata. Ripristina quell'esemplare oppure eliminalo definitivamente dal cestino."
+  volume_label_in_trash: "L'etichetta %{label} appartiene a un esemplare di «%{title}» che si trova nel cestino. Ripristinalo, oppure eliminalo definitivamente dal cestino (amministratore), poi scansiona di nuovo."
   volume_label_race: "L'etichetta %{label} è stata modificata nello stesso momento. Scansionala di nuovo."
   volume_no_title: "Nessun titolo selezionato. Scansiona prima un ISBN per stabilire un titolo di contesto."
   title_page_title_gone: "Questo titolo è stato eliminato nel frattempo, quindi nessun esemplare è stato aggiunto. Apri il titolo a cui appartiene l’esemplare, poi inserisci di nuovo il suo codice V."
@@ -296,6 +294,7 @@ contributor:
     name_required: Il nome del collaboratore è obbligatorio.
     name_too_long: Il nome del collaboratore deve essere al massimo 255 caratteri.
     role_not_found: Il ruolo selezionato non esiste.
+    name_taken: "Un altro collaboratore ha già questo nome."
   form:
     name: Nome
     role: Ruolo
@@ -922,6 +921,7 @@ admin:
     days_remaining_critical: "<7 giorni"
     restore_success: "Ripristinato: %{name}"
     restore_error_not_found: "Questo elemento non è più nel cestino. Probabilmente è già stato ripristinato o eliminato definitivamente."
+    restore_contributor_name_taken: "«%{name}» non è stato ripristinato: un altro collaboratore ha già questo nome. Rinomina uno dei due, poi ripristinalo di nuovo."
     delete_permanent_success: "Eliminato definitivamente: %{name}"
     delete_permanent_modal_title: "Eliminare definitivamente?"
     delete_permanent_modal_warning: "Questa azione non può essere annullata."

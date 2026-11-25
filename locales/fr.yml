@@ -243,7 +243,6 @@ feedback:
   isbn_invalid: "Ce code ne semble pas être un ISBN valide. Vérifiez le code-barres et réessayez."
   volume_created: "Volume %{label} attaché à %{title}."
   volume_created_suggestion: "Scannez un code L pour ranger, ou scannez un autre code V."
-  volume_duplicate: "Le label %{label} est déjà assigné à %{title}. Scannez un autre label."
   volume_already_recorded: "Le label %{label} est déjà enregistré pour ce titre."
   volume_on_other_title: "Le label %{label} est déjà attribué à « %{title} »%{isbn}."
   volume_on_other_title_hint: "Scannez un autre label pour ce livre, ou ouvrez le volume : depuis sa page, vous pouvez le déplacer vers le bon titre."
@@ -252,8 +251,7 @@ feedback:
   volume_on_unknown_title: "Le label %{label} est déjà attribué à un autre titre."
   volume_shelve_failed: "Le volume %{label} n'a pas été rangé : la modification n'a pas pu être enregistrée. Scannez à nouveau le label ; si l'échec persiste, rechargez la page."
   active_location_gone: "Le volume %{label} n'a pas été rangé : l'emplacement actif n'existe plus. Scannez le label d'un emplacement pour en choisir un autre."
-  volume_label_reused: "Label %{label} réutilisé pour %{title}. Il appartenait à un volume supprimé, dont l'état, l'emplacement et les informations d'achat ont été écartés."
-  volume_label_in_trash_with_loans: "Le label %{label} appartient à un volume supprimé qui a un historique de prêts, il ne peut donc pas être réutilisé. Restaurez ce volume, ou supprimez-le définitivement depuis la corbeille."
+  volume_label_in_trash: "L'étiquette %{label} appartient à un volume de « %{title} » qui est dans la corbeille. Restaurez-le, ou supprimez-le définitivement depuis la corbeille (administrateur), puis scannez à nouveau."
   volume_label_race: "Le label %{label} a été modifié au même moment. Scannez-le à nouveau."
   volume_no_title: "Aucun titre sélectionné. Scannez d'abord un ISBN pour établir un contexte."
   title_page_title_gone: "Ce titre a été supprimé entre-temps, aucun volume n’a donc été ajouté. Ouvrez le titre auquel appartient le volume, puis saisissez à nouveau son code V."
@@ -302,6 +300,7 @@ contributor:
     name_required: Le nom du contributeur est obligatoire.
     name_too_long: Le nom du contributeur doit faire 255 caractères ou moins.
     role_not_found: Le rôle sélectionné n'existe pas.
+    name_taken: "Un autre contributeur porte déjà ce nom."
   form:
     name: Nom
     role: Rôle
@@ -946,6 +945,7 @@ admin:
     days_remaining_critical: "<7 jours"
     restore_success: "Restauré : %{name}"
     restore_error_not_found: "Cet élément n'est plus dans la corbeille. Il a peut-être déjà été restauré ou purgé."
+    restore_contributor_name_taken: "« %{name} » n'a pas été restauré : un autre contributeur porte déjà ce nom. Renommez l'un des deux, puis restaurez-le à nouveau."
     delete_permanent_success: "Supprimé définitivement : %{name}"
     delete_permanent_modal_title: "Supprimer définitivement ?"
     delete_permanent_modal_warning: "Ceci ne peut pas être annulé."

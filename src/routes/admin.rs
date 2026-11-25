@@ -966,10 +966,29 @@ pub async fn admin_trash_restore(
             id,
             version,
         )
-        .await?
+        .await
     } else {
-        crate::services::trash::TrashService::restore(&state.pool, &table, id, version).await?
+        crate::services::trash::TrashService::restore(&state.pool, &table, id, version).await
     };
+    // Story 19-3 (D7) — a contributor whose name is live again stays in the
+    // Trash. Propagated as a `Conflict`: it lands in `#feedback-list` from
+    // the panel's Restore, in the modal's error region from its Confirm.
+    let restored = restored.map_err(|e| {
+        match crate::services::trash::restore_refusal(&table, &e) {
+            Some(crate::services::trash::RestoreRefusal::ContributorNameTaken) => {
+                tracing::info!(id, name = %entry.item_name, "Contributor restore refused: name taken");
+                AppError::Conflict(
+                    rust_i18n::t!(
+                        "admin.trash.restore_contributor_name_taken",
+                        locale = loc,
+                        name = &entry.item_name
+                    )
+                    .to_string(),
+                )
+            }
+            None => e,
+        }
+    })?;
 
     // Forensics, mirroring `permanent_delete_from_trash` — restoring a
     // row is the inverse of purging it and belongs in the same trail.
