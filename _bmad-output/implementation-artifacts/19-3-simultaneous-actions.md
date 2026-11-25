@@ -161,3 +161,38 @@ Claude Opus 5.5 (claude-opus-5-5)
 - `tests/e2e/specs/journeys/catalog-phantom-volume-confirm.spec.ts`
 - `CLAUDE.md`
 - `_bmad-output/implementation-artifacts/19-3-simultaneous-actions.md`
+
+## Senior Developer Review (AI)
+
+**Date:** 2026-11-25 · **Outcome:** changes made — one Medium finding fixed; a re-review is due (Rule #6). Status stays `review`.
+
+Layers: a manual adversarial pass over the whole diff, plus an Edge Case Hunter subagent with project access. Acceptance criteria were checked against D1–D8.
+
+### Findings
+
+- **[Medium] Fixed — the D1 reuse guard took a range lock and deadlocked two reuses of one label** (`src/models/volume.rs::reactivate_for_reuse_in`).
+  - The statement was `UPDATE volumes … WHERE id = ? AND deleted_at IS NOT NULL`. MariaDB 10.11 plans it on `idx_volumes_deleted_at` (a range scan) when that index is estimated as cheap as the primary key, for example when the Trash holds one volume. `EXPLAIN` gives `range` on `idx_volumes_deleted_at`.
+  - That plan next-key locks the trashed volumes up to the end of the index, against Rule #22. It deadlocks with the concurrent reuse D1 is meant to handle (1213 on the competitor), and it blocks any volume going to the Trash while the add runs.
+  - **Fix:** the guard is now a locking read by primary key (`SELECT CAST(deleted_at AS DATETIME) … WHERE id = ? FOR UPDATE`), followed by `UPDATE … WHERE id = ?`. Both statements use the primary key only. The behaviour is unchanged: `false` means not reused (live, or purged).
+- **[Medium] Fixed — the guard's 0-rows branch had no test.** D1 required this coverage. `two_reuses_of_one_trashed_label_reuse_it_once` resolves through the `!is_deleted` path, because its INSERT waits and the plain read then sees the row live. With the guard removed, every test stayed green.
+  - New `a_reuse_losing_the_row_at_its_update_returns_the_live_volume`: the competitor holds the trashed row unchanged, the add reaches its reactivation and waits there, then the competitor reuses the label and commits. The add must return `LabelLive` and write no audit row.
+  - It fails without the guard: the volume is moved to the second title. It also fails with the previous guarded UPDATE, on a 1213 deadlock.
+  - New lock-scope test `a_reuse_of_one_label_does_not_lock_other_trashed_volumes`: it fails on the previous code with a 1205 lock-wait timeout.
+- **[Low] Fixed — `a_find_or_create_inserts_when_the_competing_insert_rolls_back` asserted no wait.** It could pass by scheduling alone. It now checks that the second insert waits before the rollback.
+
+### Not fixed (Low, to file as issues)
+
+- A rename or Trash restore onto a name held only by legacy duplicates is not refused. This happens once the oldest (slot 0) namesake has been trashed or renamed, because the remaining live namesakes have slot = id. This is a limit of the accepted D4 design; merging the duplicates is #591.
+- `find_or_create_in`'s fast path is a plain, unlocked read. Inside an acceptance's older snapshot, or racing `delete_contributor`'s count-then-delete, it can link a credit to a contributor that has just been trashed. This race existed before the story.
+- A Trash restore's `UPDATE … WHERE id = ? AND deleted_at IS NOT NULL AND version = ?` (every table) can take the same `idx_*_deleted_at` range plan. This predates the story.
+- A label reuse racing an auto-purge of the same trashed volume can deadlock. The INSERT's duplicate S lock is now held to the end of the transaction. The case is very rare, and the answer is "internal error", with nothing corrupted.
+- The background author fetch now applies `MAX_CONTRIBUTOR_NAME_BYTES`: an author name over 255 bytes but within 255 characters is no longer added (warning logged).
+- The race answers assume `innodb_snapshot_isolation=OFF`, the 10.11 default. On MariaDB ≥ 11.6, error 1020 would surface instead of 0 rows or a resolution. This needs revisiting with the engine bump.
+- The `uq_contributors_live_name` ODKU hit takes an X next-key lock held to the end of a metadata acceptance. This was accepted in the Guardrails; there is no lock-scope test for it.
+
+### Verification
+
+- `cargo clippy --all-targets -- -D warnings` clean.
+- `cargo test --test integration -- volume_add_races:: contributor_live_name:: volume_label_reuse:: title_volume_add:: scan_vcode_case:: volume_move::`: 69 passed.
+- No typed query changed (`.sqlx` unaffected).
+- The fix changes no E2E-visible copy or HTMX answer.

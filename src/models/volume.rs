@@ -212,30 +212,46 @@ impl VolumeModel {
     /// The caller is responsible for the loan-history guard and for the audit
     /// entry; this method deliberately does not decide policy.
     ///
-    /// Story 19-3 (D1): only a row still in the Trash is reused (`deleted_at
-    /// IS NOT NULL` — a current read, so it waits for a concurrent reuse of
-    /// the same label and then sees it live). Returns `false` when nothing
-    /// was reused: the label went live meanwhile.
+    /// Story 19-3 (D1): only a row still in the Trash is reused. The row is
+    /// locked by primary key first (a current read, so it waits for a
+    /// concurrent reuse of the same label and then sees it live); returns
+    /// `false` when nothing was reused: the label went live (or was purged)
+    /// meanwhile.
+    ///
+    /// Review of 19-3 (Rule #22): both statements name the primary key only.
+    /// A `deleted_at IS NOT NULL` in the UPDATE's `WHERE` made MariaDB scan
+    /// `idx_volumes_deleted_at` (a range: every trashed volume, next-key
+    /// locked), which deadlocked two reuses of one label.
     pub async fn reactivate_for_reuse_in(
         conn: &mut sqlx::MySqlConnection,
         id: u64,
         title_id: u64,
     ) -> Result<bool, AppError> {
+        let deleted_at: Option<Option<chrono::NaiveDateTime>> =
+            sqlx::query_scalar("SELECT CAST(deleted_at AS DATETIME) FROM volumes WHERE id = ? FOR UPDATE")
+                .bind(id)
+                .fetch_optional(&mut *conn)
+                .await?;
+        if !matches!(deleted_at, Some(Some(_))) {
+            tracing::info!(volume_id = id, "Volume label no longer in the Trash; not reused");
+            return Ok(false);
+        }
+
         tracing::info!(volume_id = id, title_id = title_id, "Reusing soft-deleted volume label");
 
-        let done = sqlx::query(
+        sqlx::query(
             "UPDATE volumes SET deleted_at = NULL, title_id = ?, condition_state_id = NULL, \
              edition_comment = NULL, location_id = NULL, purchase_price = NULL, \
              purchase_currency = NULL, current_value = NULL, current_value_currency = NULL, \
              current_value_updated_at = NULL, under_audit_since = NULL, version = version + 1 \
-             WHERE id = ? AND deleted_at IS NOT NULL",
+             WHERE id = ?",
         )
         .bind(title_id)
         .bind(id)
         .execute(&mut *conn)
         .await?;
 
-        Ok(done.rows_affected() == 1)
+        Ok(true)
     }
 
     pub async fn create(

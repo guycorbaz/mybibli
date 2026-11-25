@@ -108,8 +108,12 @@ async fn a_find_or_create_inserts_when_the_competing_insert_rolls_back(pool: DbP
         .unwrap();
 
     let p = pool.clone();
-    let second =
+    let mut second =
         tokio::spawn(async move { ContributorService::find_or_create(&p, "Grzegorz Rosiński").await });
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), &mut second).await.is_err(),
+        "the second insert must wait on the first one's key"
+    );
     tx_a.rollback().await.unwrap();
 
     let created = second.await.unwrap().unwrap();

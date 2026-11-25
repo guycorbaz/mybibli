@@ -206,6 +206,100 @@ async fn two_reuses_of_one_trashed_label_reuse_it_once(pool: DbPool) {
     assert_eq!(audits, 0, "the second add reused nothing");
 }
 
+/// Review of story 19-3 — the guarded reactivation itself (D1). The add's
+/// plain read sees the label in the Trash (the competitor holds the row but
+/// has not changed it yet), so it reaches the reactivation and waits there;
+/// the competitor then reuses the label and commits. The add's UPDATE
+/// re-reads the row live: it reuses nothing (`AND deleted_at IS NOT NULL`),
+/// rolls back and answers the live volume. Without the guard it would move
+/// the volume to its own title and wipe it a second time.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_reuse_losing_the_row_at_its_update_returns_the_live_volume(pool: DbPool) {
+    let admin = admin_id(&pool).await;
+    let old = seed_title(&pool, "Old").await;
+    let first = seed_title(&pool, "First").await;
+    let second = seed_title(&pool, "Second").await;
+    let vol = add_volume(&pool, old, "V1942", None).await;
+    soft_delete(&pool, "volumes", vol).await;
+
+    // The competitor holds the trashed row, unchanged so far.
+    let mut tx_a = pool.begin().await.unwrap();
+    assert!(title_is_live_in(&mut tx_a, first).await.unwrap());
+    sqlx::query("SELECT id FROM volumes WHERE id = ? FOR UPDATE")
+        .bind(vol)
+        .execute(&mut *tx_a)
+        .await
+        .unwrap();
+
+    let mut add = spawn_add(&pool, "V1942", second, Some(admin));
+    assert_waiting(&mut add).await;
+
+    assert!(VolumeModel::reactivate_for_reuse_in(&mut tx_a, vol, first).await.unwrap());
+    tx_a.commit().await.unwrap();
+
+    match add.await.unwrap() {
+        Ok(VolumeAdd::LabelLive(live)) => {
+            assert_eq!(live.id, vol);
+            assert_eq!(live.title_id, first);
+        }
+        other => panic!("expected LabelLive, got {other:?}"),
+    }
+    assert_eq!(volume_state(&pool, "V1942").await, (first, false), "it stays on the first title");
+    let audits: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM admin_audit WHERE action = 'volume_label_reused'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(audits, 0, "the add reused nothing");
+}
+
+/// Review of story 19-3 (Rule #22) — a reuse locks its own volume row by
+/// primary key, not the range of trashed volumes: a volume going to the
+/// Trash and the reuse of that other label do not wait for it. (With a
+/// `deleted_at IS NOT NULL` in the reuse's UPDATE, MariaDB scanned
+/// `idx_volumes_deleted_at` when the Trash held one volume, next-key locking
+/// the range up to its end.)
+#[sqlx::test(migrations = "./migrations")]
+async fn a_reuse_of_one_label_does_not_lock_other_trashed_volumes(pool: DbPool) {
+    let old = seed_title(&pool, "Old").await;
+    let a = seed_title(&pool, "Titre A").await;
+    let b = seed_title(&pool, "Titre B").await;
+    let vol_a = add_volume(&pool, old, "V1943", None).await;
+    let vol_b = add_volume(&pool, old, "V1944", None).await;
+    add_volume(&pool, old, "V1945", None).await;
+    soft_delete(&pool, "volumes", vol_a).await;
+
+    // Transaction 1: the reuse of V1943, kept open.
+    let mut tx1 = pool.begin().await.unwrap();
+    assert!(title_is_live_in(&mut tx1, a).await.unwrap());
+    assert!(VolumeModel::reactivate_for_reuse_in(&mut tx1, vol_a, a).await.unwrap());
+
+    // Transaction 2: V1944 goes to the Trash, then its label is reused.
+    let mut tx2 = pool.begin().await.unwrap();
+    sqlx::query("SET SESSION innodb_lock_wait_timeout = 2")
+        .execute(&mut *tx2)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE volumes SET deleted_at = NOW() WHERE id = ?")
+        .bind(vol_b)
+        .execute(&mut *tx2)
+        .await
+        .expect("trashing a volume must not wait for V1943's reuse");
+    assert!(title_is_live_in(&mut tx2, b).await.unwrap());
+    assert!(
+        VolumeModel::reactivate_for_reuse_in(&mut tx2, vol_b, b)
+            .await
+            .expect("reusing another trashed label must not wait for V1943's reuse")
+    );
+    tx2.commit().await.unwrap();
+    tx1.commit().await.unwrap();
+
+    assert_eq!(volume_state(&pool, "V1943").await, (a, false));
+    assert_eq!(volume_state(&pool, "V1944").await, (b, false));
+    assert_eq!(volume_state(&pool, "V1945").await, (old, false));
+}
+
 // ─── AC2: the add's lock is one title row ─────────────────────────────
 
 #[sqlx::test(migrations = "./migrations")]
