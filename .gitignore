@@ -36,6 +36,10 @@ docker-compose.override.yml
 # Cover images (stored in Docker volume, not in repo)
 /data/covers/
 
+# Story 19-6 (#657): backups written by `cargo run` (./backups) or by the
+# compose bind mount. They hold password and API-key hashes: never commit.
+/backups/
+
 # Claude Code (local settings + auto-memory, not shared)
 .claude/settings.local.json
 .claude/settings.json

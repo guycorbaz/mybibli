@@ -21,6 +21,10 @@ services:
       # integrated dev stack keeps `admin/admin` / `librarian/librarian`
       # working out of the box. NEVER set this on a production deployment.
       MYBIBLI_SEED_DEV_USERS: "1"
+    volumes:
+      # Story 19-6 (#657) — the backups folder. mybibli never creates it;
+      # without the mount, Admin → Backups refuses and says why.
+      - ./backups:/app/backups
     depends_on:
       db:
         condition: service_healthy

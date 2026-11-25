@@ -25,6 +25,8 @@ mod api_v1_patch_titles;
 mod api_v1_series;
 mod audit_list_non_empty;
 mod auth_service;
+mod backup_round_trip;
+mod backup_write;
 mod borrower_delete_modal;
 mod connection_lost_overlay;
 mod contextual_help_tooltips;

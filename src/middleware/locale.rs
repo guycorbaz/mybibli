@@ -271,6 +271,7 @@ mod middleware_integration_tests {
                 crate::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
             )),
         log_level_reloader: crate::noop_log_level_reloader(),
+        backup: Default::default(),
         }
     }
 

@@ -409,6 +409,12 @@ series:
   omnibus_help_text: "Cochez quand le livre regroupe plusieurs volumes de la série (par ex. une intégrale tomes 1–3). Le formulaire révèle alors un champ 'Position de fin' pour que le titre couvre une plage de positions au lieu d'une seule."
   select_series: "Sélectionner une série..."
 error:
+  # Story 19-6 (#657) — backup refusals and failure (D8).
+  backup:
+    folder_missing: "Aucune sauvegarde n'a été écrite : le dossier de sauvegarde %{path} n'existe pas. Montez un dossier à cet endroit (voir le manuel, « Sauvegardes »), puis réessayez."
+    folder_not_writable: "Aucune sauvegarde n'a été écrite : mybibli ne peut pas écrire dans %{path}. Donnez au compte du conteneur le droit d'écrire dans ce dossier (voir le manuel), puis réessayez."
+    already_running: "Une sauvegarde est déjà en cours d'écriture. Attendez qu'elle se termine ; elle s'affichera ici."
+    failed: "La sauvegarde n'a pas pu être écrite ; rien n'a été conservé. Réessayez ; si l'échec se répète, les journaux en donnent la raison."
   # Story 15-2 (#614) — MCP skills validation and write errors.
   mcp_skills:
     name_required: "Le nom est obligatoire"
@@ -919,6 +925,14 @@ admin:
     system: "Système"
     api_keys: "Clés d'API"
     skills: "Compétences"
+    backups: "Sauvegardes"
+  # Story 19-6 (#657, D7) — Admin → Backups.
+  backups:
+    run: "Sauvegarder maintenant"
+    folder_ready: "Dossier : %{path} — prêt"
+    folder_missing: "Dossier : %{path} — absent"
+    folder_not_writable: "Dossier : %{path} — non accessible en écriture"
+    written: "Sauvegarde écrite : %{file} (%{size}, %{titles} titres, %{covers} couvertures)."
   trash:
     badge_aria: "Corbeille, %{count} éléments"
     heading: "Corbeille (éléments supprimés)"
@@ -965,6 +979,7 @@ admin:
     versions_heading: Versions
     app_version: "Version de l'application"
     db_version: "Version de la base de données"
+    instance_id: "Identifiant d'instance"
     disk_usage: "Espace disque"
     disk_usage_format: "%{used} / %{total} utilisés (%{pct} %)"
     disk_usage_unknown: Inconnu

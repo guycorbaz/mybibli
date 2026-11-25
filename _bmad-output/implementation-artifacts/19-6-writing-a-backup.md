@@ -1,6 +1,6 @@
 # Story 19.6: Writing a backup (#657, part 1)
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -110,13 +110,13 @@ Practice A3: the format (D2), the tab (D7) and the messages (D8) are settled wit
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `instance_id` setting via `run_once` + Health line (D4, AC6).
-- [ ] T2 — `services/backup/` (split by concern, Rule #12: `mod.rs` API + guard, `dump.rs` SQL writer, `archive.rs` tar/gzip + manifest + sidecar, `covers.rs`) (D2–D6).
-- [ ] T3 — `routes/admin_backups.rs` + `AdminTab::Backups` + template + nav of admin tabs (D7, AC7).
-- [ ] T4 — locales ×4 (D8).
-- [ ] T5 — Config `MYBIBLI_BACKUP_DIR`; compose files and the E2E compose mount (D1).
-- [ ] T6 — Tests: unit tests (literal building, name shape, manifest), integration tests `tests/backup_write.rs` (AC1–AC4), `tests/backup_round_trip.rs` (AC5), declared in `tests/integration.rs`; E2E `admin-backups.spec.ts` (new spec id).
-- [ ] T7 — Manual EN/FR, `CLAUDE.md` Key Patterns line, `docs/auth-threat-model.md` note (sensitive file), gates.
+- [x] T1 — `instance_id` setting via `run_once` + Health line (D4, AC6).
+- [x] T2 — `services/backup/` (split by concern, Rule #12: `mod.rs` API + guard, `dump.rs` SQL writer, `archive.rs` tar/gzip + manifest + sidecar, `covers.rs`) (D2–D6).
+- [x] T3 — `routes/admin_backups.rs` + `AdminTab::Backups` + template + nav of admin tabs (D7, AC7).
+- [x] T4 — locales ×4 (D8).
+- [x] T5 — Config `MYBIBLI_BACKUP_DIR`; compose files and the E2E compose mount (D1).
+- [x] T6 — Tests: unit tests (literal building, name shape, manifest), integration tests `tests/backup_write.rs` (AC1–AC4), `tests/backup_round_trip.rs` (AC5), declared in `tests/integration.rs`; E2E `admin-backups.spec.ts` (new spec id).
+- [x] T7 — Manual EN/FR, `CLAUDE.md` Key Patterns line, `docs/auth-threat-model.md` note (sensitive file), gates.
 
 ## Dev Notes
 
@@ -152,8 +152,57 @@ D2, D7 and D8 were approved by the project lead before development (practice A3)
 
 ### Agent Model Used
 
+Claude Opus 5.5 (`claude-opus-5-5`), BMAD dev-story workflow.
+
 ### Debug Log References
+
+- `sqlx::raw_sql(…).execute(&mut *conn)` inside the spawned writer task failed the higher-ranked `Send` check ("implementation of `Executor` is not general enough"). Bisected to `begin_snapshot`; replaced by `conn.execute("…")` per statement (plain `&str` goes through the text protocol, which `START TRANSACTION` needs anyway).
+- Route tests first asserted English copy: the seeded users read French (`users.preferred_language` default), so the route tests assert the FR copy.
 
 ### Completion Notes List
 
+- **T1** — `services/instance_id.rs`: `ensure` (`run_once("19-6-instance-id")`, `INSERT IGNORE` of the K/V setting `instance_id`, 16 lowercase hex from 8 random bytes) and `read`; called at startup (non-fatal) and by every backup. Health tab, under Versions: `#health-instance-id` (a dash if the id is missing).
+- **T2** — `services/backup/`: `mod.rs` (API, `BackupConfig` with the guard, `BackupError` + `localized`, `folder_state`, name shape, `create_private` 0600, cleanup of the temporary files, sidecar), `dump.rs` (schema read before a `REPEATABLE READ … WITH CONSISTENT SNAPSHOT, READ ONLY` transaction on a dedicated connection with `close_on_drop`, literals built by the server, generated columns left out, 500 rows per `INSERT`, rows streamed with `fetch`), `archive.rs` (tar + gzip, `HashingWriter`, `Manifest` format 1), `covers.rs` (`<digits>.jpg`, regular files only, the rest counted).
+- **T3** — `routes/admin_backups.rs`, `AdminTab::Backups` (`/admin?tab=backups`, `GET`/`POST /admin/backups`), `templates/fragments/admin_backups_panel.html`. A refusal or a failure answers 200 with an error entry in `#admin-backups-feedback`, and the folder line (`#admin-backups-folder`) is refreshed out of band. `admin.rs` goes to 1883 lines (still under Rule #12).
+- **T4** — keys `error.backup.*`, `admin.backups.*`, `admin.tabs.backups`, `admin.health.instance_id` in the four locales. EN and FR follow D8 word for word. DE and IT carry the same meaning, with „…“ / «…» quotes.
+- **T5** — `MYBIBLI_BACKUP_DIR`, read once in `main.rs` and made absolute (`backup_dir_from_env`). Bind mount `./backups:/app/backups` in `docker-compose.yml` and `docker-compose.dev.yml`, with comments. `tmpfs: /app/backups` in `tests/e2e/docker-compose.test.yml`. `.env.example` entry. `/backups/` in `.gitignore`, because the files hold hashes. The Dockerfile is unchanged: no folder is created.
+- **T6** — Unit tests are in each new module. Integration tests: `tests/backup_write.rs` (AC1–AC4, AC6, AC7 routes) and `tests/backup_round_trip.rs` (AC5, a fresh `mybibli_rt_<random>` schema dropped under `catch_unwind`), plus `tests/common/backup.rs`. E2E: `specs/journeys/admin-backups.spec.ts`, spec id `BK`.
+- **T7** — Manual EN/FR: a new "Backups" / « Sauvegardes » section in chapter 7 (`sec:backups`, "Since 1.29.0") and a Backups item in the tab list of chapter 2. That list said "six tabs" although there were already seven; it now reads "eight tabs, among them". PDFs were not rebuilt. Also a `CLAUDE.md` Key Patterns line (plus the tab count in Source Layout) and `docs/auth-threat-model.md` § 5.13.
+- Manual check on the E2E stack: the written file passes `sha256sum -c`, and its `database.sql` loads with the real `mariadb` client into an empty database (33 tables). That database was dropped afterwards.
+
+**Deviations from the spec (smallest change consistent with the decisions):**
+1. **Sidecar content.** D2 says the sidecar holds "the manifest's own SHA-256", but also that the whole file can be checked with `sha256sum -c` and that a truncated archive is detected before it is opened (AC2). Those requirements contradict each other: a `manifest.json` line cannot be checked by `sha256sum -c`, because no such file exists on disk. The sidecar therefore holds one `sha256sum` line for the whole archive, `<hex>  <name>.tar.gz`. The manifest stays covered, because it is inside the archive. The members are checked against the manifest's hashes.
+2. **Dump header.** On top of D2's three `SET`s, the header writes `SET time_zone = '+00:00'` (the dump session also reads in UTC), so that `TIMESTAMP` values round-trip whatever the time zone of the session that loads them. It also writes `SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO'`, which the footer restores, as mysqldump does.
+3. **Scratch file.** A tar member needs its size before its bytes, so `database.sql` is streamed into `.tmp-<name>.database.sql` in the backups folder. That file is created 0600 and removed in every case. Memory stays flat.
+4. **`BackupWritten`** also carries `titles`, the row count of `titles` with the Trash included, because the success message needs it.
+5. **JSON detection.** MariaDB has no JSON data type, so a JSON column is recognised by its `json_valid(col)` check constraint. An empty binary value is written `''`, because a bare `0x` is not valid SQL.
+6. **Default folder.** The default is `./backups`, which is `/app/backups` in the image (WORKDIR `/app`). It is made absolute at startup so that messages name the real path.
+7. **Request timeout.** The app has no request timeout layer, so the answer always waits for the writer. D5's "still running" answer cannot happen and was not added; no new copy was needed.
+8. **"Not a directory"** is reported with the "missing" message; access denied on the path is reported as "not writable".
+9. **Unchanged.** D7 and D8 as approved. The panel has no intro text, since D8 gives none.
+
+**Gates (2026-11-25):**
+- `cargo clippy --all-targets -- -D warnings`: clean.
+- `cargo test --lib`: 1909 passed, 0 failed, 1 ignored.
+- `cargo test --test integration`: full binary, 968 passed, 0 failed. This includes the 9 `backup_*` tests, `locale_parity::` and `every_test_file_is_declared`.
+- `cargo sqlx prepare --check --workspace -- --all-targets`: OK. No typed query was added.
+- `cargo audit`: no vulnerability. The 10 allowed warnings were already there; none concerns `tar` 0.4.46, `flate2` 1.1.11 or `filetime` 0.2.30.
+- `npx tsc --noEmit`: OK. `waitForTimeout` grep gate: clean. `tests/e2e/vcode-literals.sh`: OK.
+- E2E full run (`CI=true --workers=2`, freshly reset stack): 499 passed, 2 skipped (the already-skipped ones), 0 failed, 0 flaky (3.5 min); the new spec `admin-backups.spec.ts` passed in it.
+
 ### File List
+
+- Cargo.toml, Cargo.lock
+- .gitignore, .env.example, docker-compose.yml, docker-compose.dev.yml, tests/e2e/docker-compose.test.yml
+- src/services/backup/mod.rs (new), src/services/backup/dump.rs (new), src/services/backup/archive.rs (new), src/services/backup/covers.rs (new)
+- src/services/instance_id.rs (new), src/services/mod.rs
+- src/routes/admin_backups.rs (new), src/routes/admin.rs, src/routes/mod.rs
+- templates/fragments/admin_backups_panel.html (new), templates/fragments/admin_health_panel.html
+- src/lib.rs, src/main.rs
+- locales/en.yml, locales/fr.yml, locales/de.yml, locales/it.yml
+- `AppState` literals (`backup: Default::default()`): src/routes/auth.rs, src/routes/title_lifecycle.rs, src/middleware/auth.rs, src/middleware/csrf.rs, src/middleware/locale.rs, tests/common/mcp.rs and 28 tests/*.rs files
+- tests/backup_write.rs (new), tests/backup_round_trip.rs (new), tests/common/backup.rs (new), tests/common/mod.rs, tests/integration.rs
+- tests/e2e/specs/journeys/admin-backups.spec.ts (new)
+- docs/manual/en/07-backup-restore.tex, docs/manual/fr/07-backup-restore.tex, docs/manual/en/02-configuration.tex, docs/manual/fr/02-configuration.tex
+- docs/auth-threat-model.md, CLAUDE.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml, this story file

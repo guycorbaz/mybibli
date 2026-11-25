@@ -410,6 +410,12 @@ series:
   omnibus_help_text: "Check this when the book bundles multiple volumes of the series (e.g. an omnibus collecting volumes 1–3). The form then reveals an 'End position' field so the title covers a range of series positions instead of just one."
   select_series: "Select a series..."
 error:
+  # Story 19-6 (#657) — backup refusals and failure (D8).
+  backup:
+    folder_missing: "No backup was written: the backups folder %{path} does not exist. Mount a folder there (see the manual, “Backups”), then try again."
+    folder_not_writable: "No backup was written: mybibli cannot write in %{path}. Give the container's user write access to that folder (see the manual), then try again."
+    already_running: "A backup is already being written. Wait for it to finish; it will show here."
+    failed: "The backup could not be written, so nothing was kept. Try again; if it keeps failing, the logs say why."
   # Story 15-2 (#614) — MCP skills validation and write errors.
   mcp_skills:
     name_required: "Name is required"
@@ -922,6 +928,14 @@ admin:
     system: System
     api_keys: API keys
     skills: "Skills"
+    backups: "Backups"
+  # Story 19-6 (#657, D7) — Admin → Backups.
+  backups:
+    run: "Back up now"
+    folder_ready: "Folder: %{path} — ready"
+    folder_missing: "Folder: %{path} — missing"
+    folder_not_writable: "Folder: %{path} — not writable"
+    written: "Backup written: %{file} (%{size}, %{titles} titles, %{covers} covers)."
   trash:
     badge_aria: "Trash, %{count} items"
     heading: Trash bin (soft-deleted items)
@@ -968,6 +982,7 @@ admin:
     versions_heading: Versions
     app_version: Application version
     db_version: Database version
+    instance_id: "Instance id"
     disk_usage: Disk usage
     disk_usage_format: "%{used} / %{total} used (%{pct}%)"
     disk_usage_unknown: Unknown

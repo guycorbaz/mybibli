@@ -57,6 +57,11 @@ genpdf = "0.2"
 # accented letters as decomposed numeric references (`e&#x301;`). Already in
 # Cargo.lock through sqlx-mysql → stringprep; no new crate is fetched.
 unicode-normalization = "0.1"
+# Story 19-6 (#657, D2) — a backup is one `.tar.gz` file (database.sql,
+# covers, manifest.json). `flate2` was already in Cargo.lock through other
+# crates; `tar` without its `xattr` default (no extended attributes stored).
+tar = { version = "0.4.46", default-features = false }
+flate2 = "1.1.11"
 # Story 11-6 (#493) — MCP server on `/api/mcp`. Pinned exactly (NFR46):
 # upgraded only for a security advisory or at the pre-release checkpoint
 # (story 11-22). Confined to `src/mcp/` (AR27) — a unit test enforces it.
