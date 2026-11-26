@@ -1,6 +1,6 @@
 # Story 19.7: Scheduled backups and rotation (#657, part 2)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -253,6 +253,16 @@ Changed:
 - Low — the read-only-folder test skipped silently as root. Fixed: named `…_unless_run_as_root`, asserts more when not root.
 - Low — the single `warn` per folder-state change was not tested. Fixed: pure `folder_change` + a `tracing_test` log assertion.
 - Low — a hand-replaced archive with the same name and size is not detected by the skip rule. Documented (Dev Notes, D3 trade-off).
+
+### Review pass 2 (2026-11-26, independent reviewer)
+
+No Medium+ findings: the story is clean (Rule #6).
+
+- Low — the scheduled rotation uses the `now` taken before the write, so the archive just written reads as "future" for that pass (kept by the 24 h tier); one older day may survive one pass longer. Nothing is lost. Deferred to #733.
+- Low — lowering the retention deletes older daily backups at the next rotation, while the saved line names only the interval (D1). Question for the project lead, tracked in #733.
+- Low — a refusal fills only its own slot; the other field's earlier refusal stays until edited (tampered form only). Deferred to #733.
+- Low — a hand-copied old backup of this instance older than the retention is deleted at the next pass (correct under D4). For story 19-8 and the manual (19-11).
+- Low — FR copy "sauvegarde automatique de %{when}" → "du %{when}". Fixed.
 
 ## Dev Agent Record
 

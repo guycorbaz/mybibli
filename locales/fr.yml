@@ -1030,7 +1030,7 @@ admin:
       last_check_unchanged: "Dernière vérification : %{when} ; rien n'avait changé."
       folder_missing: "Attention : le dossier de sauvegarde %{path} n'existe pas ; aucune sauvegarde n'est écrite. Montez un dossier à cet endroit (voir le manuel, « Sauvegardes »)."
       folder_not_writable: "Attention : mybibli ne peut pas écrire dans le dossier de sauvegarde %{path} ; aucune sauvegarde n'est écrite. Donnez au compte du conteneur le droit d'y écrire (voir le manuel)."
-      failed: "Attention : la sauvegarde automatique de %{when} a échoué ; rien n'a été conservé. Les journaux en donnent la raison."
+      failed: "Attention : la sauvegarde automatique du %{when} a échoué ; rien n'a été conservé. Les journaux en donnent la raison."
     maintenance_heading: Maintenance
     bulk_cover_fetch:
       missing_covers_label: "Titres sans couverture"
