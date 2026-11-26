@@ -519,7 +519,16 @@ nothing.} mybibli is then probably pointed at another, or an empty,
 database, and a repair would delete the covers of the real library.
 The files left by titles purged from the Trash do not trigger this:
 their numbers were given by this database, and they stay
-repairable. Check the database of the installation (\texttt{.env},
+repairable.
+
+After a restore, the cover of a title created after the backup was
+written may remain, with a number the restored database has not given
+yet: it blocks the repair (on the safe side) until new titles pass that
+number. Wait, or move that one file aside if you are sure of it. The
+guard does not catch every wrong database, either: one that has already
+given higher numbers than any cover file passes it. Before clicking
+\textbf{Repair…}, read the lists: the titles they name should be
+yours. Check the database of the installation (\texttt{.env},
 section~\ref{sec:env-vars}), restart, and check again.
 
 There is no way around either guard: fix the installation, not the

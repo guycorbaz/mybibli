@@ -591,7 +591,18 @@ alors sans doute branché sur une autre base, ou sur une base vide, et
 une réparation supprimerait les couvertures de la vraie bibliothèque.
 Les fichiers laissés par des titres purgés de la corbeille ne
 déclenchent pas cette protection : leurs numéros ont été attribués par
-cette base, et ils restent réparables. Vérifiez la base
+cette base, et ils restent réparables.
+
+Après une restauration, la couverture d'un titre créé après l'écriture
+de la sauvegarde peut rester, avec un numéro que la base restaurée n'a
+pas encore attribué : elle bloque la réparation (par prudence) jusqu'à
+ce que de nouveaux titres dépassent ce numéro. Attendez, ou mettez ce
+seul fichier de côté si vous êtes sûr de vous. La protection ne
+détecte pas non plus toutes les mauvaises bases : une base qui a déjà
+attribué des numéros plus élevés que ceux de tous les fichiers de
+couverture passe au travers. Avant de cliquer sur \textbf{Réparer…},
+lisez les listes : les titres qu'elles nomment doivent être les
+vôtres. Vérifiez la base
 de données de l'installation (\texttt{.env},
 section~\ref{sec:env-vars}), redémarrez, puis contrôlez à nouveau.
 
