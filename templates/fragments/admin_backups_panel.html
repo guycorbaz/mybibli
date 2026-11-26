@@ -2,7 +2,8 @@
    The folder line is refreshed out of band after each "Back up now"; the
    answer lands in the tab's own feedback region. Story 19-8 (D1): the
    list of the backups in the folder under it (`#admin-backups-list`, also
-   refreshed out of band; empty when the folder cannot be listed). #}
+   refreshed out of band; empty when the folder cannot be listed). Story 19-9
+   (D1): the cover check under it. #}
 <section id="admin-backups-panel" aria-labelledby="admin-backups-heading" class="space-y-6">
     <header>
         <h2 id="admin-backups-heading" class="text-2xl font-semibold">{{ panel_heading }}</h2>
@@ -19,4 +20,5 @@
     </div>
     <div id="admin-backups-feedback" aria-live="polite" class="max-w-3xl"></div>
     <div id="admin-backups-list">{{ list_html|safe }}</div>
+    {% include "fragments/admin_covers_section.html" %}
 </section>

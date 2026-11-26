@@ -37,6 +37,7 @@ mod contextual_help_tooltips;
 mod contributor_delete_modal;
 mod contributor_live_name;
 mod cookieless_requests;
+mod cover_consistency;
 mod cover_manual_survives_refetch;
 mod cover_uploads;
 mod csrf_integration;

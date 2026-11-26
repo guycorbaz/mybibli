@@ -5,7 +5,13 @@ const SETTINGS_SPEC = /journeys\/admin-system-settings\.spec\.ts/;
 const SESSION_TIMEOUT_SPEC = /journeys\/session-inactivity-timeout\.spec\.ts/;
 /** Story 19-8 — replaces the whole database and logs everyone out: last of all. */
 const RESTORE_SPEC = /journeys\/admin-backup-restore\.spec\.ts/;
-const INSTANCE_WIDE_SPECS = [SETTINGS_SPEC, SESSION_TIMEOUT_SPEC, RESTORE_SPEC];
+/**
+ * Story 19-9 — the cover repair acts on the whole instance (every orphan
+ * file deleted, every missing cover address cleared): after every other
+ * test, alone, and before the restore.
+ */
+const COVER_CHECK_SPEC = /journeys\/admin-cover-check\.spec\.ts/;
+const INSTANCE_WIDE_SPECS = [SETTINGS_SPEC, SESSION_TIMEOUT_SPEC, COVER_CHECK_SPEC, RESTORE_SPEC];
 
 export default defineConfig({
   testDir: "./specs",
@@ -50,6 +56,18 @@ export default defineConfig({
       testMatch: SESSION_TIMEOUT_SPEC,
       dependencies: ["instance-settings"],
     },
+    // Story 19-9 — the cover repair deletes every orphan cover file and
+    // clears every missing cover address of the instance, so it would
+    // disturb the rows of parallel specs (Rule #23): after every other
+    // test, alone. Before the restore, which stays last of all: the restore
+    // logs everyone out and replaces the database and the covers folder,
+    // and it is the project story 19-10's epic smoke joins.
+    {
+      name: "instance-cover-check",
+      use: { browserName: "chromium" },
+      testMatch: COVER_CHECK_SPEC,
+      dependencies: ["instance-session-timeout"],
+    },
     // Story 19-8 (AC9) — a restore replaces the whole database and logs
     // everyone out: after every other test, alone. It restores a backup
     // it wrote itself moments before, so the stack stays usable afterwards
@@ -59,7 +77,7 @@ export default defineConfig({
       name: "instance-restore",
       use: { browserName: "chromium" },
       testMatch: RESTORE_SPEC,
-      dependencies: ["instance-session-timeout"],
+      dependencies: ["instance-cover-check"],
     },
   ],
 });

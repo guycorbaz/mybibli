@@ -42,6 +42,10 @@ struct AdminBackupsPanel {
     run_label: String,
     /// Story 19-8 (D1): the list, built by `admin_backups_restore`.
     list_html: String,
+    /// Story 19-9 (D1): the cover check section.
+    covers_heading: String,
+    covers_intro: String,
+    covers_check_label: String,
 }
 
 fn t(key: &str, loc: &str) -> String {
@@ -82,6 +86,9 @@ pub(crate) async fn render_panel_html(
         folder_line: folder_line(dir, folder, loc),
         run_label: t("admin.backups.run", loc),
         list_html: crate::routes::admin_backups_restore::render_list_html(state, loc).await?,
+        covers_heading: t("admin.covers.heading", loc),
+        covers_intro: t("admin.covers.intro", loc),
+        covers_check_label: t("admin.covers.check", loc),
     }
     .render()
     .map_err(|_| AppError::TemplateRenderFailed { template: "admin_backups_panel" })
