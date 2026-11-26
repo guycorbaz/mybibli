@@ -1,6 +1,13 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
-import { backUpNow } from "../../helpers/backups";
+import {
+  backUpNow,
+  EVERYONE_LOGGED_OUT,
+  FILE_NAME,
+  MODAL_TITLE,
+  RESTORE_BUTTON,
+  THIS_INSTANCE,
+} from "../../helpers/backups";
 import { specIsbn } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
 import { csrfHeaders } from "../../helpers/csrf";
@@ -23,19 +30,11 @@ import { expectReallySeen } from "../../helpers/visibility";
  * before by the spec itself, so the library afterwards is the one it found
  * (plus its own title, back from the Trash); the seeded users are kept
  * (`MYBIBLI_SEED_DEV_USERS=1` on the E2E stack). Story 19-10's epic smoke
- * joins this project. The refusals (damaged file, missing checksum…)
+ * restores too: it runs in its own project after this one
+ * (`instance-epic19-smoke`). The refusals (damaged file, missing checksum…)
  * cannot be made from a browser: they are covered by route tests
  * (`tests/backup_restore.rs`).
  */
-
-const FILE_NAME = /mybibli-[0-9a-f]{16}-\d{8}T\d{6}Z\.tar\.gz/;
-const RESTORE_BUTTON =
-  /Restore the backup of|Restaurer la sauvegarde du|Die Sicherung vom .* wiederherstellen|Ripristina il backup del/i;
-const MODAL_TITLE =
-  /Restore this backup\?|Restaurer cette sauvegarde \?|Diese Sicherung wiederherstellen\?|Ripristinare questo backup\?/i;
-const THIS_INSTANCE = /This instance|Cette instance|Diese Instanz|Questa istanza/i;
-const EVERYONE_LOGGED_OUT =
-  /Everyone has been logged out|Tout le monde a été déconnecté|Alle wurden abgemeldet|Tutti sono stati disconnessi/i;
 
 test.describe("Story 19-8 — restoring a backup", () => {
   test("an admin restores a backup of a moment ago and finds a deleted title back", async ({ page }, testInfo) => {

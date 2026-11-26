@@ -1,6 +1,6 @@
 # Story 19.10: Epic 19 smoke test (Foundation Rule #7)
 
-Status: ready-for-dev
+Status: review
 
 No GitHub issue. Covers: Foundation Rule #7. Epic 19; ships in v1.29.0 (with Epic 20). Sprint-status key: `19-10-epic-19-smoke-test`.
 
@@ -41,7 +41,7 @@ What the journey crosses, by story:
 
 - **D1 — its own project after `instance-restore`, not inside it.** The 19-8 comment says the smoke "joins this project"; taken literally (a second `testMatch` in `instance-restore`) the two files would run **at the same time** on two workers (`fullyParallel: true`, `--workers=2`): one restore logs the other spec out mid-journey, replaces its database, and the backup guard answers the second "already running". 19-2 already settled that `mode: "serial"` only serialises one file, hence one project per instance-wide file, chained. So: `EPIC19_SMOKE_SPEC = /journeys\/epic19-smoke\.spec\.ts/`, added to `INSTANCE_WIDE_SPECS`, project `instance-epic19-smoke` with `dependencies: ["instance-restore"]`. Last of all because it too replaces the database and logs everyone out; after the cover-check project because that one's repair would otherwise run on a database the smoke has just replaced (and the smoke's check reads what a repair could change). Same cost as the other chained projects: a failure upstream skips it (the job is red anyway); alone with `npx playwright test --no-deps specs/journeys/epic19-smoke.spec.ts`. The "joins this project" comments (config and the 19-8 spec header) are rewritten to name the new project.
 - **D2 — spec id `"E9"`.** Left for 19-10 by 20-6 (D2 there); used by no spec (grep of `specIsbn("E9"` under `tests/e2e/`); its prefix `9786957…` is shared by no other id ('E' is the only printable ASCII ≡ 69 mod 100, '9' the only one ≡ 57). No V-code is created: no `VCODE_BLOCKS` entry.
-- **D3 — the cover check is run, read only.** The epic AC stops at the Health tab, and 19-9's couplings say "19-10 does not use this tool" (written to keep the stories independent). Running the **check** (never the repair) costs one click, changes nothing, and is the only place the journey can prove that the restore left the spec's cover consistent with the database (D11 of 19-8 vs D2 of 19-9). **A (recommended):** run it as AC8. **B:** leave it out (AC8 removed; 19-9's own spec covers the tool). Open question for the project lead — see below.
+- **D3 — the cover check is run, read only. Settled 2026-11-26: A (recommended) — AC8 kept, "Repair…" never pressed.** The epic AC stops at the Health tab, and 19-9's couplings say "19-10 does not use this tool" (written to keep the stories independent). Running the **check** (never the repair) costs one click, changes nothing, and is the only place the journey can prove that the restore left the spec's cover consistent with the database (D11 of 19-8 vs D2 of 19-9). **A (recommended):** run it as AC8. **B:** leave it out (AC8 removed; 19-9's own spec covers the tool). Open question for the project lead — see below.
 - **D4 — ISBN per attempt and run.** `RUN = Math.floor(Date.now() / 1000) % 20000`; `specIsbn("E9", ((RUN * 3 + testInfo.retry) % 9000) * 10 + 1)`: a retry runs after an earlier attempt's restore may have brought its title back (19-8's reason for one ISBN per attempt), and a re-run on a stack that was not reset must not re-scan a live ISBN (`titleIdFromSkeleton` needs a fresh skeleton).
 - **D5 — the cover is uploaded, not fetched.** The mock metadata server's synthetic answer is not relied on for a cover; the 1×1 PNG upload of `admin-cover-check.spec.ts` gives a deterministic `<id>.jpg` (re-encoded by the server). DRY (Rule #1): `scanTitle`, `uploadCover` and `deleteTitle` of `admin-cover-check.spec.ts` (19-9) move to `tests/e2e/helpers/catalog.ts` (`scanTitleWithMetadata`, `uploadCoverByHand`, `deleteTitleFromPage`) and both specs import them; 19-9's spec keeps its behaviour. The PNG constant goes with `uploadCoverByHand`.
 - **D6 — no hold-back of the restore answer.** The 19-8 spec intercepts the restore POST to check the busy state; the smoke does not (that detail is 19-8's), it waits for the success line with a 300 s timeout. `test.setTimeout(480000)` (19-8 used 420 s; the smoke adds a metadata wait, an upload and a check).
@@ -53,9 +53,9 @@ What the journey crosses, by story:
 
 ## Tasks / Subtasks
 
-- [ ] **T1 — helpers (D5).** `tests/e2e/helpers/catalog.ts`: `scanTitleWithMetadata(page, isbn): Promise<string>`, `uploadCoverByHand(page, id): Promise<void>`, `deleteTitleFromPage(page, id): Promise<void>` (bodies of 19-9's `scanTitle` / `uploadCover` / `deleteTitle`, its `UPLOAD_BTN` regex and `PNG_1X1`). `admin-cover-check.spec.ts` imports them and drops its local copies.
-- [ ] **T2 — `tests/e2e/playwright.config.ts` (D1, AC9).** `EPIC19_SMOKE_SPEC`, added to `INSTANCE_WIDE_SPECS`; project `instance-epic19-smoke` (`use: { browserName: "chromium" }`, `testMatch: EPIC19_SMOKE_SPEC`, `dependencies: ["instance-restore"]`) with a comment saying why (D1). The `instance-restore` comment and the header of `admin-backup-restore.spec.ts` name the new project instead of "joins this project".
-- [ ] **T3 — `tests/e2e/specs/journeys/epic19-smoke.spec.ts` (AC1–AC8, AC10).** Header comment: story, journey, data, project (as the other smokes). One `test.describe("Epic 19 smoke — backup, restore, watching")`, one test, `test.setTimeout(480000)`:
+- [x] **T1 — helpers (D5).** `tests/e2e/helpers/catalog.ts`: `scanTitleWithMetadata(page, isbn): Promise<string>`, `uploadCoverByHand(page, id): Promise<void>`, `deleteTitleFromPage(page, id): Promise<void>` (bodies of 19-9's `scanTitle` / `uploadCover` / `deleteTitle`, its `UPLOAD_BTN` regex and `PNG_1X1`). `admin-cover-check.spec.ts` imports them and drops its local copies.
+- [x] **T2 — `tests/e2e/playwright.config.ts` (D1, AC9).** `EPIC19_SMOKE_SPEC`, added to `INSTANCE_WIDE_SPECS`; project `instance-epic19-smoke` (`use: { browserName: "chromium" }`, `testMatch: EPIC19_SMOKE_SPEC`, `dependencies: ["instance-restore"]`) with a comment saying why (D1). The `instance-restore` comment and the header of `admin-backup-restore.spec.ts` name the new project instead of "joins this project".
+- [x] **T3 — `tests/e2e/specs/journeys/epic19-smoke.spec.ts` (AC1–AC8, AC10).** Header comment: story, journey, data, project (as the other smokes). One `test.describe("Epic 19 smoke — backup, restore, watching")`, one test, `test.setTimeout(480000)`:
   1. `page.context().clearCookies()`; `loginAs(page, "admin")`.
   2. `id = await scanTitleWithMetadata(page, isbn)`; `uploadCoverByHand(page, id)`.
   3. `/admin?tab=backups` (`waitUntil: "domcontentloaded"`); `answer = await backUpNow(page)`; `file = answer.match(FILE_NAME)[0]`.
@@ -66,8 +66,8 @@ What the journey crosses, by story:
   8. `/admin?tab=health`: `#health-backup-last-restore` contains `file` and `safety`; `#health-backup-last` matches `FILE_NAME`; `#health-watch` visible; the four `#watch-…` rows attached.
   9. `/admin?tab=backups`: wait for the `POST /admin/covers/check` response while clicking `#admin-covers-check` (ok); `#admin-covers-result` children check (AC8); `not.toContainText("{id}.jpg · ")`; `#admin-covers-missing a[href="/title/{id}"]` count 0.
   Regexes `FILE_NAME`, `RESTORE_BUTTON`, `MODAL_TITLE`, `THIS_INSTANCE`, `EVERYONE_LOGGED_OUT` copied from `admin-backup-restore.spec.ts` — or, better, exported from `helpers/backups.ts` and imported by both specs (Rule #1; the 19-8 spec then imports them).
-- [ ] **T4 — `CLAUDE.md`.** In the 19-8 paragraph, "E2E: `admin-backup-restore.spec.ts` runs in its own project `instance-restore`, after every other test." gains: "the epic smoke `epic19-smoke.spec.ts` in `instance-epic19-smoke`, after it."
-- [ ] **T5 — gates.** `cd tests/e2e && npx tsc --noEmit`; the `waitForTimeout` grep gate; `tests/e2e/vcode-literals.sh` (no V-code literal); the smoke alone with `--no-deps` against a fresh stack (`./scripts/e2e-reset.sh` under `flock -w 10800 /tmp/station-heavy.lock mem-guard`), then `admin-cover-check.spec.ts` and `admin-backup-restore.spec.ts` alone with `--no-deps` (helper move, header edit); then the full suite once, `CI=true npx playwright test --workers=2` under the same lock + `mem-guard` (checks the chain: `instance-cover-check` → `instance-restore` → `instance-epic19-smoke`). No Rust change: no `cargo` gate.
+- [x] **T4 — `CLAUDE.md`.** In the 19-8 paragraph, "E2E: `admin-backup-restore.spec.ts` runs in its own project `instance-restore`, after every other test." gains: "the epic smoke `epic19-smoke.spec.ts` in `instance-epic19-smoke`, after it."
+- [x] **T5 — gates.** `cd tests/e2e && npx tsc --noEmit`; the `waitForTimeout` grep gate; `tests/e2e/vcode-literals.sh` (no V-code literal); the smoke alone with `--no-deps` against a fresh stack (`./scripts/e2e-reset.sh` under `flock -w 10800 /tmp/station-heavy.lock mem-guard`), then `admin-cover-check.spec.ts` and `admin-backup-restore.spec.ts` alone with `--no-deps` (helper move, header edit); then the full suite once, `CI=true npx playwright test --workers=2` under the same lock + `mem-guard` (checks the chain: `instance-cover-check` → `instance-restore` → `instance-epic19-smoke`). No Rust change: no `cargo` gate.
 
 ## Dev Notes
 
@@ -114,7 +114,7 @@ What the journey crosses, by story:
 
 ### Open questions for the project lead
 
-- **D3** — the read-only cover check at the end of the journey (A, recommended) or not (B).
+- ~~**D3**~~ — settled: A (the read-only check runs at the end; no repair).
 - No visible change; nothing else to decide.
 
 ### References
@@ -134,3 +134,29 @@ Checked on 2026-11-26 against `main` (`db7597af`, 19-1…19-8 and epic 20 merged
 - **Config:** on the 19-9 branch the chain is `chromium` → `instance-settings` → `instance-session-timeout` → `instance-cover-check` → `instance-restore`; the new project depends on `instance-restore`. A per-project `workers: 1` inside `instance-restore` was considered and set aside: one file per chained project is the pattern 19-2 set and the other instance-wide specs follow (D1).
 - **Corrections made at validation:** the upload button's locale key is `cover.upload_button` (not `title_detail.cover.…`), and it renders only while the title has no cover; `#admin-covers-left-alone` added to AC8's non-empty check (it can be the only line besides the match line); the modal / `HX-Redirect` row added to the selector table.
 - **Visible change:** none (D7). The only open question is D3.
+
+## Dev Agent Record
+
+### Completion Notes (2026-11-26)
+
+- T1: `scanTitleWithMetadata`, `uploadCoverByHand`, `deleteTitleFromPage` (+ the upload button regex and `PNG_1X1`) moved to `tests/e2e/helpers/catalog.ts`; `admin-cover-check.spec.ts` imports them, behaviour unchanged.
+- T2: project `instance-epic19-smoke` after `instance-restore`; `EPIC19_SMOKE_SPEC` in `INSTANCE_WIDE_SPECS`; the "joins this project" comments (config, 19-8 spec header) now name the new project.
+- T3: `epic19-smoke.spec.ts` (specIsbn id `E9`). T3's optional DRY taken: `FILE_NAME`, `RESTORE_BUTTON`, `MODAL_TITLE`, `THIS_INSTANCE`, `EVERYONE_LOGGED_OUT` exported from `helpers/backups.ts`, imported by the 19-8 spec and the smoke.
+- Deviation (small): before the cover check, the Backups tab is loaded with the default `load` wait (not `domcontentloaded`) so HTMX has wired `#admin-covers-check`; `expectHtmxProcessed` is not used on it (it is page markup, not a swap).
+- T4: CLAUDE.md sentence added.
+- T5 gates: `npx tsc --noEmit` green; `waitForTimeout` grep clean; `tests/e2e/vcode-literals.sh` green. Image rebuilt `--no-cache` (#735), stack reset on 18080. Alone with `--no-deps` (CI=true): epic19-smoke, admin-cover-check, admin-backup-restore — 1/1 each. After a reset, full suite `CI=true npx playwright test --workers=2`: 523 passed, 2 skipped, 0 failed, 0 flaky (4.0 min); chain `instance-cover-check` → `instance-restore` → `instance-epic19-smoke` ran in that order. No Rust change, no cargo gate.
+
+### File List
+
+- `tests/e2e/specs/journeys/epic19-smoke.spec.ts` (new)
+- `tests/e2e/helpers/catalog.ts`
+- `tests/e2e/helpers/backups.ts`
+- `tests/e2e/specs/journeys/admin-cover-check.spec.ts`
+- `tests/e2e/specs/journeys/admin-backup-restore.spec.ts`
+- `tests/e2e/playwright.config.ts`
+- `CLAUDE.md`
+- `_bmad-output/implementation-artifacts/19-10-epic-19-smoke-test.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+### Change Log
+
+- 2026-11-26 — dev-story: smoke spec, helpers moved, project chained; E2E green; Status → review.
