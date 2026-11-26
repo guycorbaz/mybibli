@@ -163,8 +163,9 @@ admin précédent a été désactivé puis supprimé définitivement, la
 récupération demande un accès SQL direct :
 
 \begin{lstlisting}
-docker compose exec db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli \
-    -e "UPDATE users SET deleted_at=NULL, active=1 WHERE username='votre-admin';"
+docker compose exec db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+    "$MYSQL_DATABASE" -e "UPDATE users SET deleted_at=NULL, active=1
+    WHERE username=\"votre-admin\";"'
 \end{lstlisting}
 
 Ensuite connectez-vous normalement.
@@ -302,8 +303,8 @@ aussi. Restaurez à la main la sauvegarde de sécurité qu'ils nomment
 Au démarrage, les journaux indiquent \emph{A restore was cut short; the
 library was put back from its safety backup}, alors que la restauration
 avait réussi. Le fichier \texttt{.restore-\allowbreak in-\allowbreak progress.json} était resté
-dans le dossier de sauvegarde (deux échecs à la fin de la restauration,
-journalisés au niveau \texttt{error}). Restaurez à nouveau la même
+dans le dossier de sauvegarde (la ligne d'audit et la suppression du
+journal ont toutes deux échoué ; voir les journaux). Restaurez à nouveau la même
 sauvegarde depuis l'onglet Sauvegardes, puis vérifiez que le fichier a
 disparu, et supprimez-le à la main sinon.
 

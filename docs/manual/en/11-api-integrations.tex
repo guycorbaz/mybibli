@@ -154,8 +154,8 @@ A location carries \texttt{id}, \texttt{name}, \texttt{label} (its
 L-code), \texttt{node\_type}, \texttt{parent\_id} (\texttt{null} for a
 root) and, since 1.29.0, \texttt{description}: the text of its
 \emph{Description} field (section~\ref{sec:location-description}), or
-\texttt{null} when it has none. The text is plain, as typed, line
-breaks included:
+\texttt{null} when it has none. The text is plain, as typed (leading
+and trailing spaces removed), line breaks included:
 
 \begin{lstlisting}
 {"id": 12, "name": "Bookshelf A", "label": "L0012", "node_type": "shelf",

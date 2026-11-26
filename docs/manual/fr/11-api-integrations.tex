@@ -162,8 +162,8 @@ Un emplacement porte \texttt{id}, \texttt{name}, \texttt{label} (son
 code L), \texttt{node\_type}, \texttt{parent\_id} (\texttt{null} pour
 une racine) et, depuis la 1.29.0, \texttt{description} : le texte de son
 champ \emph{Description} (section~\ref{sec:location-description}), ou
-\texttt{null} s'il n'en a pas. Le texte est brut, tel que saisi, retours
-à la ligne compris :
+\texttt{null} s'il n'en a pas. Le texte est brut, tel que saisi (espaces
+de début et de fin retirés), retours à la ligne compris :
 
 \begin{lstlisting}
 {"id": 12, "name": "Bibliothèque A", "label": "L0012", "node_type": "shelf",

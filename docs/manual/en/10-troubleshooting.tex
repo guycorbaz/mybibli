@@ -157,8 +157,9 @@ admin was deactivated then permanently deleted, recovery requires
 direct SQL access:
 
 \begin{lstlisting}
-docker compose exec db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli \
-    -e "UPDATE users SET deleted_at=NULL, active=1 WHERE username='your-admin';"
+docker compose exec db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+    "$MYSQL_DATABASE" -e "UPDATE users SET deleted_at=NULL, active=1
+    WHERE username=\"your-admin\";"'
 \end{lstlisting}
 
 Then log in normally.
@@ -289,7 +290,7 @@ names by hand (section~\ref{sec:restore-by-hand}).
 The log at start says \emph{A restore was cut short; the library was put
 back from its safety backup}, although the restore had succeeded. The
 file \texttt{.restore-\allowbreak in-\allowbreak progress.json} had stayed in the backups folder
-(two failures at the end of the restore, logged at \texttt{error}).
+(the audit row and the journal removal both failed; see the log).
 Restore the same backup again from the Backups tab, then check that the
 file is gone, and delete it by hand if it is not.
 

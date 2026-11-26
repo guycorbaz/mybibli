@@ -82,8 +82,8 @@ son propre dossier de sauvegarde. Une instance de test ne doit jamais
 écrire dans le dossier de la bibliothèque en production : deux
 instances qui partagent un dossier effacent mutuellement leurs fichiers
 temporaires et, si elles partagent aussi un identifiant d'instance (une
-copie chargée ailleurs le conserve), font tourner chacune les
-sauvegardes de l'autre.
+copie chargée ailleurs le conserve), appliquent chacune leur rotation
+aux sauvegardes de l'autre.
 
 \subsection*{Écrire une sauvegarde}
 
@@ -174,7 +174,7 @@ Le fichier \texttt{.tar.gz} contient, dans l'ordre :
 \end{itemize}
 À côté, \texttt{<nom>.sha256} permet de vérifier le fichier :
 \begin{lstlisting}
-cd backups && sha256sum -c mybibli-*.tar.gz.sha256
+sudo sh -c 'cd backups && sha256sum -c mybibli-*.tar.gz.sha256'
 \end{lstlisting}
 
 \textbf{Le fichier est sensible.}\index{sauvegarde!sensible} Il
@@ -206,9 +206,10 @@ sur des données réelles (par exemple essayer une modification qui
 réécrit des données sur tout le catalogue avant de la livrer, règle~\#20
 du projet) :
 \begin{lstlisting}
-tar -xzf mybibli-<id>-<date>.tar.gz database.sql
+sudo tar -xzf backups/mybibli-<id>-<date>.tar.gz database.sql
 mariadb -u root -p -e "CREATE DATABASE mybibli_copie"
-mariadb -u root -p mybibli_copie < database.sql
+sudo cat database.sql | mariadb -u root -p mybibli_copie
+sudo rm database.sql
 \end{lstlisting}
 La copie est au niveau de migration de la sauvegarde ; un mybibli
 démarré dessus la met à jour. Une telle instance de test reçoit son
@@ -223,7 +224,12 @@ Les couvertures sont copiées après la base. Une couverture téléchargée
 dans les secondes qui séparent les deux peut se trouver dans le fichier
 sans son titre, ou manquer pour un titre qui la cite. Le contrôle des
 couvertures (section~\ref{sec:cover-check}) signale et répare les deux
-cas.
+cas, à une exception près : le fichier d'un titre créé pendant la
+sauvegarde porte un numéro que la base sauvegardée n'avait pas encore
+attribué ; après la restauration de cette sauvegarde, la réparation
+reste donc bloquée jusqu'à ce que de nouveaux titres dépassent ce
+numéro (\emph{Quand la bibliothèque semble être une autre base}, dans la
+même section).
 
 \section{Restaurer une sauvegarde}
 \label{sec:backups-restore}
@@ -301,7 +307,7 @@ suit la rotation comme les autres (gardée au moins 24 heures).
 \textbf{Une sauvegarde plus ancienne} (écrite par une version antérieure
 de mybibli) est restaurée, puis mise à jour par les migrations, comme
 lors d'une mise à jour. \textbf{Une sauvegarde plus récente} est
-refusée : mettez d'abord mybibli à jour dans cette version.
+refusée : mettez d'abord mybibli à jour vers cette version.
 
 \subsection*{Si la restauration est refusée}
 
@@ -370,9 +376,9 @@ minutes pour mybibli.
   \item \textbf{Jetez un œil au dossier de sauvegarde.} Pendant une
         restauration, mybibli y garde un fichier
         \texttt{.restore-\allowbreak in-\allowbreak progress.json} et le supprime à la fin. S'il
-        est encore là après une restauration réussie (deux échecs
-        successifs, tous deux dans les journaux au niveau
-        \texttt{error}), le prochain démarrage de mybibli le prendrait
+        est encore là après une restauration réussie (la ligne d'audit
+        et la suppression du journal ont toutes deux échoué ; voir les
+        journaux), le prochain démarrage de mybibli le prendrait
         pour une restauration interrompue et remettrait la bibliothèque
         en état depuis la sauvegarde de sécurité, ce qui annulerait
         votre restauration. Une fois la bibliothèque restaurée vérifiée,
@@ -448,8 +454,8 @@ sécurité. La même raison figure dans les journaux au niveau
 \texttt{error}. Cette section s'adresse à cette personne.
 
 \begin{enumerate}
-  \item \textbf{Cherchez le journal.} Si le fichier
-        \texttt{.restore-\allowbreak in-\allowbreak progress.json}
+  \item \textbf{Cherchez le fichier
+        \texttt{.restore-\allowbreak in-\allowbreak progress.json}.} S'il
         n'est plus dans le dossier de sauvegarde, la restauration
         s'était en fait terminée : redémarrez mybibli
         (\texttt{docker compose restart mybibli}) et vérifiez la
@@ -469,14 +475,13 @@ sécurité. La même raison figure dans les journaux au niveau
         root est \texttt{MYSQL\_ROOT\_PASSWORD} dans \texttt{.env}) :
 \begin{lstlisting}
 docker compose stop mybibli
-cd backups
-sudo sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256
-sudo tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql
-cd ..
-docker compose exec -T db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
-    -e "DROP DATABASE mybibli; CREATE DATABASE mybibli CHARACTER SET utf8mb4;"
+sudo sh -c 'cd backups && sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256 \
+    && tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql'
+docker compose exec -T db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+    -e "DROP DATABASE $MYSQL_DATABASE;
+        CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"'
 sudo cat backups/database.sql | docker compose exec -T db \
-    mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli
+    sh -c 'exec mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"'
 docker compose run --rm --no-deps --entrypoint sh mybibli -c \
     'mkdir /tmp/x && tar -xzf /app/backups/mybibli-<id>-<stamp>.tar.gz \
      -C /tmp/x && cp -a /tmp/x/covers/. /app/covers/'
@@ -491,7 +496,8 @@ docker compose start mybibli
         bibliothèque, puis lancez le contrôle des couvertures
         (section~\ref{sec:cover-check}) : il liste les fichiers de
         couverture dont la bibliothèque restaurée ne se sert plus, et
-        les supprime.
+        les supprime --- sauf s'il signale l'une de ses protections (même
+        section).
 \end{enumerate}
 
 Ne restaurez de cette façon qu'une sauvegarde de cette instance --- la
@@ -593,9 +599,10 @@ Les fichiers laissés par des titres purgés de la corbeille ne
 déclenchent pas cette protection : leurs numéros ont été attribués par
 cette base, et ils restent réparables.
 
-Après une restauration, la couverture d'un titre créé après l'écriture
-de la sauvegarde peut rester, avec un numéro que la base restaurée n'a
-pas encore attribué : elle bloque la réparation (par prudence) jusqu'à
+Après une restauration, un fichier de couverture portant un numéro que
+la base restaurée n'a pas encore attribué peut rester --- une couverture
+téléchargée pendant l'écriture de la sauvegarde, ou laissée par une
+restauration à la main : elle bloque la réparation (par prudence) jusqu'à
 ce que de nouveaux titres dépassent ce numéro. Attendez, ou mettez ce
 seul fichier de côté si vous êtes sûr de vous. La protection ne
 détecte pas non plus toutes les mauvaises bases : une base qui a déjà
@@ -620,10 +627,10 @@ couverture de sa bibliothèque.
 Depuis l'hôte qui exécute la pile compose :
 
 \begin{lstlisting}
-docker compose exec -T db mariadb-dump \
+docker compose exec -T db sh -c 'exec mariadb-dump \
     -u root -p"$MYSQL_ROOT_PASSWORD" \
     --single-transaction --routines --triggers \
-    mybibli \
+    "$MYSQL_DATABASE"' \
     > backups/mybibli-$(date +%Y%m%d-%H%M%S).sql
 \end{lstlisting}
 
@@ -682,18 +689,18 @@ Restauration plus bas.
 \section{Cadence recommandée}
 
 \begin{itemize}
-  \item \textbf{Quotidien} — dump de base automatisé. Même sur un
-        catalogue rarement modifié, un dump journalier garantit que
-        la pire perte de données est bornée à une journée.
-  \item \textbf{Hebdomadaire} — covers et \texttt{.env}. Ils ne
-        changent que quand vous cataloguez de nouveaux titres ou
-        faites tourner des clés ; hebdomadaire est amplement
-        suffisant.
-  \item \textbf{Copie hors-site} — au moins mensuelle. Rsync du
-        répertoire \texttt{backups/} vers un NAS distant, un
-        disque USB que vous échangez ou un bucket de stockage
-        cloud. Un incendie qui consume le serveur domestique ne
-        doit pas aussi consumer vos sauvegardes.
+  \item \textbf{Base et couvertures} — depuis la 1.29.0, la sauvegarde
+        automatique (section~\ref{sec:backups-schedule}) couvre les
+        deux, toutes les heures par défaut. Laissez-la active ; les
+        dumps de ce chapitre ne servent que sans elle.
+  \item \textbf{\texttt{.env}} — copiez-le à chaque modification ; il
+        n'est pas dans les sauvegardes de mybibli.
+  \item \textbf{Copie hors site} — au moins mensuelle. Copiez le
+        dossier \texttt{backups/} (avec \texttt{sudo} : les fichiers
+        appartiennent à root) vers un NAS distant, un disque USB que
+        vous échangez ou un stockage en ligne, chiffré. Un incendie qui
+        consume le serveur domestique ne doit pas aussi consumer vos
+        sauvegardes.
 \end{itemize}
 
 \begin{tip}
@@ -712,10 +719,11 @@ Pour le setup avec base embarquée :
 
 \begin{lstlisting}
 docker compose stop mybibli
-docker compose exec -T db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
-    -e "DROP DATABASE mybibli; CREATE DATABASE mybibli CHARACTER SET utf8mb4;"
-zcat backups/mybibli-20260513-1200.sql.gz | \
-    docker compose exec -T db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli
+docker compose exec -T db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+    -e "DROP DATABASE $MYSQL_DATABASE;
+        CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"'
+zcat backups/mybibli-20260513-1200.sql.gz | docker compose exec -T db \
+    sh -c 'exec mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"'
 docker compose start mybibli
 \end{lstlisting}
 

@@ -155,7 +155,7 @@ The \texttt{.tar.gz} file holds, in order:
 \end{itemize}
 Next to it, \texttt{<name>.sha256} lets you check the file:
 \begin{lstlisting}
-cd backups && sha256sum -c mybibli-*.tar.gz.sha256
+sudo sh -c 'cd backups && sha256sum -c mybibli-*.tar.gz.sha256'
 \end{lstlisting}
 
 \textbf{The file is sensitive.}\index{backup!sensitive} It holds the
@@ -183,9 +183,10 @@ loads it into an empty database, for a test copy or to look at real
 data (for example to try a data-rewriting change on the whole catalogue
 before it ships, Rule~\#20 of the project):
 \begin{lstlisting}
-tar -xzf mybibli-<id>-<date>.tar.gz database.sql
+sudo tar -xzf backups/mybibli-<id>-<date>.tar.gz database.sql
 mariadb -u root -p -e "CREATE DATABASE mybibli_copy"
-mariadb -u root -p mybibli_copy < database.sql
+sudo cat database.sql | mariadb -u root -p mybibli_copy
+sudo rm database.sql
 \end{lstlisting}
 The copy is at the migration level of the backup; a mybibli started on
 it brings it up to date. Such a test instance gets its own backups
@@ -198,7 +199,12 @@ them on the test instance if it should not use them.
 Covers are copied after the database. A cover downloaded in the
 seconds between the two may be in the file without its title, or
 missing for a title that names it. The cover check
-(section~\ref{sec:cover-check}) reports and repairs both cases.
+(section~\ref{sec:cover-check}) reports and repairs both cases, with
+one exception: the file of a title created during the backup carries a
+number the backed-up database had not given yet, so after restoring
+that backup the repair stays blocked until new titles pass that number
+(\emph{When the library looks like another database}, in the same
+section).
 
 \section{Restoring a backup}
 \label{sec:backups-restore}
@@ -323,8 +329,8 @@ minutes.
   \item \textbf{Look at the backups folder once.} During a restore
         mybibli keeps a file \texttt{.restore-\allowbreak in-\allowbreak progress.json} there
         and removes it at the end. If it is still there after a
-        restore that succeeded (two failures in a row, both in the log
-        at \texttt{error} level), the next start of mybibli would take
+        restore that succeeded (the audit row and the journal removal
+        both failed; see the log), the next start of mybibli would take
         it for an interrupted restore and put the library back from the
         safety backup, undoing your restore. Once you have checked the
         restored library, delete that file by hand:
@@ -412,14 +418,13 @@ This section is for that person.
         \texttt{MYSQL\_ROOT\_PASSWORD} of \texttt{.env}):
 \begin{lstlisting}
 docker compose stop mybibli
-cd backups
-sudo sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256
-sudo tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql
-cd ..
-docker compose exec -T db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
-    -e "DROP DATABASE mybibli; CREATE DATABASE mybibli CHARACTER SET utf8mb4;"
+sudo sh -c 'cd backups && sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256 \
+    && tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql'
+docker compose exec -T db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+    -e "DROP DATABASE $MYSQL_DATABASE;
+        CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"'
 sudo cat backups/database.sql | docker compose exec -T db \
-    mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli
+    sh -c 'exec mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"'
 docker compose run --rm --no-deps --entrypoint sh mybibli -c \
     'mkdir /tmp/x && tar -xzf /app/backups/mybibli-<id>-<stamp>.tar.gz \
      -C /tmp/x && cp -a /tmp/x/covers/. /app/covers/'
@@ -433,7 +438,8 @@ docker compose start mybibli
   \item Log in again (no session survives), check the library, then run
         the cover check (section~\ref{sec:cover-check}): it lists the
         cover files that the restored library no longer uses, and
-        removes them.
+        removes them --- unless it reports one of its guards (same
+        section).
 \end{enumerate}
 
 Restore this way only a backup of this instance --- the safety backup
@@ -521,9 +527,9 @@ The files left by titles purged from the Trash do not trigger this:
 their numbers were given by this database, and they stay
 repairable.
 
-After a restore, the cover of a title created after the backup was
-written may remain, with a number the restored database has not given
-yet: it blocks the repair (on the safe side) until new titles pass that
+After a restore, a cover file with a number the restored database has
+not given yet may remain --- a cover downloaded while the backup was
+being written, or one left by a restore by hand: it blocks the repair (on the safe side) until new titles pass that
 number. Wait, or move that one file aside if you are sure of it. The
 guard does not catch every wrong database, either: one that has already
 given higher numbers than any cover file passes it. Before clicking
@@ -544,10 +550,10 @@ its library.
 From the host running the compose stack:
 
 \begin{lstlisting}
-docker compose exec -T db mariadb-dump \
+docker compose exec -T db sh -c 'exec mariadb-dump \
     -u root -p"$MYSQL_ROOT_PASSWORD" \
     --single-transaction --routines --triggers \
-    mybibli \
+    "$MYSQL_DATABASE"' \
     > backups/mybibli-$(date +%Y%m%d-%H%M%S).sql
 \end{lstlisting}
 
@@ -606,17 +612,17 @@ section below.
 \section{Recommended cadence}
 
 \begin{itemize}
-  \item \textbf{Daily} — automated database dump. Even on a
-        seldom-changed catalog, a daily dump means worst-case data
-        loss is bounded to one day.
-  \item \textbf{Weekly} — covers and \texttt{.env}. These change
-        only when you catalog new titles or rotate keys; weekly
-        is plenty.
-  \item \textbf{Off-site copy} — at least monthly. Rsync the
-        \texttt{backups/} directory to a remote NAS, a USB drive
-        you swap in / out, or a cloud-storage bucket. A fire that
-        consumes the home server should not also consume your
-        backups.
+  \item \textbf{Database and covers} — since 1.29.0 the automatic
+        backup (section~\ref{sec:backups-schedule}) covers both, every
+        hour by default. Keep it on; the dumps of this chapter are only
+        needed without it.
+  \item \textbf{\texttt{.env}} — copy it whenever you change it; it is
+        not in mybibli's backups.
+  \item \textbf{Off-site copy} — at least monthly. Copy the
+        \texttt{backups/} folder (with \texttt{sudo}: the files belong
+        to root) to a remote NAS, a USB drive you swap in / out, or a
+        cloud-storage bucket, encrypted. A fire that consumes the home
+        server should not also consume your backups.
 \end{itemize}
 
 \begin{tip}
@@ -634,10 +640,11 @@ For the bundled-database setup:
 
 \begin{lstlisting}
 docker compose stop mybibli
-docker compose exec -T db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
-    -e "DROP DATABASE mybibli; CREATE DATABASE mybibli CHARACTER SET utf8mb4;"
-zcat backups/mybibli-20260513-1200.sql.gz | \
-    docker compose exec -T db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli
+docker compose exec -T db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+    -e "DROP DATABASE $MYSQL_DATABASE;
+        CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"'
+zcat backups/mybibli-20260513-1200.sql.gz | docker compose exec -T db \
+    sh -c 'exec mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"'
 docker compose start mybibli
 \end{lstlisting}
 

@@ -104,6 +104,14 @@ Self-check after story 19-9 merged (`8eedb650`, main merged into this branch as 
 - #746: the saved line names both values ("Automatic backup saved: … Daily backups to keep: …"), as the manual says.
 No text change was needed by this check.
 
+### Review — independent pass (2026-11-26)
+
+Three Medium and seven Low findings, all fixed (EN and FR):
+- **M1** — `-p"$MYSQL_ROOT_PASSWORD"` expanded in the host shell (empty, then a password prompt that `exec -T` cannot answer). Every `mariadb` / `mariadb-dump` call through `docker compose exec` now runs in `sh -c '…'` inside the `db` container, which has `MYSQL_ROOT_PASSWORD` and `MYSQL_DATABASE` (the names in `docker-compose.yml`): restoring by hand, the old backup and restore procedures (ch. 7), the last-admin SQL fix (ch. 10).
+- **M2** — root-owned `0600` files in a `700` folder: `sudo` added to the checksum check, the test-database recipe (`sudo tar`, `sudo cat … | mariadb`) and restoring by hand (one `sudo sh -c 'cd backups && sha256sum -c … && tar -xzf …'`).
+- **M3** — a cover downloaded while the backup was written has a number at or above the dumped next title id: after restoring that backup the repair stays blocked by the wrong-database guard; said in "A cover written during the backup" (pointing to the guard) and in the cover-check note (also a file left by a restore by hand).
+- **Lows** — the double failure named (audit row and journal removal; see the log) in ch. 7 and 10; restore-by-hand step 4 "unless it reports one of its guards"; the scan banner quoted as in the locales ("This ISBN is on your wish list. Remove it?" / « Cet ISBN est sur votre wish list. La retirer ? »); "the location's pencil"; API description "as typed (leading and trailing spaces removed)"; "Recommended cadence" rewritten (automatic backup covers database and covers; `.env` and an off-site copy of `backups/` with `sudo` remain); FR wording (« appliquent chacune leur rotation aux sauvegardes de l'autre », « vers cette version », « Cherchez le fichier `.restore-in-progress.json` »).
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -146,3 +154,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — validate-story: see Validation.
 - 2026-11-26 — create-story (with 20-7).
 - 2026-11-26 — review: checked against the merged copy (19-9 merged); done.
+- 2026-11-26 — independent review: M1–M3 and L1–L7 fixed, PDFs rebuilt.
