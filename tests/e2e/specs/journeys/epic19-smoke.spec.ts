@@ -95,6 +95,9 @@ test.describe("Epic 19 smoke — backup, restore, watching", () => {
     await expect(dialog).toContainText(MODAL_TITLE);
     const confirm = dialog.locator("[data-modal-confirm]");
     await expectHtmxProcessed(confirm);
+    // Accepted window: a scheduled check falling due right here would hold
+    // the backup guard and refuse ("already running"); just after this
+    // spec's own backup the scheduler is not due, so no retry is made.
     await confirm.click();
 
     // 6. The success line names both backups; "Log in again" (AC5).
@@ -125,6 +128,10 @@ test.describe("Epic 19 smoke — backup, restore, watching", () => {
         message: "the restored cover file is served",
       })
       .toBeGreaterThan(0);
+    // Past the browser cache: the restored file itself is served.
+    const served = await page.request.get(`/covers/${id}.jpg`);
+    expect(served.status()).toBe(200);
+    expect(served.headers()["content-type"]).toMatch(/^image\//);
 
     // 8. The Health tab: the last restore, the last backup, the watching
     //    panel (AC7). The last backup is the safety backup or a newer
@@ -156,7 +163,9 @@ test.describe("Epic 19 smoke — backup, restore, watching", () => {
     expect((await checked).ok()).toBe(true);
     const result = page.locator("#admin-covers-result");
     await expect(result.locator(COVER_RESULT_LINES).first()).toBeAttached();
-    await expect(result).not.toContainText(`${id}.jpg · `);
+    await expect(
+      result.locator("#admin-covers-orphans li").filter({ hasText: new RegExp(`^${id}\\.jpg · `) }),
+    ).toHaveCount(0);
     await expect(result.locator(`#admin-covers-missing a[href="/title/${id}"]`)).toHaveCount(0);
   });
 });

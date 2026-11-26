@@ -1,6 +1,6 @@
 # Story 19.10: Epic 19 smoke test (Foundation Rule #7)
 
-Status: review
+Status: done
 
 No GitHub issue. Covers: Foundation Rule #7. Epic 19; ships in v1.29.0 (with Epic 20). Sprint-status key: `19-10-epic-19-smoke-test`.
 
@@ -160,3 +160,7 @@ Checked on 2026-11-26 against `main` (`db7597af`, 19-1…19-8 and epic 20 merged
 ### Change Log
 
 - 2026-11-26 — dev-story: smoke spec, helpers moved, project chained; E2E green; Status → review.
+
+## Review (2026-11-27)
+
+Independent reviewer: no Medium+. Lows applied: the restored cover is also fetched with `page.request` (past the browser cache: 200 and an image type); the orphan check is anchored on the list item (`^<id>.jpg · `); a comment records the accepted "already running" window at the restore Confirm. Accepted: the ISBN sequence repeats after ~50 minutes on a stack that was not reset (1 in 3000). The spec alone passes after the changes; the full suite passed before them (523, 0 flaky).
