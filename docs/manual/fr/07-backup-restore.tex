@@ -474,30 +474,38 @@ sécurité. La même raison figure dans les journaux au niveau
         de sécurité à la main, depuis le dossier qui contient
         \texttt{docker-compose.yml} (base embarquée ; le mot de passe
         root est \texttt{MYSQL\_ROOT\_PASSWORD} dans \texttt{.env}).
-        Lancez les lignes une à une ; ne continuez que si la première
-        affiche \texttt{OK} et que \texttt{backups/database.sql} existe
-        (la troisième le vérifie à nouveau avant de supprimer la
-        base) :
+        Les deux premières lignes arrêtent mybibli et effacent un
+        ancien extrait ; le reste forme une seule chaîne : chaque étape
+        ne s'exécute que si la précédente a réussi, si bien qu'un
+        contrôle en échec (pas de \texttt{OK} de \texttt{sha256sum}, pas
+        de \texttt{database.sql}) arrête la chaîne avant toute
+        suppression, et le fichier de progression reste en place. Les
+        couvertures ne sont remises qu'après le chargement de la base,
+        et mybibli redémarre en dernier :
 \begin{lstlisting}
 docker compose stop mybibli
+sudo rm -f backups/database.sql
 sudo sh -c 'cd backups && sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256 \
-    && tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql'
-sudo test -s backups/database.sql && docker compose exec -T db \
+    && tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql' \
+&& sudo test -s backups/database.sql \
+&& docker compose exec -T db \
     sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
     -e "DROP DATABASE $MYSQL_DATABASE;
-        CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"'
-sudo cat backups/database.sql | docker compose exec -T db \
-    sh -c 'exec mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"'
-docker compose run --rm --no-deps --entrypoint sh mybibli -c \
+        CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"' \
+&& sudo cat backups/database.sql | docker compose exec -T db \
+    sh -c 'exec mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' \
+&& docker compose run --rm --no-deps --entrypoint sh mybibli -c \
     'mkdir /tmp/x && tar -xzf /app/backups/mybibli-<id>-<stamp>.tar.gz \
-     -C /tmp/x && cp -a /tmp/x/covers/. /app/covers/'
-sudo rm backups/database.sql backups/.restore-in-progress.json
-docker compose start mybibli
+     -C /tmp/x && cp -a /tmp/x/covers/. /app/covers/' \
+&& sudo rm backups/database.sql backups/.restore-in-progress.json \
+&& docker compose start mybibli
 \end{lstlisting}
-        La ligne \texttt{run} utilise l'image de mybibli avec ses propres
+        L'étape \texttt{run} utilise l'image de mybibli avec ses propres
         volumes : elle trouve les couvertures où qu'elles soient montées.
-        Avec une base externe, lancez les deux commandes
-        \texttt{mariadb} sur ce serveur.
+        Si la chaîne s'arrête, lisez le dernier message, corrigez la
+        cause et relancez-la depuis la ligne \texttt{sudo rm -f}. Avec
+        une base externe, lancez les deux étapes \texttt{mariadb} sur ce
+        serveur.
   \item Reconnectez-vous (aucune session ne survit), vérifiez la
         bibliothèque, puis lancez le contrôle des couvertures
         (section~\ref{sec:cover-check}) : il liste les fichiers de
@@ -649,7 +657,7 @@ coûteux et future-proof).
 Compressez le dump si l'espace disque est une préoccupation :
 
 \begin{lstlisting}
-sudo gzip backups/mybibli-*.sql
+sudo sh -c 'gzip backups/mybibli-*.sql'
 \end{lstlisting}
 
 \subsection*{Base de données — MariaDB externe}
@@ -662,11 +670,13 @@ sauvegarde binaire qui se restaure plus vite qu'un dump SQL.
 \subsection*{Couvertures et \texttt{.env}}
 
 Pour un répertoire de couvertures monté en bind-mount sur l'hôte,
-une simple archive \texttt{tar} suffit :
+une simple archive \texttt{tar} suffit ; remplacez
+\texttt{/path/to/covers} par le dossier hôte de vos couvertures (la
+partie gauche de sa ligne de montage) :
 
 \begin{lstlisting}
 sudo tar czf backups/mybibli-files-$(date +%Y%m%d).tar.gz \
-    .env "$COVERS_HOST_PATH"
+    .env /path/to/covers
 \end{lstlisting}
 
 Pour l'install par défaut (volume Docker nommé), sauvegardez le

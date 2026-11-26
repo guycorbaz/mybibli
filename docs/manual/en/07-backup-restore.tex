@@ -416,30 +416,37 @@ This section is for that person.
         Docker restarts it again and again). Restore the safety backup
         by hand, from the folder holding \texttt{docker-compose.yml}
         (bundled database; the root password is
-        \texttt{MYSQL\_ROOT\_PASSWORD} of \texttt{.env}). Run the lines
-        one at a time; go on only if the first one prints \texttt{OK}
-        and \texttt{backups/database.sql} exists (the third line checks
-        it again before it drops the database):
+        \texttt{MYSQL\_ROOT\_PASSWORD} of \texttt{.env}). The first two
+        lines stop mybibli and clear an old extract; the rest is one
+        chain: each step runs only if the previous one succeeded, so a
+        failed check (no \texttt{OK} from \texttt{sha256sum}, no
+        \texttt{database.sql}) stops the chain before anything is
+        dropped, and the progress file stays. The covers are put back
+        only after the database loaded, and mybibli starts last:
 \begin{lstlisting}
 docker compose stop mybibli
+sudo rm -f backups/database.sql
 sudo sh -c 'cd backups && sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256 \
-    && tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql'
-sudo test -s backups/database.sql && docker compose exec -T db \
+    && tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql' \
+&& sudo test -s backups/database.sql \
+&& docker compose exec -T db \
     sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
     -e "DROP DATABASE $MYSQL_DATABASE;
-        CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"'
-sudo cat backups/database.sql | docker compose exec -T db \
-    sh -c 'exec mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"'
-docker compose run --rm --no-deps --entrypoint sh mybibli -c \
+        CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"' \
+&& sudo cat backups/database.sql | docker compose exec -T db \
+    sh -c 'exec mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' \
+&& docker compose run --rm --no-deps --entrypoint sh mybibli -c \
     'mkdir /tmp/x && tar -xzf /app/backups/mybibli-<id>-<stamp>.tar.gz \
-     -C /tmp/x && cp -a /tmp/x/covers/. /app/covers/'
-sudo rm backups/database.sql backups/.restore-in-progress.json
-docker compose start mybibli
+     -C /tmp/x && cp -a /tmp/x/covers/. /app/covers/' \
+&& sudo rm backups/database.sql backups/.restore-in-progress.json \
+&& docker compose start mybibli
 \end{lstlisting}
-        The \texttt{run} line uses the mybibli image with its own
-        volumes, so it finds the covers wherever they are mounted. With
-        an external database, run the two \texttt{mariadb} commands
-        against that server instead.
+        The \texttt{run} step uses the mybibli image with its own
+        volumes, so it finds the covers wherever they are mounted. If
+        the chain stops, read the last message, fix the cause and run it
+        again from the \texttt{sudo rm -f} line. With an external
+        database, run the two \texttt{mariadb} steps against that server
+        instead.
   \item Log in again (no session survives), check the library, then run
         the cover check (section~\ref{sec:cover-check}): it lists the
         cover files that the restored library no longer uses, and
@@ -571,7 +578,7 @@ and future-proof).
 Compress the dump if disk space is a concern:
 
 \begin{lstlisting}
-sudo gzip backups/mybibli-*.sql
+sudo sh -c 'gzip backups/mybibli-*.sql'
 \end{lstlisting}
 
 \subsection*{Database — external MariaDB}
@@ -584,11 +591,12 @@ restores faster than a SQL dump.
 \subsection*{Covers and \texttt{.env}}
 
 For a host-mounted covers directory (bind-mount installs), a plain
-\texttt{tar} archive is enough:
+\texttt{tar} archive is enough; replace \texttt{/path/to/covers} with
+the host folder of your covers (the left part of its mount line):
 
 \begin{lstlisting}
 sudo tar czf backups/mybibli-files-$(date +%Y%m%d).tar.gz \
-    .env "$COVERS_HOST_PATH"
+    .env /path/to/covers
 \end{lstlisting}
 
 For the default install (named Docker volume), back up the volume

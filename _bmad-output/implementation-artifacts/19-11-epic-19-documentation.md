@@ -115,6 +115,9 @@ Three Medium and seven Low findings, all fixed (EN and FR):
 - **Pass 2, M-a** — the `DROP DATABASE` never runs after a failed check: "Restoring by hand" and the old "Restore procedure" say to run the lines one at a time and go on only on `OK` / a readable dump, and the drop itself is gated (`sudo test -s backups/database.sql && …`; `sudo zcat FILE > /dev/null && …`).
 - **Pass 2, lows** — old backup procedure writes through `sudo tee`, `sudo gzip`, `sudo tar` (and the old restore reads with `sudo zcat` / `sudo tar`); FR step 2 « Si ce fichier est là »; `sudo -v` before the test-database recipe.
 
+- **Pass 3, M** — "Restoring by hand" is one chain: `sudo rm -f backups/database.sql`, then checksum + extraction `&&` non-empty dump `&&` drop `&&` load `&&` covers `&&` removal of the extract and of `.restore-in-progress.json` `&&` `docker compose start mybibli`; a failed check stops the chain before anything destructive and the progress file stays; re-run from the `rm -f` line.
+- **Pass 3, lows** — `sudo sh -c 'gzip backups/mybibli-*.sql'` (the glob is expanded as root); the bind-mount covers tar names an explicit placeholder `/path/to/covers` the reader replaces.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -159,3 +162,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — review: checked against the merged copy (19-9 merged); done.
 - 2026-11-26 — independent review: M1–M3 and L1–L7 fixed, PDFs rebuilt.
 - 2026-11-26 — review pass 2: gated drop, sudo; PDFs rebuilt.
+- 2026-11-26 — review pass 3: restore by hand as one chain; PDFs rebuilt.
