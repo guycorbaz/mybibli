@@ -1,4 +1,5 @@
 import { Page, expect } from "@playwright/test";
+import { specLcode } from "./isbn";
 
 /**
  * Create a root location with a specific name and L-code.
@@ -36,11 +37,12 @@ export async function createChildLocation(
   lcode: string,
 ): Promise<string> {
   await page.goto("/locations");
-  // Exact accessible name ("Edit {name}", rendered by routes/locations.rs)
-  // so a parent whose name is a prefix of another never matches it.
+  // Exact accessible name ("Edit {name}" / "Modifier {name}", rendered by
+  // routes/locations.rs) so a parent whose name is a prefix of another never
+  // matches it. Either language: another spec may have changed the user's.
+  const escaped = parentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const parentEditLink = page.getByRole("link", {
-    name: `Edit ${parentName}`,
-    exact: true,
+    name: new RegExp(`^(Edit|Modifier) ${escaped}$`),
   });
   await expect(parentEditLink).toBeVisible({ timeout: 5000 });
   const parentId = (await parentEditLink.getAttribute("href"))?.match(
@@ -56,4 +58,27 @@ export async function createChildLocation(
   await expect(page).toHaveURL(/\/locations\/?$/, { timeout: 5000 });
   await expect(page.locator(`text=${name}`)).toBeVisible({ timeout: 5000 });
   return lcode;
+}
+
+/**
+ * Two consecutive L-codes of `bucket` (`specLcode(bucket, seq)` and
+ * `seq + 1`) that /locations does not list yet, the first one an even
+ * `seq` drawn in [minSeq, maxSeq). A re-run on a non-reset stack never
+ * meets an earlier run's locations. Gives up after 50 draws.
+ */
+export async function freeLcodePair(
+  page: Page,
+  bucket: number,
+  minSeq: number,
+  maxSeq: number,
+): Promise<[string, string]> {
+  await page.goto("/locations");
+  const listed = await page.content();
+  const starts = Math.floor((maxSeq - minSeq) / 2);
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const seq = minSeq + Math.floor(Math.random() * starts) * 2;
+    const pair: [string, string] = [specLcode(bucket, seq), specLcode(bucket, seq + 1)];
+    if (!listed.includes(pair[0]) && !listed.includes(pair[1])) return pair;
+  }
+  throw new Error(`no free L-code pair left in bucket ${bucket}`);
 }
