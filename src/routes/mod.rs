@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod admin_api_keys;
 pub mod admin_backups;
+pub mod admin_backups_restore;
 pub mod admin_health_backup;
 pub mod admin_health_watch;
 pub mod audit;
@@ -889,6 +890,14 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
             axum::routing::get(admin_backups::admin_backups_panel)
                 .post(admin_backups::admin_backups_run),
         )
+        // Story 19-8 (#657, T8) — the restore modal (D5 checks) and the
+        // restore. Admin-gated; the POST is CSRF-protected and is the one
+        // route the maintenance layer admits without a read guard.
+        .route(
+            "/admin/backups/restore/{name}",
+            axum::routing::get(admin_backups_restore::restore_modal)
+                .post(admin_backups_restore::restore_run),
+        )
         // Story 8-8 — first-launch setup wizard. Whitelisted by the
         // setup-gate middleware (so this is reachable on a fresh install
         // even though every other route 303s to /setup); each handler
@@ -976,6 +985,15 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             setup_gate_middleware,
+        ))
+        // Story 19-8 (#657, D8, T6): maintenance while a restore runs —
+        // outermost after CSP (`CSP → Maintenance → SetupGate → …`): 503
+        // for everything but `/static/*` and `/health`; otherwise each
+        // request holds the maintenance gate's read guard, which the
+        // restore waits for (drain) before touching anything.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::maintenance::maintenance_middleware,
         ))
         // #696 — set AFTER the layers above, so an unrouted request runs
         // none of them: no session row, no CSRF rejection hiding the 404,

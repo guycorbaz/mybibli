@@ -88,6 +88,11 @@ pub fn format_local_date_time(utc: NaiveDateTime, tz: Tz) -> String {
     format_local(utc, tz, DATE_TIME_FORMAT)
 }
 
+/// [`format_local_date_time`] of a UTC instant (stories 19-7 / 19-8).
+pub fn format_utc_date_time(at: chrono::DateTime<Utc>, tz: Tz) -> String {
+    format_local_date_time(at.naive_utc(), tz)
+}
+
 /// The first UTC instant of the local day `day` in `tz`: local midnight,
 /// or — in a zone whose clocks jump over midnight on that day — the first
 /// local time after the gap. On a repeated midnight (clocks set back over

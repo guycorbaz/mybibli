@@ -77,6 +77,12 @@ impl BackupStatus {
         }
     }
 
+    /// Story 19-8 (T4): after a restore the database is another one; the
+    /// remembered fingerprint no longer describes it.
+    pub fn forget(&self) {
+        self.lock().remembered = None;
+    }
+
     pub fn set_write_refused(&self, refused: bool) {
         self.lock().write_refused = refused;
     }
@@ -157,6 +163,14 @@ mod tests {
         s.record_check(at, CheckResult::Unchanged);
         s.remember(remembered());
         assert_eq!(s.snapshot().last_check.unwrap().result, CheckResult::Unchanged);
+    }
+
+    #[test]
+    fn a_restore_forgets_the_remembered_backup() {
+        let s = BackupStatus::default();
+        s.remember(remembered());
+        s.forget();
+        assert!(s.remembered().is_none());
     }
 
     #[test]

@@ -3,7 +3,9 @@ import { defineConfig } from "@playwright/test";
 /** Specs that change instance-wide settings (story 19-2): run last, alone. */
 const SETTINGS_SPEC = /journeys\/admin-system-settings\.spec\.ts/;
 const SESSION_TIMEOUT_SPEC = /journeys\/session-inactivity-timeout\.spec\.ts/;
-const INSTANCE_WIDE_SPECS = [SETTINGS_SPEC, SESSION_TIMEOUT_SPEC];
+/** Story 19-8 — replaces the whole database and logs everyone out: last of all. */
+const RESTORE_SPEC = /journeys\/admin-backup-restore\.spec\.ts/;
+const INSTANCE_WIDE_SPECS = [SETTINGS_SPEC, SESSION_TIMEOUT_SPEC, RESTORE_SPEC];
 
 export default defineConfig({
   testDir: "./specs",
@@ -47,6 +49,17 @@ export default defineConfig({
       use: { browserName: "chromium" },
       testMatch: SESSION_TIMEOUT_SPEC,
       dependencies: ["instance-settings"],
+    },
+    // Story 19-8 (AC9) — a restore replaces the whole database and logs
+    // everyone out: after every other test, alone. It restores a backup
+    // it wrote itself moments before, so the stack stays usable afterwards
+    // (the library it found, the seeded users). Story 19-10's epic smoke
+    // joins this project.
+    {
+      name: "instance-restore",
+      use: { browserName: "chromium" },
+      testMatch: RESTORE_SPEC,
+      dependencies: ["instance-session-timeout"],
     },
   ],
 });
