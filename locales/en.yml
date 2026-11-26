@@ -380,6 +380,7 @@ series:
   name_duplicate: "A series named \"%{name}\" already exists."
   total_required_for_closed: Total volume count is required for closed series.
   total_below_owned: "Total count (%{total}) cannot be less than owned count (%{owned})."
+  total_below_expected: "Total must be at least %{position}: an expected tome is recorded at position %{position}."
   detail_title: Series details
   save: Save
   cancel: Cancel
@@ -1017,6 +1018,8 @@ admin:
     restore_success: "Restored: %{name}"
     restore_error_not_found: "That item is no longer in the trash. It may have been restored or purged already."
     restore_contributor_name_taken: "“%{name}” was not restored: another contributor already has this name. Rename one of them, then restore it again."
+    restore_tome_to_review: "“%{title}” is back at position %{position} of “%{series}”, where an expected tome was recorded meanwhile. Check it under “Expected tomes to review” on the series page."
+    restore_tome_settled: "The expected tome at position %{position} of “%{series}” now counts as owned."
     delete_permanent_success: "Deleted permanently: %{name}"
     delete_permanent_modal_title: "Delete permanently?"
     delete_permanent_modal_warning: "This cannot be undone."

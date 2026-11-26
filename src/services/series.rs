@@ -1,6 +1,7 @@
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::PaginatedList;
+use crate::models::expected_tome::ExpectedTomeModel;
 use crate::models::series::{
     SeriesModel, SeriesSummaryRow, SeriesType, TitleSeriesModel, TitleSeriesRow,
 };
@@ -51,6 +52,127 @@ impl SeriesPositionInfo {
     }
 }
 
+/// Story 20-3 (AC3, Rule #3) — the form field a series refusal belongs
+/// to, so the series form shows the message under it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeriesField {
+    Name,
+    Total,
+}
+
+/// Story 20-3 — why the series form was not saved. The refusals are
+/// worded by the route in the request locale ([`Self::localized`]);
+/// `App` is any other error (not found, version conflict, database),
+/// propagated as itself.
+#[derive(Debug)]
+pub enum SeriesFormError {
+    NameRequired,
+    NameDuplicate { name: String },
+    TotalRequired,
+    TotalBelowOwned { total: i32, owned: u64 },
+    /// D7 — a live, unsettled expected tome sits above the total.
+    TotalBelowExpected { position: i32 },
+    App(AppError),
+}
+
+impl From<AppError> for SeriesFormError {
+    fn from(e: AppError) -> Self {
+        Self::App(e)
+    }
+}
+
+impl From<sqlx::Error> for SeriesFormError {
+    fn from(e: sqlx::Error) -> Self {
+        Self::App(AppError::from(e))
+    }
+}
+
+impl SeriesFormError {
+    /// The field this refusal is about (pure); `None` for `App`.
+    pub fn field(&self) -> Option<SeriesField> {
+        match self {
+            Self::NameRequired | Self::NameDuplicate { .. } => Some(SeriesField::Name),
+            Self::TotalRequired | Self::TotalBelowOwned { .. } | Self::TotalBelowExpected { .. } => {
+                Some(SeriesField::Total)
+            }
+            Self::App(_) => None,
+        }
+    }
+
+    /// The message a librarian reads, in `loc` (field errors, terse);
+    /// `None` for `App`, which answers as itself.
+    pub fn localized(&self, loc: &str) -> Option<String> {
+        use rust_i18n::t;
+        let message = match self {
+            Self::NameRequired => t!("series.name_required", locale = loc),
+            Self::NameDuplicate { name } => t!("series.name_duplicate", locale = loc, name = name),
+            Self::TotalRequired => t!("series.total_required_for_closed", locale = loc),
+            Self::TotalBelowOwned { total, owned } => t!(
+                "series.total_below_owned",
+                locale = loc,
+                total = total,
+                owned = owned
+            ),
+            Self::TotalBelowExpected { position } => t!(
+                "series.total_below_expected",
+                locale = loc,
+                position = position
+            ),
+            Self::App(_) => return None,
+        };
+        Some(message.to_string())
+    }
+}
+
+/// Story 20-3 (D7, pure) — the position the total of a series must reach:
+/// `Some(M)` when the series ends closed with a total below `M`, the
+/// highest position of a live, unsettled expected tome; `None` otherwise
+/// (open series, no tome, total ≥ M).
+pub fn total_below_expected(
+    series_type: SeriesType,
+    total: Option<i32>,
+    highest_unsettled: Option<i32>,
+) -> Option<i32> {
+    let total = crate::services::expected_tomes::closed_total_of(series_type, total)?;
+    highest_unsettled.filter(|&m| total < m)
+}
+
+/// Story 20-3 (Q1 (a), pure) — whether a save changes the type or the
+/// total: the expected-tome total rule runs only then, so a rename of a
+/// series already in a #524 state still saves (the 15-4 `touches_total`).
+pub fn touches_total(
+    submitted: (SeriesType, Option<i32>),
+    stored: (SeriesType, Option<i32>),
+) -> bool {
+    submitted != stored
+}
+
+/// The name and total checks shared by create and edit (pure): a
+/// non-blank name, and a total ≥ 1 for a closed series. Returns the
+/// trimmed name and the total to store (`None` for an open series).
+fn check_form(
+    name: &str,
+    series_type: SeriesType,
+    total_volume_count: Option<i32>,
+) -> Result<(&str, Option<i32>), SeriesFormError> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(SeriesFormError::NameRequired);
+    }
+    Ok((trimmed, closed_total_or_none(series_type, total_volume_count)))
+}
+
+fn closed_total_or_none(series_type: SeriesType, total: Option<i32>) -> Option<i32> {
+    if series_type == SeriesType::Closed { total } else { None }
+}
+
+fn check_total_required(series_type: SeriesType, total: Option<i32>) -> Result<(), SeriesFormError> {
+    if series_type == SeriesType::Closed && !total.is_some_and(|n| n > 0) {
+        return Err(SeriesFormError::TotalRequired);
+    }
+    Ok(())
+}
+
 pub struct SeriesService;
 
 impl SeriesService {
@@ -60,47 +182,27 @@ impl SeriesService {
         description: Option<&str>,
         series_type: SeriesType,
         total_volume_count: Option<i32>,
-    ) -> Result<SeriesModel, AppError> {
-        let trimmed = name.trim();
-        if trimmed.is_empty() {
-            return Err(AppError::BadRequest(
-                rust_i18n::t!("series.name_required").to_string(),
-            ));
-        }
-
-        // Validate total_volume_count for closed series
-        if series_type == SeriesType::Closed {
-            match total_volume_count {
-                None | Some(0) => {
-                    return Err(AppError::BadRequest(
-                        rust_i18n::t!("series.total_required_for_closed").to_string(),
-                    ));
-                }
-                Some(n) if n < 0 => {
-                    return Err(AppError::BadRequest(
-                        rust_i18n::t!("series.total_required_for_closed").to_string(),
-                    ));
-                }
-                _ => {}
-            }
-        }
+    ) -> Result<SeriesModel, SeriesFormError> {
+        let (trimmed, total) = check_form(name, series_type, total_volume_count)?;
 
         // Check uniqueness among active series
-        if let Some(_existing) = SeriesModel::active_find_by_name(pool, trimmed).await? {
-            return Err(AppError::BadRequest(
-                rust_i18n::t!("series.name_duplicate", name = trimmed).to_string(),
-            ));
+        if SeriesModel::active_find_by_name(pool, trimmed).await?.is_some() {
+            return Err(SeriesFormError::NameDuplicate {
+                name: trimmed.to_string(),
+            });
         }
+        check_total_required(series_type, total)?;
 
-        let total = if series_type == SeriesType::Closed {
-            total_volume_count
-        } else {
-            None
-        };
-
-        SeriesModel::create(pool, trimmed, description, series_type, total).await
+        Ok(SeriesModel::create(pool, trimmed, description, series_type, total).await?)
     }
 
+    /// Story 20-3 (AC1, AC2) — the hand edit, in one transaction whose
+    /// first statement is the series row lock every expected-tome writer
+    /// takes first (`lock_series_in`): the owned count and the highest
+    /// unsettled tome are plain reads after it, so they see every tome
+    /// committed before the lock was granted (`REPEATABLE READ` takes its
+    /// snapshot at the first plain read). The duplicate-name read runs on
+    /// the pool, before the transaction, for that reason.
     pub async fn update_series(
         pool: &DbPool,
         id: u64,
@@ -109,57 +211,56 @@ impl SeriesService {
         description: Option<&str>,
         series_type: SeriesType,
         total_volume_count: Option<i32>,
-    ) -> Result<SeriesModel, AppError> {
-        let trimmed = name.trim();
-        if trimmed.is_empty() {
-            return Err(AppError::BadRequest(
-                rust_i18n::t!("series.name_required").to_string(),
-            ));
-        }
+    ) -> Result<SeriesModel, SeriesFormError> {
+        let (trimmed, total) = check_form(name, series_type, total_volume_count)?;
 
         // Check uniqueness (exclude self)
         if let Some(existing) = SeriesModel::active_find_by_name(pool, trimmed).await?
             && existing.id != id
         {
-            return Err(AppError::BadRequest(
-                rust_i18n::t!("series.name_duplicate", name = trimmed).to_string(),
-            ));
+            return Err(SeriesFormError::NameDuplicate {
+                name: trimmed.to_string(),
+            });
+        }
+        check_total_required(series_type, total)?;
+
+        let mut tx = pool.begin().await?;
+        let stored = ExpectedTomeModel::lock_series_in(&mut tx, id)
+            .await?
+            .ok_or_else(|| {
+                SeriesFormError::App(AppError::NotFound(
+                    rust_i18n::t!("error.not_found").to_string(),
+                ))
+            })?;
+        // Review pass 1 (L1): a stale form answers the version conflict
+        // before any check on a state its user never saw (a plain read,
+        // after the lock: it sees the row as locked).
+        let current = SeriesModel::active_find_by_id_in(&mut tx, id).await?;
+        if current.is_some_and(|c| c.version != version) {
+            return Err(SeriesFormError::App(AppError::VersionMismatch { entity: "series" }));
         }
 
-        let total = if series_type == SeriesType::Closed {
-            // Validate total_volume_count for closed series
-            match total_volume_count {
-                None | Some(0) => {
-                    return Err(AppError::BadRequest(
-                        rust_i18n::t!("series.total_required_for_closed").to_string(),
-                    ));
-                }
-                Some(n) if n < 0 => {
-                    return Err(AppError::BadRequest(
-                        rust_i18n::t!("series.total_required_for_closed").to_string(),
-                    ));
-                }
-                _ => {}
+        if series_type == SeriesType::Closed
+            && let Some(total) = total
+        {
+            // Validate total >= owned count (15-4 D5: a count, not positions)
+            let owned = SeriesModel::active_count_titles_in(&mut tx, id).await?;
+            if (total as u64) < owned {
+                return Err(SeriesFormError::TotalBelowOwned { total, owned });
             }
-
-            // Validate total >= owned count
-            let owned = SeriesModel::active_count_titles(pool, id).await?;
-            if let Some(total) = total_volume_count
-                && (total as u64) < owned
-            {
-                return Err(AppError::BadRequest(
-                    rust_i18n::t!("series.total_below_owned", total = total, owned = owned)
-                        .to_string(),
-                ));
+            if touches_total(
+                (series_type, Some(total)),
+                (stored.series_type, stored.total_volume_count),
+            ) {
+                let highest = ExpectedTomeModel::highest_unsettled_position_in(&mut tx, id).await?;
+                if let Some(position) = total_below_expected(series_type, Some(total), highest) {
+                    return Err(SeriesFormError::TotalBelowExpected { position });
+                }
             }
+        }
 
-            total_volume_count
-        } else {
-            None
-        };
-
-        SeriesModel::update_with_locking(
-            pool,
+        SeriesModel::update_with_locking_in(
+            &mut tx,
             id,
             version,
             trimmed,
@@ -167,7 +268,12 @@ impl SeriesService {
             series_type,
             total,
         )
-        .await
+        .await?;
+        let updated = SeriesModel::active_find_by_id_in(&mut tx, id)
+            .await?
+            .ok_or_else(|| AppError::Internal("Failed to retrieve updated series".to_string()))?;
+        tx.commit().await?;
+        Ok(updated)
     }
 
     pub async fn delete_series(pool: &DbPool, id: u64) -> Result<(), AppError> {
@@ -626,6 +732,75 @@ impl SeriesService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_total_must_reach_the_highest_unsettled_tome_of_a_closed_series() {
+        use SeriesType::{Closed, Open};
+        assert_eq!(total_below_expected(Open, None, Some(9)), None);
+        assert_eq!(total_below_expected(Open, Some(3), Some(9)), None);
+        assert_eq!(total_below_expected(Closed, Some(9), Some(9)), None);
+        assert_eq!(total_below_expected(Closed, Some(10), Some(9)), None);
+        assert_eq!(total_below_expected(Closed, Some(8), Some(9)), Some(9));
+        assert_eq!(total_below_expected(Closed, Some(8), None), None);
+    }
+
+    #[test]
+    fn the_total_rule_runs_only_when_the_type_or_the_total_changes() {
+        use SeriesType::{Closed, Open};
+        assert!(!touches_total((Closed, Some(5)), (Closed, Some(5))));
+        assert!(touches_total((Closed, Some(4)), (Closed, Some(5))));
+        assert!(touches_total((Closed, Some(5)), (Open, None)));
+        assert!(touches_total((Open, None), (Closed, Some(5))));
+    }
+
+    #[test]
+    fn series_form_refusals_name_their_field() {
+        use SeriesField::{Name, Total};
+        assert_eq!(SeriesFormError::NameRequired.field(), Some(Name));
+        assert_eq!(SeriesFormError::NameDuplicate { name: "x".into() }.field(), Some(Name));
+        assert_eq!(SeriesFormError::TotalRequired.field(), Some(Total));
+        assert_eq!(SeriesFormError::TotalBelowOwned { total: 1, owned: 2 }.field(), Some(Total));
+        assert_eq!(SeriesFormError::TotalBelowExpected { position: 3 }.field(), Some(Total));
+        assert_eq!(SeriesFormError::App(AppError::Internal("x".into())).field(), None);
+    }
+
+    #[test]
+    fn series_form_refusals_are_worded_in_every_locale() {
+        for loc in ["en", "fr", "de", "it"] {
+            let all = [
+                SeriesFormError::NameRequired,
+                SeriesFormError::NameDuplicate { name: "Neptune".into() },
+                SeriesFormError::TotalRequired,
+                SeriesFormError::TotalBelowOwned { total: 4, owned: 6 },
+                SeriesFormError::TotalBelowExpected { position: 7 },
+            ];
+            for err in &all {
+                let m = err.localized(loc).unwrap();
+                // No raw key of the five (the EN copy itself ends in
+                // "closed series.", so a bare "series." would match it).
+                assert!(!m.contains("series.name_") && !m.contains("series.total_"), "raw key: {loc}: {m}");
+                assert!(!m.contains("%{"), "{loc}: {m}");
+            }
+            let dup = all[1].localized(loc).unwrap();
+            assert!(dup.contains("Neptune"), "{loc}: {dup}");
+            let owned = all[3].localized(loc).unwrap();
+            assert!(owned.contains('4') && owned.contains('6'), "{loc}: {owned}");
+            let expected = all[4].localized(loc).unwrap();
+            assert_eq!(expected.matches('7').count(), 2, "{loc}: {expected}");
+        }
+        assert_eq!(SeriesFormError::App(AppError::Internal("x".into())).localized("en"), None);
+    }
+
+    #[test]
+    fn the_form_checks_refuse_a_blank_name_and_a_closed_series_without_total() {
+        assert!(matches!(check_form("  ", SeriesType::Open, None), Err(SeriesFormError::NameRequired)));
+        assert_eq!(check_form(" N ", SeriesType::Open, Some(5)).unwrap(), ("N", None));
+        assert_eq!(check_form("N", SeriesType::Closed, Some(5)).unwrap(), ("N", Some(5)));
+        for bad in [None, Some(0), Some(-2)] {
+            assert!(matches!(check_total_required(SeriesType::Closed, bad), Err(SeriesFormError::TotalRequired)));
+        }
+        assert!(check_total_required(SeriesType::Open, None).is_ok());
+    }
 
     #[test]
     fn gap_count_follows_the_dashboard_rule() {

@@ -389,7 +389,7 @@ development_status:
   epic-20: in-progress
   20-1-wishlist-remove: done
   20-2-series-gap-to-wishlist: done
-  20-3-expected-tomes-consistency: backlog
+  20-3-expected-tomes-consistency: done
   20-4-location-description: done
   20-5-location-tree-nested-list: done
   20-6-epic-20-smoke-test: ready-for-dev
