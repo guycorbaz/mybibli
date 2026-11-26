@@ -183,7 +183,15 @@ async fn a_restore_puts_back_every_table_the_covers_and_the_caches(pool: DbPool)
 
 #[sqlx::test(migrations = "./migrations")]
 async fn an_older_backup_is_brought_up_to_date_by_the_migrations(pool: DbPool) {
-    const NEWEST: i64 = 20261126100000;
+    // The newest migration, whose effect this test knows how to undo. A new
+    // migration fails the guard below: point NEWEST and the undo/check at it
+    // (or at another newest one whose effect can be removed by hand).
+    const NEWEST: i64 = 20261126120000;
+    assert_eq!(
+        mybibli::db::newest_known_migration(),
+        Some(NEWEST),
+        "a new migration was added: update this test to remove its effect"
+    );
     let fx = fixture(&pool, "restore_admin_old").await;
     // A database as an older release left it: the newest migration's row
     // and its effect removed.
@@ -192,7 +200,7 @@ async fn an_older_backup_is_brought_up_to_date_by_the_migrations(pool: DbPool) {
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query("DELETE FROM settings WHERE setting_key = 'backup_retention_days'")
+    sqlx::query("ALTER TABLE storage_locations DROP COLUMN description")
         .execute(&pool)
         .await
         .unwrap();
@@ -216,11 +224,15 @@ async fn an_older_backup_is_brought_up_to_date_by_the_migrations(pool: DbPool) {
         .await
         .unwrap();
     assert_eq!(row, 1, "the migration ran again");
-    let setting: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM settings WHERE setting_key = 'backup_retention_days'")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(setting, 1, "its effect is there");
+    let column: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS \
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'storage_locations' \
+            AND COLUMN_NAME = 'description'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(column, 1, "its effect is there");
 }
 
 // ─── AC5 — another instance ──────────────────────────────────────
