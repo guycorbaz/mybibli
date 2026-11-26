@@ -230,6 +230,16 @@ Recorded, not fixed:
 
 E2E deviation (L10): the spec presses Escape on the outcome line to check the focus, then opens `/login` itself instead of clicking "Log in again"; it still asserts the link's focus and `href`.
 
+## Review pass 2 (2026-11-26)
+
+- **M-1 — a boot rollback whose journal removal failed re-ran at every boot.** Any `backup_restore` audit row carrying the journal's `restore_id` (whatever its outcome, `rolled_back_at_boot` included) now settles it: the journal is only removed. Test: `a_journal_left_after_a_boot_rollback_is_only_removed`.
+- **L-1 / L-2 — what a panic means.** The restore id is chosen in `restore_backup` and passed to `restore_core`. Whether a panic is "stuck" is decided by a `Progress` flag set right before the first change (it carries the safety backup's name), not by the journal's presence, so a leftover journal of an earlier restore cannot make this one stuck. `reload_caches` runs inside the same `catch_unwind`: a panic there after a change is stuck, never "nothing was changed". Unit test: `a_panic_after_the_first_change_is_stuck_and_before_it_changes_nothing`.
+- **L-3 — the busy-state assertions raced the end of the restore** (the first full E2E run failed exactly there: the restore ended before "Restoring…" was checked). The spec now holds the restore POST's answer with `page.route` (`route.fetch()`, then `route.fulfill()` once the busy state is checked; gated on a promise, no `waitForTimeout`). The spec's ISBN is also per attempt (`1 + testInfo.retry`): a retry runs after an earlier attempt's restore may have brought its title back.
+- **L-4 — open errors.** `verify::open_checked`: `O_NOFOLLOW | O_NONBLOCK`, ELOOP and not-found → gone, any other failure → not readable, `fstat` must say a regular file. Unit test with a link, a FIFO (no blocking), a directory, an unreadable file.
+- **L-5 — `hx-disabled-elt` could drop the focus on a refused open.** Replaced by `hx-sync="this:drop"` (a second press is dropped, the button is never disabled). Route test asserts it.
+- **L-6 — the tests now cover what their names say.** A real panic is driven through `restore_backup`'s `catch_unwind` (debug-build hook `restore::PANIC_AFTER_FIRST_CHANGE`, keyed by file name): `a_panic_after_the_first_change_keeps_maintenance_and_the_guard`. On both stuck states (`a_stuck_restore_keeps_the_backup_guard` too) `run_check` and `rotate` answer Busy and no file is written or deleted.
+- **L-7 — for the manual (story 19-11):** if both the audit row and the journal removal fail after a successful restore, the next boot does not recognise the journal and puts the library back from the safety backup (the restore is undone). Rare (two independent failures, both logged at `error`); the manual should tell the operator to check the log after a restore and remove a leftover `.restore-in-progress.json` by hand once the restored library is confirmed.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -270,3 +280,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — validate-story: checked against the code; T9–T12 added, D5 and T6–T7 corrected (see Validation).
 - 2026-11-26 — dev-story: implemented; unit, integration and static gates green; E2E written, not yet run (status in-progress).
 - 2026-11-26 — code review pass 1: three Medium and eleven Low findings fixed (see Review pass 1); E2E still to run.
+- 2026-11-26 — code review pass 2: one Medium and seven Low findings handled (see Review pass 2).

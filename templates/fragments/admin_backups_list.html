@@ -2,7 +2,9 @@
    The content of `#admin-backups-list` (refreshed out of band after
    "Back up now"). Each row carries its file name in `data-backup-file`;
    "Restore…" opens the UX-DR8 modal in #modal-slot (no `hx-confirm=`).
-   Values are escaped by Askama. #}
+   Values are escaped by Askama. Review pass 2 (L-5): a second press while
+   the modal is prepared is dropped (`hx-sync="this:drop"`) instead of
+   disabling the button, which would lose its focus on a refused open. #}
 <section aria-labelledby="admin-backups-list-heading" class="space-y-3">
     <h3 id="admin-backups-list-heading" class="text-lg font-semibold">{{ heading }}</h3>
     {% if rows.is_empty() %}
@@ -32,7 +34,7 @@
                                 hx-get="/admin/backups/restore/{{ r.name }}"
                                 hx-target="#modal-slot"
                                 hx-swap="innerHTML"
-                                hx-disabled-elt="this"
+                                hx-sync="this:drop"
                                 aria-label="{{ r.restore_aria }}"
                                 class="px-3 py-1 bg-stone-200 dark:bg-stone-700 hover:bg-red-600 hover:text-white text-sm rounded min-h-[44px] md:min-h-0">{{ restore_label }}</button>
                     </td>

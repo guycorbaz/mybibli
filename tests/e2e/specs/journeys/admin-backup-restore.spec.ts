@@ -38,14 +38,15 @@ const EVERYONE_LOGGED_OUT =
   /Everyone has been logged out|Tout le monde a été déconnecté|Alle wurden abgemeldet|Tutti sono stati disconnessi/i;
 
 test.describe("Story 19-8 — restoring a backup", () => {
-  test("an admin restores a backup of a moment ago and finds a deleted title back", async ({ page }) => {
+  test("an admin restores a backup of a moment ago and finds a deleted title back", async ({ page }, testInfo) => {
     // A backup, a safety backup and a restore of the whole E2E database.
     test.setTimeout(420000);
     await page.context().clearCookies();
     await loginAs(page, "admin");
 
-    // 1. A title of this spec.
-    const isbn = specIsbn("RS", 1);
+    // 1. A title of this spec. One ISBN per attempt: a retry runs after an
+    //    earlier attempt's restore may have brought its title back.
+    const isbn = specIsbn("RS", 1 + testInfo.retry);
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
     await scanField.fill(isbn);
@@ -66,8 +67,8 @@ test.describe("Story 19-8 — restoring a backup", () => {
     expect(deleted.ok(), `delete answered ${deleted.status()}`).toBeTruthy();
     expect((await page.request.get(`/title/${titleId}`)).status()).toBe(404);
 
-    // 4. The list shows the spec's backup; "Restore…" opens the modal (the
-    //    button is disabled while the modal is prepared: `hx-disabled-elt`).
+    // 4. The list shows the spec's backup; "Restore…" opens the modal (a
+    //    second press while it is prepared is dropped: `hx-sync`).
     await page.goto("/admin?tab=backups", { waitUntil: "domcontentloaded" });
     const row = page.locator(`#admin-backups-list tr[data-backup-file="${file}"]`);
     await expect(row).toBeVisible();
@@ -82,7 +83,19 @@ test.describe("Story 19-8 — restoring a backup", () => {
 
     // 5. Confirm: while it runs the "Restoring…" line is really seen and the
     //    modal cannot be closed (review pass 1); then the line replaces the
-    //    modal and "Log in again" takes the focus.
+    //    modal and "Log in again" takes the focus. Review pass 2 (L-3): the
+    //    restore's answer is held back by the test until the busy state has
+    //    been checked, so those checks never race the end of the restore.
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(`**/admin/backups/restore/${file}`, async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      const response = await route.fetch({ timeout: 300000 });
+      await released;
+      await route.fulfill({ response });
+    });
     const confirm = dialog.locator("[data-modal-confirm]");
     await expectHtmxProcessed(confirm);
     await confirm.click();
@@ -90,6 +103,8 @@ test.describe("Story 19-8 — restoring a backup", () => {
     await expect(dialog.locator("[data-modal-cancel]")).toBeDisabled();
     await page.keyboard.press("Escape");
     await expect(page.locator("#admin-backups-restoring")).toBeAttached();
+    await expect(dialog).toBeVisible();
+    release();
     const done = page.locator("#admin-backups-restore-done-text");
     await expect(done).toContainText(file!, { timeout: 300000 });
     await expect(done).toContainText(EVERYONE_LOGGED_OUT);

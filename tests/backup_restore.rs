@@ -467,6 +467,10 @@ async fn the_list_shows_every_backup_newest_first_with_its_notes(pool: DbPool) {
     assert!(!row(&foreign).contains("Supprimée"), "another instance is never rotated");
     assert!(row(&own.file_name).contains("Restaurer la sauvegarde du "));
     assert!(row(&own.file_name).contains("hx-target=\"#modal-slot\""));
+    // Review pass 2 (L-5): a second press is dropped, the button never
+    // disabled (a disabled button would lose the focus on a refused open).
+    assert!(row(&own.file_name).contains("hx-sync=\"this:drop\""));
+    assert!(!row(&own.file_name).contains("hx-disabled-elt"));
 
     // "Back up now" refreshes the list out of band.
     let (status, body) = fx.admin.post_form(&fx.app, "/admin/backups", "").await;
@@ -714,4 +718,80 @@ async fn a_stuck_restore_keeps_the_backup_guard(pool: DbPool) {
     assert!(fx.state.backup.maintenance.is_active(), "maintenance stays on");
     assert!(fx.state.backup.guard.clone().try_lock_owned().is_err(), "the guard is kept");
     assert!(fx.f.backups().join(JOURNAL_NAME).exists(), "the journal stays for the next boot");
+    assert_stuck_blocks_backups_and_rotation(&fx).await;
+}
+
+/// Review pass 2 (L-6): while stuck, neither the scheduled check nor the
+/// rotation runs.
+async fn assert_stuck_blocks_backups_and_rotation(fx: &Fixture) {
+    fx.state.settings.write().unwrap().backup_interval_hours = 1;
+    let before = names_in(&fx.f.backups());
+    let run = mybibli::tasks::backup_scheduler::run_check(&fx.state, chrono::Utc::now()).await;
+    assert_eq!(run, mybibli::tasks::backup_scheduler::CheckRun::Busy);
+    let rotated = rotation::rotate(
+        &fx.state.backup,
+        &fx.local_id,
+        chrono::Utc::now() + chrono::Duration::days(400),
+        chrono_tz::UTC,
+        1,
+    )
+    .await;
+    assert_eq!(rotated, rotation::RotationOutcome::Busy);
+    assert_eq!(names_in(&fx.f.backups()), before, "no file written or deleted");
+}
+
+/// Review pass 2 (L-6): a real panic after the first change, through
+/// `restore_backup`'s `catch_unwind`: stuck, maintenance and guard kept.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_panic_after_the_first_change_keeps_maintenance_and_the_guard(pool: DbPool) {
+    let fx = fixture(&pool, "restore_admin_panic").await;
+    seed(&pool, &fx.f.covers()).await;
+    let backup = write_backup(&pool, &fx.state.backup).await.unwrap();
+    *restore::PANIC_AFTER_FIRST_CHANGE.lock().unwrap() = Some(backup.file_name.clone());
+    let outcome = restore::restore_backup(&fx.state, &backup.file_name, "x").await;
+    *restore::PANIC_AFTER_FIRST_CHANGE.lock().unwrap() = None;
+    let Ok(RestoreOutcome::Stuck { safety }) = outcome else {
+        panic!("a panic after the first change is stuck: {outcome:?}");
+    };
+    assert_ne!(safety, backup.file_name, "the safety backup is named");
+    assert!(fx.state.backup.maintenance.is_active(), "maintenance stays on");
+    assert!(fx.state.backup.guard.clone().try_lock_owned().is_err(), "the guard is kept");
+    assert!(fx.f.backups().join(JOURNAL_NAME).exists(), "the next boot finds the journal");
+    assert_stuck_blocks_backups_and_rotation(&fx).await;
+}
+
+/// Review pass 2 (M-1): a journal left by a boot rollback whose removal
+/// failed is settled too (any audit row carrying its id).
+#[sqlx::test(migrations = "./migrations")]
+async fn a_journal_left_after_a_boot_rollback_is_only_removed(pool: DbPool) {
+    let fx = fixture(&pool, "restore_admin_boot_leftover").await;
+    seed(&pool, &fx.f.covers()).await;
+    let cfg = fx.state.backup.clone();
+    let safety = write_backup(&pool, &cfg).await.unwrap();
+    let journal = Journal {
+        restore_id: "0123456789abcdef".into(),
+        backup: name_of(OTHER_ID, "20250101T000000Z"),
+        safety: safety.file_name.clone(),
+        instance_id: fx.local_id.clone(),
+        started_at: "2026-11-26T08:00:00Z".into(),
+    };
+    let system = mybibli::models::user::UserModel::find_system_user_id(&pool).await.unwrap();
+    mybibli::models::admin_audit::AdminAuditModel::create(
+        &pool,
+        system,
+        restore::AUDIT_ACTION,
+        None,
+        None,
+        Some(serde_json::json!({"restore_id": "0123456789abcdef", "outcome": "rolled_back_at_boot"})),
+    )
+    .await
+    .unwrap();
+    write_journal(&cfg.dir, &journal).unwrap();
+    sqlx::query("INSERT INTO titles (title, media_type, genre_id) VALUES ('Entered after the boot rollback', 'book', (SELECT MIN(id) FROM genres))")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(restore::recover_at_boot(&pool, &cfg).await, Ok(None), "not rolled back again");
+    assert!(title_exists(&pool, "Entered after the boot rollback").await, "later work is kept");
+    assert!(!cfg.dir.join(JOURNAL_NAME).exists());
 }

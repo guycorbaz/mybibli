@@ -284,6 +284,51 @@ async fn audit(pool: &DbPool, journal: &Journal, verified: Option<&Verified>, ad
 
 /// The core sequence (T10): safety backup, journal, apply, audit; rollback
 /// from the safety backup on failure. `guard` is the backup guard, held.
+/// Review pass 2 (L-2): what a restore has done so far, read when it
+/// panicked — "changed" is set right before the first change.
+#[derive(Debug, Default)]
+pub struct Progress {
+    changed: std::sync::atomic::AtomicBool,
+    safety: std::sync::Mutex<Option<String>>,
+}
+
+impl Progress {
+    fn mark_changed(&self, safety: &str) {
+        *self.safety.lock().unwrap_or_else(|p| p.into_inner()) = Some(safety.to_string());
+        self.changed.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// The safety backup, once the first change was made.
+    pub fn changed_with_safety(&self) -> Option<String> {
+        if !self.changed.load(std::sync::atomic::Ordering::SeqCst) {
+            return None;
+        }
+        self.safety.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+}
+
+/// Review pass 2 (L-6): a test hook — a restore of this backup file panics
+/// right after its first change. Debug builds only (integration tests).
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub static PANIC_AFTER_FIRST_CHANGE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+#[cfg(debug_assertions)]
+fn test_panic_hook(file_name: &str) {
+    let armed = PANIC_AFTER_FIRST_CHANGE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_deref()
+        == Some(file_name);
+    if armed {
+        panic!("test hook: panic after the first change of {file_name}");
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn test_panic_hook(_file_name: &str) {}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn restore_core(
     pool: &DbPool,
     cfg: &BackupConfig,
@@ -291,13 +336,15 @@ pub async fn restore_core(
     verified: &Verified,
     local_id: &str,
     admin: &str,
+    restore_id: &str,
+    progress: &Progress,
 ) -> Result<RestoreOutcome, RestoreError> {
     // D9: a safety backup of the current state, through the same writer.
     let safety = write_backup_holding(pool, cfg, guard)
         .await
         .map_err(RestoreError::SafetyBackupFailed)?;
     let journal = Journal {
-        restore_id: crate::services::instance_id::generate(),
+        restore_id: restore_id.to_string(),
         backup: verified.file_name.clone(),
         safety: safety.file_name.clone(),
         instance_id: local_id.to_string(),
@@ -320,6 +367,8 @@ pub async fn restore_core(
         "Restore: replacing the library with a backup"
     );
 
+    progress.mark_changed(&safety.file_name);
+    test_panic_hook(&verified.file_name);
     match apply(pool, cfg, verified, local_id).await {
         Ok(()) => {
             audit(pool, &journal, Some(verified), admin, "restored").await;
@@ -446,24 +495,36 @@ pub async fn restore_backup(
         if bulk_running(&state) {
             return Err(Refusal::BulkRunning.into());
         }
-        let core = std::panic::AssertUnwindSafe(restore_core(
-            &state.pool,
-            &state.backup,
-            &held,
-            &verified,
-            &local_id,
-            &admin,
-        ));
-        let outcome = match futures::FutureExt::catch_unwind(core).await {
+        // Review pass 2 (L-1, L-2): the restore id is chosen here; a panic
+        // (in the restore or in the cache reloads) after the first change
+        // is stuck, whatever journal is or is not in the folder.
+        let restore_id = crate::services::instance_id::generate();
+        let progress = Progress::default();
+        let run = std::panic::AssertUnwindSafe(async {
+            let outcome = restore_core(
+                &state.pool,
+                &state.backup,
+                &held,
+                &verified,
+                &local_id,
+                &admin,
+                &restore_id,
+                &progress,
+            )
+            .await;
+            if matches!(outcome, Ok(RestoreOutcome::Restored(_) | RestoreOutcome::RolledBack { .. })) {
+                reload_caches(&state).await;
+            }
+            outcome
+        });
+        let outcome = match futures::FutureExt::catch_unwind(run).await {
             Ok(outcome) => outcome,
-            Err(_) => panicked_outcome(&state.backup.dir).await,
+            Err(_) => panicked_outcome(&progress),
         };
-        match &outcome {
+        if let Ok(RestoreOutcome::Stuck { safety }) = &outcome {
             // Review pass 1: stuck keeps maintenance on AND the backup
             // guard, for the life of the process.
-            Ok(RestoreOutcome::Stuck { safety }) => maintenance.mark_stuck(safety, Some(held)),
-            Ok(_) => reload_caches(&state).await,
-            Err(_) => {}
+            maintenance.mark_stuck(safety, Some(held));
         }
         outcome
     });
@@ -473,20 +534,15 @@ pub async fn restore_backup(
     })?
 }
 
-/// Review pass 1 (Low 4): the restore panicked. With a journal present the
-/// library may be half loaded: treat it as stuck (maintenance stays on, the
-/// next boot puts the safety backup back). Without one nothing was touched.
-async fn panicked_outcome(dir: &Path) -> Result<RestoreOutcome, RestoreError> {
-    let dir = dir.to_path_buf();
-    let journal = tokio::task::spawn_blocking(move || read_journal(&dir))
-        .await
-        .ok()
-        .and_then(|r| r.ok())
-        .flatten();
-    match journal {
-        Some(j) => {
-            tracing::error!(safety = %j.safety, "Restore panicked after the journal was written; maintenance stays on until a restart");
-            Ok(RestoreOutcome::Stuck { safety: j.safety })
+/// Review pass 1 (Low 4) / pass 2 (L-2): the restore panicked. After its
+/// first change the library may be half loaded: stuck (maintenance stays
+/// on, the next boot puts the safety backup back from the journal). Before
+/// it, nothing was changed.
+fn panicked_outcome(progress: &Progress) -> Result<RestoreOutcome, RestoreError> {
+    match progress.changed_with_safety() {
+        Some(safety) => {
+            tracing::error!(safety = %safety, "Restore panicked after its first change; maintenance stays on until a restart");
+            Ok(RestoreOutcome::Stuck { safety })
         }
         None => {
             tracing::error!("Restore panicked before the first change; nothing was changed");
@@ -495,10 +551,12 @@ async fn panicked_outcome(dir: &Path) -> Result<RestoreOutcome, RestoreError> {
     }
 }
 
-/// Review pass 1 (Medium 2): whether the database already records that the
-/// journal's restore ended (`restored` / `rolled_back` audit row carrying
-/// its id) — then the journal is a leftover of a failed removal. A database
-/// that cannot answer (half loaded) does not.
+/// Review pass 1 (Medium 2) / pass 2 (M-1): whether the database already
+/// records that the journal's restore ended — any `backup_restore` audit
+/// row carrying its id (`restored`, `rolled_back`, `rolled_back_at_boot`):
+/// the audit row is written once the library is consistent, so the journal
+/// is a leftover of a failed removal. A database that cannot answer (half
+/// loaded) does not.
 pub async fn journal_already_settled(pool: &DbPool, journal: &Journal) -> bool {
     if journal.restore_id.is_empty() {
         return false;
@@ -507,13 +565,8 @@ pub async fn journal_already_settled(pool: &DbPool, journal: &Journal) -> bool {
     else {
         return false;
     };
-    rows.iter().any(|d| {
-        d.get("restore_id").and_then(|v| v.as_str()) == Some(journal.restore_id.as_str())
-            && matches!(
-                d.get("outcome").and_then(|v| v.as_str()),
-                Some("restored" | "rolled_back")
-            )
-    })
+    rows.iter()
+        .any(|d| d.get("restore_id").and_then(|v| v.as_str()) == Some(journal.restore_id.as_str()))
 }
 
 /// Review pass 1 (Low 5): the boot cannot see a journal in a folder that is
@@ -621,26 +674,13 @@ mod tests {
         assert!(safety.contains("already"), "{safety}");
     }
 
-    #[tokio::test]
-    async fn a_panic_after_the_journal_is_stuck_and_before_it_changes_nothing() {
-        let tmp = tempfile::tempdir().unwrap();
-        assert!(matches!(panicked_outcome(tmp.path()).await, Err(RestoreError::Failed(_))));
+    #[test]
+    fn a_panic_after_the_first_change_is_stuck_and_before_it_changes_nothing() {
+        let progress = Progress::default();
+        assert!(matches!(panicked_outcome(&progress), Err(RestoreError::Failed(_))));
         let safety = "mybibli-0123456789abcdef-20261126T080000Z.tar.gz";
-        write_journal(
-            tmp.path(),
-            &Journal {
-                restore_id: String::new(),
-                backup: "mybibli-fedcba9876543210-20261120T080000Z.tar.gz".into(),
-                safety: safety.into(),
-                instance_id: "0123456789abcdef".into(),
-                started_at: String::new(),
-            },
-        )
-        .unwrap();
-        assert_eq!(
-            panicked_outcome(tmp.path()).await.unwrap(),
-            RestoreOutcome::Stuck { safety: safety.into() }
-        );
+        progress.mark_changed(safety);
+        assert_eq!(panicked_outcome(&progress).unwrap(), RestoreOutcome::Stuck { safety: safety.into() });
     }
 
     #[test]

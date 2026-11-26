@@ -250,6 +250,29 @@ fn scan_members<R: Read>(archive: &mut tar::Archive<R>) -> Scan {
     Scan::Members { members, manifest }
 }
 
+/// Open the archive for the checks and the load (review passes 1 and 2):
+/// `O_NOFOLLOW` (a link swapped in after the `stat` fails with ELOOP:
+/// "not in the folder"), `O_NONBLOCK` (a FIFO never blocks the open), then
+/// `fstat` must say a regular file. Not found → gone; any other failure →
+/// not readable.
+pub fn open_checked(path: &Path, name: &str) -> Result<File, Refusal> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let opened = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK)
+        .open(path);
+    let file = match opened {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(Refusal::Gone),
+        Err(e) if e.raw_os_error() == Some(nix::libc::ELOOP) => return Err(Refusal::Gone),
+        Err(_) => return Err(Refusal::NotReadable { file: name.to_string() }),
+    };
+    if !file.metadata().map(|m| m.is_file()).unwrap_or(false) {
+        return Err(Refusal::Gone);
+    }
+    Ok(file)
+}
+
 /// Every D5 check on `dir/name` (blocking: run it in `spawn_blocking`).
 pub fn verify_backup(dir: &Path, name: &str) -> Result<Verified, Refusal> {
     let Some((name_id, stamp)) = listing::parse_backup_name(name) else {
@@ -266,25 +289,7 @@ pub fn verify_backup(dir: &Path, name: &str) -> Result<Verified, Refusal> {
     if !meta.file_type().is_file() {
         return Err(Refusal::Gone);
     }
-    let opened = {
-        use std::os::unix::fs::OpenOptionsExt;
-        std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(nix::libc::O_NOFOLLOW)
-            .open(&path)
-    };
-    let file = match opened {
-        Ok(f) => f,
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            return Err(Refusal::NotReadable { file: name.to_string() });
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(Refusal::Gone),
-        // ELOOP: the name became a link since the `stat` above.
-        Err(_) => return Err(Refusal::Gone),
-    };
-    if !file.metadata().map(|m| m.is_file()).unwrap_or(false) {
-        return Err(Refusal::Gone);
-    }
+    let file = open_checked(&path, name)?;
     let file = std::sync::Arc::new(file);
     let sidecar = sidecar_path(dir, name);
     let sidecar_name = format!("{name}.sha256");
@@ -449,6 +454,29 @@ mod tests {
         let mut m = manifest(Some(20));
         m.instance_id = "fedcba9876543210".into();
         assert_eq!(check(&m), Err(Refusal::NotABackup), "the id of the name");
+    }
+
+    #[test]
+    fn the_open_refuses_links_fifos_and_unreadable_files_without_blocking() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path();
+        std::fs::write(d.join("target"), b"x").unwrap();
+        std::os::unix::fs::symlink(d.join("target"), d.join("link")).unwrap();
+        assert_eq!(open_checked(&d.join("link"), "link").unwrap_err(), Refusal::Gone, "ELOOP");
+        nix::unistd::mkfifo(&d.join("fifo"), nix::sys::stat::Mode::S_IRWXU).unwrap();
+        assert_eq!(open_checked(&d.join("fifo"), "fifo").unwrap_err(), Refusal::Gone, "a FIFO, opened without blocking");
+        std::fs::create_dir(d.join("dir")).unwrap();
+        assert_eq!(open_checked(&d.join("dir"), "dir").unwrap_err(), Refusal::Gone);
+        assert_eq!(open_checked(&d.join("absent"), "absent").unwrap_err(), Refusal::Gone);
+        assert!(open_checked(&d.join("target"), "target").is_ok());
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(d.join("target"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::File::open(d.join("target")).is_err() {
+            assert_eq!(
+                open_checked(&d.join("target"), "target").unwrap_err(),
+                Refusal::NotReadable { file: "target".into() }
+            );
+        }
     }
 
     #[test]
