@@ -201,6 +201,19 @@ impl TreeRights {
 /// `tests/tailwind_sources.rs`).
 pub(crate) const TREE_ROW_CONTROLS_CLASS: &str = "ml-auto flex items-center gap-1 opacity-75 group-hover:opacity-100 group-focus-within:opacity-100 any-pointer-coarse:opacity-100 transition-opacity";
 
+/// Story 20-5 — classes of the spacer a leaf row shows in place of the
+/// disclosure button. Shared with the parent OOB of a deletion that empties
+/// a parent (`parent_emptied_oob`), so the two cannot drift.
+const TREE_LEAF_SPACER_CLASS: &str = "w-6";
+
+/// Story 20-5 — classes of the 📁 / 📍 icon span inside a row's link. Shared
+/// with `parent_emptied_oob` (the parent's icon turns into the leaf icon).
+const TREE_ICON_CLASS: &str = "text-stone-500 dark:text-stone-400";
+
+/// Icon of a location with children / without children.
+const TREE_ICON_PARENT: &str = "📁";
+const TREE_ICON_LEAF: &str = "📍";
+
 #[allow(clippy::too_many_arguments)]
 fn render_node_at_depth(
     node: &TreeNode,
@@ -216,9 +229,9 @@ fn render_node_at_depth(
     let label = crate::utils::html_escape(&node.location.label);
     let node_type = crate::utils::html_escape(&node.location.node_type);
     let icon = if node.children.is_empty() {
-        "📍"
+        TREE_ICON_LEAF
     } else {
-        "📁"
+        TREE_ICON_PARENT
     };
     let vol = if node.volume_count > 0 {
         format!(
@@ -288,7 +301,9 @@ fn render_node_at_depth(
             );
             // Rule #21 — after the delete, the row (and this trigger) is gone:
             // modal.js then focuses the parent row's link, or the "add root"
-            // summary for a root location.
+            // summary for a root location. The selector follows the row
+            // structure `li#tree-node-{id} > div > a` (story 20-5); the
+            // parent OOBs of `parent_emptied_oob` never replace that link.
             let focus_fallback = match node.location.parent_id {
                 Some(parent) => format!(r#"#tree-node-{parent} > div > a[href="/location/{parent}"]"#),
                 None => "#add-root-summary".to_string(),
@@ -337,14 +352,16 @@ fn render_node_at_depth(
     // (edit / delete / add-child buttons, when can_edit) stay OUTSIDE
     // the anchor so they remain individually focusable + clickable.
     //
-    // Issue #200: rows that have at least one child get a fold/unfold
-    // toggle in front of the row, and the children are wrapped in a
-    // `<div class="tree-children" id="tree-children-{id}">` container
-    // (instead of being rendered as flat siblings). Both pieces work
-    // together: `static/js/locations-tree-toggle.js` hides the container
-    // on click and persists the collapsed-node-id set in localStorage so
-    // the layout survives a reload. Indentation classes still drive the
-    // visual depth, so wrapping doesn't change the look when open.
+    // Issue #200 / story 20-5 (#700, D10): the tree is a nested list with
+    // disclosure buttons — no ARIA tree, no arrow keys, native Tab order.
+    // Each location is an `<li id="tree-node-{id}">`; a location with at
+    // least one child gets a disclosure button (`aria-expanded`,
+    // `aria-controls`) in front of its link, and its children sit in a
+    // `<ul class="tree-children" id="tree-children-{id}">` inside its
+    // `<li>`. `static/js/locations-tree-toggle.js` hides that list on click
+    // (Enter / Space are the native button's) and persists the
+    // collapsed-node-id set in localStorage so the layout survives a
+    // reload. Indentation classes still drive the visual depth.
     let has_children = !node.children.is_empty();
     let toggle_html = if has_children {
         format!(
@@ -355,25 +372,34 @@ fn render_node_at_depth(
             // 3:1. `text-stone-600` gives 6.99:1 there. The hover shade moves
             // to stone-900 because stone-600 was previously the hover value —
             // keeping it would have flattened the affordance.
-            r#"<button type="button" class="tree-toggle p-1 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200" data-tree-target="tree-children-{id}" aria-expanded="true" aria-label="{toggle_lbl}"><span class="tree-toggle-icon" aria-hidden="true">▼</span></button>"#,
+            //
+            // Story 20-5 — the accessible name includes the location name
+            // (raw name through `t!()`, the whole label escaped once); the
+            // state is read from `aria-expanded`.
+            r#"<button type="button" id="tree-toggle-{id}" class="tree-toggle p-1 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200" aria-controls="tree-children-{id}" aria-expanded="true" aria-label="{toggle_lbl}"><span class="tree-toggle-icon" aria-hidden="true">▼</span></button>"#,
             id = node.location.id,
             toggle_lbl = crate::utils::html_escape(
-                rust_i18n::t!("location.tree.toggle", locale = loc).as_ref()
+                rust_i18n::t!(
+                    "location.tree.toggle_named",
+                    locale = loc,
+                    name = node.location.name.as_str()
+                )
+                .as_ref()
             ),
         )
     } else {
         // Spacer keeps row labels aligned across the column whether or
         // not a row has children. `w-6` matches the toggle button's
         // approximate width (icon + padding).
-        r#"<span class="w-6" aria-hidden="true"></span>"#.to_string()
+        format!(r#"<span class="{TREE_LEAF_SPACER_CLASS}" aria-hidden="true"></span>"#)
     };
 
     html.push_str(&format!(
-        r#"<div role="treeitem" id="tree-node-{id}" class="{indent_class}" data-tree-node-id="{id}">
+        r#"<li id="tree-node-{id}" class="{indent_class}" data-tree-node-id="{id}">
 <div class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 group">
 {toggle_html}
 <a href="/location/{id}" class="flex items-center gap-2 flex-1 min-w-0 no-underline">
-<span class="text-stone-500 dark:text-stone-400" aria-hidden="true">{icon}</span>
+<span id="tree-icon-{id}" class="{TREE_ICON_CLASS}" aria-hidden="true">{icon}</span>
 <span class="font-medium text-stone-900 dark:text-stone-100">{name}</span>
 <span class="text-xs text-stone-600 dark:text-stone-400 font-mono">{label}</span>
 <span class="text-xs text-stone-600 dark:text-stone-400">({node_type})</span>{vol}
@@ -386,9 +412,9 @@ fn render_node_at_depth(
 
     if has_children {
         html.push_str(&format!(
-            // A nested `treeitem` must sit in a `group` (ARIA tree pattern;
-            // axe `aria-required-parent`).
-            r#"<div class="tree-children" role="group" id="tree-children-{id}">"#,
+            // Story 20-5 — `role="list"` keeps list semantics under the
+            // preflight's `list-style: none` (VoiceOver drops them otherwise).
+            r#"<ul class="tree-children" role="list" id="tree-children-{id}">"#,
             id = node.location.id,
         ));
         for child in &node.children {
@@ -403,10 +429,10 @@ fn render_node_at_depth(
                 csrf_token,
             );
         }
-        html.push_str("</div>");
+        html.push_str("</ul>");
     }
 
-    html.push_str("</div>");
+    html.push_str("</li>");
 }
 
 // ─── Location tree page ──────────────────────────────────────────
@@ -793,7 +819,8 @@ pub async fn delete_modal(
     }
 
     let Some(location) = LocationModel::find_by_id(&state.pool, id).await? else {
-        return Ok(already_gone_response(id, loc, AlreadyGoneAt::ModalOpen));
+        let emptied = emptied_parent(&state.pool, id).await;
+        return Ok(already_gone_response(id, emptied, loc, AlreadyGoneAt::ModalOpen));
     };
 
     // Raw values through `t!()`; Askama escapes `{{ title }}` in the macro.
@@ -838,15 +865,42 @@ pub async fn delete_location(
 
     match LocationService::delete_location(&state.pool, id, loc).await {
         Ok(()) => {}
-        // Deleted meanwhile (another tab): say so and drop the stale row.
+        // Deleted meanwhile (another tab): say so and drop the stale row —
+        // and, like a deletion made here, update a parent it left empty.
         Err(AppError::NotFound(_)) => {
-            return Ok(already_gone_response(id, loc, AlreadyGoneAt::Confirm));
+            let emptied = emptied_parent(&state.pool, id).await;
+            return Ok(already_gone_response(id, emptied, loc, AlreadyGoneAt::Confirm));
         }
         Err(e) => return Err(e),
     }
 
+    let emptied = emptied_parent(&state.pool, id).await;
     let message = rust_i18n::t!("location.deleted", locale = loc).to_string();
-    Ok(delete_success_response(id, &message))
+    Ok(delete_success_response(id, emptied, &message))
+}
+
+/// Story 20-5 (#700, AC 4) — the parent of the deleted location `id` when
+/// it has no live child left, else `None` (a root, a parent with other live
+/// children, a row already purged). Read after the delete, a plain read (no
+/// lock, Rule #22). A failure never turns the answer into an error — the
+/// delete happened; the parent row is merely stale until a reload.
+async fn emptied_parent(pool: &crate::db::DbPool, id: u64) -> Option<u64> {
+    let parent = match LocationModel::parent_id_any_state(pool, id).await {
+        Ok(Some(parent)) => parent,
+        Ok(None) => return None,
+        Err(e) => {
+            tracing::warn!(location_id = id, error = %e, "Could not read the parent of a deleted location");
+            return None;
+        }
+    };
+    match LocationModel::find_children(pool, parent).await {
+        Ok(children) if children.is_empty() => Some(parent),
+        Ok(_) => None,
+        Err(e) => {
+            tracing::warn!(location_id = id, parent_id = parent, error = %e, "Could not read the live children of a deleted location's parent");
+            None
+        }
+    }
 }
 
 /// Where a location already deleted by another session is noticed.
@@ -859,22 +913,26 @@ enum AlreadyGoneAt {
 }
 
 /// The "deleted by another session" entry, added on top of `#feedback-list`
-/// (never replacing the entries already there), with the stale row removed.
+/// (never replacing the entries already there), with the stale row removed
+/// and, when `emptied_parent` is set, that parent turned into a leaf
+/// (story 20-5).
 fn already_gone_response(
     id: u64,
+    emptied_parent: Option<u64>,
     loc: &'static str,
     at: AlreadyGoneAt,
 ) -> axum::response::Response {
+    let oob = tree_removal_oob(id, emptied_parent);
     match at {
         AlreadyGoneAt::ModalOpen => crate::routes::build_already_deleted_response_with(
             loc,
             "#feedback-list",
             "afterbegin",
-            &row_removal_oob(id),
+            &oob,
         ),
         AlreadyGoneAt::Confirm => {
             let mut main = crate::routes::already_deleted_entry_html(loc);
-            main.push_str(&row_removal_oob(id));
+            main.push_str(&oob);
             crate::middleware::htmx::HtmxResponse { main, oob: Vec::new() }
                 .into_response_with_hx_trigger_after_swap("modal-close")
         }
@@ -887,10 +945,45 @@ fn row_removal_oob(id: u64) -> String {
     format!(r#"<div id="tree-node-{id}" hx-swap-oob="delete"></div>"#)
 }
 
+/// Story 20-5 (#700, AC 4) — a parent whose last live child was deleted
+/// becomes a leaf at once: its (now empty) child list goes, its disclosure
+/// button becomes the leaf spacer, its 📁 icon the 📍 one. Three targeted
+/// OOBs rather than a re-render of the parent `<li>` (which would need its
+/// depth, volume count, rights, CSRF token… and would wipe an open inline
+/// "add child" form). None of them replaces the parent's link, the focus
+/// fallback of the delete control (Rule #21).
+fn parent_emptied_oob(parent_id: u64) -> String {
+    format!(
+        concat!(
+            r#"<ul id="tree-children-{p}" hx-swap-oob="delete"></ul>"#,
+            r#"<span id="tree-toggle-{p}" class="{spacer}" aria-hidden="true" hx-swap-oob="outerHTML"></span>"#,
+            r#"<span id="tree-icon-{p}" class="{icon_class}" aria-hidden="true" hx-swap-oob="outerHTML">{leaf}</span>"#,
+        ),
+        p = parent_id,
+        spacer = TREE_LEAF_SPACER_CLASS,
+        icon_class = TREE_ICON_CLASS,
+        leaf = TREE_ICON_LEAF,
+    )
+}
+
+/// The row removal first, then the parent update when the parent was left
+/// empty (had the list gone first, the row OOB would only miss its target).
+fn tree_removal_oob(id: u64, emptied_parent: Option<u64>) -> String {
+    let mut oob = row_removal_oob(id);
+    if let Some(parent) = emptied_parent {
+        oob.push_str(&parent_emptied_oob(parent));
+    }
+    oob
+}
+
 /// The success answer of [`delete_location`], split out for its unit test.
-fn delete_success_response(id: u64, message: &str) -> axum::response::Response {
+fn delete_success_response(
+    id: u64,
+    emptied_parent: Option<u64>,
+    message: &str,
+) -> axum::response::Response {
     let mut main = crate::utils::feedback_html("success", message, "");
-    main.push_str(&row_removal_oob(id));
+    main.push_str(&tree_removal_oob(id, emptied_parent));
     crate::middleware::htmx::HtmxResponse { main, oob: Vec::new() }
         .into_response_with_hx_trigger_after_swap("modal-close")
 }
@@ -1085,10 +1178,11 @@ mod tests {
         assert!(!html.contains(r#"value="a"b<c>""#));
     }
 
-    /// Fix #200: a parent node carries a `tree-toggle` button + a
-    /// `tree-children-<id>` container around its children. Leaf nodes
-    /// carry no toggle (alignment spacer instead). This pairs with
-    /// `static/js/locations-tree-toggle.js` for the fold/unfold UX.
+    /// Fix #200 / story 20-5: a parent node carries a disclosure button
+    /// (`aria-expanded`, `aria-controls` naming its child list) and a
+    /// `<ul class="tree-children" id="tree-children-<id>">` around its
+    /// children. Leaf nodes carry no button (alignment spacer instead). This
+    /// pairs with `static/js/locations-tree-toggle.js` for the fold/unfold UX.
     #[test]
     fn render_tree_html_emits_toggle_and_children_container_for_parents() {
         let locations = vec![
@@ -1105,33 +1199,145 @@ mod tests {
             "tok",
         );
 
-        // Parent (id=1) has children → expect a toggle wired to the
-        // children container, and the container itself with the matching id.
+        // Parent (id=1): the button names its child list, which exists.
+        let button = html
+            .split('<')
+            .find(|t| t.starts_with("button") && t.contains(r#"id="tree-toggle-1""#))
+            .expect("the parent has a disclosure button");
+        assert!(button.contains(r#"class="tree-toggle "#), "{button}");
+        assert!(button.contains(r#"aria-controls="tree-children-1""#), "{button}");
+        assert!(button.contains(r#"aria-expanded="true""#), "{button}");
         assert!(
-            html.contains(r#"data-tree-target="tree-children-1""#),
-            "parent's toggle should target its children container"
+            html.contains(r#"<ul class="tree-children" role="list" id="tree-children-1">"#),
+            "the id aria-controls names must exist: {html}"
         );
-        assert!(
-            html.contains(r#"<div class="tree-children" role="group" id="tree-children-1">"#),
-            "parent should wrap its children in a tree-children group"
-        );
-        // The expansion state lives on the toggle button only (disclosure):
-        // the tree has no roving focus, so a treeitem state would be
-        // announced twice and go stale when the last child is deleted.
-        for tag in html.split('<').filter(|t| t.contains(r#"role="treeitem""#)) {
-            let tag = tag.split('>').next().unwrap_or(tag);
-            assert!(!tag.contains("aria-expanded"), "treeitem carries aria-expanded: {tag}");
-        }
+        assert!(html.contains(r#"<span id="tree-icon-1" class="text-stone-500 dark:text-stone-400" aria-hidden="true">📁</span>"#));
 
-        // The leaf (id=2) has no children → no toggle button, no container.
-        assert!(
-            !html.contains(r#"data-tree-target="tree-children-2""#),
-            "leaf node should not emit a toggle"
-        );
+        // The leaf (id=2) has no children → no button, no container, the spacer.
+        assert!(!html.contains("tree-toggle-2"), "leaf node should not emit a toggle");
         assert!(
             !html.contains(r#"id="tree-children-2""#),
             "leaf node should not emit a children container"
         );
+        assert!(html.contains(r#"<span id="tree-icon-2" class="text-stone-500 dark:text-stone-400" aria-hidden="true">📍</span>"#));
+        assert!(html.contains(r#"<span class="w-6" aria-hidden="true"></span>"#));
+    }
+
+    /// Story 20-5 (D10) — a nested list, no ARIA tree: no tree role in the
+    /// rows nor in the `/locations` page around them. The attribute is
+    /// matched, not the word: the row keeps the Tailwind `group` class.
+    #[test]
+    fn the_tree_carries_no_tree_roles() {
+        let tree = build_tree(
+            &[
+                loc(1, None, "Salon", "room", "L0001"),
+                loc(2, Some(1), "Étagère", "shelf", "L0002"),
+            ],
+            &HashMap::new(),
+        );
+        let tree_html = render_tree_html(&tree, &[], "L0003", ADMIN, "en", "t");
+        let page = LocationsTemplate {
+            base: crate::utils::test_base_context(
+                "admin",
+                "locations",
+                crate::config::AppSettings::default().session_timeout_secs,
+            ),
+            tree_title: "Storage locations".to_string(),
+            tree_html: tree_html.clone(),
+            node_types: vec![(1, "room".to_string())],
+            next_lcode: "L0003".to_string(),
+            empty_state: "No locations yet".to_string(),
+            add_root_label: "Add a root location".to_string(),
+            name_label: "Name".to_string(),
+            type_label: "Type".to_string(),
+            lcode_label: "L-code".to_string(),
+            submit_label: "Create".to_string(),
+            organizational_label: "Organizational".to_string(),
+            organizational_help: "Holds locations only".to_string(),
+        }
+        .render()
+        .unwrap();
+        for html in [&tree_html, &page] {
+            for role in [r#"role="tree""#, r#"role="treeitem""#, r#"role="group""#] {
+                assert!(!html.contains(role), "{role} left in: {html}");
+            }
+        }
+        assert!(tree_html.contains(" group\">"), "the row keeps the Tailwind group class");
+        assert!(page.contains(r#"<h1 id="locations-heading""#), "{page}");
+        assert!(
+            page.contains(r#"<ul id="locations-tree" role="list" aria-labelledby="locations-heading""#),
+            "{page}"
+        );
+        assert!(page.contains(r#"id="tree-node-1""#));
+    }
+
+    /// Story 20-5 — every `<li>` opened is closed, and a child list sits
+    /// inside its parent's `<li>` (root → child → grandchild).
+    #[test]
+    fn nested_rows_are_well_formed_list_items() {
+        let tree = build_tree(
+            &[
+                loc(1, None, "Maison", "room", "L0001"),
+                loc(2, Some(1), "Salon", "room", "L0002"),
+                loc(3, Some(2), "Étagère", "shelf", "L0003"),
+            ],
+            &HashMap::new(),
+        );
+        let html = render_tree_html(&tree, &[], "L0004", ADMIN, "en", "t");
+        assert_eq!(html.matches("<li ").count(), 3);
+        assert_eq!(html.matches("</li>").count(), 3);
+        assert_eq!(html.matches(r#"<ul class="tree-children""#).count(), 2);
+        assert_eq!(html.matches("</ul>").count(), 2);
+
+        // Walk the tags: the stack of open li / ul must nest as
+        // li#1 > ul#1 > li#2 > ul#2 > li#3, and end empty.
+        let mut stack: Vec<String> = Vec::new();
+        let mut max_depth = 0;
+        for tag in html.split('<').skip(1) {
+            let name: String = tag.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '/').collect();
+            match name.as_str() {
+                "li" | "ul" => {
+                    if name == "li" {
+                        assert!(matches!(stack.last().map(String::as_str), None | Some("ul")), "li outside a list: {stack:?}");
+                    } else {
+                        assert_eq!(stack.last().map(String::as_str), Some("li"), "child list outside its parent li");
+                    }
+                    stack.push(name);
+                    max_depth = max_depth.max(stack.len());
+                }
+                "/li" | "/ul" => {
+                    assert_eq!(stack.pop().as_deref(), Some(&name[1..]), "mismatched {name}");
+                }
+                _ => {}
+            }
+        }
+        assert!(stack.is_empty(), "unclosed: {stack:?}");
+        assert_eq!(max_depth, 5);
+        let li2 = html.find(r#"<li id="tree-node-2""#).unwrap();
+        let ul1 = html.find(r#"id="tree-children-1""#).unwrap();
+        let li3 = html.find(r#"<li id="tree-node-3""#).unwrap();
+        let ul2 = html.find(r#"id="tree-children-2""#).unwrap();
+        assert!(ul1 < li2 && li2 < ul2 && ul2 < li3);
+    }
+
+    /// Story 20-5 (D11) — the disclosure button's name includes the location
+    /// name, in the request language, escaped once.
+    #[test]
+    fn toggle_name_is_localized_and_escaped() {
+        let parent_and_child = |name: &str| {
+            build_tree(
+                &[loc(1, None, name, "room", "L0001"), loc(2, Some(1), "Étagère", "shelf", "L0002")],
+                &HashMap::new(),
+            )
+        };
+        let en = render_tree_html(&parent_and_child("Salon"), &[], "L0003", READ_ONLY, "en", "t");
+        assert!(en.contains(r#"aria-label="Locations inside Salon""#), "{en}");
+        let fr = render_tree_html(&parent_and_child("Salon"), &[], "L0003", READ_ONLY, "fr", "t");
+        assert!(fr.contains(r#"aria-label="Emplacements dans Salon""#), "{fr}");
+
+        let html = render_tree_html(&parent_and_child(r#"A<b>"c"#), &[], "L0003", READ_ONLY, "en", "t");
+        assert!(html.contains(r#"aria-label="Locations inside A&lt;b&gt;&quot;c""#), "{html}");
+        assert!(!html.contains("&amp;lt;"), "double-escaped");
     }
 
     /// #698 — rights follow the handlers: Librarians add and edit, only an
@@ -1178,7 +1384,7 @@ mod tests {
     /// band, the modal closed after the swap.
     #[tokio::test]
     async fn delete_success_answer_removes_the_row_and_closes_the_modal() {
-        let resp = delete_success_response(42, "Location deleted.");
+        let resp = delete_success_response(42, None, "Location deleted.");
         assert_eq!(
             resp.headers().get("hx-trigger-after-swap").unwrap(),
             "modal-close"
@@ -1188,6 +1394,29 @@ mod tests {
         assert!(body.contains(r#"data-feedback-variant="success""#));
         assert!(body.contains("Location deleted."));
         assert!(body.contains(r#"<div id="tree-node-42" hx-swap-oob="delete"></div>"#));
+        // Story 20-5 — the parent kept other children: no parent update.
+        assert!(!body.contains("tree-children-"), "{body}");
+        assert!(!body.contains("tree-toggle-"), "{body}");
+        assert!(!body.contains("tree-icon-"), "{body}");
+    }
+
+    /// Story 20-5 (AC 4) — the last child deleted: after the row removal,
+    /// the parent's child list goes, its button becomes the leaf spacer and
+    /// its icon the leaf icon, with the classes the tree renders.
+    #[tokio::test]
+    async fn delete_success_answer_turns_an_emptied_parent_into_a_leaf() {
+        let body = body_of(delete_success_response(42, Some(1), "Location deleted.")).await;
+        let row = body.find(r#"<div id="tree-node-42" hx-swap-oob="delete"></div>"#).unwrap();
+        let list = body.find(r#"<ul id="tree-children-1" hx-swap-oob="delete"></ul>"#).unwrap();
+        assert!(row < list, "the row removal comes first");
+        assert!(body.contains(r#"<span id="tree-toggle-1" class="w-6" aria-hidden="true" hx-swap-oob="outerHTML"></span>"#), "{body}");
+        assert!(body.contains(r#"<span id="tree-icon-1" class="text-stone-500 dark:text-stone-400" aria-hidden="true" hx-swap-oob="outerHTML">📍</span>"#), "{body}");
+
+        // The OOB copies of the spacer and the icon match the rendered ones.
+        let tree = build_tree(&[loc(1, None, "Salon", "room", "L0001")], &HashMap::new());
+        let rendered = render_tree_html(&tree, &[], "L0002", ADMIN, "en", "t");
+        assert!(rendered.contains(&format!(r#"<span class="{TREE_LEAF_SPACER_CLASS}" aria-hidden="true"></span>"#)));
+        assert!(rendered.contains(&format!(r#"<span id="tree-icon-1" class="{TREE_ICON_CLASS}" aria-hidden="true">{TREE_ICON_LEAF}</span>"#)));
     }
 
     /// #698 — the modal fragment: the delete variant, DELETE to the location,
@@ -1234,7 +1463,7 @@ mod tests {
     /// and the stale row is removed; at Confirm the modal closes.
     #[tokio::test]
     async fn already_gone_answers_add_an_entry_and_drop_the_row() {
-        let open = already_gone_response(9, "fr", AlreadyGoneAt::ModalOpen);
+        let open = already_gone_response(9, None, "fr", AlreadyGoneAt::ModalOpen);
         assert_eq!(open.headers().get("HX-Retarget").unwrap(), "#feedback-list");
         assert_eq!(open.headers().get("HX-Reswap").unwrap(), "afterbegin");
         assert!(open.headers().get("hx-trigger-after-swap").is_none());
@@ -1243,9 +1472,24 @@ mod tests {
         let fr = rust_i18n::t!("error.already_deleted_by_another_session", locale = "fr").to_string();
         assert!(body.contains(&crate::utils::html_escape(&fr)), "{body}");
 
-        let confirm = already_gone_response(9, "en", AlreadyGoneAt::Confirm);
+        let confirm = already_gone_response(9, None, "en", AlreadyGoneAt::Confirm);
         assert!(confirm.headers().get("HX-Retarget").is_none());
         assert_eq!(confirm.headers().get("hx-trigger-after-swap").unwrap(), "modal-close");
+        assert!(!body_of(confirm).await.contains("tree-children-"));
+    }
+
+    /// Story 20-5 — a child deleted in another tab can have emptied its
+    /// parent: both "already deleted" answers update it like a deletion.
+    #[tokio::test]
+    async fn already_gone_answers_update_an_emptied_parent() {
+        for at in [AlreadyGoneAt::ModalOpen, AlreadyGoneAt::Confirm] {
+            let body = body_of(already_gone_response(9, Some(3), "en", at)).await;
+            let row = body.find(r#"<div id="tree-node-9" hx-swap-oob="delete"></div>"#).unwrap();
+            let list = body.find(r#"<ul id="tree-children-3" hx-swap-oob="delete"></ul>"#).unwrap();
+            assert!(row < list, "{at:?}: {body}");
+            assert!(body.contains(r#"id="tree-toggle-3""#), "{at:?}");
+            assert!(body.contains(r#"id="tree-icon-3""#), "{at:?}");
+        }
     }
 
     fn detail_template(location: LocationModel) -> LocationDetailTemplate {

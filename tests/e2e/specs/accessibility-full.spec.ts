@@ -91,7 +91,7 @@ test.describe("Story 9-22 — WCAG 2.2 AA full coverage", () => {
 // anything, and BOTH pages hide their offending elements when empty: the home
 // "Recent additions" count badge renders only behind `{% if
 // !recent_additions.is_empty() %}`, and the `/locations` tree renders no
-// `role="treeitem"` row at all until a storage location exists.
+// `li[data-tree-node-id]` row at all until a storage location exists.
 //
 // That is why the two contrast failures in #424 survived two months of green
 // CI: `accessibility-full.spec.ts` sorts first alphabetically, so it ran
@@ -141,7 +141,7 @@ test.describe("Issue #424 — populated home + locations WCAG 2.2 AA", () => {
       seeded.title = parseInt(idAttr!.replace("feedback-entry-", ""), 10);
 
       // 2. A storage location, so `/locations` renders at least one
-      //    `role="treeitem"` row with its hover controls.
+      //    `li[data-tree-node-id]` row with its hover controls.
       //
       //    Still reused rather than re-created, but for a smaller reason than
       //    before. #457 fixed the defect that forced it: the L-code proposal
@@ -156,7 +156,7 @@ test.describe("Issue #424 — populated home + locations WCAG 2.2 AA", () => {
       //    sibling spec asserts an empty locations tree.
       await page.goto("/locations");
       const existing = page
-        .locator('[role="treeitem"]')
+        .locator("li[data-tree-node-id]")
         .filter({ hasText: /AX-A11y Shelf/ })
         .first();
 
@@ -213,7 +213,7 @@ test.describe("Issue #424 — populated home + locations WCAG 2.2 AA", () => {
       // and axe would pass vacuously — exactly the false green this block
       // exists to remove.
       if (url === "/locations") {
-        await expect(page.locator('[role="treeitem"]').first()).toBeVisible({
+        await expect(page.locator("li[data-tree-node-id]").first()).toBeVisible({
           timeout: 10000,
         });
       } else {

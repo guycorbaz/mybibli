@@ -83,6 +83,21 @@ impl LocationModel {
         }
     }
 
+    /// Story 20-5 (#700) — the parent id of a location **in any state**
+    /// (Trash included): once a location is deleted, the tree needs to know
+    /// whether its parent was left without a live child. DELIBERATELY no
+    /// `deleted_at IS NULL` filter: the row just went to the Trash. `None`
+    /// when the row is a root or no longer exists at all (purged).
+    pub async fn parent_id_any_state(pool: &DbPool, id: u64) -> Result<Option<u64>, AppError> {
+        let parent = sqlx::query_scalar::<_, Option<i64>>(
+            "SELECT CAST(parent_id AS SIGNED) FROM storage_locations WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(parent.flatten().map(|v| v as u64))
+    }
+
     /// Story 9-9 — narrow lookup returning ONLY the location id for
     /// a given label. Used by the home-page scan-to-navigate handler
     /// (`/scan?code=…`) which only needs to redirect to `/location/:id`.

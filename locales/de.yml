@@ -630,7 +630,7 @@ location:
   volumes_count: "%{count} Exemplare"
   breadcrumb_label: Standort-Pfad
   tree:
-    toggle: Teilbaum umschalten
+    toggle_named: "Standorte in %{name}"
     add_child_named: "Einen Standort unter %{name} hinzufügen"
     edit_named: "%{name} bearbeiten"
     delete_named: "%{name} löschen"
