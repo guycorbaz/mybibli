@@ -1,6 +1,6 @@
 # Story 20.3: Expected tomes stay consistent with the series total and Trash restores (closes #524)
 
-Status: in-progress
+Status: review
 
 <!-- Closes #524. Source: _bmad-output/planning-artifacts/epics.md, Epic 20, Story 20.3; decisions D7, D8, D11 (approved by the project lead, 2026-11-26). Developed after story 20-2 merges, on a branch rebased on it (shared src/routes/series.rs). -->
 
@@ -69,8 +69,8 @@ Existing refusals shown next to their fields from now on, copy unchanged: `serie
 - [x] T5 — Restore (AC4–AC6): in `src/services/expected_tomes.rs`, `ExpectedTomeService::after_title_restore(pool, title_id) -> RestoreTomeNotes { settled: Vec<SettleOutcome>, to_review: Vec<…> }` — best effort: settle through `settle_matching(pool, title_id, &isbn, false)` (the body of `settle_for_title_id`, which then calls this and drops the result — DRY), then `unsettled_tomes_on_title_positions`; any error is logged and yields what was gathered. Called by `admin_trash_restore` only when `table == "titles"`, after the commit and the audit row. The lines are built in a **new** module `src/routes/admin_trash_tomes.rs` (`restore_tome_lines(notes, restored_title, loc) -> String`, using `utils::feedback_html` and `utils::feedback_html_with_link(variant, message, "", "/series/{id}", open_series)`) and appended to the `feedback-list` OOB content after the success entry. `src/routes/admin.rs` is at 1 890 lines (Rule #12): add only the call (a few lines).
 - [x] T6 — Locales (D11): `series.total_below_expected` in the `series:` block after `total_below_owned`; `admin.trash.restore_tome_to_review` / `restore_tome_settled` in `admin.trash` after `restore_contributor_name_taken`; four locales; `touch src/lib.rs` before building; `cargo test --test integration locale_parity::`.
 - [x] T7 — DB integration tests (AC7): `tests/series_total_tomes.rs` + `mod series_total_tomes;` in `tests/integration.rs`. Fixtures as in `tests/expected_tomes_web.rs` (`add_series`, `tome`, `add_title`, `assign`, `isbn(n)`, `librarian(pool)`; an admin browser for the restore route); the test instance renders French.
-- [ ] T8 — (specs written, tsc / grep / vcode-literals green; Playwright run pending, stack shared) — E2E (AC7): the new spec, and the change to `series-expected-tomes.spec.ts` (a different test from the one 20-2 edits there; rebase on 20-2 first).
-- [ ] T9 — (all but the full `cargo test` and Playwright, run once on the final code by the caller) — Gates: `cargo clippy -- -D warnings`, `cargo sqlx prepare --check --workspace -- --all-targets` (only dynamic queries are planned: expected no `.sqlx/` change), targeted tests, then full `cargo test` and Playwright `CI=true npx playwright test --workers=2` once on the final code (each under `flock -w 10800 /tmp/station-heavy.lock mem-guard …`); `npx tsc --noEmit`; the `waitForTimeout` grep; `tests/e2e/vcode-literals.sh`.
+- [x] T8 — E2E (AC7): the new spec, and the change to `series-expected-tomes.spec.ts` (a different test from the one 20-2 edits there; rebase on 20-2 first).
+- [x] T9 — Gates: `cargo clippy -- -D warnings`, `cargo sqlx prepare --check --workspace -- --all-targets` (only dynamic queries are planned: expected no `.sqlx/` change), targeted tests, then full `cargo test` and Playwright `CI=true npx playwright test --workers=2` once on the final code (each under `flock -w 10800 /tmp/station-heavy.lock mem-guard …`); `npx tsc --noEmit`; the `waitForTimeout` grep; `tests/e2e/vcode-literals.sh`.
 
 ## Dev Notes
 
@@ -156,7 +156,7 @@ Logs under `/home/gcorbaz/devel/.wt-targets/20-3-logs/` (`lib*.log`, `int*.log`,
 - **Route / template.** `render_series_form` + pure `series_form_template` shared by both GET handlers and both refusal paths; refusals re-render at `/series/new` or `/series/{id}/edit`, 422. `#series-name-error`, `#series-total-error`, `aria-invalid`, `aria-describedby`, one `autofocus`, `#series-form-submit`.
 - **Restore.** `ExpectedTomeService::after_title_restore` (settle via `settle_matching(…, false)` through the extracted `settle_held`, which `settle_for_title_id` now calls), lines in the new `src/routes/admin_trash_tomes.rs`; `admin.rs` gained 6 lines (1 900).
 - **Lock-scope test** uses the 20-2 `tokio::time::timeout(5 s)` pattern rather than `SET SESSION innodb_lock_wait_timeout = 2` (the router's pooled connection cannot be set from the test).
-- **E2E.** `series-total-tomes.spec.ts` (new, specId `ST`): refusal + focus + axe; the four other refusals; the restore journey (trash row found by the ISBN, since the title is renamed by the mock's metadata). `series-expected-tomes.spec.ts`: "lowering the total lists the tome under review" became "lowering the total under a tome is refused". Not run yet (shared stack).
+- **E2E.** `series-total-tomes.spec.ts` (new, specId `ST`): refusal + focus + axe; the four other refusals; the restore journey (trash row found by the ISBN, since the title is renamed by the mock's metadata). `series-expected-tomes.spec.ts`: "lowering the total lists the tome under review" became "lowering the total under a tome is refused". Green: both specs 8/8, then the full suite `CI=true npx playwright test --workers=2` on a reset stack (image rebuilt `--no-cache` after merging main with 20-5): 519 passed, 2 skipped, 0 flaky.
 
 ### File List
 
@@ -177,6 +177,7 @@ No Medium+ finding. Two Low findings, fixed:
 
 ### Change Log
 
+- 2026-11-26 — E2E green (519 passed, 2 skipped, 0 flaky); main (20-5) merged; status review.
 - 2026-11-26 — code review pass 1: clean (L1, L2 fixed).
 
 - 2026-11-26 — dev-story: T1–T7 done, specs written (T8); `cargo test --lib` 2 020 green, clippy clean, targeted integration 185 green; gates except full `cargo test` / Playwright (T9); Q3 change request #743.
