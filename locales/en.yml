@@ -591,6 +591,10 @@ location:
   organizational_label: "Organizational location (cannot hold volumes directly)"
   organizational_help: "Check this if the location only groups child locations (e.g. \"Living Room\" contains \"Bookshelf A\" and \"Bookshelf B\" but holds no volumes itself). Volumes cannot be assigned to an organizational location — the scan-to-shelve flow refuses, and the location-edit form rejects flipping a row that still has volumes attached."
   organizational_blocked_has_volumes: "Cannot mark organizational — %{count} volume(s) currently use this location. Re-shelve them first."
+  description_label: Description
+  description_help: "Optional. Where to find it, for example “left bookcase, top shelf, behind the door”."
+  description_too_long: "Description must be at most %{max} characters."
+  back_to_tree: Back to locations
   # CR #237 — bulk-mark all volumes on a shelf "to check".
   bulk_audit_button: "Mark all volumes for audit"
   empty_state: "Create your first location to start organizing!"

@@ -4,7 +4,36 @@ use crate::models::location::LocationModel;
 
 pub struct LocationService;
 
+/// Story 20-4 (#716) — longest description a location may carry, in
+/// characters as the user sees them (see [`LocationService::normalize_description`]).
+pub const DESCRIPTION_MAX_CHARS: usize = 500;
+
+/// Story 20-4 — a description longer than [`DESCRIPTION_MAX_CHARS`]. The
+/// route turns it into `location.description_too_long` next to the field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DescriptionTooLong;
+
 impl LocationService {
+    /// Story 20-4 (#716) — the description typed in the edit form, ready to
+    /// store: trimmed; blank (empty or whitespace only) is `None`; anything
+    /// else is kept exactly as trimmed (no line-ending or space rewrite,
+    /// Rule #20).
+    ///
+    /// The length is counted as the user sees it (T-a): Unicode scalar
+    /// values, with each `\r\n` — what a browser submits for a textarea
+    /// line break — counted as one character.
+    pub fn normalize_description(raw: &str) -> Result<Option<String>, DescriptionTooLong> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        let seen_chars = trimmed.chars().count() - trimmed.matches("\r\n").count();
+        if seen_chars > DESCRIPTION_MAX_CHARS {
+            return Err(DescriptionTooLong);
+        }
+        Ok(Some(trimmed.to_string()))
+    }
+
     /// Validate L-code format: uppercase L + exactly 4 digits, L0000 rejected.
     pub fn validate_lcode(label: &str) -> bool {
         if label.len() != 5 {
@@ -165,6 +194,7 @@ impl LocationService {
         node_type: &str,
         parent_id: Option<u64>,
         is_organizational: bool,
+        description: Option<&str>,
     ) -> Result<LocationModel, AppError> {
         let name = name.trim();
         if name.is_empty() {
@@ -217,6 +247,7 @@ impl LocationService {
             node_type,
             parent_id,
             is_organizational,
+            description,
         )
         .await?;
         tracing::info!(id = id, name = %name, "Location updated");
@@ -330,6 +361,45 @@ impl LocationService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ─── Story 20-4 — description check ────────────────────────────
+
+    #[test]
+    fn description_of_exactly_the_limit_is_accepted() {
+        let text = "é".repeat(DESCRIPTION_MAX_CHARS);
+        assert_eq!(LocationService::normalize_description(&text), Ok(Some(text.clone())));
+    }
+
+    #[test]
+    fn description_one_over_the_limit_is_refused() {
+        let text = "x".repeat(DESCRIPTION_MAX_CHARS + 1);
+        assert_eq!(LocationService::normalize_description(&text), Err(DescriptionTooLong));
+    }
+
+    #[test]
+    fn blank_description_is_none() {
+        assert_eq!(LocationService::normalize_description(""), Ok(None));
+        assert_eq!(LocationService::normalize_description("  \r\n\t "), Ok(None));
+    }
+
+    #[test]
+    fn description_is_trimmed_and_inner_text_kept() {
+        assert_eq!(
+            LocationService::normalize_description("  Left  bookcase,\r\n top shelf \n"),
+            Ok(Some("Left  bookcase,\r\n top shelf".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_textarea_line_break_counts_as_one_character() {
+        // 499 characters + one CRLF = 500 as seen in the textarea: accepted,
+        // and stored as received.
+        let text = format!("{}\r\n{}", "a".repeat(250), "b".repeat(249));
+        assert_eq!(LocationService::normalize_description(&text), Ok(Some(text.clone())));
+        // One more character goes over.
+        let over = format!("{}\r\n{}", "a".repeat(250), "b".repeat(250));
+        assert_eq!(LocationService::normalize_description(&over), Err(DescriptionTooLong));
+    }
 
     #[test]
     fn test_validate_lcode_valid() {

@@ -1,6 +1,6 @@
 # Story 20.4: A description for a storage location (closes #716)
 
-Status: ready-for-dev
+Status: in-progress
 
 ## Story
 
@@ -60,16 +60,16 @@ Technical choices made in this story (no visible behaviour beyond D9):
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Migration (AC1).
-- [ ] T2 — Model (AC3, AC6): `LocationModel.description: Option<String>`; add `description` to the five SELECTs and their mappings (`try_get::<Option<String>, _>("description")`); `update_with_locking` gains `description: Option<&str>` and writes it; update the three unit-test literals in `models/location.rs` and `loc()` in `routes/locations.rs`.
-- [ ] T3 — Service (AC3, AC4): a pure `LocationService::normalize_description(raw: &str) -> Result<Option<String>, DescriptionTooLong>` (const `DESCRIPTION_MAX_CHARS: usize = 500`, T-a counting); `update_location` takes `description: Option<&str>` (already normalized) and passes it to the model. Unit tests in the service's test module.
-- [ ] T4 — Route (AC2, AC4, AC7): `UpdateLocationForm.description: String` (`#[serde(default)]`); `update_location` calls `normalize_description` first and on refusal re-renders the edit page (422) — one shared `render_edit_page(state, session, loc, id, EditFormState, status)` used by `edit_location_page` and the refusal path (DRY), base context on `/locations/{id}/edit`; `LocationEditTemplate` gains `description_value`, `description_error: Option<String>`, `description_label`, `description_help`, `back_label`, and takes the typed name / type / parent / organizational from the form on refusal (the L-code from the DB row). Built with `locale = loc` (request locale).
-- [ ] T5 — Templates (AC2, AC4, AC5, AC7): `location_edit.html` (textarea, help, error slot rendered only when `description_error` is `Some`, `aria-describedby` naming the error id only then; back link); `location_detail.html` (`#location-description`, `whitespace-pre-line`, breadcrumb label). `LocationDetailTemplate` gains `breadcrumb_label`. No inline style, no `|safe`.
-- [ ] T6 — API (AC6): `ApiLocation.description: Option<String>` mapped from the model.
-- [ ] T7 — Locales (D11): the four keys in `locales/{en,fr,de,it}.yml`, `location:` block, placed after `organizational_blocked_has_volumes` — away from the `tree:` sub-block that 20.5 edits. `touch src/lib.rs` before building; `cargo test --test integration locale_parity::`.
-- [ ] T8 — Backup fixture (AC8): give `'RT room'` a description in `SEED` (or an `UPDATE` with a bound multi-line value, like `TRICKY` for borrowers).
-- [ ] T9 — DB integration tests (AC9): `tests/location_description.rs` + `mod location_description;` in `tests/integration.rs`.
-- [ ] T10 — E2E spec (AC9).
+- [x] T1 — Migration (AC1).
+- [x] T2 — Model (AC3, AC6): `LocationModel.description: Option<String>`; add `description` to the five SELECTs and their mappings (`try_get::<Option<String>, _>("description")`); `update_with_locking` gains `description: Option<&str>` and writes it; update the three unit-test literals in `models/location.rs` and `loc()` in `routes/locations.rs`.
+- [x] T3 — Service (AC3, AC4): a pure `LocationService::normalize_description(raw: &str) -> Result<Option<String>, DescriptionTooLong>` (const `DESCRIPTION_MAX_CHARS: usize = 500`, T-a counting); `update_location` takes `description: Option<&str>` (already normalized) and passes it to the model. Unit tests in the service's test module.
+- [x] T4 — Route (AC2, AC4, AC7): `UpdateLocationForm.description: String` (`#[serde(default)]`); `update_location` calls `normalize_description` first and on refusal re-renders the edit page (422) — one shared `render_edit_page(state, session, loc, id, EditFormState, status)` used by `edit_location_page` and the refusal path (DRY), base context on `/locations/{id}/edit`; `LocationEditTemplate` gains `description_value`, `description_error: Option<String>`, `description_label`, `description_help`, `back_label`, and takes the typed name / type / parent / organizational from the form on refusal (the L-code from the DB row). Built with `locale = loc` (request locale).
+- [x] T5 — Templates (AC2, AC4, AC5, AC7): `location_edit.html` (textarea, help, error slot rendered only when `description_error` is `Some`, `aria-describedby` naming the error id only then; back link); `location_detail.html` (`#location-description`, `whitespace-pre-line`, breadcrumb label). `LocationDetailTemplate` gains `breadcrumb_label`. No inline style, no `|safe`.
+- [x] T6 — API (AC6): `ApiLocation.description: Option<String>` mapped from the model.
+- [x] T7 — Locales (D11): the four keys in `locales/{en,fr,de,it}.yml`, `location:` block, placed after `organizational_blocked_has_volumes` — away from the `tree:` sub-block that 20.5 edits. `touch src/lib.rs` before building; `cargo test --test integration locale_parity::`.
+- [x] T8 — Backup fixture (AC8): give `'RT room'` a description in `SEED` (or an `UPDATE` with a bound multi-line value, like `TRICKY` for borrowers).
+- [x] T9 — DB integration tests (AC9): `tests/location_description.rs` + `mod location_description;` in `tests/integration.rs`.
+- [x] T10 — E2E spec (AC9).
 - [ ] T11 — Gates: `cargo clippy -- -D warnings`, targeted tests, full `cargo test` and Playwright `CI=true npx playwright test --workers=2` once on the final code (under `flock -w 10800 /tmp/station-heavy.lock mem-guard …`); `npx tsc --noEmit`; flake gate.
 
 ## Dev Notes
@@ -126,17 +126,54 @@ Pre-existing, left as is (outside the story):
 
 - **Q1 — the edit form's other refusals.** The epic notes that the location form shows refusals as a bare 400 page and that 20.4 "re-renders its form with the error"; the approved 20.4 AC names only the description refusal (20.3's AC, by contrast, lists the series form's existing refusals). Once this story builds the re-render, the other refusals (blank name, invalid type, cycle, organizational location that still holds volumes) could be shown next to their fields with their current copy, in the request locale. Under Rule #3 each would then need its E2E case.
   *Recommendation:* keep 20.4 to the description refusal as approved, and open a `type:change-request` issue for the four others (and the 409), to be done by a later story with their E2E cases.
+  **Settled (2026-11-26):** only the description refusal is re-rendered next to its field in this story; the other refusals (and the 409) are tracked in issue #732.
 - **Q2 — where a save lands.** A save redirects to `/locations` (today's behaviour), where the description is not shown (D9), so a librarian does not see what was just saved without opening the location page.
   *Recommendation:* keep the redirect as it is (no behaviour change in this story); revisit with Q1's issue if usage asks for it.
+  **Settled (2026-11-26):** the redirect to `/locations` after save is kept.
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- Askama 0.15 escapes `<` / `>` as `&#60;` / `&#62;` (not `&lt;`): the template tests assert that form.
+- `users.preferred_language` is `ENUM('fr','en')`: the request-locale integration test signs in as `en` while the instance language is the seeded `fr`.
+- The edit page never shows its own L-code (only the parent options): the refusal test checks the form's `action` instead.
+- Build artefacts live in `CARGO_TARGET_DIR=/home/gcorbaz/devel/.wt-targets/20-4` (on disk): a `target/` inside the worktree filled the user quota of the `/tmp` tmpfs.
 
 ### Completion Notes List
 
-- Ultimate context engine analysis completed - comprehensive developer guide created.
+- Migration `20261126120000_storage_locations_description.sql` (`TEXT NULL`, after 19-7's `20261126100000`).
+- `LocationModel.description` read by the five readers; `update_with_locking` writes it. No typed query touched: no `.sqlx/` change.
+- `LocationService::normalize_description` + `DESCRIPTION_MAX_CHARS` (500) + `DescriptionTooLong` (T-a: `\r\n` counts as one character; trim only, Rule #20).
+- Route: one `render_edit_page` shared by the GET and the refusal (422, typed name / type / parent / organizational / description and the form's version kept, base context on `/locations/{id}/edit`, request locale). The service's other refusals unchanged (#732); redirect to `/locations` kept (Q2).
+- Templates: textarea + help + error slot (`aria-invalid`, `aria-describedby` naming the error id only when shown); localized back link; `#location-description` (`whitespace-pre-line`, escaped) on the location page; breadcrumb `aria-label` localized.
+- API: `ApiLocation.description` (`null` when unset). MCP unchanged.
+- Locales: four keys in `en/fr/de/it` after `organizational_blocked_has_volumes` (`description_too_long` takes `%{max}`, rendered as in D11).
+- Backup round trip seeds a multi-line description with quotes and non-ASCII characters.
+- Gates run: `cargo test --lib`, `cargo clippy --all-targets -- -D warnings`, integration `location_description:: locale_parity:: backup_round_trip:: every_test_file_is_declared location_delete_modal:: api_v1 locale_html_safety::` (37 passed), `npx tsc --noEmit`, waitForTimeout grep, `vcode-literals.sh`.
+- **Pending (T11):** the Playwright run of `specs/journeys/location-description.spec.ts` (and the full `CI=true --workers=2` suite) — not run here, the E2E stack is in use by another agent. Status stays `in-progress` until it is green.
 
 ### File List
+
+- migrations/20261126120000_storage_locations_description.sql (new)
+- src/models/location.rs
+- src/services/locations.rs
+- src/routes/locations.rs
+- src/routes/api_v1.rs
+- templates/pages/location_edit.html
+- templates/pages/location_detail.html
+- locales/en.yml, locales/fr.yml, locales/de.yml, locales/it.yml
+- tests/location_description.rs (new)
+- tests/integration.rs
+- tests/backup_round_trip.rs
+- tests/e2e/specs/journeys/location-description.spec.ts (new)
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- _bmad-output/implementation-artifacts/20-4-location-description.md
+
+### Change Log
+
+- 2026-11-26 — dev-story: description column, edit field with refusal next to the field, location page, API field, localized back link and breadcrumb label; unit, DB-integration and E2E tests (E2E run pending).
