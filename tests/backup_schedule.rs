@@ -239,6 +239,27 @@ async fn a_due_check_writes_then_rotates_and_is_not_due_again(pool: DbPool) {
     assert_eq!(archives(&f).len(), 1);
 }
 
+// Regression (CI run 45826892512, #733): a check whose `now` is earlier
+// than the second the archive is stamped with must still rotate the old
+// day out — the rotation runs at the later of the two.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_write_stamped_after_the_check_time_still_rotates_the_old_day_out(pool: DbPool) {
+    let f = Folders::new();
+    let id = instance_id(&pool).await;
+    // The check time lags the clock: the new archive is stamped after it.
+    let now = Utc::now() - Duration::seconds(5);
+    let old = backup_file_name(&id, now - Duration::days(40));
+    std::fs::write(f.backups().join(&old), b"old").unwrap();
+    std::fs::write(f.backups().join(format!("{old}.sha256")), b"old").unwrap();
+    let state = state_with(&pool, f.config());
+    state.settings.write().unwrap().backup_retention_days = 1;
+
+    let CheckRun::Written(file) = run_check(&state, now).await else {
+        panic!("a due check writes");
+    };
+    assert_eq!(names_in(&f.backups()), vec![file.clone(), format!("{file}.sha256")], "the old one rotated out");
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn off_runs_no_check_and_a_change_applies_at_the_next_wake(pool: DbPool) {
     let f = Folders::new();
