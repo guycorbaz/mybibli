@@ -155,6 +155,35 @@ impl From<ExpectedTomeError> for AppError {
     }
 }
 
+/// Story 20-2 (AC 7, Rule #3) — the form field a refusal belongs to,
+/// so the expected-tome form shows the message under it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TomeField {
+    Position,
+    Title,
+    Isbn,
+}
+
+impl ExpectedTomeError {
+    /// Story 20-2 — the field this refusal is about (pure); `None` for a
+    /// refusal of the whole form (settled, version conflict) or a missing
+    /// record / database error.
+    pub fn field(&self) -> Option<TomeField> {
+        match self {
+            Self::PositionOutOfRange { .. } | Self::PositionHeld { .. } | Self::PositionTaken { .. } => {
+                Some(TomeField::Position)
+            }
+            Self::TitleRequired | Self::TitleTooLong { .. } => Some(TomeField::Title),
+            Self::InvalidIsbn { .. } | Self::DuplicateIsbn { .. } => Some(TomeField::Isbn),
+            Self::SeriesNotFound { .. }
+            | Self::NotFound { .. }
+            | Self::Settled { .. }
+            | Self::VersionConflict { .. }
+            | Self::Database(_) => None,
+        }
+    }
+}
+
 impl ExpectedTomeError {
     /// The `AppError` class of this refusal, carrying `message`:
     /// missing → `NotFound`, state conflicts → `Conflict`, malformed
@@ -813,6 +842,28 @@ fn map_unique_violation(e: sqlx::Error, position: i32, isbn: Option<&str>) -> Ex
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn each_refusal_names_its_field() {
+        use super::{ExpectedTomeError as E, TomeField as F};
+        let cases: Vec<(E, Option<F>)> = vec![
+            (E::TitleRequired, Some(F::Title)),
+            (E::TitleTooLong { max: 500 }, Some(F::Title)),
+            (E::InvalidIsbn { value: "1".into() }, Some(F::Isbn)),
+            (E::DuplicateIsbn { isbn: "1".into() }, Some(F::Isbn)),
+            (E::PositionOutOfRange { position: 9, total: Some(3) }, Some(F::Position)),
+            (E::PositionHeld { position: 2, holder: "X".into() }, Some(F::Position)),
+            (E::PositionTaken { position: 2 }, Some(F::Position)),
+            (E::Settled { id: 1 }, None),
+            (E::VersionConflict { id: 1 }, None),
+            (E::NotFound { id: 1 }, None),
+            (E::SeriesNotFound { series_id: 1 }, None),
+            (E::Database(crate::error::AppError::Internal("x".into())), None),
+        ];
+        for (err, field) in cases {
+            assert_eq!(err.field(), field, "{err:?}");
+        }
+    }
+
     use super::*;
 
     fn closed(total: i32) -> SeriesShape {

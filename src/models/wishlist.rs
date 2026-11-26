@@ -8,6 +8,8 @@
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
+use sqlx::MySqlConnection;
+
 use crate::db::DbPool;
 use crate::error::AppError;
 
@@ -51,6 +53,17 @@ pub struct WishlistItemModel;
 impl WishlistItemModel {
     /// Insert a new wishlist item. Returns the inserted row's id.
     pub async fn create(pool: &DbPool, draft: &WishlistItemDraft<'_>) -> Result<u64, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::create_in(&mut conn, draft).await
+    }
+
+    /// Story 20-2 — [`Self::create`] on a caller-held connection or
+    /// transaction (the gap → wish list form inserts the expected tome and
+    /// the entry in one transaction).
+    pub async fn create_in(
+        conn: &mut MySqlConnection,
+        draft: &WishlistItemDraft<'_>,
+    ) -> Result<u64, AppError> {
         let id = sqlx::query(
             "INSERT INTO wishlist_items \
                 (isbn, title, authors, publisher, publication_year, cover_image_url, notes) \
@@ -63,7 +76,7 @@ impl WishlistItemModel {
         .bind(draft.publication_year)
         .bind(draft.cover_image_url)
         .bind(draft.notes)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?
         .last_insert_id();
         Ok(id)
@@ -94,6 +107,16 @@ impl WishlistItemModel {
         pool: &DbPool,
         isbn: &str,
     ) -> Result<Option<WishlistItem>, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::find_by_isbn_in(&mut conn, isbn).await
+    }
+
+    /// Story 20-2 — [`Self::find_by_isbn`] on a caller-held connection
+    /// (a plain read, no lock).
+    pub async fn find_by_isbn_in(
+        conn: &mut MySqlConnection,
+        isbn: &str,
+    ) -> Result<Option<WishlistItem>, AppError> {
         let row = sqlx::query(
             "SELECT id, isbn, title, authors, publisher, \
                     CAST(publication_year AS UNSIGNED) AS publication_year, \
@@ -104,7 +127,7 @@ impl WishlistItemModel {
              LIMIT 1",
         )
         .bind(isbn)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await?;
         Ok(row.map(map_row))
     }
@@ -114,6 +137,17 @@ impl WishlistItemModel {
     /// for an expected tome without ISBN sent to the wishlist.
     pub async fn find_without_isbn(
         pool: &DbPool,
+        title: &str,
+        notes: &str,
+    ) -> Result<Option<WishlistItem>, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::find_without_isbn_in(&mut conn, title, notes).await
+    }
+
+    /// Story 20-2 — [`Self::find_without_isbn`] on a caller-held
+    /// connection (a plain read, no lock).
+    pub async fn find_without_isbn_in(
+        conn: &mut MySqlConnection,
         title: &str,
         notes: &str,
     ) -> Result<Option<WishlistItem>, AppError> {
@@ -128,7 +162,7 @@ impl WishlistItemModel {
         )
         .bind(title)
         .bind(notes)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await?;
         Ok(row.map(map_row))
     }

@@ -160,6 +160,9 @@ pub struct SeriesDetailTemplate {
     /// Story 11-11 (UX-DR34, #524): tomes that fit no gap, with labels.
     pub tomes_to_review: Vec<TomeToReviewView>,
     pub tome_labels: ExpectedTomeLabels,
+    /// Story 20-2 (AC 4) — the "added to your wish list" entry after a
+    /// gap was sent there (escaped, server-built); `None` otherwise.
+    pub series_feedback_html: Option<String>,
 }
 
 /// Story 11-11 — a tome under "Expected tomes to review", reason rendered.
@@ -179,10 +182,25 @@ pub struct ExpectedTomeLabels {
     pub isbn: String,
     pub review_heading: String,
     pub review_intro: String,
+    /// Story 20-2 — "Add to wish list" on a plain gap.
+    pub gap_add_to_wishlist: String,
+    /// The request locale, for the labels that take a parameter.
+    loc: &'static str,
 }
 
 impl ExpectedTomeLabels {
-    fn new(loc: &str) -> Self {
+    /// Story 20-2 — the accessible name of a gap's "Add to wish list",
+    /// naming its position.
+    pub fn gap_wishlist_named(&self, position: &i32) -> String {
+        rust_i18n::t!(
+            "expected_tome.gap_add_to_wishlist_named",
+            locale = self.loc,
+            position = position
+        )
+        .to_string()
+    }
+
+    fn new(loc: &'static str) -> Self {
         let t = |k: &str| rust_i18n::t!(k, locale = loc).to_string();
         Self {
             marker: t("expected_tome.marker"),
@@ -194,6 +212,8 @@ impl ExpectedTomeLabels {
             isbn: t("expected_tome.isbn_label"),
             review_heading: t("expected_tome.review_heading"),
             review_intro: t("expected_tome.review_intro"),
+            gap_add_to_wishlist: t("expected_tome.gap_add_to_wishlist"),
+            loc,
         }
     }
 }
@@ -231,6 +251,19 @@ pub struct SeriesDetailQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub dir: Option<String>,
+    /// Story 20-2 — the wish list entry a gap was just sent to.
+    #[serde(default)]
+    pub wishlist_item: Option<String>,
+}
+
+/// Story 20-2 (Rule #20) — `wishlist_item` read as a positive id: ASCII
+/// digits only (no sign, no space), above zero; anything else `None`.
+pub fn parse_wishlist_item(raw: Option<&str>) -> Option<u64> {
+    let raw = raw?;
+    if raw.is_empty() || raw.len() > 20 || !raw.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    raw.parse::<u64>().ok().filter(|id| *id > 0)
 }
 
 pub async fn series_detail_page(
@@ -278,6 +311,16 @@ pub async fn series_detail_page(
     let sort_dir = crate::services::series::SortDir::from_param(params.dir.as_deref());
     crate::services::series::sort_positions(&mut positions, sort_key, sort_dir);
 
+    // Story 20-2 (AC 4): the entry a gap was just sent to, if still live.
+    let series_feedback_html = match parse_wishlist_item(params.wishlist_item.as_deref()) {
+        Some(item_id) => crate::models::wishlist::WishlistItemModel::find_by_id(pool, item_id)
+            .await?
+            .map(|item| {
+                crate::routes::series_expected_tomes::wish_added_html(&item.title, item.id, loc)
+            }),
+        None => None,
+    };
+
     let base = crate::utils::base_context(&session, loc, "series", &uri, state.page_settings());
     let template = SeriesDetailTemplate {
         base,
@@ -310,6 +353,7 @@ pub async fn series_detail_page(
         label_sort_title: rust_i18n::t!("series.sort.title", locale = loc).to_string(),
         tomes_to_review,
         tome_labels: ExpectedTomeLabels::new(loc),
+        series_feedback_html,
     };
 
     match template.render() {
@@ -706,6 +750,25 @@ pub async fn delete_series(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wishlist_item_is_read_as_a_positive_id_only() {
+        assert_eq!(parse_wishlist_item(Some("42")), Some(42));
+        for bad in [None, Some(""), Some("0"), Some("+5"), Some("-5"), Some(" 5"), Some("5x"), Some("abc"), Some("99999999999999999999999")] {
+            assert_eq!(parse_wishlist_item(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn the_gap_wishlist_label_names_the_position_in_each_locale() {
+        for loc in ["en", "fr", "de", "it"] {
+            let labels = ExpectedTomeLabels::new(loc);
+            let named = labels.gap_wishlist_named(&4);
+            assert!(named.contains('4'), "{loc}: {named}");
+            assert!(!named.contains("expected_tome."), "{loc}: {named}");
+            assert!(!labels.gap_add_to_wishlist.contains("expected_tome."), "{loc}");
+        }
+    }
 
     /// Fix #296 regression — the three optional-from-empty-string
     /// deserializers must accept `""` (e.g., from `<select><option

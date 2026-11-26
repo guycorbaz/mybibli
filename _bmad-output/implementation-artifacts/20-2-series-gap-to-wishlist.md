@@ -1,6 +1,6 @@
 # Story 20.2: Send a missing series position to the wish list
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Closes #715. Source: _bmad-output/planning-artifacts/epics.md, Epic 20, Story 20.2; decisions D4, D5, D6 (approved by the project lead, 2026-11-26). Open questions Q1–Q4 (see Validation) approved by the project lead as recommended, 2026-11-26. -->
 
@@ -49,22 +49,22 @@ Reused unchanged: `expected_tome.wishlist_added`, `wishlist_already`, `wishlist_
 
 ## Tasks / Subtasks
 
-- [ ] **Model** — `src/models/wishlist.rs` (AC 3, 5)
-  - [ ] `WishlistItemModel::create_in(conn: &mut MySqlConnection, draft) -> Result<u64, AppError>`; `create(pool, …)` delegates to it (acquire a connection) so there is one INSERT.
-  - [ ] `find_by_isbn_in` / `find_without_isbn_in` on a connection; the pool variants delegate. Keep `deleted_at IS NULL` on every read.
-  - [ ] Do not touch `list_active`, `find_by_id`, `soft_delete`, `count_active` (story 20.1 works there in parallel).
-- [ ] **Shared dedup** — `src/routes/series_expected_tomes.rs` (AC 5, 9)
-  - [ ] Split `wish_tome` so the lookup "existing item for (isbn | title + note)" and the two feedback builders (added / already, with the "Open the wish list entry" link) are one function used by both paths.
-- [ ] **Grid** — `templates/components/series_gap_grid.html` (AC 1)
-  - [ ] In the plain-gap branch (no `pos.expected`), Librarian/Admin only, next to `data-name-gap`: `<a href="/series/{{ series.id }}/expected-tomes/new?position={{ pos.position }}&amp;wishlist=1" data-gap-wishlist="{{ pos.position }}" aria-label="…named…">`.
-  - [ ] The named aria-label takes the position: give `ExpectedTomeLabels` (`src/routes/series.rs`) the request locale and a method `gap_wishlist_named(&self, position: i32) -> String`, called from the template (Askama calls methods on fields).
-- [ ] **Form, GET** — `new_form` (AC 2, 9)
-  - [ ] `NewTomeQuery` gains `wishlist: Option<String>`; `wishlist_mode = query.wishlist.as_deref() == Some("1")`.
-  - [ ] Wish list mode: heading `form_title_wishlist` (position), title pre-filled with `wishlist_title_prefill` (series name, position) when the position is valid, help line, save label `wishlist_save`, hidden `<input name="wishlist" value="1">`.
-- [ ] **Form, POST** — `create` (AC 3–8)
-  - [ ] `TomeForm` gains `wishlist: Option<String>` (same positive shape).
-  - [ ] Plain mode: unchanged.
-  - [ ] Wish list mode, in this order on one transaction (see Validation V3 for why):
+- [x] **Model** — `src/models/wishlist.rs` (AC 3, 5)
+  - [x] `WishlistItemModel::create_in(conn: &mut MySqlConnection, draft) -> Result<u64, AppError>`; `create(pool, …)` delegates to it (acquire a connection) so there is one INSERT.
+  - [x] `find_by_isbn_in` / `find_without_isbn_in` on a connection; the pool variants delegate. Keep `deleted_at IS NULL` on every read.
+  - [x] Do not touch `list_active`, `find_by_id`, `soft_delete`, `count_active` (story 20.1 works there in parallel).
+- [x] **Shared dedup** — `src/routes/series_expected_tomes.rs` (AC 5, 9)
+  - [x] Split `wish_tome` so the lookup "existing item for (isbn | title + note)" and the two feedback builders (added / already, with the "Open the wish list entry" link) are one function used by both paths.
+- [x] **Grid** — `templates/components/series_gap_grid.html` (AC 1)
+  - [x] In the plain-gap branch (no `pos.expected`), Librarian/Admin only, next to `data-name-gap`: `<a href="/series/{{ series.id }}/expected-tomes/new?position={{ pos.position }}&amp;wishlist=1" data-gap-wishlist="{{ pos.position }}" aria-label="…named…">`.
+  - [x] The named aria-label takes the position: give `ExpectedTomeLabels` (`src/routes/series.rs`) the request locale and a method `gap_wishlist_named(&self, position: i32) -> String`, called from the template (Askama calls methods on fields).
+- [x] **Form, GET** — `new_form` (AC 2, 9)
+  - [x] `NewTomeQuery` gains `wishlist: Option<String>`; `wishlist_mode = query.wishlist.as_deref() == Some("1")`.
+  - [x] Wish list mode: heading `form_title_wishlist` (position), title pre-filled with `wishlist_title_prefill` (series name, position) when the position is valid, help line, save label `wishlist_save`, hidden `<input name="wishlist" value="1">`.
+- [x] **Form, POST** — `create` (AC 3–8)
+  - [x] `TomeForm` gains `wishlist: Option<String>` (same positive shape).
+  - [x] Plain mode: unchanged.
+  - [x] Wish list mode, in this order on one transaction (see Validation V3 for why):
     1. pure checks first, outside the transaction: `validate_title`, `normalize_isbn`, `parse_position` (a refusal here re-renders at once, nothing locked);
     2. `ExpectedTomeModel::lock_series_in(&mut tx, id)` — the series row by primary key, the lock `create_in` takes anyway (re-taking it in the same transaction is a no-op); `None` → the existing 404;
     3. owned ISBN: `ExpectedTomeModel::live_titles_with_isbn` (plain read) non-empty → roll back, nothing written, the "already in your catalog" answer (AC 6; copy: open question Q2);
@@ -72,13 +72,13 @@ Reused unchanged: `expected_tome.wishlist_added`, `wishlist_already`, `wishlist_
     5. `ExpectedTomeService::create_in(&mut tx, id, &input, ExpectedTomeOrigin::Manual)` — its refusals re-render the form (AC 7);
     6. `WishlistItemModel::create_in(&mut tx, draft)` with the tome's title, its normalised ISBN and `notes = wishlist_note(&series.name, position, loc)`;
     7. commit; then `audit_wishlist_add` (best effort, as today), `tracing::info!` with series, tome and item ids, redirect `303` to `/series/{id}?wishlist_item={item_id}`.
-  - [ ] Refusals: `refused()` re-renders the form in wish list mode (the hidden field, the heading, the help line and a `?wishlist=1` page URI kept), typed values kept, status 422; a database error propagates.
-  - [ ] Field-level errors (AC 7, Rule #3; scope: open question Q3): a pure `ExpectedTomeError::field() -> Option<TomeField>` (`Position` for `PositionOutOfRange` / `PositionHeld` / `PositionTaken`; `Title` for `TitleRequired` / `TitleTooLong`; `Isbn` for `InvalidIsbn` / `DuplicateIsbn`; `None` otherwise). The form shows the message under its field (`#expected-tome-position-error`, `#expected-tome-title-error`, `#expected-tome-isbn-error`, linked by `aria-describedby`, the input `aria-invalid="true"`); a message with no field stays in `#expected-tome-error` above the form.
-  - [ ] Give the submit button a stable id, `id="expected-tome-save"` (the 19-2 rule: target controls by id); the existing spec's `main button[type="submit"]').last()` keeps working.
-- [ ] **Series page** — `series_detail_page` + `templates/pages/series_detail.html` (AC 4)
-  - [ ] `SeriesDetailQuery` gains `wishlist_item: Option<String>`; parse a positive `u64` only; `WishlistItemModel::find_by_id` (live) → `expected_tome.wishlist_added` + link `/wishlist/{id}` via `crate::utils::feedback_html_with_link`, rendered inside `#series-feedback`; anything else renders nothing.
-- [ ] **Locales** — the six keys above in `en`, `fr`, `de`, `it`; `touch src/lib.rs` before building; `cargo test --test integration locale_parity::`.
-- [ ] **Tests** (see Testing)
+  - [x] Refusals: `refused()` re-renders the form in wish list mode (the hidden field, the heading, the help line and a `?wishlist=1` page URI kept), typed values kept, status 422; a database error propagates.
+  - [x] Field-level errors (AC 7, Rule #3; scope: open question Q3): a pure `ExpectedTomeError::field() -> Option<TomeField>` (`Position` for `PositionOutOfRange` / `PositionHeld` / `PositionTaken`; `Title` for `TitleRequired` / `TitleTooLong`; `Isbn` for `InvalidIsbn` / `DuplicateIsbn`; `None` otherwise). The form shows the message under its field (`#expected-tome-position-error`, `#expected-tome-title-error`, `#expected-tome-isbn-error`, linked by `aria-describedby`, the input `aria-invalid="true"`); a message with no field stays in `#expected-tome-error` above the form.
+  - [x] Give the submit button a stable id, `id="expected-tome-save"` (the 19-2 rule: target controls by id); the existing spec's `main button[type="submit"]').last()` keeps working.
+- [x] **Series page** — `series_detail_page` + `templates/pages/series_detail.html` (AC 4)
+  - [x] `SeriesDetailQuery` gains `wishlist_item: Option<String>`; parse a positive `u64` only; `WishlistItemModel::find_by_id` (live) → `expected_tome.wishlist_added` + link `/wishlist/{id}` via `crate::utils::feedback_html_with_link`, rendered inside `#series-feedback`; anything else renders nothing.
+- [x] **Locales** — the six keys above in `en`, `fr`, `de`, `it`; `touch src/lib.rs` before building; `cargo test --test integration locale_parity::`.
+- [x] **Tests** (see Testing)
 
 ## Dev Notes
 
@@ -157,10 +157,43 @@ Checked against the code: `templates/components/series_gap_grid.html`, `template
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- Askama passes a method argument by reference: `ExpectedTomeLabels::gap_wishlist_named` takes `&i32`.
+- Field slots are escaped with `utils::html_escape` (`'` → `&#x27;`), so the existing refusal test now matches the text after the apostrophe.
 
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
+- `WishlistItemModel::{create_in, find_by_isbn_in, find_without_isbn_in}`; the pool variants acquire a connection and delegate (one INSERT, one query per lookup).
+- `ExpectedTomeError::field()` → `TomeField` (pure, unit tested); `FormErrors::of` places a refusal under its field, else in `#expected-tome-error` (Q3: both modes). Field messages are escaped HTML so the owned-ISBN refusal (Q2) can carry its title link (`message_with_link_html` + `LINK_PLACEHOLDER`).
+- Wish list mode (`wishlist=1` only, `is_wishlist_mode`): heading `form_title_wishlist` (Q4 fallback `wishlist.add_to_wishlist` without a valid position), title prefill (D6), help line, save label, hidden field; a re-render keeps the mode and uses `/series/{id}/expected-tomes/new?wishlist=1` as page URI.
+- `create_wished`: pure checks → `lock_series_in` (PK, same lock as `create_in`) → owned ISBN (422 under the ISBN field, rollback) → shared dedup `existing_wish` (200, form re-rendered with `#expected-tome-notice`, Q1) → `create_in` → `WishlistItemModel::create_in` → commit → audit + `info!` → 303 `/series/{id}?wishlist_item={item}`. No new `FOR UPDATE`.
+- `wish_tome` (the 11-11 button) now uses the same `existing_wish`, `wish_already_html`, `wish_added_html`.
+- Series page: `parse_wishlist_item` (ASCII digits, > 0) → live item → `wish_added_html` inside `#series-feedback`.
+- Lock-scope test bounds the HTTP send with a 5 s `tokio::time::timeout` instead of `SET SESSION innodb_lock_wait_timeout` (the request runs on a pool connection the test cannot configure); the server's wait timeout (50 s) is far above the bound.
+- E2E spec written (`series-gap-wishlist.spec.ts`), `tsc --noEmit`, waitForTimeout grep and `vcode-literals.sh` pass; not run yet (stack busy). It uses no ISBN (every row hangs on a run-stamped series), so `specIsbn("GW")` is not called. The existing `series-expected-tomes.spec.ts` refusal now reads `#expected-tome-isbn-error` (Q3).
+- Gates: `cargo clippy --all-targets -- -D warnings` clean; `cargo test --lib` 1957 passed; integration `series_gap_wishlist::` (12), `expected_tomes_web::`, `expected_tomes::`, `locale_parity::`, `every_test_file_is_declared`, `templates_audit`, `locale_html_safety::` — 61 passed; `series`, `wishlist`, `form_refusals` filters — 123 passed.
 
 ### File List
+
+- `src/models/wishlist.rs`
+- `src/services/expected_tomes.rs`
+- `src/routes/series_expected_tomes.rs`
+- `src/routes/series.rs`
+- `templates/pages/expected_tome_form.html`
+- `templates/components/series_gap_grid.html`
+- `templates/pages/series_detail.html`
+- `locales/en.yml`, `locales/fr.yml`, `locales/de.yml`, `locales/it.yml`
+- `tests/series_gap_wishlist.rs` (new)
+- `tests/integration.rs`
+- `tests/expected_tomes_web.rs`
+- `tests/e2e/specs/journeys/series-gap-wishlist.spec.ts` (new)
+- `tests/e2e/specs/journeys/series-expected-tomes.spec.ts`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+### Change Log
+
+- 2026-11-26 — dev-story: gap → wish list form (tome + entry in one transaction), shared wish list dedup, field-level refusals in the expected-tome form, success entry on the series page. E2E pending.

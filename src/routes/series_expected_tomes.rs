@@ -20,7 +20,12 @@ use crate::middleware::locale::Locale;
 use crate::models::expected_tome::{ExpectedTomeOrigin, ExpectedTomeRow};
 use crate::models::series::SeriesModel;
 use crate::models::wishlist::{WishlistItemDraft, WishlistItemModel};
-use crate::services::expected_tomes::{ExpectedTomeError, ExpectedTomeInput, ExpectedTomeService};
+use crate::models::expected_tome::ExpectedTomeModel;
+use crate::models::wishlist::WishlistItem;
+use crate::services::expected_tomes::{
+    ExpectedTomeError, ExpectedTomeInput, ExpectedTomeService, TomeField, normalize_isbn,
+    validate_title,
+};
 
 // ─── Form page ──────────────────────────────────────────
 
@@ -37,8 +42,19 @@ pub struct ExpectedTomeFormTemplate {
     pub position_value: String,
     pub title_value: String,
     pub isbn_value: String,
-    /// The localized refusal of the last submit.
+    /// The localized refusal of the last submit that belongs to no field.
     pub error: Option<String>,
+    /// Story 20-2 (AC 7) — refusals under their field, as escaped HTML
+    /// (the ISBN one may carry a server-built link, Q2).
+    pub position_error_html: Option<String>,
+    pub title_error_html: Option<String>,
+    pub isbn_error_html: Option<String>,
+    /// Story 20-2 (Q1) — the "already on your wish list" entry with its
+    /// link, built by `crate::utils::feedback_html_with_link` (escaped).
+    pub notice_html: Option<String>,
+    /// Story 20-2 — the gap → wish list mode (`wishlist=1`).
+    pub wishlist_mode: bool,
+    pub wishlist_help: String,
     pub label_position: String,
     pub label_title: String,
     pub label_isbn: String,
@@ -48,14 +64,63 @@ pub struct ExpectedTomeFormTemplate {
     pub label_back: String,
 }
 
-/// What the form shows: typed (or stored) values and an optional error.
+/// The refusals of a submit: one under each field, or one for the form.
+#[derive(Default)]
+struct FormErrors {
+    general: Option<String>,
+    position_html: Option<String>,
+    title_html: Option<String>,
+    isbn_html: Option<String>,
+}
+
+impl FormErrors {
+    /// A localized `ExpectedTomeError` placed under its field (Rule #3),
+    /// or above the form when it belongs to none.
+    fn of(err: &ExpectedTomeError, loc: &str) -> Self {
+        let message = err.localized(loc);
+        let html = || Some(crate::utils::html_escape(&message));
+        match err.field() {
+            Some(TomeField::Position) => Self { position_html: html(), ..Self::default() },
+            Some(TomeField::Title) => Self { title_html: html(), ..Self::default() },
+            Some(TomeField::Isbn) => Self { isbn_html: html(), ..Self::default() },
+            None => Self { general: Some(message), ..Self::default() },
+        }
+    }
+}
+
+/// What the form shows: typed (or stored) values and optional refusals.
 struct FormState {
     tome_id: Option<u64>,
     version: i32,
     position: String,
     title: String,
     isbn: String,
-    error: Option<String>,
+    errors: FormErrors,
+    notice_html: Option<String>,
+    wishlist_mode: bool,
+}
+
+/// Story 20-2 (Rule #20) — the gap → wish list mode is `wishlist=1`
+/// only; any other value (or none) is the plain form (pure).
+pub fn is_wishlist_mode(raw: Option<&str>) -> bool {
+    raw == Some("1")
+}
+
+/// Story 20-2 (D6) — the title pre-filled for a gap sent to the wish
+/// list: "{series}, tome {position}" in the request locale (pure).
+pub fn wishlist_title_prefill(series_name: &str, position: i32, loc: &str) -> String {
+    rust_i18n::t!(
+        "expected_tome.wishlist_title_prefill",
+        locale = loc,
+        series = series_name,
+        position = position
+    )
+    .to_string()
+}
+
+/// A position field read as a positive integer, else `None`.
+fn positive_position(raw: &str) -> Option<i32> {
+    raw.trim().parse::<i32>().ok().filter(|p| *p >= 1)
 }
 
 fn render_form(
@@ -67,14 +132,31 @@ fn render_form(
     form: FormState,
     status: StatusCode,
 ) -> Result<Response, AppError> {
-    let heading_key = if form.tome_id.is_some() {
-        "expected_tome.form_title_edit"
+    let t = |k: &str| rust_i18n::t!(k, locale = loc).to_string();
+    let heading = if form.tome_id.is_some() {
+        t("expected_tome.form_title_edit")
+    } else if form.wishlist_mode {
+        // Q4: without a valid position, the plain "Add to wish list".
+        match positive_position(&form.position) {
+            Some(position) => rust_i18n::t!(
+                "expected_tome.form_title_wishlist",
+                locale = loc,
+                position = position
+            )
+            .to_string(),
+            None => t("wishlist.add_to_wishlist"),
+        }
     } else {
-        "expected_tome.form_title_new"
+        t("expected_tome.form_title_new")
+    };
+    let label_save = if form.wishlist_mode {
+        t("expected_tome.wishlist_save")
+    } else {
+        t("expected_tome.save")
     };
     let template = ExpectedTomeFormTemplate {
         base: crate::utils::base_context(session, loc, "series", uri, state.page_settings()),
-        heading: rust_i18n::t!(heading_key, locale = loc).to_string(),
+        heading,
         series_id: series.id,
         series_name: series.name.clone(),
         tome_id: form.tome_id,
@@ -82,14 +164,20 @@ fn render_form(
         position_value: form.position,
         title_value: form.title,
         isbn_value: form.isbn,
-        error: form.error,
-        label_position: rust_i18n::t!("expected_tome.field_position", locale = loc).to_string(),
-        label_title: rust_i18n::t!("expected_tome.field_title", locale = loc).to_string(),
-        label_isbn: rust_i18n::t!("expected_tome.field_isbn", locale = loc).to_string(),
-        isbn_help: rust_i18n::t!("expected_tome.isbn_help", locale = loc).to_string(),
-        label_save: rust_i18n::t!("expected_tome.save", locale = loc).to_string(),
-        label_cancel: rust_i18n::t!("common.cancel", locale = loc).to_string(),
-        label_back: rust_i18n::t!("expected_tome.back", locale = loc).to_string(),
+        error: form.errors.general,
+        position_error_html: form.errors.position_html,
+        title_error_html: form.errors.title_html,
+        isbn_error_html: form.errors.isbn_html,
+        notice_html: form.notice_html,
+        wishlist_mode: form.wishlist_mode,
+        wishlist_help: t("expected_tome.wishlist_form_help"),
+        label_position: t("expected_tome.field_position"),
+        label_title: t("expected_tome.field_title"),
+        label_isbn: t("expected_tome.field_isbn"),
+        isbn_help: t("expected_tome.isbn_help"),
+        label_save,
+        label_cancel: t("common.cancel"),
+        label_back: t("expected_tome.back"),
     };
     match template.render() {
         Ok(html) => Ok((status, Html(html)).into_response()),
@@ -124,9 +212,12 @@ async fn tome_of_series(
 pub struct NewTomeQuery {
     #[serde(default)]
     pub position: Option<String>,
+    /// Story 20-2 — `1` opens the gap → wish list mode.
+    #[serde(default)]
+    pub wishlist: Option<String>,
 }
 
-/// `GET /series/{id}/expected-tomes/new[?position=N]`.
+/// `GET /series/{id}/expected-tomes/new[?position=N][&wishlist=1]`.
 pub async fn new_form(
     State(state): State<AppState>,
     session: Session,
@@ -139,20 +230,22 @@ pub async fn new_form(
     session.require_role_with_return(Role::Librarian, uri.path(), loc)?;
     let series = live_series(&state, id, loc).await?;
     // Only a positive integer pre-fills the field (the link from a gap).
-    let position = query
-        .position
-        .as_deref()
-        .and_then(|p| p.trim().parse::<i32>().ok())
-        .filter(|p| *p >= 1)
-        .map(|p| p.to_string())
-        .unwrap_or_default();
+    let position = query.position.as_deref().and_then(positive_position);
+    let wishlist_mode = is_wishlist_mode(query.wishlist.as_deref());
+    // Story 20-2 (D6): the wish list mode pre-fills an editable title.
+    let title = match (wishlist_mode, position) {
+        (true, Some(p)) => wishlist_title_prefill(&series.name, p, loc),
+        _ => String::new(),
+    };
     let form = FormState {
         tome_id: None,
         version: 0,
-        position,
-        title: String::new(),
+        position: position.map(|p| p.to_string()).unwrap_or_default(),
+        title,
         isbn: String::new(),
-        error: None,
+        errors: FormErrors::default(),
+        notice_html: None,
+        wishlist_mode,
     };
     render_form(&state, &session, loc, &uri, &series, form, StatusCode::OK)
 }
@@ -179,7 +272,12 @@ pub async fn edit_form(
         position: tome.position.to_string(),
         title: tome.title,
         isbn: tome.isbn.unwrap_or_default(),
-        error,
+        errors: FormErrors {
+            general: error,
+            ..FormErrors::default()
+        },
+        notice_html: None,
+        wishlist_mode: false,
     };
     render_form(&state, &session, loc, &uri, &series, form, StatusCode::OK)
 }
@@ -194,6 +292,9 @@ pub struct TomeForm {
     pub isbn: Option<String>,
     #[serde(default)]
     pub version: Option<i32>,
+    /// Story 20-2 — `1` in the gap → wish list mode (hidden field).
+    #[serde(default)]
+    pub wishlist: Option<String>,
 }
 
 /// A position field that is not an integer reads as "position must be
@@ -222,13 +323,16 @@ async fn refused(
         }
         _ => {}
     }
+    let wishlist_mode = tome_id.is_none() && is_wishlist_mode(form.wishlist.as_deref());
     let mut state_ = FormState {
         tome_id,
         version: form.version.unwrap_or(0),
         position: form.position,
         title: form.title,
         isbn: form.isbn.unwrap_or_default(),
-        error: Some(err.localized(loc)),
+        errors: FormErrors::of(&err, loc),
+        notice_html: None,
+        wishlist_mode,
     };
     if let (ExpectedTomeError::VersionConflict { .. }, Some(id)) = (&err, tome_id) {
         match ExpectedTomeService::find(&state.pool, id).await? {
@@ -241,27 +345,33 @@ async fn refused(
             _ => return Err(ExpectedTomeError::NotFound { id }.into_app_error(loc)),
         }
     }
-    // The page's own (GET) address, so the layout's return links (language
-    // toggle, login `next`) never point at a POST-only route.
-    let page = match tome_id {
-        Some(t) => format!("/series/{}/expected-tomes/{t}/edit", series.id),
-        None => format!("/series/{}/expected-tomes/new", series.id),
+    rerender(state, session, loc, series, state_, StatusCode::UNPROCESSABLE_ENTITY)
+}
+
+/// Render the form again after a submit, at its own GET address, so the
+/// layout's return links (language toggle, login `next`) never point at
+/// a POST-only route.
+fn rerender(
+    state: &AppState,
+    session: &Session,
+    loc: &'static str,
+    series: &SeriesModel,
+    form: FormState,
+    status: StatusCode,
+) -> Result<Response, AppError> {
+    let page = match (form.tome_id, form.wishlist_mode) {
+        (Some(t), _) => format!("/series/{}/expected-tomes/{t}/edit", series.id),
+        (None, true) => format!("/series/{}/expected-tomes/new?wishlist=1", series.id),
+        (None, false) => format!("/series/{}/expected-tomes/new", series.id),
     };
     let uri: axum::http::Uri = page
         .parse()
         .map_err(|e| AppError::Internal(format!("expected tome form uri: {e}")))?;
-    render_form(
-        state,
-        session,
-        loc,
-        &uri,
-        series,
-        state_,
-        StatusCode::UNPROCESSABLE_ENTITY,
-    )
+    render_form(state, session, loc, &uri, series, form, status)
 }
 
-/// `POST /series/{id}/expected-tomes` — create (origin `manual`).
+/// `POST /series/{id}/expected-tomes` — create (origin `manual`); with
+/// `wishlist=1`, the tome and its wish list entry together (story 20-2).
 pub async fn create(
     State(state): State<AppState>,
     session: Session,
@@ -272,6 +382,9 @@ pub async fn create(
     let loc = locale.0;
     session.require_role(Role::Librarian, loc)?;
     let series = live_series(&state, id, loc).await?;
+    if is_wishlist_mode(form.wishlist.as_deref()) {
+        return create_wished(&state, &session, loc, &series, form).await;
+    }
     let input = ExpectedTomeInput {
         position: parse_position(&form.position),
         title: &form.title,
@@ -288,6 +401,125 @@ pub async fn create(
             Ok(Redirect::to(&format!("/series/{id}")).into_response())
         }
         Err(e) => refused(&state, &session, loc, &series, None, form, e).await,
+    }
+}
+
+/// Story 20-2 (D4, AC 3–8) — a gap sent to the wish list: the expected
+/// tome and the wish list entry in one transaction. Order: pure checks;
+/// the series row locked by primary key (the lock `create_in` takes
+/// anyway — no new `FOR UPDATE`, Rule #22); a live title holding the
+/// ISBN refuses (before `create_in`, which would attach it); an equivalent
+/// entry answers with its link; then the tome, then the entry.
+async fn create_wished(
+    state: &AppState,
+    session: &Session,
+    loc: &'static str,
+    series: &SeriesModel,
+    form: TomeForm,
+) -> Result<Response, AppError> {
+    let position = parse_position(&form.position);
+    let title = match validate_title(&form.title) {
+        Ok(t) => t,
+        Err(e) => return refused(state, session, loc, series, None, form, e).await,
+    };
+    let isbn = match normalize_isbn(form.isbn.as_deref()) {
+        Ok(i) => i,
+        Err(e) => return refused(state, session, loc, series, None, form, e).await,
+    };
+
+    let mut tx = state.pool.begin().await?;
+    let Some(shape) = ExpectedTomeModel::lock_series_in(&mut tx, series.id).await? else {
+        return Err(ExpectedTomeError::SeriesNotFound {
+            series_id: series.id,
+        }
+        .into_app_error(loc));
+    };
+
+    // AC 6 (Q2): the "already used" field refusal, the title as a link.
+    if let Some(isbn13) = isbn.as_deref()
+        && let Some(&owner) = ExpectedTomeModel::live_titles_with_isbn(&mut tx, isbn13)
+            .await?
+            .first()
+    {
+        let name = crate::models::title::TitleModel::name_any_state_in(&mut tx, owner)
+            .await?
+            .unwrap_or_default();
+        tx.rollback().await?;
+        let message = rust_i18n::t!(
+            "error.isbn.already_used",
+            locale = loc,
+            title = crate::utils::LINK_PLACEHOLDER
+        );
+        let errors = FormErrors {
+            isbn_html: Some(crate::utils::message_with_link_html(
+                &message,
+                &format!("/title/{owner}"),
+                &name,
+            )),
+            ..FormErrors::default()
+        };
+        tracing::info!(series_id = series.id, title_id = owner, "Gap to wish list: ISBN already owned");
+        let form_state = typed_state(form, errors, None);
+        return rerender(state, session, loc, series, form_state, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    // AC 5 (Q1): already on the wish list — nothing written, its link.
+    let note = wishlist_note(&shape.name, position, loc);
+    if let Some(item) = existing_wish(&mut tx, isbn.as_deref(), &title, &note).await? {
+        tx.rollback().await?;
+        tracing::info!(series_id = series.id, item_id = item.id, "Gap to wish list: already wished");
+        let form_state = typed_state(form, FormErrors::default(), Some(wish_already_html(&item, loc)));
+        return rerender(state, session, loc, series, form_state, StatusCode::OK);
+    }
+
+    let input = ExpectedTomeInput {
+        position,
+        title: &title,
+        isbn: isbn.as_deref(),
+    };
+    let tome_id = match ExpectedTomeService::create_in(&mut tx, series.id, &input, ExpectedTomeOrigin::Manual).await {
+        Ok(id) => id,
+        Err(e) => {
+            tx.rollback().await?;
+            return refused(state, session, loc, series, None, form, e).await;
+        }
+    };
+    let item_id = WishlistItemModel::create_in(
+        &mut tx,
+        &WishlistItemDraft {
+            isbn: isbn.as_deref(),
+            title: &title,
+            authors: None,
+            publisher: None,
+            publication_year: None,
+            cover_image_url: None,
+            notes: Some(&note),
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    crate::routes::wishlist::audit_wishlist_add(&state.pool, session, item_id, &title).await;
+    tracing::info!(
+        series_id = series.id,
+        tome_id,
+        item_id,
+        position,
+        "Gap sent to the wish list"
+    );
+    Ok(Redirect::to(&format!("/series/{}?wishlist_item={item_id}", series.id)).into_response())
+}
+
+/// The wish list form re-rendered with what was typed.
+fn typed_state(form: TomeForm, errors: FormErrors, notice_html: Option<String>) -> FormState {
+    FormState {
+        tome_id: None,
+        version: 0,
+        position: form.position,
+        title: form.title,
+        isbn: form.isbn.unwrap_or_default(),
+        errors,
+        notice_html,
+        wishlist_mode: true,
     }
 }
 
@@ -478,24 +710,11 @@ async fn wish_tome(
     }
     let note = wishlist_note(&series.name, tome.position, loc);
 
-    let existing = match tome.isbn.as_deref() {
-        Some(isbn) => WishlistItemModel::find_by_isbn(pool, isbn).await?,
-        None => WishlistItemModel::find_without_isbn(pool, &tome.title, &note).await?,
-    };
-    let open_label = rust_i18n::t!("expected_tome.wishlist_open", locale = loc);
+    let mut conn = pool.acquire().await?;
+    let existing = existing_wish(&mut conn, tome.isbn.as_deref(), &tome.title, &note).await?;
+    drop(conn);
     if let Some(item) = existing {
-        let message = rust_i18n::t!(
-            "expected_tome.wishlist_already",
-            locale = loc,
-            title = item.title.as_str()
-        );
-        return Ok(crate::utils::feedback_html_with_link(
-            "info",
-            &message,
-            "",
-            &format!("/wishlist/{}", item.id),
-            &open_label,
-        ));
+        return Ok(wish_already_html(&item, loc));
     }
 
     let item_id = WishlistItemModel::create(
@@ -518,18 +737,50 @@ async fn wish_tome(
         item_id,
         "Expected tome sent to the wishlist"
     );
+    Ok(wish_added_html(&tome.title, item_id, loc))
+}
+
+/// D-11-11-4, shared by both paths to the wish list (story 20-2, AC 9):
+/// the live entry already standing for this tome — the same ISBN, or,
+/// without ISBN, the same title and note. A plain read.
+async fn existing_wish(
+    conn: &mut sqlx::MySqlConnection,
+    isbn: Option<&str>,
+    title: &str,
+    note: &str,
+) -> Result<Option<WishlistItem>, AppError> {
+    match isbn {
+        Some(isbn) => WishlistItemModel::find_by_isbn_in(conn, isbn).await,
+        None => WishlistItemModel::find_without_isbn_in(conn, title, note).await,
+    }
+}
+
+/// "… is already on your wish list", with the link to that entry.
+fn wish_already_html(item: &WishlistItem, loc: &str) -> String {
     let message = rust_i18n::t!(
-        "expected_tome.wishlist_added",
+        "expected_tome.wishlist_already",
         locale = loc,
-        title = tome.title.as_str()
+        title = item.title.as_str()
     );
-    Ok(crate::utils::feedback_html_with_link(
+    crate::utils::feedback_html_with_link(
+        "info",
+        &message,
+        "",
+        &format!("/wishlist/{}", item.id),
+        &rust_i18n::t!("expected_tome.wishlist_open", locale = loc),
+    )
+}
+
+/// "… was added to your wish list", with the link to the new entry.
+pub fn wish_added_html(title: &str, item_id: u64, loc: &str) -> String {
+    let message = rust_i18n::t!("expected_tome.wishlist_added", locale = loc, title = title);
+    crate::utils::feedback_html_with_link(
         "success",
         &message,
         "",
         &format!("/wishlist/{item_id}"),
-        &open_label,
-    ))
+        &rust_i18n::t!("expected_tome.wishlist_open", locale = loc),
+    )
 }
 
 #[cfg(test)]
@@ -544,6 +795,48 @@ mod tests {
             assert!(note.contains('7'), "{loc}: {note}");
             assert!(!note.contains("expected_tome."), "{loc}: {note}");
         }
+    }
+
+    #[test]
+    fn the_wishlist_mode_is_wishlist_1_only() {
+        assert!(is_wishlist_mode(Some("1")));
+        for other in [None, Some("true"), Some("0"), Some(""), Some(" 1"), Some("yes")] {
+            assert!(!is_wishlist_mode(other), "{other:?}");
+        }
+    }
+
+    #[test]
+    fn the_title_prefill_names_series_and_position_in_each_locale() {
+        for loc in ["en", "fr", "de", "it"] {
+            let title = wishlist_title_prefill("Astérix", 7, loc);
+            assert!(title.contains("Astérix"), "{loc}: {title}");
+            assert!(title.contains('7'), "{loc}: {title}");
+            assert!(!title.contains("expected_tome."), "{loc}: {title}");
+        }
+        assert_eq!(wishlist_title_prefill("Astérix", 7, "en"), "Astérix, tome 7");
+    }
+
+    #[test]
+    fn a_refusal_lands_under_its_field_or_above_the_form() {
+        let e = FormErrors::of(&ExpectedTomeError::TitleRequired, "en");
+        assert!(e.title_html.is_some() && e.general.is_none() && e.isbn_html.is_none());
+        let e = FormErrors::of(&ExpectedTomeError::PositionTaken { position: 2 }, "en");
+        assert!(e.position_html.is_some() && e.general.is_none());
+        let e = FormErrors::of(&ExpectedTomeError::InvalidIsbn { value: "<b>".into() }, "en");
+        assert!(e.isbn_html.is_some());
+        let e = FormErrors::of(&ExpectedTomeError::PositionHeld { position: 2, holder: "<b>X</b>".into() }, "en");
+        let html = e.position_html.unwrap();
+        assert!(html.contains("&lt;b&gt;X"), "escaped: {html}");
+        let e = FormErrors::of(&ExpectedTomeError::Settled { id: 1 }, "en");
+        assert!(e.general.is_some() && e.title_html.is_none());
+    }
+
+    #[test]
+    fn positive_position_reads_a_positive_integer_only() {
+        assert_eq!(positive_position(" 3 "), Some(3));
+        assert_eq!(positive_position("0"), None);
+        assert_eq!(positive_position("-1"), None);
+        assert_eq!(positive_position("x"), None);
     }
 
     #[test]

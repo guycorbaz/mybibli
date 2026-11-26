@@ -103,6 +103,7 @@ mod seed_gate;
 mod seeded_users;
 mod series_delete_modal;
 mod series_empty_state;
+mod series_gap_wishlist;
 mod series_list_all_names;
 mod series_list_counts;
 mod session_cookie_collision;
