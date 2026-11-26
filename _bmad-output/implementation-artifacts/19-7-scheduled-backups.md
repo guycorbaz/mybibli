@@ -59,12 +59,12 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
 - **D3 — skipping when nothing changed.** *(Awaiting approval.)*
   - Positive rule: a scheduled check **skips** only when all of these hold:
     1. this process remembers the fingerprint of a backup it wrote (scheduled or manual);
-    2. that backup's archive is still in the folder and is still the newest own backup;
+    2. that backup's archive is still in the folder, with the remembered size, and is still the newest own backup;
     3. the new dump's SHA-256 equals the remembered one;
     4. the new cover list equals the remembered one: the sorted `(name, size, modification time in nanoseconds)` of every file `covers::list_covers` keeps.
 
     In every other case it writes. A false "changed" costs one file, which the rotation removes; a false "unchanged" would lose data. The rule errs on writing.
-  - The comparison happens after the dump and the cover listing, before the archive is built. On "unchanged", the scratch dump is removed and nothing else is written.
+  - **Hash first, write only on a change (adopted after validation, technical):** a check first runs the dump into a hashing sink that writes nothing to disk, and lists the covers. On "unchanged", nothing at all is written: the disks of a NAS can stay asleep. On "changed", the normal writer runs (a second snapshot); the fingerprint remembered is that of the written dump. A second dump is paid only when something changed.
   - The fingerprint is kept in memory only. Storing it in the database would change the next dump.
   - Consequences: the first check after a restart always writes; each check runs a full dump (seconds for this catalogue); an idle library still gets about one backup a day (the two daily task rows, see Context), which the rotation keeps at one per day.
   - *Options:* A — the rule above (recommended); B — the same with a SHA-256 of each cover instead of size + time (reads every cover at each check); C — per-table `COUNT(*)` / `MAX(updated_at)` (rejected: not sound, several writes bump no `updated_at`: `titles.detected_tome`, the one-time repairs, #521's cover writes).
@@ -75,7 +75,7 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
   - A pure function `services::backup::rotation::plan(names, instance_id, now_utc, tz) -> Vec<String>` returns the archives to delete. It is unit-tested over synthetic names and a clock.
   - **Candidates:** only names where `is_backup_name` holds and the id part equals this instance's id. Nothing else is ever deleted: other names, foreign backups (D5), temporary files (the writer's own sweep handles them).
   - **Kept**, among the candidates:
-    1. the newest one, whatever its age (with the skip rule, a library untouched for three weeks must keep its last backup);
+    1. the newest one stamped at or before now, whatever its age (with the skip rule, a library untouched for three weeks must keep its last backup; adopted after validation: a stray file stamped in the future can never push the real last backup out);
     2. every one stamped less than 24 hours before now (and any stamped in the future: clock skew);
     3. for each of the 14 most recent local days (today and the 13 before, in the instance time zone), the newest one of that day.
   - **Deleted:** every other candidate. Its sidecar `<name>.sha256` is deleted after it; if the archive cannot be deleted, the sidecar stays. A sidecar of an own backup name whose archive is absent is deleted too (it checks nothing).
@@ -106,6 +106,7 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
 - **D8 — issue #729, L8 and L10.** *(Awaiting approval.)* L8: a copy loaded on another instance keeps the same `instance_id`. L10: two instances sharing an id and a folder sweep each other's temporary files. With rotation, L10 grows: such instances would also rotate each other's backups. *Recommendation:* 19-7 does not change the id rules. 19-8 keeps the local `instance_id` across a restore (it rewrites the row after loading a backup, so a restored foreign backup does not make this instance take the other's id). The manual (19-11) says: one backups folder per instance, and a dump loaded into a test database must not run against the production folder. A comment on #729 records this split. *Option:* 19-7 adds a startup check that refuses to rotate when the folder holds own-id backups this process cannot account for; not recommended (it cannot tell a restart from a twin).
 - **D9 — the E2E stack and the scheduler.** *(Technical.)* The E2E stack keeps the default schedule. The 10-minute warm-up is longer than a CI run after a reset; on a long-lived local stack, a scheduled check holds the guard a few seconds per interval, so `admin-backups.spec.ts` could meet "already running" very rarely. No environment variable is added. *Option:* `MYBIBLI_SKIP_SCHEDULED_BACKUPS=1` in the test compose (strict accept-set, like `MYBIBLI_SKIP_SETUP`); not recommended, since the E2E Health line would then not show the real schedule.
   - *Validator note.* The last CI run on `main` (2026-11-25) took 18 minutes for the Playwright job, build and stack start included; the suite itself may well cross the 10-minute warm-up. CI sets `failOnFlakyTests`, so one "already running" answer in `admin-backups.spec.ts` (or in this story's spec) fails the job. Before keeping D9 as is, the dev should either measure the suite against the warm-up or make the specs' "Back up now" step retry once on the "already running" answer (a real user scenario, not a flake).
+  - **Adopted after validation:** the E2E specs that press "Back up now" (19-6's `admin-backups.spec.ts` and this story's spec) retry once, after the guard is released, when the answer is "already running", and the dev measures the suite's length against the warm-up in the Debug Log.
 
 ## Acceptance Criteria
 
