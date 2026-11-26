@@ -95,6 +95,14 @@ async fn pending_cover_proposal(pool: &DbPool, title_id: u64) {
     .unwrap();
 }
 
+/// A title inserted then hard-deleted (as the purge does): its id was
+/// handed out and is never reused.
+async fn purged_title(pool: &DbPool) -> u64 {
+    let id = title(pool, "CC purged", None, None, false, true).await;
+    sqlx::query("DELETE FROM titles WHERE id = ?").bind(id).execute(pool).await.unwrap();
+    id
+}
+
 fn write_cover(dir: &Path, id: u64) {
     std::fs::write(dir.join(format!("{id}.jpg")), b"\xff\xd8jpeg").unwrap();
 }
@@ -183,7 +191,9 @@ async fn seed_library(pool: &DbPool, covers: &Path) -> [u64; 7] {
         let id = title(pool, &format!("CC present {i}"), None, Some("/covers/{id}.jpg?v=3"), false, false).await;
         write_cover(covers, id);
     }
-    let orphan = 900_001;
+    // The orphan: the file of a purged title (an id the database handed
+    // out, below its next id — the wrong-database guard lets it through).
+    let orphan = purged_title(pool).await;
     write_cover(covers, orphan);
     std::fs::create_dir(covers.join(".staging")).unwrap();
     std::fs::write(covers.join(".staging").join("x.jpg"), b"x").unwrap();
@@ -596,36 +606,73 @@ async fn a_repair_stopped_by_a_restore_counts_what_it_did_not_handle(pool: DbPoo
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn more_orphans_than_used_covers_is_refused_like_another_database(pool: DbPool) {
-    let fx = fixture(&pool, "cc_other_db").await;
+async fn purged_titles_orphans_are_repairable_even_when_they_outnumber_used_covers(pool: DbPool) {
+    let fx = fixture(&pool, "cc_purged").await;
     let covers = fx.f.covers();
     let used = title(&pool, "CC used", None, Some("/covers/{id}.jpg"), false, false).await;
     write_cover(&covers, used);
-    for orphan in [900_101, 900_102] {
-        write_cover(&covers, orphan);
+    let mut orphans = Vec::new();
+    for _ in 0..3 {
+        let id = purged_title(&pool).await;
+        write_cover(&covers, id);
+        orphans.push(id);
     }
     let (status, html) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
     assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("aucun titre ne possède (3)"), "{html}");
+    assert!(!html.contains("jamais attribué"), "{html}");
+    assert!(html.contains(r#"id="admin-covers-repair""#), "3 orphans for 1 used cover stay repairable: {html}");
+    let (status, done) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &posted_items(&html)).await;
+    assert_eq!(status, StatusCode::OK, "{done}");
+    assert!(done.contains("Couvertures réparées : 3 fichiers supprimés"), "{done}");
+    for id in orphans {
+        assert!(!covers.join(format!("{id}.jpg")).exists());
+    }
+    assert!(covers.join(format!("{used}.jpg")).exists());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_orphan_id_never_handed_out_blocks_check_modal_and_repair(pool: DbPool) {
+    let fx = fixture(&pool, "cc_other_db").await;
+    let covers = fx.f.covers();
+    let [purged, ..] = seed_library(&pool, &covers).await;
+    // A file whose number this database never gave to a title.
+    let foreign = 900_101;
+    write_cover(&covers, foreign);
+    let (status, html) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    assert_eq!(status, StatusCode::OK);
     assert!(
-        html.contains("appartiennent à aucun titre, plus que les 1 couvertures utilisées par la bibliothèque."),
+        html.contains("1 fichiers de couverture portent un numéro que cette base de données n"),
         "{html}"
     );
     assert!(html.contains("aucun titre ne possède (2)"), "the list is shown: {html}");
     assert!(!html.contains(r#"id="admin-covers-repair""#), "no repair offered: {html}");
 
-    let items = format!(
-        "orphan={}&orphan={}",
-        urlencode(&cc::OrphanItem::of(&cc::list_folder(&covers).unwrap().files[1]).encode()),
-        urlencode(&cc::OrphanItem::of(&cc::list_folder(&covers).unwrap().files[2]).encode()),
-    );
+    let items: Vec<String> = cc::list_folder(&covers)
+        .unwrap()
+        .files
+        .iter()
+        .filter(|f| f.id == foreign || f.id == purged)
+        .map(|f| format!("orphan={}", urlencode(&cc::OrphanItem::of(f).encode())))
+        .collect();
+    let items = items.join("&");
     let (status, modal) = fx.admin.post_form(&fx.app, "/admin/covers/repair/confirm", &items).await;
     assert_eq!(status, StatusCode::OK);
     assert!(!modal.contains("Réparer les couvertures ?"), "no modal: {modal}");
+    assert!(modal.contains("jamais attribué à un titre"), "the refreshed check instead: {modal}");
     let (status, body) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &items).await;
     assert_eq!(status, StatusCode::CONFLICT, "{body}");
     assert!(body.contains("mybibli ne supprimera donc rien"), "{body}");
-    for orphan in [900_101, 900_102] {
-        assert!(covers.join(format!("{orphan}.jpg")).exists(), "nothing deleted");
+    for id in [foreign, purged] {
+        assert!(covers.join(format!("{id}.jpg")).exists(), "nothing deleted");
     }
     assert!(audit_rows(&pool).await.is_empty());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_next_title_id_is_read_from_this_database(pool: DbPool) {
+    let before = cc::next_title_id(&pool).await.expect("readable");
+    let id = title(&pool, "CC next", None, None, false, false).await;
+    let after = cc::next_title_id(&pool).await.unwrap();
+    assert!(id >= before && after > id, "{before} {id} {after}");
 }

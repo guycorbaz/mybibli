@@ -121,9 +121,9 @@ test.describe("Story 19-9 — cover check and repair", () => {
     await page.context().clearCookies();
     await loginAs(page, "admin");
 
-    // A title whose cover stays: the library uses at least as many covers
-    // as there are orphans, or the check would refuse the repair as "this
-    // looks like another database" (review pass 1, approved).
+    // A title whose cover stays: the repair must leave a used cover alone
+    // (checked after it). The orphan below is a purged title's file, an id
+    // the database handed out, so the wrong-database guard lets it through.
     const kept = await scanTitle(page, specIsbn("KC", 2));
     await uploadCover(page, kept);
 

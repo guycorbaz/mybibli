@@ -992,7 +992,7 @@ admin:
     note_no_code: "weder ISBN noch ISSN noch UPC: nichts herunterzuladen"
     note_pending: "ein Cover-Vorschlag steht aus: nehmen Sie ihn an, um ein Cover einzurichten"
     unmounted: "%{missing} der %{total} Cover, die die Bibliothek verwendet, fehlen in %{path}. Das sieht nach einem nicht eingebundenen Cover-Ordner aus, daher repariert mybibli nichts. Prüfen Sie das Cover-Volume der Installation (siehe Handbuch) und prüfen Sie dann erneut."
-    another_database: "%{orphans} Cover-Dateien gehören zu keinem Titel, mehr als die %{used} Cover, die die Bibliothek verwendet. Das sieht nach einer Datenbank aus, die nicht zu diesem Ordner gehört, daher löscht mybibli nichts. Prüfen Sie die Datenbank der Installation (siehe Handbuch) und prüfen Sie dann erneut."
+    another_database: "%{count} Cover-Dateien tragen eine Nummer, die diese Datenbank nie einem Titel gegeben hat. Das sieht nach einer Datenbank aus, die nicht zu diesem Ordner gehört, daher löscht mybibli nichts. Prüfen Sie die Datenbank der Installation (siehe Handbuch) und prüfen Sie dann erneut."
     repair_open: "Reparieren…"
     repair:
       title: "Die Cover reparieren?"

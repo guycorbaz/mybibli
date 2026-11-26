@@ -232,6 +232,9 @@ pub struct CoverPlan {
     pub local_total: u64,
     /// Of those, the ones whose file is missing (D12).
     pub local_missing: u64,
+    /// The next id `titles` will hand out (`AUTO_INCREMENT`); `None` when
+    /// it could not be read (the wrong-database guard is then on).
+    pub next_title_id: Option<u64>,
 }
 
 impl CoverPlan {
@@ -240,18 +243,21 @@ impl CoverPlan {
         self.local_total > 0 && self.local_missing.saturating_mul(2) > self.local_total
     }
 
-    /// Own cover files a title uses (its local address names its file).
-    pub fn used(&self) -> u64 {
-        self.local_total.saturating_sub(self.local_missing)
+    /// Review pass 1, approved 2026-11-26 (replaces the first ratio rule)
+    /// — orphan files carrying an id this database never handed out
+    /// (id ≥ the next id of `titles`). Ids are never reused, so the file
+    /// of a purged title always has an id below it; one at or above it
+    /// belongs to another database. All orphans when the next id could not
+    /// be read (fail safe).
+    pub fn never_given_count(&self) -> usize {
+        never_given(&self.orphans, self.next_title_id)
     }
 
-    /// Review pass 1, approved 2026-11-26 — the mirror of D12: more orphan
-    /// files than covers the library uses looks like a database that is not
-    /// this folder's (the wrong one restored or configured). The check
-    /// offers no repair; the repair refuses again on its fresh plan. No
-    /// override (decided).
+    /// The wrong-database guard: at least one orphan never given out. The
+    /// check offers no repair; the repair refuses again on its fresh plan.
+    /// No override (decided).
     pub fn looks_like_another_database(&self) -> bool {
-        !self.orphans.is_empty() && self.orphans.len() as u64 > self.used()
+        self.never_given_count() > 0
     }
 
     /// D12 or its mirror: the repair is not offered, and refused.
@@ -284,8 +290,28 @@ fn action_for(t: &TitleCover, pending: &HashSet<u64>) -> MissingAction {
     }
 }
 
-/// T2 — the plan (pure).
+/// The orphans whose id the database never handed out (pure): id ≥
+/// `next_title_id`; every orphan when it is unknown (fail safe).
+pub fn never_given(orphans: &[CoverFile], next_title_id: Option<u64>) -> usize {
+    match next_title_id {
+        Some(next) => orphans.iter().filter(|f| f.id >= next).count(),
+        None => orphans.len(),
+    }
+}
+
+/// [`plan_with`] for tests: every id already handed out.
+#[cfg(test)]
 pub fn plan(listing: &FolderListing, titles: &[TitleCover], pending_cover_titles: &HashSet<u64>) -> CoverPlan {
+    plan_with(listing, titles, pending_cover_titles, Some(u64::MAX))
+}
+
+/// T2 — the plan (pure).
+pub fn plan_with(
+    listing: &FolderListing,
+    titles: &[TitleCover],
+    pending_cover_titles: &HashSet<u64>,
+    next_title_id: Option<u64>,
+) -> CoverPlan {
     let title_ids: HashSet<u64> = titles.iter().map(|t| t.id).collect();
     // A file named by ANY title's local address is never an orphan.
     let named_ids: HashSet<u64> = titles
@@ -296,6 +322,7 @@ pub fn plan(listing: &FolderListing, titles: &[TitleCover], pending_cover_titles
     let mut out = CoverPlan {
         files_checked: listing.files.len() as u64,
         others: listing.others,
+        next_title_id,
         ..CoverPlan::default()
     };
     out.orphans = listing
@@ -411,7 +438,31 @@ pub async fn check(pool: &DbPool, covers_dir: &Path) -> Result<CoverPlan, CoverC
     };
     let titles = read_titles(pool).await?;
     let pending = pending_cover_titles(pool).await?;
-    Ok(plan(&listing, &titles, &pending))
+    let next = next_title_id(pool).await;
+    Ok(plan_with(&listing, &titles, &pending, next))
+}
+
+/// The next id `titles` will hand out (MariaDB ≥ 10.2.4 persists it).
+/// `None`, with a warning, when it cannot be read: the wrong-database
+/// guard is then on (fail safe).
+pub async fn next_title_id(pool: &DbPool) -> Option<u64> {
+    let read: Result<Option<Option<i64>>, sqlx::Error> = sqlx::query_scalar(
+        "SELECT CAST(AUTO_INCREMENT AS SIGNED) FROM information_schema.TABLES \
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'titles'",
+    )
+    .fetch_optional(pool)
+    .await;
+    match read {
+        Ok(Some(Some(next))) if next >= 1 => Some(next as u64),
+        Ok(other) => {
+            tracing::warn!(value = ?other, "Cover check: the next title id is unknown; nothing will be deleted");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Cover check: the next title id could not be read; nothing will be deleted");
+            None
+        }
+    }
 }
 
 /// An orphan as the modal posts it (T5): `<id>:<size>:<modified ns>`.
@@ -1057,6 +1108,22 @@ mod tests {
         );
         assert!(!only_pending.is_match());
         assert!(!only_pending.has_repair());
+    }
+
+    #[test]
+    fn an_orphan_id_never_handed_out_looks_like_another_database() {
+        let orphans = vec![file(9, 1), file(10, 1), file(11, 1)];
+        assert_eq!(never_given(&orphans, Some(12)), 0, "all below the next id: purged titles");
+        assert_eq!(never_given(&orphans, Some(11)), 1, "equal to the next id: never given");
+        assert_eq!(never_given(&orphans, Some(5)), 3, "above it");
+        assert_eq!(never_given(&orphans, None), 3, "unknown next id: guard on");
+        assert_eq!(never_given(&[], None), 0, "no orphan, nothing to guard");
+        let p = plan_with(&listing(vec![file(1, 1), file(40, 1), file(41, 1)], 0, &[]), &[title(1, Some("/covers/1.jpg"))], &HashSet::new(), Some(50));
+        assert!(!p.looks_like_another_database(), "more orphans than used covers is fine");
+        let p = plan_with(&listing(vec![file(1, 1), file(40, 1), file(60, 1)], 0, &[]), &[title(1, Some("/covers/1.jpg"))], &HashSet::new(), Some(50));
+        assert!(p.looks_like_another_database());
+        assert_eq!(p.never_given_count(), 1);
+        assert!(p.repair_refused());
     }
 
     #[test]

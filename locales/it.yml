@@ -980,7 +980,7 @@ admin:
     note_no_code: "né ISBN, né ISSN, né UPC: nulla da scaricare"
     note_pending: "una proposta di copertina è in attesa: accettala per installare una copertina"
     unmounted: "%{missing} delle %{total} copertine usate dalla biblioteca mancano in %{path}. Sembra una cartella delle copertine non montata, quindi mybibli non riparerà nulla. Verifica il volume delle copertine dell'installazione (vedi il manuale), poi controlla di nuovo."
-    another_database: "%{orphans} file di copertina non appartengono a nessun titolo, più delle %{used} copertine usate dalla biblioteca. Sembra un database che non è quello di questa cartella, quindi mybibli non eliminerà nulla. Verifica il database dell'installazione (vedi il manuale), poi controlla di nuovo."
+    another_database: "%{count} file di copertina portano un numero che questo database non ha mai dato a un titolo. Sembra un database che non è quello di questa cartella, quindi mybibli non eliminerà nulla. Verifica il database dell'installazione (vedi il manuale), poi controlla di nuovo."
     repair_open: "Ripara…"
     repair:
       title: "Riparare le copertine?"

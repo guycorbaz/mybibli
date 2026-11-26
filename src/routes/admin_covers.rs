@@ -181,13 +181,7 @@ pub fn build_view(plan: &CoverPlan, path: &str, tz: Tz, csrf_token: &str, loc: &
 
 /// The mirror of D12's line (review pass 1, approved copy).
 pub fn another_database_line(plan: &CoverPlan, loc: &str) -> String {
-    rust_i18n::t!(
-        "admin.covers.another_database",
-        locale = loc,
-        orphans = plan.orphans.len(),
-        used = plan.used()
-    )
-    .to_string()
+    rust_i18n::t!("admin.covers.another_database", locale = loc, count = plan.never_given_count()).to_string()
 }
 
 fn unreadable(path: &str, loc: &str) -> String {
@@ -522,9 +516,7 @@ mod tests {
 
     #[test]
     fn long_lists_stop_at_fifty_with_a_more_line() {
-        // Enough used covers that the orphans are not the majority.
-        let titles: Vec<TitleCover> = (1..=61).map(|i| title(i, Some(&format!("/covers/{i}.jpg")))).collect();
-        let p = plan(&files((1..=61).chain(100..=160)), &titles, &HashSet::new());
+        let p = plan(&files(100..=160), &[], &HashSet::new());
         let html = render(&p, "en");
         assert_eq!(html.matches(".jpg · ").count(), 50);
         assert!(html.contains("… and 11 more."), "{html}");
@@ -594,19 +586,21 @@ mod tests {
     }
 
     #[test]
-    fn more_orphans_than_used_covers_offers_no_repair() {
-        let p = plan(&files([1, 50, 51]), &[title(1, Some("/covers/1.jpg"))], &HashSet::new());
+    fn an_orphan_never_handed_out_offers_no_repair() {
+        use crate::services::cover_consistency::plan_with;
+        let titles = [title(1, Some("/covers/1.jpg"))];
+        let p = plan_with(&files([1, 50, 51]), &titles, &HashSet::new(), Some(51));
         assert!(p.looks_like_another_database());
         let html = render(&p, "en");
         assert!(
-            html.contains("2 cover files belong to no title, more than the 1 covers the library uses. This looks like a database that is not this folder&#39;s; mybibli will therefore delete nothing.")
-                || html.contains("2 cover files belong to no title, more than the 1 covers the library uses. This looks like a database that is not this folder&#x27;s; mybibli will therefore delete nothing."),
+            html.contains("1 cover files carry a number this database never gave to a title. This looks like a database that is not this folder"),
             "{html}"
         );
         assert!(!html.contains("admin-covers-repair"), "{html}");
-        assert!(summary(&p, "/app/covers", Zurich, "en").contains("This looks like a database"));
-        // As many orphans as used covers: repaired as usual.
-        let p = plan(&files([1, 2, 50, 51]), &[title(1, Some("/covers/1.jpg")), title(2, Some("/covers/2.jpg"))], &HashSet::new());
+        assert!(summary(&p, "/app/covers", Zurich, "en").contains("never gave to a title"));
+        assert!(another_database_line(&p, "fr").starts_with("1 fichiers de couverture portent un numéro que cette base de données"));
+        // More orphans than used covers, all below the next id: repaired.
+        let p = plan_with(&files([1, 50, 51]), &titles, &HashSet::new(), Some(52));
         assert!(!p.looks_like_another_database());
         assert!(render(&p, "en").contains("admin-covers-repair"));
     }
