@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-11-26 (epic 20 planned — chore PR.)
+# last_updated: 2026-11-26 (epic 19 in progress — story 19-7 done.)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -374,7 +374,7 @@ development_status:
   19-4-what-the-user-reads: done
   19-5-production-watching: done
   19-6-writing-a-backup: done
-  19-7-scheduled-backups-and-rotation: backlog
+  19-7-scheduled-backups-and-rotation: done
   19-8-restoring-a-backup: backlog
   19-9-cover-database-consistency: backlog
   19-10-epic-19-smoke-test: backlog
