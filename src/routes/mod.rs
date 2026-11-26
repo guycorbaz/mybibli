@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod admin_api_keys;
 pub mod admin_backups;
+pub mod admin_health_backup;
 pub mod admin_health_watch;
 pub mod audit;
 pub mod stats;
@@ -10,6 +11,7 @@ pub mod entity_labels;
 pub mod admin_reference_data;
 pub mod admin_skills;
 pub mod admin_system;
+pub mod admin_system_backups;
 pub mod admin_system_proposals;
 pub mod admin_system_time_zone;
 pub mod admin_users;
@@ -817,6 +819,12 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .route(
             "/admin/system/time-zone",
             axum::routing::post(admin_system_time_zone::save_time_zone_settings),
+        )
+        // Story 19-7 (#657, D1) — automatic backup interval, read by the
+        // backup scheduler at each wake.
+        .route(
+            "/admin/system/backups",
+            axum::routing::post(admin_system_backups::save_backups_settings),
         )
         // CR #241 — Admin → API keys (v1.4.0). 4 routes: 1 GET panel +
         // 1 POST create + 1 GET revoke-modal + 1 POST revoke. All

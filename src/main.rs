@@ -591,6 +591,11 @@ async fn main() {
         state.covers_dir.clone(),
     );
 
+    // Story 19-7 (#657, D2): automatic backups. After a 10-minute warm-up,
+    // a check every `backup_interval_hours` (Admin → System, default 1);
+    // a backup is written only if something changed, then old ones rotate.
+    mybibli::tasks::backup_scheduler::spawn(state.clone());
+
     // Story 13-2 (#583): retry the metadata fetches that ended throttled
     // (429/503), every 5 minutes, on the back-off schedule of the module.
     mybibli::tasks::metadata_retry::spawn(state.clone());

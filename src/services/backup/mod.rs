@@ -20,12 +20,18 @@
 //! - One backup at a time per process ([`BackupConfig::guard`]).
 //! - Log lines carry counts and the file name only, never row contents.
 //!
-//! Story 19-7 (schedule, rotation) and 19-8 (restore's safety backup) call
-//! [`write_backup`] too.
+//! Story 19-7 (#657) adds the schedule: [`write_backup_if_changed`] (the
+//! skip rule, [`fingerprint`]), the in-memory [`status`], the folder
+//! [`listing`] and the [`rotation`] of old backups. Story 19-8 (restore's
+//! safety backup) calls [`write_backup`] too.
 
 pub mod archive;
 pub mod covers;
 pub mod dump;
+pub mod fingerprint;
+pub mod listing;
+pub mod rotation;
+pub mod status;
 
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Write};
@@ -57,7 +63,10 @@ pub struct BackupConfig {
     pub dir: PathBuf,
     pub covers_dir: PathBuf,
     /// Held for the whole write (D5): a second request meets it locked.
+    /// Story 19-7: the rotation takes it too (`try_lock`, skipped when held).
     pub guard: Arc<tokio::sync::Mutex<()>>,
+    /// Story 19-7 (D7): what the scheduler remembers, in memory only.
+    pub status: status::BackupStatus,
 }
 
 impl BackupConfig {
@@ -66,6 +75,7 @@ impl BackupConfig {
             dir,
             covers_dir,
             guard: Arc::new(tokio::sync::Mutex::new(())),
+            status: status::BackupStatus::default(),
         }
     }
 }
@@ -254,11 +264,46 @@ impl Drop for Cleanup {
     }
 }
 
+/// What a scheduled check did (story 19-7, D3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckOutcome {
+    Written(BackupWritten),
+    /// Nothing changed since the last backup this process wrote: nothing
+    /// at all was written (not even a scratch file).
+    Unchanged,
+}
+
 /// Write one backup (D6). Refused at once when another is running or the
 /// folder is not usable; otherwise the work runs in a spawned task that
 /// owns its connection and the guard, so a client disconnect does not
-/// abort it halfway, and this call waits for it.
+/// abort it halfway, and this call waits for it. Story 19-7: the
+/// fingerprint of what it wrote is remembered for the skip rule.
 pub async fn write_backup(pool: &DbPool, cfg: &BackupConfig) -> Result<BackupWritten, BackupError> {
+    match guarded(pool, cfg, false).await? {
+        CheckOutcome::Written(w) => Ok(w),
+        // Not reachable: without the skip rule the writer always writes.
+        CheckOutcome::Unchanged => Err(BackupError::Io("no backup was written".to_string())),
+    }
+}
+
+/// Story 19-7 (D3, D7) — the scheduled path: hash the dump into a sink
+/// that writes nothing and list the covers; when [`fingerprint::is_unchanged`]
+/// holds, write nothing at all; otherwise run the normal writer (a second
+/// snapshot, whose fingerprint is the one remembered). Same refusals and
+/// guarantees as [`write_backup`] (guard, folder check, `0600`, temporary
+/// files removed on failure).
+pub async fn write_backup_if_changed(
+    pool: &DbPool,
+    cfg: &BackupConfig,
+) -> Result<CheckOutcome, BackupError> {
+    guarded(pool, cfg, true).await
+}
+
+async fn guarded(
+    pool: &DbPool,
+    cfg: &BackupConfig,
+    skip_if_unchanged: bool,
+) -> Result<CheckOutcome, BackupError> {
     let guard = cfg
         .guard
         .clone()
@@ -269,47 +314,110 @@ pub async fn write_backup(pool: &DbPool, cfg: &BackupConfig) -> Result<BackupWri
     let cfg = cfg.clone();
     let task = tokio::spawn(async move {
         let _guard = guard;
-        let outcome = run(&pool, &cfg).await;
-        match &outcome {
-            Ok(w) => tracing::info!(
-                file = %w.file_name,
-                bytes = w.bytes,
-                tables = w.tables,
-                rows = w.rows,
-                covers = w.covers,
-                "Backup written"
-            ),
-            Err(e) => tracing::error!(error = %e, "Backup failed; nothing was kept"),
+        if skip_if_unchanged {
+            match probe_unchanged(&pool, &cfg).await {
+                Ok(true) => {
+                    tracing::info!("Backup check: nothing changed since the last backup; nothing written");
+                    return Ok(CheckOutcome::Unchanged);
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::error!(error = %e, "Backup check failed; nothing was kept");
+                    return Err(e);
+                }
+            }
         }
-        outcome
+        let outcome = run(&pool, &cfg).await;
+        match outcome {
+            Ok((w, fingerprint)) => {
+                tracing::info!(
+                    file = %w.file_name,
+                    bytes = w.bytes,
+                    tables = w.tables,
+                    rows = w.rows,
+                    covers = w.covers,
+                    "Backup written"
+                );
+                // D7: only once the archive and its sidecar are in place.
+                cfg.status.remember(fingerprint::Remembered {
+                    fingerprint,
+                    file_name: w.file_name.clone(),
+                    bytes: w.bytes,
+                });
+                Ok(CheckOutcome::Written(w))
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Backup failed; nothing was kept");
+                Err(e)
+            }
+        }
     });
     task.await
         .map_err(|e| BackupError::Io(format!("backup task ended abnormally: {e}")))?
 }
 
-async fn run(pool: &DbPool, cfg: &BackupConfig) -> Result<BackupWritten, BackupError> {
+/// D3 — whether the library is unchanged since the backup this process
+/// remembers. The dump goes into a hashing sink (nothing on disk); the
+/// covers and the folder are listed in a blocking task.
+async fn probe_unchanged(pool: &DbPool, cfg: &BackupConfig) -> Result<bool, BackupError> {
+    let Some(remembered) = cfg.status.remembered() else {
+        // Nothing to compare with (a restart): write, without a dump here.
+        return Ok(false);
+    };
+    let instance_id = crate::services::instance_id::ensure(pool).await?;
+    let mut conn = pool.acquire().await?;
+    // The connection carried session settings and a transaction: never
+    // give it back to the pool.
+    conn.close_on_drop();
+    let mut sink = archive::HashingWriter::new(std::io::sink());
+    dump::write_dump(&mut conn, &mut sink).await?;
+    drop(conn);
+    let (_, sql_digest) = sink.finish();
+
+    let covers_dir = cfg.covers_dir.clone();
+    let dir = cfg.dir.clone();
+    let (cover_list, entries) = tokio::task::spawn_blocking(move || {
+        Ok::<_, std::io::Error>((covers::list_covers(&covers_dir)?, listing::list_folder(&dir)?))
+    })
+    .await
+    .map_err(|e| BackupError::Io(format!("listing task ended abnormally: {e}")))??;
+    let current = fingerprint::Fingerprint::new(sql_digest.sha256, &cover_list);
+    let own = listing::own_backups(&entries, &instance_id);
+    let newest = listing::newest_at_or_before(&own, Utc::now());
+    Ok(fingerprint::is_unchanged(Some(&remembered), newest, &current))
+}
+
+async fn run(
+    pool: &DbPool,
+    cfg: &BackupConfig,
+) -> Result<(BackupWritten, fingerprint::Fingerprint), BackupError> {
     let instance_id = crate::services::instance_id::ensure(pool).await?;
     // Review of story 19-6 (L2): temporary files left by a backup cut short
     // (crash, OOM kill, container restart) are removed under the guard —
-    // only names of this instance's shape (Rule #20).
-    sweep_stale_temporaries(&cfg.dir, &instance_id);
-
-    // Two requests within the same second would get the same name: wait
-    // for the next second rather than overwrite (bounded).
-    let mut created_at = Utc::now();
-    let mut file_name = backup_file_name(&instance_id, created_at);
-    for _ in 0..3 {
-        if !cfg.dir.join(&file_name).exists() && !sidecar_path(&cfg.dir, &file_name).exists() {
-            break;
+    // only names of this instance's shape (Rule #20). Story 19-7 review
+    // (#729 L3): the sweep and the name checks run in a blocking task.
+    let (dir, id) = (cfg.dir.clone(), instance_id.clone());
+    let (created_at, file_name) = blocking("naming", move || {
+        sweep_stale_temporaries(&dir, &id);
+        // Two requests within the same second would get the same name:
+        // wait for the next second rather than overwrite (bounded).
+        let mut created_at = Utc::now();
+        let mut file_name = backup_file_name(&id, created_at);
+        for _ in 0..3 {
+            if !dir.join(&file_name).exists() && !sidecar_path(&dir, &file_name).exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+            created_at = Utc::now();
+            file_name = backup_file_name(&id, created_at);
         }
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-        created_at = Utc::now();
-        file_name = backup_file_name(&instance_id, created_at);
-    }
+        if dir.join(&file_name).exists() {
+            return Err(BackupError::Io(format!("{file_name} already exists")));
+        }
+        Ok((created_at, file_name))
+    })
+    .await?;
     let final_path = cfg.dir.join(&file_name);
-    if final_path.exists() {
-        return Err(BackupError::Io(format!("{file_name} already exists")));
-    }
     let tmp_archive = cfg.dir.join(format!("{TMP_PREFIX}{file_name}"));
     let tmp_sql = cfg.dir.join(format!("{TMP_PREFIX}{file_name}.database.sql"));
     let tmp_sidecar = cfg.dir.join(format!("{TMP_PREFIX}{file_name}.sha256"));
@@ -330,8 +438,12 @@ async fn run(pool: &DbPool, cfg: &BackupConfig) -> Result<BackupWritten, BackupE
     sql_file.sync_all()?;
     drop(sql_file);
 
-    // 2. Covers are listed after the dump (D3).
-    let cover_list = covers::list_covers(&cfg.covers_dir)?;
+    // 2. Covers are listed after the dump (D3), in a blocking task (one
+    //    `stat` per cover; story 19-7 review, #729 L3).
+    let covers_dir = cfg.covers_dir.clone();
+    let cover_list =
+        blocking("cover listing", move || Ok(covers::list_covers(&covers_dir)?)).await?;
+    let fingerprint = fingerprint::Fingerprint::new(sql_digest.sha256.clone(), &cover_list);
 
     // 3. The archive, in a blocking task (tar + gzip are synchronous).
     let head = archive::ManifestHead {
@@ -366,14 +478,27 @@ async fn run(pool: &DbPool, cfg: &BackupConfig) -> Result<BackupWritten, BackupE
 
     let rows = stats.rows.values().sum();
     let titles = stats.rows.get("titles").copied().unwrap_or(0);
-    Ok(BackupWritten {
-        file_name,
-        bytes: outcome.archive_bytes,
-        tables: stats.rows.len(),
-        rows,
-        titles,
-        covers: outcome.cover_count,
-    })
+    Ok((
+        BackupWritten {
+            file_name,
+            bytes: outcome.archive_bytes,
+            tables: stats.rows.len(),
+            rows,
+            titles,
+            covers: outcome.cover_count,
+        },
+        fingerprint,
+    ))
+}
+
+/// Run blocking file work off the async worker.
+async fn blocking<T: Send + 'static>(
+    what: &str,
+    work: impl FnOnce() -> Result<T, BackupError> + Send + 'static,
+) -> Result<T, BackupError> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| BackupError::Io(format!("{what} task ended abnormally: {e}")))?
 }
 
 /// Review of story 19-6 (L2) — whether `name` is a temporary file a backup
