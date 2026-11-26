@@ -106,3 +106,22 @@ None. No visible copy or behaviour change is needed.
 ### Completion Notes List
 
 ### File List
+
+## Validation
+
+Validated on 2026-11-26 against `main` at `7b2d1afa` (20-1, 20-2, 20-4, 20-5 merged) and `story/20-3-expected-tomes-consistency` at `5b814d02` (PR #747, in CI). Every selector and string of the Dev Notes table was grepped in `templates/`, `src/` and `locales/`.
+
+**Confirmed.**
+- On `main`: `#series-name`, `#series-type`, `#series-total` (`series_form.html`); `#scan-field`; `#assign-series`, `#assign-position`, `#assign-series-submit` (`title_detail.html`); `[data-gap-wishlist]` with `aria-label` = `gap_wishlist_named(position)`, the expected-tome gap carrying both `data-expected-tome` and `data-position`, the owned cell `a[role="gridcell"][href="/title/{id}"]` (`series_gap_grid.html`); the gap link's href `…?position=N&amp;wishlist=1` (the URL regex of T2.4 matches the decoded `&`); `#expected-tome-position`, `#expected-tome-title`, `#expected-tome-wishlist-help`, `#expected-tome-save`; `#series-feedback`; `wishlist_added` "… was added to your wish list." / "… a été ajouté à votre wish list." and `wishlist_open` "Open the wish list entry" / "Ouvrir l'entrée de la wish list"; the Remove buttons' `aria-label` from `action_labels` → `wishlist.action_remove_named` ("Remove: “%{title}”" / "Retirer : « %{title} »"), desktop table and `md:hidden` cards both rendered; the list is not paginated (`ORDER BY created_at DESC, id DESC`, no `LIMIT`); `#edit-description`, `#edit-location-submit`, `#location-description`; `#tree-node-{id}` → row `div` → toggle (`#tree-toggle-{id}`, `aria-controls`, `aria-expanded="true"` server-side, `location.tree.toggle_named` "Locations inside %{name}" / "Emplacements dans %{name}") **immediately before** the row's `<a href="/location/{id}">` (`render_node_at_depth`) — Shift+Tab from the link lands on it (D8); the row shows the L-code in the tree, so `freeLcodePair`'s `page.content()` check sees used labels.
+- Only on the 20-3 branch: `id="series-form-submit"` (`series_form.html:70`), `#series-total-error` and `series.total_below_expected` ("Total must be at least %{position}: …" / "Le total doit être d’au moins %{position} : …", typographic apostrophe). The dependency section stands: the spec cannot run on `main` alone.
+- Roles (D1): series form `edit_series_form` Librarian; expected-tome routes Librarian; wish list routes Librarian; location create / edit page / update Librarian; location delete modal and delete Admin (not used); `/locations` shows the add-root form and the edit / add-child controls to a librarian (`TreeRights`: `can_edit` ≥ Librarian). `createLocation` / `createChildLocation` are already used with a librarian session in `epic13-smoke.spec.ts`.
+- Data (D2, D3, D5): no spec or helper uses `"E0"` (literal or `SPEC` / `SPEC_ID` constant); bucket-9 L-codes in use are `100 + slot * 10 + n` (`location-description`), `L9998`, `L9999`; the smoke draws L9800–L9997. The rewritten draw with `(8, 0, 998)` gives `floor(random * 499) * 2` exactly, as today in `epic13-smoke.spec.ts:80`.
+
+**Adjustments for the developer (no change to the ACs).**
+- **V1 — after Remove, wait on the dialog.** `/wishlist` → `/wishlist` makes `waitForURL` resolve at once (the URL already matches). Before the row check, add `await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0)`; the row's `toHaveCount(0)` retries in any case. Same for T2.10 (`/locations/{id}/edit` → `/locations` does change the URL, nothing to add there).
+- **V2 — `epic13-smoke.spec.ts` imports.** Once the helper moves, `specLcode` may be unused there; drop it from that import if so (`tsc --noEmit`).
+- **V3 — regex-escape every run-stamped string** put in a `RegExp` (Remove button name, toggle name): the pre-filled title contains a comma and the series name hyphens; a small local `escapeRegExp` is enough (none exists in `tests/e2e/helpers/`; if a second spec needs it, it moves there).
+
+**Rules checked.** Rule #7 (blank browser, `loginAs`), #23 (every assertion on the spec's series, title, wish list entry and locations; no count over a whole list), no `waitForTimeout`, `expectHtmxProcessed` before the modal Confirm, i18n regexes EN | FR, Rule #21 not involved (no focus move asserted other than the toggle keeping it), Rule #24 (the spec edits no shared spec; the helper move touches `epic13-smoke.spec.ts` only, which no other epic-20 story edits).
+
+**Open questions.** None. No visible copy or behaviour change is needed.
