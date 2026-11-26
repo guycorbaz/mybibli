@@ -382,6 +382,7 @@ series:
   name_duplicate: "Une série nommée \"%{name}\" existe déjà."
   total_required_for_closed: Le nombre total de volumes est obligatoire pour une série fermée.
   total_below_owned: "Le total (%{total}) ne peut pas être inférieur au nombre possédé (%{owned})."
+  total_below_expected: "Le total doit être d’au moins %{position} : un tome attendu est enregistré à la position %{position}."
   detail_title: Détails de la série
   save: Enregistrer
   cancel: Annuler
@@ -1014,6 +1015,8 @@ admin:
     restore_success: "Restauré : %{name}"
     restore_error_not_found: "Cet élément n'est plus dans la corbeille. Il a peut-être déjà été restauré ou purgé."
     restore_contributor_name_taken: "« %{name} » n'a pas été restauré : un autre contributeur porte déjà ce nom. Renommez l'un des deux, puis restaurez-le à nouveau."
+    restore_tome_to_review: "« %{title} » retrouve la position %{position} de « %{series} », où un tome attendu a été enregistré entre-temps. Vérifiez-le sous « Tomes attendus à revoir » sur la page de la série."
+    restore_tome_settled: "Le tome attendu à la position %{position} de « %{series} » compte désormais comme possédé."
     delete_permanent_success: "Supprimé définitivement : %{name}"
     delete_permanent_modal_title: "Supprimer définitivement ?"
     delete_permanent_modal_warning: "Ceci ne peut pas être annulé."

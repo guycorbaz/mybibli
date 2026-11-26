@@ -124,11 +124,21 @@ impl SeriesModel {
         pool: &DbPool,
         id: u64,
     ) -> Result<Option<SeriesModel>, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::active_find_by_id_in(&mut conn, id).await
+    }
+
+    /// Story 20-3 — [`Self::active_find_by_id`] on a connection (the
+    /// series edit re-reads its row inside its transaction).
+    pub async fn active_find_by_id_in(
+        conn: &mut sqlx::MySqlConnection,
+        id: u64,
+    ) -> Result<Option<SeriesModel>, AppError> {
         let row = sqlx::query(
             concat!(series_select!(), "WHERE id = ? AND deleted_at IS NULL"),
         )
         .bind(id)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await?;
 
         match row {
@@ -263,15 +273,18 @@ impl SeriesModel {
         Ok(result.last_insert_id())
     }
 
-    pub async fn update_with_locking(
-        pool: &DbPool,
+    /// Story 20-3 — the hand edit of a series, version-guarded, inside
+    /// the caller's transaction (which holds the series row lock). Bumps
+    /// `version`; a stale `version` is a `VersionMismatch`.
+    pub async fn update_with_locking_in(
+        conn: &mut sqlx::MySqlConnection,
         id: u64,
         version: i32,
         name: &str,
         description: Option<&str>,
         series_type: SeriesType,
         total_volume_count: Option<i32>,
-    ) -> Result<SeriesModel, AppError> {
+    ) -> Result<(), AppError> {
         let result = sqlx::query(
             "UPDATE series SET name = ?, description = ?, series_type = ?, \
              total_volume_count = ?, version = version + 1, updated_at = NOW() \
@@ -283,14 +296,10 @@ impl SeriesModel {
         .bind(total_volume_count)
         .bind(id)
         .bind(version)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
 
-        crate::services::locking::check_update_result(result.rows_affected(), "series")?;
-
-        SeriesModel::active_find_by_id(pool, id)
-            .await?
-            .ok_or_else(|| AppError::Internal("Failed to retrieve updated series".to_string()))
+        crate::services::locking::check_update_result(result.rows_affected(), "series")
     }
 
     /// Story 15-4 — set a live series' name, type and total inside the
@@ -334,13 +343,23 @@ impl SeriesModel {
 
     /// Count active title assignments for this series.
     pub async fn active_count_titles(pool: &DbPool, series_id: u64) -> Result<u64, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::active_count_titles_in(&mut conn, series_id).await
+    }
+
+    /// Story 20-3 — [`Self::active_count_titles`] on a connection (a plain
+    /// read inside the series edit's transaction).
+    pub async fn active_count_titles_in(
+        conn: &mut sqlx::MySqlConnection,
+        series_id: u64,
+    ) -> Result<u64, AppError> {
         let row: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM title_series ts \
              JOIN titles t ON ts.title_id = t.id \
              WHERE ts.series_id = ? AND ts.deleted_at IS NULL AND t.deleted_at IS NULL",
         )
         .bind(series_id)
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await?;
 
         Ok(row.0 as u64)

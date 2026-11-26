@@ -148,7 +148,10 @@ test.describe("Expected tomes on the series page (story 11-11)", () => {
     );
   });
 
-  test("lowering the total lists the tome under review", async ({ page }) => {
+  // Story 20-3 (D7, #524): lowering the total under a tome is now refused
+  // next to the total field; the "to review" list itself stays covered by
+  // tests/expected_tomes_web.rs (state seeded by SQL).
+  test("lowering the total under a tome is refused", async ({ page }) => {
     await loginAs(page, "librarian");
     const seriesPath = await createSeries(page, `XT-Lower-${RUN}`, 5);
     // "Name this tome" on the gap pre-fills its position.
@@ -159,15 +162,15 @@ test.describe("Expected tomes on the series page (story 11-11)", () => {
 
     await page.goto(`${seriesPath}/edit`);
     await page.locator("#series-total").fill("3");
-    await page.locator('main button[type="submit"]').last().click();
-    await page.waitForURL((url) => url.pathname === seriesPath);
+    await page.locator("#series-form-submit").click();
 
-    const review = page.locator("#expected-tomes-review");
-    await expect(review).toContainText(`Cinquième ${RUN}`);
-    await expect(review).toContainText(
-      /above the series total of 3|dépasse le total de la série \(3\)/i,
+    await expect(page.locator("#series-total-error")).toContainText(
+      /at least 5|au moins 5/i,
     );
-    await expect(page.locator("[data-expected-tome]")).toHaveCount(0);
+    await expect(page.locator("#series-total")).toHaveValue("3");
+    await page.goto(seriesPath);
+    await expect(tomeCard(page, `Cinquième ${RUN}`)).toBeVisible();
+    await expect(page.locator("#expected-tomes-review")).toHaveCount(0);
   });
 
   test("an anonymous visitor sees the tome without actions", async ({

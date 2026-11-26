@@ -1,7 +1,8 @@
 use askama::Template;
 use axum::Extension;
 use axum::extract::{OriginalUri, Path, State};
-use axum::response::{Html, IntoResponse, Redirect};
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
 use crate::AppState;
@@ -12,7 +13,7 @@ use crate::middleware::locale::Locale;
 use crate::models::PaginatedList;
 use crate::models::series::{SeriesModel, SeriesSummaryRow, SeriesType};
 use crate::utils::feedback_html;
-use crate::services::series::{SeriesPositionInfo, SeriesService};
+use crate::services::series::{SeriesField, SeriesFormError, SeriesPositionInfo, SeriesService};
 
 /// Compute gap count for a closed series: total - owned, clamped to 0.
 /// `owned` is the distinct held positions of the shared counting rule
@@ -394,15 +395,55 @@ pub struct SeriesFormTemplate {
     pub type_value: String,
     pub total_value: String,
     pub series_type_help: crate::utils::TooltipData,
+    /// Story 20-3 (AC3) — the refusal under the name / total field,
+    /// already HTML-escaped by the handler.
+    pub name_error_html: Option<String>,
+    pub total_error_html: Option<String>,
 }
 
-fn form_template_labels(
-    session: &Session,
-    page: crate::utils::PageSettings,
-    loc: &str,
-    uri: &axum::http::Uri,
-) -> SeriesFormTemplate {
-    let base = crate::utils::base_context(session, loc, "series", uri, page);
+/// Story 20-3 — what the series form shows: the stored values (GET) or
+/// the typed ones (a refusal), and at most one refusal.
+#[derive(Debug, Default)]
+pub struct SeriesFormState {
+    /// `None` on the create form.
+    pub series_id: Option<u64>,
+    pub version: i32,
+    pub name: String,
+    pub description: String,
+    pub series_type: Option<SeriesType>,
+    pub total: Option<i32>,
+    pub name_error_html: Option<String>,
+    pub total_error_html: Option<String>,
+}
+
+impl SeriesFormState {
+    /// The refusal `err` placed under its field (escaped); `false` when
+    /// it belongs to no field (`SeriesFormError::App`).
+    fn place(&mut self, err: &SeriesFormError, loc: &str) -> bool {
+        let Some(message) = err.localized(loc) else {
+            return false;
+        };
+        let html = Some(crate::utils::html_escape(&message));
+        match err.field() {
+            Some(SeriesField::Name) => self.name_error_html = html,
+            Some(SeriesField::Total) => self.total_error_html = html,
+            None => return false,
+        }
+        true
+    }
+
+    /// The GET address of this form: a re-render after a refusal is
+    /// rendered there, so the language toggle and the login `next` never
+    /// point at the POST route.
+    fn page(&self) -> String {
+        match self.series_id {
+            Some(id) => format!("/series/{id}/edit"),
+            None => "/series/new".to_string(),
+        }
+    }
+}
+
+fn form_template_labels(base: crate::utils::BaseContextFields, loc: &str) -> SeriesFormTemplate {
     SeriesFormTemplate {
         base,
         is_edit: false,
@@ -428,7 +469,72 @@ fn form_template_labels(
             &rust_i18n::t!("help.series.type_summary", locale = loc),
             &rust_i18n::t!("help.series.type_text", locale = loc),
         ),
+        name_error_html: None,
+        total_error_html: None,
     }
+}
+
+/// Story 20-3 — the series form (create or edit) with `form`'s values
+/// and refusals, answered with `status`.
+fn render_series_form(
+    state: &AppState,
+    session: &Session,
+    loc: &str,
+    uri: &axum::http::Uri,
+    form: SeriesFormState,
+    status: StatusCode,
+) -> Result<Response, AppError> {
+    let base = crate::utils::base_context(session, loc, "series", uri, state.page_settings());
+    match series_form_template(base, loc, form).render() {
+        Ok(html) => Ok((status, Html(html)).into_response()),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "series" }),
+    }
+}
+
+/// The series form template for `form` (pure, unit tested).
+fn series_form_template(
+    base: crate::utils::BaseContextFields,
+    loc: &str,
+    form: SeriesFormState,
+) -> SeriesFormTemplate {
+    let mut template = form_template_labels(base, loc);
+    template.is_edit = form.series_id.is_some();
+    template.series_id = form.series_id.unwrap_or(0);
+    template.version = form.version;
+    template.name_value = form.name;
+    template.description_value = form.description;
+    template.type_value = form.series_type.unwrap_or(SeriesType::Open).to_string();
+    template.total_value = form.total.map(|n| n.to_string()).unwrap_or_default();
+    template.name_error_html = form.name_error_html;
+    template.total_error_html = form.total_error_html;
+    template
+}
+
+/// Story 20-3 (AC3) — the answer to a refused submit: the form again at
+/// its GET address, 422, the typed values kept and the message under its
+/// field in the request locale. Any other error propagates (a series
+/// gone → the not-found page, a stale version → today's 409).
+fn series_form_refused(
+    state: &AppState,
+    session: &Session,
+    loc: &'static str,
+    mut form: SeriesFormState,
+    err: SeriesFormError,
+) -> Result<Response, AppError> {
+    if !form.place(&err, loc) {
+        return Err(match err {
+            SeriesFormError::App(AppError::NotFound(_)) => {
+                AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
+            }
+            SeriesFormError::App(e) => e,
+            _ => AppError::Internal("series refusal without a field".to_string()),
+        });
+    }
+    let uri: axum::http::Uri = form
+        .page()
+        .parse()
+        .map_err(|e| AppError::Internal(format!("series form uri: {e}")))?;
+    render_series_form(state, session, loc, &uri, form, StatusCode::UNPROCESSABLE_ENTITY)
 }
 
 pub async fn create_series_form(
@@ -438,18 +544,7 @@ pub async fn create_series_form(
     OriginalUri(uri): OriginalUri,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
-
-    let template = form_template_labels(
-        &session,
-        state.page_settings(),
-        locale.0,
-        &uri,
-    );
-
-    match template.render() {
-        Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::TemplateRenderFailed { template: "series" }),
-    }
+    render_series_form(&state, &session, locale.0, &uri, SeriesFormState::default(), StatusCode::OK)
 }
 
 #[derive(Deserialize)]
@@ -547,12 +642,24 @@ pub async fn create_series(
 
     let desc = form.description.as_deref().filter(|s| !s.trim().is_empty());
 
-    let series =
-        SeriesService::create_series(pool, &form.name, desc, series_type, form.total_volume_count)
-            .await?;
-
-    tracing::info!(series_id = series.id, name = %series.name, "Series created");
-    Ok(Redirect::to(&format!("/series/{}", series.id)))
+    match SeriesService::create_series(pool, &form.name, desc, series_type, form.total_volume_count)
+        .await
+    {
+        Ok(series) => {
+            tracing::info!(series_id = series.id, name = %series.name, "Series created");
+            Ok(Redirect::to(&format!("/series/{}", series.id)).into_response())
+        }
+        Err(err) => {
+            let typed = SeriesFormState {
+                name: form.name,
+                description: form.description.unwrap_or_default(),
+                series_type: Some(series_type),
+                total: form.total_volume_count,
+                ..SeriesFormState::default()
+            };
+            series_form_refused(&state, &session, locale.0, typed, err)
+        }
+    }
 }
 
 // ─── Edit form + handler ────────────────────────────────
@@ -572,23 +679,16 @@ pub async fn edit_series_form(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
-    let mut template =
-        form_template_labels(&session, state.page_settings(), loc, &uri);
-    template.is_edit = true;
-    template.series_id = series.id;
-    template.version = series.version;
-    template.name_value = series.name;
-    template.description_value = series.description.unwrap_or_default();
-    template.type_value = series.series_type.to_string();
-    template.total_value = series
-        .total_volume_count
-        .map(|n| n.to_string())
-        .unwrap_or_default();
-
-    match template.render() {
-        Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::TemplateRenderFailed { template: "series" }),
-    }
+    let stored = SeriesFormState {
+        series_id: Some(series.id),
+        version: series.version,
+        name: series.name,
+        description: series.description.unwrap_or_default(),
+        series_type: Some(series.series_type),
+        total: series.total_volume_count,
+        ..SeriesFormState::default()
+    };
+    render_series_form(&state, &session, loc, &uri, stored, StatusCode::OK)
 }
 
 #[derive(Deserialize)]
@@ -620,7 +720,7 @@ pub async fn update_series(
 
     let desc = form.description.as_deref().filter(|s| !s.trim().is_empty());
 
-    SeriesService::update_series(
+    match SeriesService::update_series(
         pool,
         id,
         form.version,
@@ -629,9 +729,22 @@ pub async fn update_series(
         series_type,
         form.total_volume_count,
     )
-    .await?;
-
-    Ok(Redirect::to(&format!("/series/{id}")))
+    .await
+    {
+        Ok(_) => Ok(Redirect::to(&format!("/series/{id}")).into_response()),
+        Err(err) => {
+            let typed = SeriesFormState {
+                series_id: Some(id),
+                version: form.version,
+                name: form.name,
+                description: form.description.unwrap_or_default(),
+                series_type: Some(series_type),
+                total: form.total_volume_count,
+                ..SeriesFormState::default()
+            };
+            series_form_refused(&state, &session, locale.0, typed, err)
+        }
+    }
 }
 
 // ─── Delete confirmation modal (story 9-13) ─────────────
@@ -775,6 +888,80 @@ mod tests {
             assert!(!named.contains("expected_tome."), "{loc}: {named}");
             assert!(!labels.gap_add_to_wishlist.contains("expected_tome."), "{loc}");
         }
+    }
+
+    fn form_html(form: SeriesFormState) -> String {
+        let base = crate::utils::test_base_context("librarian", "series", 1800);
+        series_form_template(base, "en", form).render().unwrap()
+    }
+
+    fn refused_form(err: SeriesFormError) -> SeriesFormState {
+        let mut form = SeriesFormState {
+            series_id: Some(9),
+            version: 3,
+            name: "Neptune".into(),
+            series_type: Some(SeriesType::Closed),
+            total: Some(4),
+            ..SeriesFormState::default()
+        };
+        assert!(form.place(&err, "en"));
+        form
+    }
+
+    #[test]
+    fn a_clean_form_shows_no_error_and_no_autofocus() {
+        let html = form_html(SeriesFormState::default());
+        for absent in ["series-name-error\"", "series-total-error\"", "aria-invalid", "autofocus"] {
+            assert!(!html.contains(absent), "{absent}");
+        }
+        assert!(html.contains(r#"id="series-form-submit""#));
+        assert!(html.contains(r#"id="total-count-group" class="hidden""#));
+    }
+
+    #[test]
+    fn a_name_refusal_sits_under_the_name_field() {
+        let html = form_html(refused_form(SeriesFormError::NameDuplicate { name: "<b>N</b>".into() }));
+        assert!(html.contains(r#"<p id="series-name-error""#), "{html}");
+        assert!(html.contains("&lt;b&gt;N&lt;/b&gt;"));
+        assert!(!html.contains("<b>N</b>"));
+        assert!(html.contains(r#"aria-invalid="true" aria-describedby="series-name-error" autofocus"#));
+        assert!(!html.contains("series-total-error"));
+        assert_eq!(html.matches("autofocus").count(), 1);
+    }
+
+    #[test]
+    fn a_total_refusal_sits_under_the_total_field_with_the_typed_values() {
+        for err in [
+            SeriesFormError::TotalRequired,
+            SeriesFormError::TotalBelowOwned { total: 4, owned: 6 },
+            SeriesFormError::TotalBelowExpected { position: 7 },
+        ] {
+            let html = form_html(refused_form(err));
+            assert!(html.contains(r#"<p id="series-total-error""#), "{html}");
+            assert!(html.contains(r#"aria-invalid="true" aria-describedby="series-total-error" autofocus"#));
+            assert!(!html.contains("series-name-error"));
+            assert_eq!(html.matches("autofocus").count(), 1);
+            assert!(html.contains(r#"value="Neptune""#));
+            assert!(html.contains(r#"name="version" value="3""#));
+            assert!(html.contains(r#"value="4""#));
+            assert!(html.contains(r#"<option value="closed" selected>"#));
+            assert!(!html.contains(r#"id="total-count-group" class="hidden""#));
+            assert!(html.contains(r#"action="/series/9""#));
+        }
+    }
+
+    #[test]
+    fn a_refusal_without_a_field_is_not_placed() {
+        let mut form = SeriesFormState::default();
+        assert!(!form.place(&SeriesFormError::App(AppError::Internal("x".into())), "en"));
+        assert!(form.name_error_html.is_none() && form.total_error_html.is_none());
+    }
+
+    #[test]
+    fn a_refused_form_re_renders_at_its_get_address() {
+        assert_eq!(SeriesFormState::default().page(), "/series/new");
+        let edit = SeriesFormState { series_id: Some(12), ..SeriesFormState::default() };
+        assert_eq!(edit.page(), "/series/12/edit");
     }
 
     /// Fix #296 regression — the three optional-from-empty-string

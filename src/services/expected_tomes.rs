@@ -441,6 +441,24 @@ pub struct SettleOutcome {
     pub result: SettleResult,
 }
 
+/// Story 20-3 (D8) — an unsettled tome at a position a restored title
+/// holds again (listed under "Expected tomes to review").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TomeOnRestoredPosition {
+    pub series_id: u64,
+    pub series_name: String,
+    pub position: i32,
+}
+
+/// Story 20-3 (D8) — what a title restore did to the expected tomes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RestoreTomeNotes {
+    /// Tomes settled with the restored title (same ISBN).
+    pub settled: Vec<SettleOutcome>,
+    /// Tomes left at one of its positions (by series name, position).
+    pub to_review: Vec<TomeOnRestoredPosition>,
+}
+
 pub struct ExpectedTomeService;
 
 impl ExpectedTomeService {
@@ -670,16 +688,48 @@ impl ExpectedTomeService {
     /// who removed it from a series on purpose keeps it removed,
     /// D-11-10-11). Best effort: a failure is logged, never returned.
     pub async fn settle_for_title_id(pool: &DbPool, title_id: u64) {
+        Self::settle_held(pool, title_id).await;
+    }
+
+    /// The body of [`Self::settle_for_title_id`]: the tomes it settled
+    /// (empty on a failure, which is logged).
+    async fn settle_held(pool: &DbPool, title_id: u64) -> Vec<SettleOutcome> {
         let result = match ExpectedTomeModel::live_title_isbn(pool, title_id).await {
-            Ok(Some(isbn)) => Self::settle_matching(pool, title_id, &isbn, false)
-                .await
-                .map(|_| ()),
-            Ok(None) => Ok(()),
+            Ok(Some(isbn)) => Self::settle_matching(pool, title_id, &isbn, false).await,
+            Ok(None) => Ok(Vec::new()),
             Err(e) => Err(e),
         };
-        if let Err(e) = result {
+        result.unwrap_or_else(|e| {
             tracing::error!(error = %e, title_id, "Expected tome auto-settle failed");
-        }
+            Vec::new()
+        })
+    }
+
+    /// Story 20-3 (D8) — after a title is restored from the Trash: settle
+    /// the tomes carrying its ISBN at a position it holds again (never
+    /// attaching it anywhere), then list the unsettled tomes still sitting
+    /// at one of its positions. Best effort: a failure is logged and
+    /// yields what was gathered; the restore is already committed.
+    pub async fn after_title_restore(pool: &DbPool, title_id: u64) -> RestoreTomeNotes {
+        let settled = Self::settle_held(pool, title_id)
+            .await
+            .into_iter()
+            .filter(|o| o.result == SettleResult::Settled)
+            .collect();
+        let to_review = ExpectedTomeModel::unsettled_tomes_on_title_positions(pool, title_id)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::error!(error = %e, title_id, "Expected tomes after a restore: read failed");
+                Vec::new()
+            })
+            .into_iter()
+            .map(|(series_id, series_name, position)| TomeOnRestoredPosition {
+                series_id,
+                series_name,
+                position,
+            })
+            .collect();
+        RestoreTomeNotes { settled, to_review }
     }
 
     async fn settle_matching(

@@ -380,6 +380,7 @@ series:
   name_duplicate: "Eine Serie mit dem Namen \"%{name}\" existiert bereits."
   total_required_for_closed: Die Gesamtzahl ist für abgeschlossene Serien erforderlich.
   total_below_owned: "Die Gesamtzahl (%{total}) darf nicht kleiner sein als die Anzahl im Besitz (%{owned})."
+  total_below_expected: "Die Gesamtzahl muss mindestens %{position} betragen: An Position %{position} ist ein erwarteter Band erfasst."
   detail_title: Seriendetails
   save: Speichern
   cancel: Abbrechen
@@ -1002,6 +1003,8 @@ admin:
     restore_success: "Wiederhergestellt: %{name}"
     restore_error_not_found: "Dieser Eintrag liegt nicht mehr im Papierkorb. Er wurde vermutlich schon wiederhergestellt oder endgültig gelöscht."
     restore_contributor_name_taken: "„%{name}“ wurde nicht wiederhergestellt: Ein anderer Mitwirkender trägt bereits diesen Namen. Benennen Sie einen der beiden um und stellen Sie ihn dann erneut wieder her."
+    restore_tome_to_review: "„%{title}“ steht wieder an Position %{position} von „%{series}“, wo inzwischen ein erwarteter Band erfasst wurde. Prüfen Sie ihn unter „Zu prüfende erwartete Bände“ auf der Seite der Serie."
+    restore_tome_settled: "Der erwartete Band an Position %{position} von „%{series}“ gilt jetzt als im Besitz."
     delete_permanent_success: "Endgültig gelöscht: %{name}"
     delete_permanent_modal_title: "Endgültig löschen?"
     delete_permanent_modal_warning: "Dies kann nicht rückgängig gemacht werden."
