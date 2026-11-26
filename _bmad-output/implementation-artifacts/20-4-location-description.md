@@ -1,6 +1,6 @@
 # Story 20.4: A description for a storage location (closes #716)
 
-Status: in-progress
+Status: review
 
 ## Story
 
@@ -70,7 +70,7 @@ Technical choices made in this story (no visible behaviour beyond D9):
 - [x] T8 — Backup fixture (AC8): give `'RT room'` a description in `SEED` (or an `UPDATE` with a bound multi-line value, like `TRICKY` for borrowers).
 - [x] T9 — DB integration tests (AC9): `tests/location_description.rs` + `mod location_description;` in `tests/integration.rs`.
 - [x] T10 — E2E spec (AC9).
-- [ ] T11 — Gates: `cargo clippy -- -D warnings`, targeted tests, full `cargo test` and Playwright `CI=true npx playwright test --workers=2` once on the final code (under `flock -w 10800 /tmp/station-heavy.lock mem-guard …`); `npx tsc --noEmit`; flake gate.
+- [x] T11 — Gates: `cargo clippy -- -D warnings`, targeted tests, full `cargo test` and Playwright `CI=true npx playwright test --workers=2` once on the final code (under `flock -w 10800 /tmp/station-heavy.lock mem-guard …`); `npx tsc --noEmit`; flake gate.
 
 ## Dev Notes
 
@@ -155,7 +155,8 @@ Claude Opus 5.5 (claude-opus-5-5)
 - Locales: four keys in `en/fr/de/it` after `organizational_blocked_has_volumes` (`description_too_long` takes `%{max}`, rendered as in D11).
 - Backup round trip seeds a multi-line description with quotes and non-ASCII characters.
 - Gates run: `cargo test --lib`, `cargo clippy --all-targets -- -D warnings`, integration `location_description:: locale_parity:: backup_round_trip:: every_test_file_is_declared location_delete_modal:: api_v1 locale_html_safety::` (37 passed), `npx tsc --noEmit`, waitForTimeout grep, `vcode-literals.sh`.
-- **Pending (T11):** the Playwright run of `specs/journeys/location-description.spec.ts` (and the full `CI=true --workers=2` suite) — not run here, the E2E stack is in use by another agent. Status stays `in-progress` until it is green.
+- E2E (T11, 2026-11-26, stack on port 18080): `location-description.spec.ts` alone 2 passed; full suite `CI=true --workers=2` on a freshly reset stack 501 passed, 2 skipped, 0 flaky, 0 failed. A first full run on the same stack as the spec-alone run showed the spec's two tests flaky (its deterministic L-codes `L9100` / `L9101` already created by the solo run; the retry slot passed) — the documented "a re-run needs `./scripts/e2e-reset.sh`" case, not a defect.
+- E2E image: the shared BuildKit cargo target cache (#717) held artefacts newer than this worktree's source mtimes, so the first `e2e-reset.sh` shipped an old binary; rebuilt once with `docker compose … build --no-cache mybibli` after touching the changed files.
 
 ### File List
 
@@ -176,4 +177,5 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Change Log
 
+- 2026-11-26 — E2E green (spec alone + full suite); status → review.
 - 2026-11-26 — dev-story: description column, edit field with refusal next to the field, location page, API field, localized back link and breadcrumb label; unit, DB-integration and E2E tests (E2E run pending).
