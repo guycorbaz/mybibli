@@ -14,6 +14,7 @@ use common::backup::{Folders, names_in};
 use common::web::{Browser, get_anonymous, seed_admin, seed_librarian};
 use mybibli::AppState;
 use mybibli::db::DbPool;
+use mybibli::services::cover_consistency::{self as cc, MissingItem};
 
 struct Fixture {
     f: Folders,
@@ -366,14 +367,20 @@ async fn only_an_admin_checks_and_repairs(pool: DbPool) {
     let fx = fixture(&pool, "cc_access").await;
     let covers = fx.f.covers();
     let [orphan, ..] = seed_library(&pool, &covers).await;
-    let items = format!("orphan={}", urlencode(&format!("{orphan}:6:0")));
+    // Review pass 1 (acceptance L3): real items, taken from an admin check.
+    let (_, html) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    let items = posted_items(&html);
+    assert!(items.contains(&format!("orphan={orphan}%3A")), "{items}");
 
     for path in ["/admin/covers/check", "/admin/covers/repair/confirm", "/admin/covers/repair"] {
         let res = get_anonymous(&fx.app, path).await;
         assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED, "{path}: POST only");
         let anon = Browser::anonymous(&fx.app).await;
-        let (status, _) = anon.post_form(&fx.app, path, &items).await;
-        assert!(status == StatusCode::SEE_OTHER || status == StatusCode::OK, "anonymous {path}: {status}");
+        let res = anon.send(&fx.app, "POST", path, &items, true).await;
+        assert_eq!(res.status(), StatusCode::SEE_OTHER, "anonymous {path}");
+        let to = res.headers().get("hx-redirect").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
+        assert!(to.starts_with("/login?next="), "anonymous {path}: {to}");
+        assert_eq!(res.headers().get("location").and_then(|v| v.to_str().ok()), Some(to.as_str()));
     }
     seed_librarian(&pool, "cc_lib").await;
     let lib = Browser::login(&fx.app, "cc_lib").await;
@@ -392,4 +399,125 @@ async fn only_an_admin_checks_and_repairs(pool: DbPool) {
     assert_eq!(status, StatusCode::OK);
     assert!(page.contains(r#"id="admin-covers-check""#), "{page}");
     assert!(page.contains("Contrôle des couvertures"), "{page}");
+}
+
+// ─── Review pass 1 ───────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_unreadable_folder_is_reported_and_nothing_changes(pool: DbPool) {
+    use std::os::unix::fs::PermissionsExt;
+    let fx = fixture(&pool, "cc_unreadable").await;
+    let covers = fx.f.covers();
+    let [orphan, ..] = seed_library(&pool, &covers).await;
+    let (_, html) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    let items = posted_items(&html);
+    let before = titles_state(&pool).await;
+    std::fs::set_permissions(&covers, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let readable = std::fs::read_dir(&covers).is_ok();
+    let expected = format!("mybibli ne peut pas lire le dossier des couvertures {}", covers.display());
+
+    let (check_status, check) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    let (modal_status, modal) = fx.admin.post_form(&fx.app, "/admin/covers/repair/confirm", &items).await;
+    let (repair_status, repair) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &items).await;
+    std::fs::set_permissions(&covers, std::fs::Permissions::from_mode(0o755)).unwrap();
+    if readable {
+        // Running as root: permissions do not stop a read; nothing to test.
+        return;
+    }
+    assert_eq!(check_status, StatusCode::OK);
+    assert!(check.contains(&expected), "{check}");
+    assert!(check.contains(r#"id="admin-covers-status" hx-swap-oob="innerHTML""#), "{check}");
+    assert_eq!(modal_status, StatusCode::OK);
+    assert!(modal.contains(&expected) && !modal.contains("Réparer les couvertures ?"), "{modal}");
+    assert_eq!(repair_status, StatusCode::CONFLICT, "{repair}");
+    assert!(repair.contains(&expected), "{repair}");
+    assert!(covers.join(format!("{orphan}.jpg")).exists());
+    assert_eq!(titles_state(&pool).await, before);
+    assert!(audit_rows(&pool).await.is_empty());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_forged_orphan_with_another_mtime_is_left_alone(pool: DbPool) {
+    let fx = fixture(&pool, "cc_forged").await;
+    let covers = fx.f.covers();
+    let [orphan, ..] = seed_library(&pool, &covers).await;
+    let forged = format!("orphan={}", urlencode(&format!("{orphan}:6:12345")));
+    let (status, done) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &forged).await;
+    assert_eq!(status, StatusCode::OK, "{done}");
+    assert!(done.contains("Couvertures réparées : 0 fichiers supprimés"), "{done}");
+    assert!(done.contains("1 éléments avaient changé"), "{done}");
+    assert!(covers.join(format!("{orphan}.jpg")).exists(), "the file is kept");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_put_back_address_takes_its_lookup_off_the_queue(pool: DbPool) {
+    let id = title(&pool, "CC put back", Some("9782070000059"), Some("/covers/{id}.jpg?v=4"), false, false).await;
+    let item = MissingItem { id, url: format!("/covers/{id}.jpg?v=4") };
+    assert!(cc::clear_address(&pool, &item, true).await.unwrap());
+    assert_eq!(cover_of(&pool, id).await, None);
+    assert_eq!(queued(&pool).await, vec![id]);
+    cc::restore_address(&pool, &item, true).await.unwrap();
+    assert_eq!(cover_of(&pool, id).await, Some(item.url.clone()), "the address is back");
+    assert!(queued(&pool).await.is_empty(), "the lookup the clear queued is dequeued");
+
+    // An address written meanwhile is never overwritten.
+    assert!(cc::clear_address(&pool, &item, false).await.unwrap());
+    sqlx::query("UPDATE titles SET cover_image_url = ? WHERE id = ?")
+        .bind(format!("/covers/{id}.jpg?v=9"))
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    cc::restore_address(&pool, &item, false).await.unwrap();
+    assert_eq!(cover_of(&pool, id).await, Some(format!("/covers/{id}.jpg?v=9")));
+    assert!(!cc::clear_address(&pool, &item, false).await.unwrap(), "a changed address is not cleared");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn owned_ids_reads_rows_and_addresses_in_one_chunk(pool: DbPool) {
+    let a = title(&pool, "CC owned", None, None, false, true).await;
+    title(&pool, "CC absolute", None, Some("https://nas.local/covers/700001.jpg#x"), false, false).await;
+    title(&pool, "CC busted", None, Some("/covers/700002.jpg?v=1"), false, false).await;
+    let mut ids: Vec<u64> = (800_000..800_000 + cc::OWNED_CHUNK as u64 - 3).collect();
+    ids.extend([a, 700_001, 700_002]);
+    let owned = cc::owned_ids(&pool, &ids).await.unwrap();
+    assert_eq!(owned, std::collections::HashSet::from([a, 700_001, 700_002]), "a Trash row and named files");
+    assert!(cc::owned_ids(&pool, &[]).await.unwrap().is_empty());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_pending_cover_proposal_is_read_from_the_target_index(pool: DbPool) {
+    let id = title(&pool, "CC proposal", None, None, false, false).await;
+    assert!(!cc::has_pending_cover_proposal(&pool, id).await.unwrap());
+    pending_cover_proposal(&pool, id).await;
+    assert!(cc::has_pending_cover_proposal(&pool, id).await.unwrap());
+    sqlx::query("UPDATE proposals SET status = 'rejected'").execute(&pool).await.unwrap();
+    assert!(!cc::has_pending_cover_proposal(&pool, id).await.unwrap(), "a decided proposal does not count");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_error_midway_still_writes_the_audit_row_with_the_counts(pool: DbPool) {
+    let fx = fixture(&pool, "cc_midway").await;
+    let covers = fx.f.covers();
+    let [orphan, live, ..] = seed_library(&pool, &covers).await;
+    let (_, html) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    let items = posted_items(&html);
+    // The queue is gone: the live title's clear (which queues) fails.
+    sqlx::query("RENAME TABLE metadata_fetch_retries TO metadata_fetch_retries_gone")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, _) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &items).await;
+    assert!(status.is_server_error(), "{status}");
+    assert!(!covers.join(format!("{orphan}.jpg")).exists(), "the orphan went first");
+    assert_eq!(
+        cover_of(&pool, live).await,
+        Some(format!("/covers/{live}.jpg?v=1")),
+        "the failed clear rolled back"
+    );
+    let audit = audit_rows(&pool).await;
+    assert_eq!(audit.len(), 1, "one row, even on an error");
+    assert_eq!(audit[0]["deleted"].as_u64(), Some(1));
+    assert!(audit[0]["error"].as_str().is_some_and(|e| !e.is_empty()), "{:?}", audit[0]);
+    assert_eq!(audit[0]["user_username"], "cc_midway");
 }

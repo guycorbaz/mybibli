@@ -167,6 +167,34 @@ Notes for the lead (no change made):
 - A title without ISBN, ISSN or UPC whose file is missing ends with no cover; only a hand upload brings one back (D6 note).
 - Browsers may show a cached image for a cleared address until the page is reloaded; cosmetic.
 
+## Review pass 1 (2026-11-26)
+
+Two reviews (safety, acceptance). Items and outcomes:
+
+**Waiting for the project lead (new copy needed, not implemented):**
+- (a) A failed delete, or a repair stopped by a restore starting, is reported as "had changed since the check" (counted in `skipped`).
+- (b) A ratio guard against a mass deletion of orphans (the app pointed at the wrong database).
+
+**Safety review**
+- L1 (rename race between the last file check and `remove_file`) — accepted, not fixed: the window is microseconds, and the app only renames onto `<id>.jpg` of an existing title, which the re-check just ruled out.
+- L2 — fixed: an error inside the repair loop stops it, the `cover_repair` audit row is still written with the partial counts and an `error` field, then the error is returned; a failed `restore_address` is logged (`error`). Test `an_error_midway_still_writes_the_audit_row_with_the_counts`.
+- L3 — fixed: `restore_address` dequeues the retry row when the clear had queued one. Test `a_put_back_address_takes_its_lookup_off_the_queue`.
+- L4 — fixed: `owned_ids` re-checks orphans by chunks of `OWNED_CHUNK` (500) — one `id IN (…)` read and one read of the `%/covers/%` addresses matched in Rust — just before that chunk's deletions. Test `owned_ids_reads_rows_and_addresses_in_one_chunk`.
+- L5 (the 1 MiB form body cap is reached above ~20 000 listed items) — accepted, not fixed: far above any library this tool serves; a check after a first repair lists the rest.
+- L6 — fixed: `list_folder` skips a file whose `metadata` answers `NotFound` (deleted since `read_dir`) instead of failing the check (`cover_file`). Unit test `a_file_gone_since_the_listing_is_skipped_not_a_failure`.
+- L7 — fixed: just before each clear, `has_pending_cover_proposal` re-reads the title's pending cover proposal (plain read, `FORCE INDEX (idx_proposal_items_target)`); one that appeared is left alone. Test `a_pending_cover_proposal_is_read_from_the_target_index`.
+- L8 — fixed: `named_cover_ids` treats any `/covers/<id>.jpg` followed by the end, `?` or `#` as naming the file (positive shape), in the plan and in the SQL re-check; only `local_cover_id` decides what may be cleared. Unit tests `an_address_names_every_own_file_it_holds`, `a_file_named_by_an_absolute_address_is_never_an_orphan`.
+
+**Acceptance review**
+- L1 (no browser-side refusal case in the E2E spec) — accepted: AC7 says a missing file cannot be made from the browser, and the D11 / D12 refusals are covered by the integration tests.
+- L2 — fixed: route test of the unreadable folder (check, modal, repair: `an_unreadable_folder_is_reported_and_nothing_changes`), `restore_address` tests, a forged orphan item with a wrong mtime (`a_forged_orphan_with_another_mtime_is_left_alone`).
+- L3 — fixed: `only_an_admin_checks_and_repairs` posts real items taken from an admin check and asserts the exact anonymous answer (303, `Location` = `HX-Redirect` = `/login?next=…`).
+- L4 — fixed: `UserModel::actor_username` (the #70 audit name, `user-<id>` when gone) replaces the three `SELECT username FROM users WHERE id = ?` copies (`admin_covers.rs`, two in `routes/admin.rs`).
+- L5 — fixed: `RESULT_ID` is used for the `HX-Retarget` header.
+- L6 — fixed: `aria-live` is on a short `sr-only` status line (`#admin-covers-status`) only, refreshed out of band (`hx-swap-oob="innerHTML"`, so it keeps its attributes) with the match line, the list headings and the D12 sentence, the D2 refusal or the repair's line. Unit test `the_status_line_is_short_and_escaped`.
+
+Gates: clippy `--all-targets -D warnings` clean; `cargo test --lib` 2028 passed; integration `cover_consistency::` (11), `admin_`, `locale_parity::`, the declaration check: 105 passed. E2E not run yet.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -204,3 +232,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — create-story: story 19-9 written, decisions D1–D11 for the project lead.
 - 2026-11-26 — validate-story: checked against the code; D12, D13, T7 added, AC1, AC4, AC7, D2, T2, T4 corrected (see Validation).
 - 2026-11-26 — dev-story: implemented (T1–T3, T5, tests AC1–AC6); E2E spec written, run pending. Status stays in-progress.
+- 2026-11-26 — code review pass 1: Lows fixed (see Review pass 1); two copy items wait for the project lead.

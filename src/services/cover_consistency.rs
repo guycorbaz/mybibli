@@ -75,6 +75,29 @@ pub fn local_cover_id(url: &str) -> Option<u64> {
     own_cover_id(file)
 }
 
+/// Review pass 1 (L8): every file id an address names — each
+/// `/covers/<id>.jpg` in it followed by the end, `?` or `#` (positive
+/// shape). A file named this way is never an orphan, whatever the rest of
+/// the address (an absolute URL, a fragment); only [`local_cover_id`]
+/// decides what may be cleared.
+pub fn named_cover_ids(url: &str) -> Vec<u64> {
+    let mut ids = Vec::new();
+    let mut rest = url;
+    while let Some(at) = rest.find("/covers/") {
+        let after = &rest[at + "/covers/".len()..];
+        let digits_len = after.bytes().take_while(u8::is_ascii_digit).count();
+        let (digits, tail) = after.split_at(digits_len);
+        if let Some(end) = tail.strip_prefix(".jpg")
+            && (end.is_empty() || end.starts_with('?') || end.starts_with('#'))
+            && let Some(id) = canonical_id(digits)
+        {
+            ids.push(id);
+        }
+        rest = after;
+    }
+    ids
+}
+
 /// One own cover file of the folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CoverFile {
@@ -102,6 +125,18 @@ pub struct FolderListing {
     pub present_ids: HashSet<u64>,
 }
 
+/// One own regular file from its metadata. Review pass 1 (L6): a file
+/// deleted since `read_dir` listed it is skipped (`None`), not a failed
+/// check; any other error fails it.
+fn cover_file(id: u64, meta: std::io::Result<std::fs::Metadata>) -> std::io::Result<Option<CoverFile>> {
+    let meta = match meta {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    Ok(Some(CoverFile { id, size: meta.len(), modified_ns: unix_nanos(meta.modified()?) }))
+}
+
 /// List `dir` (blocking). A missing folder is an empty listing (D12 then
 /// says it looks unmounted when the library uses covers).
 pub fn list_folder(dir: &Path) -> std::io::Result<FolderListing> {
@@ -120,14 +155,12 @@ pub fn list_folder(dir: &Path) -> std::io::Result<FolderListing> {
         // `DirEntry::file_type` / `metadata` do not follow symbolic links.
         let is_file = entry.file_type().map(|t| t.is_file()).unwrap_or(false);
         match id {
-            Some(id) if is_file => {
-                let meta = entry.metadata()?;
-                listing.files.push(CoverFile {
-                    id,
-                    size: meta.len(),
-                    modified_ns: unix_nanos(meta.modified()?),
-                });
-            }
+            Some(id) if is_file => match cover_file(id, entry.metadata())? {
+                Some(file) => listing.files.push(file),
+                None => {
+                    listing.present_ids.remove(&id);
+                }
+            },
             _ => listing.others += 1,
         }
     }
@@ -238,7 +271,8 @@ pub fn plan(listing: &FolderListing, titles: &[TitleCover], pending_cover_titles
     // A file named by ANY title's local address is never an orphan.
     let named_ids: HashSet<u64> = titles
         .iter()
-        .filter_map(|t| t.cover_image_url.as_deref().and_then(local_cover_id))
+        .filter_map(|t| t.cover_image_url.as_deref())
+        .flat_map(named_cover_ids)
         .collect();
     let mut out = CoverPlan {
         files_checked: listing.files.len() as u64,
@@ -539,24 +573,53 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
         .map_err(|e| AppError::Internal(format!("cover repair file task: {e}")))
 }
 
-/// Whether any title row has `id` or names its file (T4).
-async fn owned_by_a_title(pool: &DbPool, id: u64) -> Result<bool, AppError> {
-    let plain = format!("/covers/{id}.jpg");
-    let busted = format!("/covers/{id}.jpg?%");
-    let n: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM titles WHERE id = ? OR cover_image_url = ? OR cover_image_url LIKE ?",
+/// Review pass 1 (L4): orphans are re-checked by chunks of this many ids.
+pub const OWNED_CHUNK: usize = 500;
+
+/// T4 / review pass 1 (L4, L8): of `ids`, those a title row holds or an
+/// address names — one `IN (…)` read and one read of the addresses holding
+/// `/covers/`, matched in Rust with [`named_cover_ids`].
+pub async fn owned_ids(pool: &DbPool, ids: &[u64]) -> Result<HashSet<u64>, AppError> {
+    let mut owned = HashSet::new();
+    if ids.is_empty() {
+        return Ok(owned);
+    }
+    let placeholders = vec!["?"; ids.len()].join(", ");
+    let sql = format!("SELECT CAST(id AS SIGNED) FROM titles WHERE id IN ({placeholders})");
+    let mut q = sqlx::query_scalar::<_, i64>(&sql);
+    for id in ids {
+        q = q.bind(*id);
+    }
+    owned.extend(q.fetch_all(pool).await?.into_iter().filter_map(|id| u64::try_from(id).ok()));
+    let wanted: HashSet<u64> = ids.iter().copied().collect();
+    let urls: Vec<String> = sqlx::query_scalar(
+        "SELECT cover_image_url FROM titles WHERE cover_image_url LIKE '%/covers/%'",
     )
-    .bind(id)
-    .bind(&plain)
-    .bind(&busted)
-    .fetch_one(pool)
+    .fetch_all(pool)
     .await?;
-    Ok(n > 0)
+    owned.extend(urls.iter().flat_map(|u| named_cover_ids(u)).filter(|id| wanted.contains(id)));
+    Ok(owned)
+}
+
+/// Review pass 1 (L7): a live pending cover proposal on the title (a plain
+/// read from the target index).
+pub async fn has_pending_cover_proposal(pool: &DbPool, title_id: u64) -> Result<bool, AppError> {
+    let found: Option<i64> = sqlx::query_scalar(
+        "SELECT 1 FROM proposal_items i FORCE INDEX (idx_proposal_items_target) \
+         STRAIGHT_JOIN proposals p ON p.id = i.proposal_id \
+         WHERE i.target_table = 'titles' AND i.target_id = ? AND i.deleted_at IS NULL \
+           AND p.deleted_at IS NULL AND p.status = 'pending' AND p.kind = 'cover' \
+         LIMIT 1",
+    )
+    .bind(title_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(found.is_some())
 }
 
 /// Clear the listed address (guarded, no `version` / `updated_at` change)
 /// and queue a lookup when `queue`; `false` when the row changed.
-async fn clear_address(pool: &DbPool, item: &MissingItem, queue: bool) -> Result<bool, AppError> {
+pub async fn clear_address(pool: &DbPool, item: &MissingItem, queue: bool) -> Result<bool, AppError> {
     let mut tx = pool.begin().await?;
     let done = sqlx::query(
         "UPDATE titles SET cover_image_url = NULL, updated_at = updated_at \
@@ -577,8 +640,9 @@ async fn clear_address(pool: &DbPool, item: &MissingItem, queue: bool) -> Result
 }
 
 /// A file appeared right after the clear (a cover being installed): put
-/// the address back unless something else wrote one meanwhile.
-async fn restore_address(pool: &DbPool, item: &MissingItem) -> Result<(), AppError> {
+/// the address back unless something else wrote one meanwhile, and take
+/// the lookup the clear queued off the queue (review pass 1, L3).
+pub async fn restore_address(pool: &DbPool, item: &MissingItem, queued: bool) -> Result<(), AppError> {
     sqlx::query(
         "UPDATE titles SET cover_image_url = ?, updated_at = updated_at \
          WHERE id = ? AND cover_image_url IS NULL",
@@ -587,86 +651,83 @@ async fn restore_address(pool: &DbPool, item: &MissingItem) -> Result<(), AppErr
     .bind(item.id)
     .execute(pool)
     .await?;
+    if queued {
+        crate::models::metadata_retry::MetadataRetryModel::dequeue(pool, item.id).await?;
+    }
     Ok(())
 }
 
-/// The repair's core, the backup guard held (T4).
-async fn repair_holding(
-    pool: &DbPool,
-    covers_dir: &Path,
-    listed: &RepairItems,
-) -> Result<RepairDone, RepairError> {
-    let fresh = check(pool, covers_dir).await.map_err(RepairError::Check)?;
-    if fresh.looks_unmounted() {
-        return Err(RepairError::Unmounted(fresh));
-    }
-    let confirmed = confirm(&fresh, listed);
-    let mut done = RepairDone::default();
-    let mut stopped = false;
-    for item in &confirmed.orphans {
-        let Some(_permit) = crate::services::maintenance::write_permit() else {
-            stopped = true;
-            break;
-        };
-        if owned_by_a_title(pool, item.id).await.map_err(|e| RepairError::Check(e.into()))? {
-            continue;
-        }
-        let path: PathBuf = covers_dir.join(format!("{}.jpg", item.id));
-        let it = item.clone();
-        let removed = blocking(move || {
-            if !still_listed_file(&path, &it) {
-                return Ok(false);
+/// The changes, item by item (T4). Review pass 1 (L2): an error stops the
+/// loop and is returned with the counts reached so far.
+async fn apply(pool: &DbPool, covers_dir: &Path, confirmed: &Confirmed, done: &mut RepairDone) -> Result<(), AppError> {
+    for chunk in confirmed.orphans.chunks(OWNED_CHUNK) {
+        let ids: Vec<u64> = chunk.iter().map(|o| o.id).collect();
+        let owned = owned_ids(pool, &ids).await?;
+        for item in chunk {
+            let Some(_permit) = crate::services::maintenance::write_permit() else {
+                tracing::info!("Cover repair stopped: a restore is starting");
+                return Ok(());
+            };
+            if owned.contains(&item.id) {
+                continue;
             }
-            std::fs::remove_file(&path).map(|()| true)
-        })
-        .await
-        .map_err(|e| RepairError::Check(e.into()))?;
-        match removed {
-            Ok(true) => {
-                done.deleted += 1;
-                tracing::info!(file = %format!("{}.jpg", item.id), "Cover repair: orphan cover file deleted");
+            let path: PathBuf = covers_dir.join(format!("{}.jpg", item.id));
+            let it = item.clone();
+            let removed = blocking(move || {
+                if !still_listed_file(&path, &it) {
+                    return Ok(false);
+                }
+                std::fs::remove_file(&path).map(|()| true)
+            })
+            .await?;
+            match removed {
+                Ok(true) => {
+                    done.deleted += 1;
+                    tracing::info!(file = %format!("{}.jpg", item.id), "Cover repair: orphan cover file deleted");
+                }
+                Ok(false) => {}
+                Err(e) => tracing::warn!(error = %e, id = item.id, "Cover repair: an orphan cover file could not be deleted"),
             }
-            Ok(false) => {}
-            Err(e) => tracing::warn!(error = %e, id = item.id, "Cover repair: an orphan cover file could not be deleted"),
         }
     }
     for (item, action) in &confirmed.missing {
-        if stopped {
-            break;
-        }
         let Some(_permit) = crate::services::maintenance::write_permit() else {
-            stopped = true;
-            break;
+            tracing::info!("Cover repair stopped: a restore is starting");
+            return Ok(());
         };
         let path = covers_dir.join(format!("{}.jpg", item.id));
         let p = path.clone();
-        if !blocking(move || absent(&p)).await.map_err(|e| RepairError::Check(e.into()))? {
+        if !blocking(move || absent(&p)).await? {
             continue;
         }
-        if !clear_address(pool, item, action.queues()).await.map_err(|e| RepairError::Check(e.into()))? {
+        if has_pending_cover_proposal(pool, item.id).await? {
+            continue;
+        }
+        let queue = action.queues();
+        if !clear_address(pool, item, queue).await? {
             continue;
         }
         let p = path.clone();
-        if !blocking(move || absent(&p)).await.map_err(|e| RepairError::Check(e.into()))? {
+        if !blocking(move || absent(&p)).await? {
             // A cover was installed meanwhile (file first, address next).
-            restore_address(pool, item).await.map_err(|e| RepairError::Check(e.into()))?;
+            if let Err(e) = restore_address(pool, item, queue).await {
+                tracing::error!(error = %e, id = item.id, url = %item.url, "Cover repair: a cleared address could not be put back");
+                return Err(e);
+            }
             continue;
         }
         done.cleared += 1;
-        if action.queues() {
+        if queue {
             done.queued += 1;
         }
     }
-    if stopped {
-        tracing::info!("Cover repair stopped: a restore is starting");
-    }
-    done.skipped = (listed.len() as u64).saturating_sub(done.deleted + done.cleared);
-    Ok(done)
+    Ok(())
 }
 
-/// D10 — the audit row (best effort: the repair is done).
-async fn audit(pool: &DbPool, actor: &Actor, done: &RepairDone) {
-    let details = serde_json::json!({
+/// D10 — the audit row (best effort: the changes are done). Review pass 1
+/// (L2): a repair that ended on an error records it with its counts.
+async fn audit(pool: &DbPool, actor: &Actor, done: &RepairDone, error: Option<&str>) {
+    let mut details = serde_json::json!({
         "deleted": done.deleted,
         "cleared": done.cleared,
         "queued": done.queued,
@@ -674,6 +735,9 @@ async fn audit(pool: &DbPool, actor: &Actor, done: &RepairDone) {
         "user_username": actor.username,
         "user_role": actor.role,
     });
+    if let Some(error) = error {
+        details["error"] = serde_json::Value::String(error.to_string());
+    }
     if let Err(e) = crate::models::admin_audit::AdminAuditModel::create(
         pool,
         actor.user_id,
@@ -686,6 +750,37 @@ async fn audit(pool: &DbPool, actor: &Actor, done: &RepairDone) {
     {
         tracing::warn!(error = %e, "Cover repair: the audit row could not be written");
     }
+}
+
+/// The repair's core, the backup guard held (T4): a fresh plan, D12 again,
+/// the changes, the audit row.
+async fn repair_holding(
+    pool: &DbPool,
+    covers_dir: &Path,
+    listed: &RepairItems,
+    actor: &Actor,
+) -> Result<RepairDone, RepairError> {
+    let fresh = check(pool, covers_dir).await.map_err(RepairError::Check)?;
+    if fresh.looks_unmounted() {
+        return Err(RepairError::Unmounted(fresh));
+    }
+    let confirmed = confirm(&fresh, listed);
+    let mut done = RepairDone::default();
+    let outcome = apply(pool, covers_dir, &confirmed, &mut done).await;
+    done.skipped = (listed.len() as u64).saturating_sub(done.deleted + done.cleared);
+    let error = outcome.as_ref().err().map(|e| e.to_string());
+    audit(pool, actor, &done, error.as_deref()).await;
+    tracing::info!(
+        admin = %actor.username,
+        deleted = done.deleted,
+        cleared = done.cleared,
+        queued = done.queued,
+        skipped = done.skipped,
+        error = error.as_deref().unwrap_or(""),
+        "Cover repair done"
+    );
+    outcome.map_err(|e| RepairError::Check(CoverCheckError::Failed(e)))?;
+    Ok(done)
 }
 
 /// The repair (T4, T7): refused while the backup guard is held (D11);
@@ -703,17 +798,7 @@ pub async fn repair(
     let scope = crate::services::maintenance::current_scope();
     let task = tokio::spawn(crate::services::maintenance::rescoped(scope, async move {
         let _held = guard;
-        let done = repair_holding(&pool, &covers_dir, &listed).await?;
-        audit(&pool, &actor, &done).await;
-        tracing::info!(
-            admin = %actor.username,
-            deleted = done.deleted,
-            cleared = done.cleared,
-            queued = done.queued,
-            skipped = done.skipped,
-            "Cover repair done"
-        );
-        Ok(done)
+        repair_holding(&pool, &covers_dir, &listed, &actor).await
     }));
     task.await.map_err(|e| {
         RepairError::Check(CoverCheckError::Failed(AppError::Internal(format!("cover repair task: {e}"))))
@@ -772,6 +857,39 @@ mod tests {
         ] {
             assert_eq!(local_cover_id(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn a_file_gone_since_the_listing_is_skipped_not_a_failure() {
+        use std::io::{Error, ErrorKind};
+        assert!(cover_file(3, Err(Error::from(ErrorKind::NotFound))).unwrap().is_none());
+        assert!(cover_file(3, Err(Error::from(ErrorKind::PermissionDenied))).is_err());
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("3.jpg"), b"abcd").unwrap();
+        let f = cover_file(3, std::fs::metadata(tmp.path().join("3.jpg"))).unwrap().unwrap();
+        assert_eq!((f.id, f.size), (3, 4));
+    }
+
+    #[test]
+    fn an_address_names_every_own_file_it_holds() {
+        assert_eq!(named_cover_ids("/covers/12.jpg"), vec![12]);
+        assert_eq!(named_cover_ids("/covers/12.jpg?v=3"), vec![12]);
+        assert_eq!(named_cover_ids("https://nas.local/covers/12.jpg#x"), vec![12]);
+        assert_eq!(named_cover_ids("/x/covers/7.jpg?/covers/8.jpg"), vec![7, 8]);
+        for none in ["/covers/012.jpg", "/covers/12.jpgx", "/covers/12.jpeg", "/covers/.jpg", "/covers/0.jpg", "/covers/12", ""] {
+            assert!(named_cover_ids(none).is_empty(), "{none}");
+        }
+    }
+
+    #[test]
+    fn a_file_named_by_an_absolute_address_is_never_an_orphan() {
+        let p = plan(
+            &listing(vec![file(40, 1)], 0, &[]),
+            &[title(1, Some("https://nas.local/covers/40.jpg?v=1"))],
+            &HashSet::new(),
+        );
+        assert!(p.orphans.is_empty());
+        assert_eq!(p.remote, 1, "still another form: never cleared");
     }
 
     fn file(id: u64, ns: i128) -> CoverFile {

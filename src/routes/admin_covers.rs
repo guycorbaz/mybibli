@@ -41,6 +41,9 @@ use crate::utils::{feedback_html, html_escape};
 const RETURN_TO: &str = "/admin?tab=backups";
 /// Id of the result region.
 pub const RESULT_ID: &str = "admin-covers-result";
+/// Id of the short status line announced to screen readers (review pass 1,
+/// L6: `aria-live` on this line only, refreshed out of band).
+pub const STATUS_ID: &str = "admin-covers-status";
 
 fn t(key: &str, loc: &str) -> String {
     rust_i18n::t!(key, locale = loc).to_string()
@@ -176,14 +179,52 @@ fn covers_path(state: &AppState) -> String {
     state.backup.covers_dir.display().to_string()
 }
 
-/// The check rendered (or the D2 "cannot read" entry).
+/// Review pass 1 (L6) — the status line of a check (pure): the match
+/// line, or the headings of the lists shown and the D12 sentence.
+pub fn summary(plan: &CoverPlan, path: &str, tz: Tz, loc: &str) -> String {
+    let view = build_view(plan, path, tz, "", loc);
+    if !view.match_line.is_empty() {
+        return view.match_line;
+    }
+    let mut parts = Vec::new();
+    if !plan.orphans.is_empty() {
+        parts.push(view.orphans_heading);
+    }
+    if !plan.missing.is_empty() {
+        parts.push(view.missing_heading);
+    }
+    if !view.unmounted.is_empty() {
+        parts.push(view.unmounted);
+    }
+    parts.join(" ")
+}
+
+/// The out-of-band update of the status line (its content only, so the
+/// line keeps its `aria-live`).
+pub fn status_oob(text: &str) -> String {
+    format!(r#"<p id="{STATUS_ID}" hx-swap-oob="innerHTML">{}</p>"#, html_escape(text))
+}
+
+/// The check rendered (or the D2 "cannot read" entry), with its status
+/// line out of band.
 async fn render_check(state: &AppState, session: &Session, loc: &str) -> Result<String, AppError> {
     let path = covers_path(state);
     match cc::check(&state.pool, &state.backup.covers_dir).await {
-        Ok(plan) => render_plan(&plan, &path, state.time_zone(), &session.csrf_token, loc),
-        Err(CoverCheckError::Unreadable) => Ok(feedback_html("error", &unreadable(&path, loc), "")),
+        Ok(plan) => {
+            let mut html = render_plan(&plan, &path, state.time_zone(), &session.csrf_token, loc)?;
+            html.push_str(&status_oob(&summary(&plan, &path, state.time_zone(), loc)));
+            Ok(html)
+        }
+        Err(CoverCheckError::Unreadable) => Ok(unreadable_html(&path, loc)),
         Err(CoverCheckError::Failed(e)) => Err(e),
     }
+}
+
+fn unreadable_html(path: &str, loc: &str) -> String {
+    let text = unreadable(path, loc);
+    let mut html = feedback_html("error", &text, "");
+    html.push_str(&status_oob(&text));
+    html
 }
 
 fn render_plan(plan: &CoverPlan, path: &str, tz: Tz, csrf: &str, loc: &str) -> Result<String, AppError> {
@@ -256,7 +297,9 @@ pub fn inner_form_html(items: &RepairItems) -> String {
 fn refreshed_in_result(html: String) -> Response {
     let mut response = Html(html).into_response();
     let headers = response.headers_mut();
-    headers.insert(header::HeaderName::from_static("hx-retarget"), HeaderValue::from_static("#admin-covers-result"));
+    if let Ok(target) = HeaderValue::from_str(&format!("#{RESULT_ID}")) {
+        headers.insert(header::HeaderName::from_static("hx-retarget"), target);
+    }
     headers.insert(header::HeaderName::from_static("hx-reswap"), HeaderValue::from_static("innerHTML"));
     response
 }
@@ -274,13 +317,15 @@ pub async fn repair_modal(
     let plan = match cc::check(&state.pool, &state.backup.covers_dir).await {
         Ok(plan) => plan,
         Err(CoverCheckError::Unreadable) => {
-            return Ok(refreshed_in_result(feedback_html("error", &unreadable(&path, loc), "")));
+            return Ok(refreshed_in_result(unreadable_html(&path, loc)));
         }
         Err(CoverCheckError::Failed(e)) => return Err(e),
     };
     let confirmed = cc::confirm(&plan, &parse_items(&fields));
     if plan.looks_unmounted() || confirmed.items().is_empty() {
-        return Ok(refreshed_in_result(render_plan(&plan, &path, state.time_zone(), &session.csrf_token, loc)?));
+        let mut html = render_plan(&plan, &path, state.time_zone(), &session.csrf_token, loc)?;
+        html.push_str(&status_oob(&summary(&plan, &path, state.time_zone(), loc)));
+        return Ok(refreshed_in_result(html));
     }
     let items = confirmed.items();
     let html = RepairModal {
@@ -324,11 +369,7 @@ pub async fn repair_covers(
     session.require_role_with_return(Role::Admin, RETURN_TO, locale.0)?;
     let loc = locale.0;
     let user_id = session.user_id.unwrap_or(0);
-    let username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_optional(&state.pool)
-        .await?
-        .unwrap_or_else(|| format!("user-{user_id}"));
+    let username = crate::models::user::UserModel::actor_username(&state.pool, user_id).await?;
     let actor = Actor { user_id, username, role: session.role.to_string() };
     let path = covers_path(&state);
     let done = match cc::repair(&state.pool, &state.backup, parse_items(&fields), actor).await {
@@ -352,8 +393,11 @@ pub async fn repair_covers(
         }
         Err(RepairError::Check(CoverCheckError::Failed(e))) => return Err(e),
     };
-    let mut html = feedback_html("success", &done_text(&done, loc), "");
+    let text = done_text(&done, loc);
+    let mut html = feedback_html("success", &text, "");
     html.push_str(&render_check(&state, &session, loc).await?);
+    // The repair's own line is what the status line says (last OOB wins).
+    html.push_str(&status_oob(&text));
     Ok(Html(html).into_response())
 }
 
@@ -452,6 +496,18 @@ mod tests {
         assert!(html.contains("2 of the 3 covers the library uses are missing from /app/covers."), "{html}");
         assert!(html.contains("Titles whose cover file is missing (2)"));
         assert!(!html.contains("admin-covers-repair"), "{html}");
+    }
+
+    #[test]
+    fn the_status_line_is_short_and_escaped() {
+        let p = plan(&files([1]), &[title(1, Some("/covers/1.jpg"))], &HashSet::new());
+        assert_eq!(summary(&p, "/app/covers", Zurich, "en"), "Covers and library match: 1 cover files checked, nothing to repair.");
+        let p = plan(&files([1, 50]), &[title(1, Some("/covers/1.jpg"))], &HashSet::new());
+        assert_eq!(summary(&p, "/app/covers", Zurich, "en"), "Cover files that no title owns (1)");
+        assert_eq!(
+            status_oob("a <b>"),
+            r#"<p id="admin-covers-status" hx-swap-oob="innerHTML">a &lt;b&gt;</p>"#
+        );
     }
 
     #[test]

@@ -819,11 +819,7 @@ pub async fn admin_trash_permanent_delete(
     // keeps `user_username` + `user_role` for forensic reconstruction.
     // Look up username from the acting `user_id` (session carries
     // the id + role but not the string username).
-    let actor_username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_optional(&state.pool)
-        .await?
-        .unwrap_or_else(|| format!("user-{}", user_id));
+    let actor_username = crate::models::user::UserModel::actor_username(&state.pool, user_id).await?;
     let actor_role = session.role.to_string();
 
     crate::models::admin_audit::AdminAuditModel::create(
@@ -1013,13 +1009,9 @@ pub async fn admin_trash_restore(
     // Best-effort on purpose: the restore already committed, so a failed
     // audit INSERT must not turn a successful action into an error page.
     if let Some(user_id) = session.user_id {
-        let actor_username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = ?")
-            .bind(user_id)
-            .fetch_optional(&state.pool)
+        let actor_username = crate::models::user::UserModel::actor_username(&state.pool, user_id)
             .await
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| format!("user-{}", user_id));
+            .unwrap_or_else(|_| format!("user-{}", user_id));
 
         if let Err(e) = crate::models::admin_audit::AdminAuditModel::create(
             &state.pool,
