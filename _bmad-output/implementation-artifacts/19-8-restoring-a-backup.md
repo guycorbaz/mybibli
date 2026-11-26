@@ -1,6 +1,6 @@
 # Story 19.8: Restoring a backup (#657, part 3)
 
-Status: in-progress
+Status: review
 
 ## Story
 
@@ -249,7 +249,7 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 ### Debug Log References
 
 - Gates run locally: `cargo clippy --all-targets -- -D warnings` (clean), `cargo test --lib` (1976 passed, 1 ignored), `cargo test --test integration` full (1011 passed: `backup_restore::` 9, `backup_restore_maintenance::` 4, `locale_parity::`, `every_test_file_is_declared`), `cargo sqlx prepare --check --workspace -- --all-targets` (unchanged: only dynamic queries added), `npx tsc --noEmit`, the `waitForTimeout` grep, `vcode-literals.sh`.
-- **Not run: the E2E suite** (stack busy). `admin-backup-restore.spec.ts` is written and typechecked; status stays in-progress until `CI=true npx playwright test --workers=2` is green.
+- E2E (image rebuilt `--no-cache`, #735; stack reset): first full run 503 passed, 1 failed — the restore spec's busy-state assertions raced the end of the restore, and its retries then met their own restored title (fixed in review pass 2, L-3). After pass 2: the spec alone (`--no-deps`) passed, then the full suite `CI=true npx playwright test --workers=2`: **504 passed, 2 skipped, 0 failed, 0 flaky** (3.5 min).
 
 ### Completion Notes List
 
@@ -281,3 +281,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — dev-story: implemented; unit, integration and static gates green; E2E written, not yet run (status in-progress).
 - 2026-11-26 — code review pass 1: three Medium and eleven Low findings fixed (see Review pass 1); E2E still to run.
 - 2026-11-26 — code review pass 2: one Medium and seven Low findings handled (see Review pass 2).
+- 2026-11-26 — E2E green (504 passed, 2 skipped, no flaky test); status review.
