@@ -35,8 +35,8 @@ wishlist:
   action_bought: "Gekauft"
   action_remove: "Entfernen"
   # Story 20-1 — accessible names of the two actions (they name the entry).
-  action_bought_named: "„%{title}“ als gekauft markieren"
-  action_remove_named: "„%{title}“ von der Wunschliste entfernen"
+  action_bought_named: "Gekauft: „%{title}“"
+  action_remove_named: "Entfernen: „%{title}“"
   back_to_list: "Zurück zur Wunschliste"
   delete_modal_title: "„%{title}“ als gekauft markieren?"
   delete_modal_body: "Der Eintrag verlässt die Wunschliste. Er kann danach nicht wiederhergestellt werden."
@@ -1389,7 +1389,7 @@ success:
     proposals_saved: "Vorschlagseinstellungen gespeichert — gilt für den nächsten Vorschlag, ohne Neustart"
     purchase_thresholds_saved: "Kaufpreis-Schwellenwerte gespeichert."
     time_zone_saved: "Zeitzone gespeichert — gilt ab der nächsten Seite, ohne Neustart"
-    backups_saved: "Automatische Sicherung gespeichert: %{interval}."
+    backups_saved: "Automatische Sicherung gespeichert: %{interval}. Aufzubewahrende Tagessicherungen: %{days}."
     no_changes: "Keine Änderungen"
     provider_set: "%{provider}-Schlüssel gespeichert"
     provider_cleared: "%{provider}-Schlüssel gelöscht"
@@ -1484,7 +1484,7 @@ expected_tome:
   wishlist_owned: "„%{title}“ ist bereits in Ihrem Katalog: Es wurde nichts zur Wunschliste hinzugefügt. Sein Titel belegt diese Position der Reihe."
   # Story 20-2 (FR184, #715) — a series gap sent to the wish list.
   gap_add_to_wishlist: "Zur Wunschliste hinzufügen"
-  gap_add_to_wishlist_named: "Band %{position} zur Wunschliste hinzufügen"
+  gap_add_to_wishlist_named: "Zur Wunschliste hinzufügen: Band %{position}"
   form_title_wishlist: "Band %{position} zur Wunschliste hinzufügen"
   wishlist_form_help: "mybibli erfasst diesen Band außerdem als erwartet in der Reihe: Die Lücke zeigt dann seinen Titel."
   wishlist_title_prefill: "%{series}, Band %{position}"

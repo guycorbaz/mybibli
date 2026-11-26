@@ -26,7 +26,7 @@ async function openGapWishlist(page: Page, position: number) {
   const action = page.locator(`[data-gap-wishlist="${position}"]`);
   await expect(action).toHaveAccessibleName(
     new RegExp(
-      `Add tome ${position} to the wish list|Ajouter le tome ${position} à la wish list`,
+      `Add to wish list: tome ${position}|Ajouter à la wish list : tome ${position}`,
       "i",
     ),
   );

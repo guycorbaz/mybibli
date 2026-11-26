@@ -865,11 +865,12 @@ mod tests {
         for loc in LOCALES {
             let (bought, remove) = action_labels("Dune", loc);
             assert!(bought.contains("Dune") && remove.contains("Dune"), "{loc}");
-            // WCAG 2.5.3 — the visible label is part of the accessible name.
-            let visible_bought = rust_i18n::t!("wishlist.action_bought", locale = loc).to_lowercase();
-            let visible_remove = rust_i18n::t!("wishlist.action_remove", locale = loc).to_lowercase();
-            assert!(bought.to_lowercase().contains(&visible_bought), "{loc}: {bought}");
-            assert!(remove.to_lowercase().contains(&visible_remove), "{loc}: {remove}");
+            // WCAG 2.5.3 — the accessible name starts with the visible label
+            // (project rule, decided 2026-11-26, #734).
+            let visible_bought = rust_i18n::t!("wishlist.action_bought", locale = loc).to_string();
+            let visible_remove = rust_i18n::t!("wishlist.action_remove", locale = loc).to_string();
+            assert!(bought.starts_with(&visible_bought), "{loc}: {bought}");
+            assert!(remove.starts_with(&visible_remove), "{loc}: {remove}");
         }
     }
 }
