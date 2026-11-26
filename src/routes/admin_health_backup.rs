@@ -17,7 +17,6 @@ use crate::AppState;
 use crate::services::backup::status::{CheckResult, StatusSnapshot};
 use crate::services::backup::{FolderState, folder_state, listing};
 use crate::tasks::backup_scheduler::due_at;
-use crate::utils::local_time::format_local_date_time;
 
 /// What the fragment prints.
 pub struct BackupHealthPanel {
@@ -41,11 +40,39 @@ pub struct BackupHealthInput {
     pub interval_hours: u32,
     pub status: StatusSnapshot,
     pub now: DateTime<Utc>,
+    /// Story 19-8 (D13): the newest restore (audit row), if any.
+    pub last_restore: Option<LastRestore>,
 }
 
-fn when(at: DateTime<Utc>, tz: Tz) -> String {
-    format_local_date_time(at.naive_utc(), tz)
+/// Story 19-8 (D13) — the newest `backup_restore` audit row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LastRestore {
+    pub at: DateTime<Utc>,
+    pub file: String,
+    pub safety: String,
+    /// Rolled back (from the modal or at boot).
+    pub failed: bool,
 }
+
+impl LastRestore {
+    /// From the audit row's details; `None` for a row of another shape.
+    pub fn from_details(at: DateTime<Utc>, details: &serde_json::Value) -> Option<Self> {
+        let s = |k: &str| details.get(k).and_then(|v| v.as_str()).map(str::to_string);
+        let failed = match s("outcome")?.as_str() {
+            "restored" => false,
+            "rolled_back" | "rolled_back_at_boot" => true,
+            _ => return None,
+        };
+        Some(LastRestore {
+            at,
+            file: s("backup")?,
+            safety: s("safety")?,
+            failed,
+        })
+    }
+}
+
+use crate::utils::local_time::format_utc_date_time as when;
 
 /// The lines of the block (D6), in reading order: folder warning, failed
 /// automatic backup, last backup, schedule, last check skipped.
@@ -94,6 +121,25 @@ pub fn build_backup_panel(input: &BackupHealthInput, tz: Tz, loc: &str) -> Backu
         },
         warning: false,
     });
+    if let Some(r) = &input.last_restore {
+        let key = if r.failed {
+            "admin.health.backup.last_restore_failed"
+        } else {
+            "admin.health.backup.last_restore"
+        };
+        lines.push(BackupHealthLine {
+            id: "health-backup-last-restore",
+            text: rust_i18n::t!(
+                key,
+                locale = loc,
+                when = when(r.at, tz),
+                file = r.file.as_str(),
+                safety = r.safety.as_str()
+            )
+            .to_string(),
+            warning: false,
+        });
+    }
     // No check runs while the folder is unusable: the warning alone.
     let folder_usable = input.folder == FolderState::Ready;
     let due = due_at(
@@ -167,6 +213,14 @@ pub async fn current_backup_panel(state: &AppState, instance_id: &str, loc: &str
     } else {
         folder
     };
+    let last_restore = crate::models::admin_audit::AdminAuditModel::newest_of_action(
+        &state.pool,
+        crate::services::backup::restore::AUDIT_ACTION,
+    )
+    .await
+    .ok()
+    .flatten()
+    .and_then(|(at, details)| LastRestore::from_details(at.and_utc(), &details));
     let input = BackupHealthInput {
         dir,
         folder,
@@ -174,6 +228,7 @@ pub async fn current_backup_panel(state: &AppState, instance_id: &str, loc: &str
         interval_hours: state.backup_interval_hours(),
         status,
         now,
+        last_restore,
     };
     build_backup_panel(&input, state.time_zone(), loc)
 }
@@ -199,7 +254,33 @@ mod tests {
             interval_hours: 6,
             status: StatusSnapshot::default(),
             now: utc(10, 0),
+            last_restore: None,
         }
+    }
+
+    #[test]
+    fn the_last_restore_and_a_rolled_back_attempt() {
+        let details = serde_json::json!({
+            "backup": "mybibli-fedcba9876543210-20261120T080000Z.tar.gz",
+            "safety": FILE,
+            "outcome": "restored",
+        });
+        let r = LastRestore::from_details(utc(9, 0), &details).unwrap();
+        let mut i = input();
+        i.last_restore = Some(r.clone());
+        let p = build_backup_panel(&i, Zurich, "en");
+        let line = p.lines.iter().find(|l| l.id == "health-backup-last-restore").unwrap();
+        assert_eq!(
+            line.text,
+            format!("Last restore: 2026-11-26 10:00, from mybibli-fedcba9876543210-20261120T080000Z.tar.gz (safety backup: {FILE}).")
+        );
+        i.last_restore = Some(LastRestore { failed: true, ..r });
+        let p = build_backup_panel(&i, Zurich, "fr");
+        let line = p.lines.iter().find(|l| l.id == "health-backup-last-restore").unwrap();
+        assert!(line.text.starts_with("Dernière tentative de restauration : "), "{}", line.text);
+        assert!(line.text.ends_with(&format!("remise en état depuis {FILE}.")), "{}", line.text);
+        assert!(LastRestore::from_details(utc(9, 0), &serde_json::json!({"outcome": "other", "backup": "a", "safety": "b"})).is_none());
+        assert!(LastRestore::from_details(utc(9, 0), &serde_json::Value::Null).is_none());
     }
 
     fn texts(p: &BackupHealthPanel) -> Vec<(&'static str, String, bool)> {

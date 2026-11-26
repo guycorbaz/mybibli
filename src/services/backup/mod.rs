@@ -22,14 +22,16 @@
 //!
 //! Story 19-7 (#657) adds the schedule: [`write_backup_if_changed`] (the
 //! skip rule, [`fingerprint`]), the in-memory [`status`], the folder
-//! [`listing`] and the [`rotation`] of old backups. Story 19-8 (restore's
-//! safety backup) calls [`write_backup`] too.
+//! [`listing`] and the [`rotation`] of old backups. Story 19-8 adds the
+//! [`restore`]; its safety backup goes through [`write_backup_holding`]
+//! (the restore already holds the guard).
 
 pub mod archive;
 pub mod covers;
 pub mod dump;
 pub mod fingerprint;
 pub mod listing;
+pub mod restore;
 pub mod rotation;
 pub mod status;
 
@@ -67,6 +69,10 @@ pub struct BackupConfig {
     pub guard: Arc<tokio::sync::Mutex<()>>,
     /// Story 19-7 (D7): what the scheduler remembers, in memory only.
     pub status: status::BackupStatus,
+    /// Story 19-8 (D8, T6): the maintenance state of a restore, shared by
+    /// every clone (the maintenance layer and the writers without a request
+    /// read it).
+    pub maintenance: Arc<crate::services::maintenance::Maintenance>,
 }
 
 impl BackupConfig {
@@ -76,6 +82,7 @@ impl BackupConfig {
             covers_dir,
             guard: Arc::new(tokio::sync::Mutex::new(())),
             status: status::BackupStatus::default(),
+            maintenance: Arc::new(crate::services::maintenance::Maintenance::new()),
         }
     }
 }
@@ -297,6 +304,43 @@ pub async fn write_backup_if_changed(
     cfg: &BackupConfig,
 ) -> Result<CheckOutcome, BackupError> {
     guarded(pool, cfg, true).await
+}
+
+/// Story 19-8 (T2) — write one backup while the caller already holds the
+/// guard (the restore's safety backup): same writer, same checks and
+/// guarantees as [`write_backup`], run in the caller's task (the restore
+/// task owns the guard and survives a disconnect itself).
+pub async fn write_backup_holding(
+    pool: &DbPool,
+    cfg: &BackupConfig,
+    guard: &tokio::sync::OwnedMutexGuard<()>,
+) -> Result<BackupWritten, BackupError> {
+    if !Arc::ptr_eq(tokio::sync::OwnedMutexGuard::mutex(guard), &cfg.guard) {
+        return Err(BackupError::Io("the guard held is not this folder's".to_string()));
+    }
+    check_folder(&cfg.dir)?;
+    match run(pool, cfg).await {
+        Ok((w, fingerprint)) => {
+            tracing::info!(
+                file = %w.file_name,
+                bytes = w.bytes,
+                tables = w.tables,
+                rows = w.rows,
+                covers = w.covers,
+                "Backup written"
+            );
+            cfg.status.remember(fingerprint::Remembered {
+                fingerprint,
+                file_name: w.file_name.clone(),
+                bytes: w.bytes,
+            });
+            Ok(w)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Backup failed; nothing was kept");
+            Err(e)
+        }
+    }
 }
 
 async fn guarded(

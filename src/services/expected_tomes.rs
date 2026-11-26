@@ -155,6 +155,35 @@ impl From<ExpectedTomeError> for AppError {
     }
 }
 
+/// Story 20-2 (AC 7, Rule #3) — the form field a refusal belongs to,
+/// so the expected-tome form shows the message under it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TomeField {
+    Position,
+    Title,
+    Isbn,
+}
+
+impl ExpectedTomeError {
+    /// Story 20-2 — the field this refusal is about (pure); `None` for a
+    /// refusal of the whole form (settled, version conflict) or a missing
+    /// record / database error.
+    pub fn field(&self) -> Option<TomeField> {
+        match self {
+            Self::PositionOutOfRange { .. } | Self::PositionHeld { .. } | Self::PositionTaken { .. } => {
+                Some(TomeField::Position)
+            }
+            Self::TitleRequired | Self::TitleTooLong { .. } => Some(TomeField::Title),
+            Self::InvalidIsbn { .. } | Self::DuplicateIsbn { .. } => Some(TomeField::Isbn),
+            Self::SeriesNotFound { .. }
+            | Self::NotFound { .. }
+            | Self::Settled { .. }
+            | Self::VersionConflict { .. }
+            | Self::Database(_) => None,
+        }
+    }
+}
+
 impl ExpectedTomeError {
     /// The `AppError` class of this refusal, carrying `message`:
     /// missing → `NotFound`, state conflicts → `Conflict`, malformed
@@ -455,6 +484,30 @@ impl ExpectedTomeService {
         input: &ExpectedTomeInput<'_>,
         origin: ExpectedTomeOrigin,
     ) -> Result<u64, ExpectedTomeError> {
+        Self::create_with(conn, series_id, input, origin, true).await
+    }
+
+    /// Story 20-2 (review pass 1) — [`Self::create_in`] that never
+    /// attaches a title to the series: a live title carrying the ISBN
+    /// settles the tome only when it already holds the position. The gap →
+    /// wish list form refuses an owned ISBN first; this keeps "nothing
+    /// attached" true even if a title gains the ISBN meanwhile.
+    pub async fn create_unattached_in(
+        conn: &mut MySqlConnection,
+        series_id: u64,
+        input: &ExpectedTomeInput<'_>,
+        origin: ExpectedTomeOrigin,
+    ) -> Result<u64, ExpectedTomeError> {
+        Self::create_with(conn, series_id, input, origin, false).await
+    }
+
+    async fn create_with(
+        conn: &mut MySqlConnection,
+        series_id: u64,
+        input: &ExpectedTomeInput<'_>,
+        origin: ExpectedTomeOrigin,
+        attach: bool,
+    ) -> Result<u64, ExpectedTomeError> {
         let title = validate_title(input.title)?;
         let isbn = normalize_isbn(input.isbn)?;
         let series = ExpectedTomeModel::lock_series_in(conn, series_id)
@@ -469,7 +522,7 @@ impl ExpectedTomeService {
         let id = ExpectedTomeModel::insert_in(conn, series_id, &values, origin)
             .await
             .map_err(|e| map_unique_violation(e, input.position, isbn.as_deref()))?;
-        Self::settle_with_owned_title(conn, id, &series, input.position, isbn.as_deref(), true)
+        Self::settle_with_owned_title(conn, id, &series, input.position, isbn.as_deref(), attach)
             .await?;
         Ok(id)
     }
@@ -708,9 +761,16 @@ impl ExpectedTomeService {
             }
         }
         if let Some(title_id) = chosen {
-            let result =
-                Self::settle_one(conn, title_id, tome_id, series, position, attach).await?;
-            tracing::info!(title_id, tome_id, result = ?result, "Expected tome settled on entry");
+            // Review pass 2 (20-2): log "settled" only when it was.
+            match Self::settle_one(conn, title_id, tome_id, series, position, attach).await? {
+                Some(SettleResult::Settled) => {
+                    tracing::info!(title_id, tome_id, "Expected tome settled on entry");
+                }
+                Some(other) => {
+                    tracing::info!(title_id, tome_id, result = ?other, "Expected tome not settled on entry");
+                }
+                None => {}
+            }
         }
         Ok(())
     }
@@ -813,6 +873,28 @@ fn map_unique_violation(e: sqlx::Error, position: i32, isbn: Option<&str>) -> Ex
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn each_refusal_names_its_field() {
+        use super::{ExpectedTomeError as E, TomeField as F};
+        let cases: Vec<(E, Option<F>)> = vec![
+            (E::TitleRequired, Some(F::Title)),
+            (E::TitleTooLong { max: 500 }, Some(F::Title)),
+            (E::InvalidIsbn { value: "1".into() }, Some(F::Isbn)),
+            (E::DuplicateIsbn { isbn: "1".into() }, Some(F::Isbn)),
+            (E::PositionOutOfRange { position: 9, total: Some(3) }, Some(F::Position)),
+            (E::PositionHeld { position: 2, holder: "X".into() }, Some(F::Position)),
+            (E::PositionTaken { position: 2 }, Some(F::Position)),
+            (E::Settled { id: 1 }, None),
+            (E::VersionConflict { id: 1 }, None),
+            (E::NotFound { id: 1 }, None),
+            (E::SeriesNotFound { series_id: 1 }, None),
+            (E::Database(crate::error::AppError::Internal("x".into())), None),
+        ];
+        for (err, field) in cases {
+            assert_eq!(err.field(), field, "{err:?}");
+        }
+    }
+
     use super::*;
 
     fn closed(total: i32) -> SeriesShape {

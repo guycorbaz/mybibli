@@ -6,6 +6,7 @@ pub mod csrf;
 pub mod htmx;
 pub mod locale;
 pub mod logging;
+pub mod maintenance;
 pub mod modal_confirm_retarget_guard;
 pub mod non_htmx_error_wrapper;
 pub mod pending_updates;

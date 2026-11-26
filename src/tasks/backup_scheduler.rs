@@ -185,6 +185,11 @@ async fn instance_id_of(state: &AppState) -> Option<String> {
 /// `Utc::now()`, by tests with a given clock.
 pub async fn run_check(state: &AppState, now: DateTime<Utc>) -> CheckRun {
     let cfg = &state.backup;
+    // Story 19-8 review (pass 1): no backup of a database being restored
+    // (or left half loaded by a stuck restore); retried at the next wake.
+    if cfg.maintenance.is_active() {
+        return CheckRun::Busy;
+    }
     let hours = state.backup_interval_hours();
     // The id only serves to find the newest backup: not read while off.
     let instance_id = if hours == 0 { None } else { instance_id_of(state).await };

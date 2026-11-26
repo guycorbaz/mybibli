@@ -413,6 +413,18 @@ error:
     folder_not_writable: "Nessun backup è stato scritto: mybibli non può scrivere in %{path}. Dai all'utente del container il permesso di scrivere in quella cartella (vedi il manuale), poi riprova."
     already_running: "È già in corso la scrittura di un backup. Attendi che finisca; comparirà qui."
     failed: "Non è stato possibile scrivere il backup, quindi non è stato conservato nulla. Riprova; se continua a non riuscire, i log ne indicano il motivo."
+  # Story 19-8 (#657, D5, D8, D9) — restore refusals.
+  restore:
+    damaged: "Questo backup non può essere ripristinato: il suo contenuto non corrisponde alla sua checksum, quindi il file è danneggiato o incompleto. Non è stato modificato nulla. Usa un altro backup, oppure copia di nuovo questo dalla sua origine."
+    no_sidecar: "Questo backup non può essere ripristinato: il suo file di controllo %{file}.sha256 è assente, quindi mybibli non può verificarlo. Non è stato modificato nulla. Copia quel file accanto al backup, poi riprova."
+    newer: "Questo backup è stato scritto da una versione più recente di mybibli (%{version}) e non può essere ripristinato da questa (%{current}). Non è stato modificato nulla. Aggiorna mybibli alla %{version} o successiva, poi riprova."
+    not_readable: "mybibli non può leggere %{file}. Non è stato modificato nulla. Dai all'utente del container il permesso di leggere quel file (vedi il manuale, «Backup»), poi riprova."
+    not_a_backup: "Questo file non è un backup che questa versione di mybibli può ripristinare. Non è stato modificato nulla."
+    busy: "È già in corso un backup o un ripristino. Non è stato modificato nulla. Attendi un minuto, poi riprova."
+    bulk_running: "Un ripristino non può iniziare mentre si scaricano copertine o metadati per tutta la biblioteca. Non è stato modificato nulla. Attendi la fine di questa operazione (scheda Stato), poi riprova."
+    gone: "Questo backup non è più nella cartella. Non è stato modificato nulla."
+    drain_timed_out: "Il ripristino non è iniziato: altre richieste erano ancora in corso dopo 30 secondi. Non è stato modificato nulla. Riprova tra un momento."
+    safety_failed: "Non è stato ripristinato nulla: mybibli non è riuscito a scrivere prima un backup di sicurezza della biblioteca attuale. %{reason}"
   # Story 15-2 (#614) — MCP skills validation and write errors.
   mcp_skills:
     name_required: "Il nome è obbligatorio"
@@ -923,6 +935,34 @@ admin:
     folder_missing: "Cartella: %{path} — assente"
     folder_not_writable: "Cartella: %{path} — non scrivibile"
     written: "Backup scritto: %{file} (%{size}, %{titles} titoli, %{covers} copertine)."
+    # Story 19-8 (#657, D1-D7) — the list and the restore modal.
+    list:
+      heading: "Backup presenti nella cartella"
+      col_date: "Data"
+      col_origin: "Origine"
+      col_size: "Dimensione"
+      col_note: "Nota"
+      restore: "Ripristina…"
+      restore_aria: "Ripristina il backup del %{when}"
+      empty: "Ancora nessun backup nella cartella."
+      origin_own: "Questa istanza"
+      origin_other: "Altra istanza (%{id})"
+      note_no_sidecar: "Nessun file di controllo"
+      note_not_readable: "Non leggibile"
+      note_rotation: "Eliminato alla prossima rotazione"
+    restore:
+      title: "Ripristinare questo backup?"
+      facts: "Backup del %{when} — %{origin} — mybibli %{version} — %{size}"
+      counts: "Contiene %{titles} titoli e %{covers} copertine; la biblioteca ne contiene attualmente %{now_titles} e %{now_covers}."
+      consequences: "Tutta la biblioteca — titoli, volumi, prestiti, utenti, impostazioni e copertine — viene sostituita dal contenuto di questo backup. Tutto ciò che è stato inserito da allora scompare dalla biblioteca, ma prima viene scritto un backup di sicurezza dello stato attuale. Durante il ripristino (un minuto o due) mybibli non risponde a nessuno. Dopo, tutti vengono disconnessi, tu compreso."
+      foreign: "Questo backup proviene da un'altra istanza: i suoi account e le sue password sostituiscono quelli di questa. Accedi poi con un account della biblioteca ripristinata."
+      older: "È stato scritto da mybibli %{version}; viene aggiornato dopo il ripristino."
+      cancel: "Annulla"
+      confirm: "Ripristina questo backup"
+      running: "Ripristino in corso… Ci vuole un minuto o due; tieni aperta questa pagina."
+      success: "Backup %{file} ripristinato (%{titles} titoli, %{covers} copertine). Il backup di sicurezza dello stato precedente è %{safety}. Tutti sono stati disconnessi."
+      rolled_back: "Il ripristino non è riuscito, quindi mybibli ha riportato la biblioteca allo stato di poco prima, dal backup di sicurezza %{safety}. Tutti sono stati disconnessi. I log indicano perché il ripristino non è riuscito."
+      login_again: "Accedi di nuovo"
   trash:
     badge_aria: "Cestino, %{count} elementi"
     heading: Cestino (elementi eliminati)
@@ -1018,6 +1058,8 @@ admin:
       folder_missing: "Attenzione: la cartella dei backup %{path} non esiste, quindi nessun backup viene scritto. Monta una cartella in quel punto (vedi il manuale, «Backup»)."
       folder_not_writable: "Attenzione: mybibli non può scrivere nella cartella dei backup %{path}, quindi nessun backup viene scritto. Dai all'utente del container il permesso di scriverci (vedi il manuale)."
       failed: "Attenzione: il backup automatico del %{when} non è riuscito, quindi non è stato conservato nulla. I log ne indicano il motivo."
+      last_restore: "Ultimo ripristino: %{when}, da %{file} (backup di sicurezza: %{safety})."
+      last_restore_failed: "Ultimo tentativo di ripristino: %{when}, da %{file}; non è riuscito e la biblioteca è stata riportata allo stato precedente da %{safety}."
     maintenance_heading: Manutenzione
     bulk_cover_fetch:
       missing_covers_label: "Titoli con copertina mancante"
@@ -1423,6 +1465,13 @@ expected_tome:
   wishlist_already: "«%{title}» è già nella tua lista dei desideri: non è stato aggiunto nulla."
   wishlist_open: "Apri la voce della lista dei desideri"
   wishlist_owned: "«%{title}» è già nel tuo catalogo: non è stato aggiunto nulla alla lista dei desideri. Il suo titolo occupa questa posizione della serie."
+  # Story 20-2 (FR184, #715) — a series gap sent to the wish list.
+  gap_add_to_wishlist: "Aggiungi alla lista dei desideri"
+  gap_add_to_wishlist_named: "Aggiungi il volume %{position} alla lista dei desideri"
+  form_title_wishlist: "Aggiungi il volume %{position} alla lista dei desideri"
+  wishlist_form_help: "mybibli registra anche questo volume come atteso nella serie: la posizione mancante mostra così il suo titolo."
+  wishlist_title_prefill: "%{series}, volume %{position}"
+  wishlist_save: "Aggiungi alla lista dei desideri"
   # Story 11-11 — localized ExpectedTomeError (docs/error-message-style.md).
   error:
     title_required: "Il titolo è obbligatorio."
@@ -1726,3 +1775,8 @@ tome:
   save_position: "Salva"
   omnibus_not_editable: "Un volume omnibus copre più posizioni e non può essere spostato qui. Rimuovilo dalla serie, poi assegnalo di nuovo con il nuovo intervallo."
   manual_hint: "Questo titolo contiene un numero di tomo (%{label}). Il titolo è stato salvato così come digitato; per mantenerlo pulito, rimuovi il numero dal titolo e indicalo come posizione del titolo nella sua serie."
+# Story 19-8 (#657, D8, D10) — the maintenance answer while a restore runs.
+maintenance:
+  title: "Manutenzione"
+  text: "mybibli sta ripristinando un backup. Ci vuole un minuto o due: ricarica poi questa pagina. Tutti dovranno accedere di nuovo."
+  stuck: "mybibli non è riuscito né a ripristinare un backup né a riportare la biblioteca allo stato precedente. Chiedi alla persona che ha installato mybibli di ripristinare a mano il backup %{safety} (vedi il manuale, «Ripristinare a mano»)."
