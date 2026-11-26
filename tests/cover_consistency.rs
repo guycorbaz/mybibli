@@ -466,15 +466,23 @@ async fn a_forged_orphan_with_another_mtime_is_left_alone(pool: DbPool) {
 async fn a_put_back_address_takes_its_lookup_off_the_queue(pool: DbPool) {
     let id = title(&pool, "CC put back", Some("9782070000059"), Some("/covers/{id}.jpg?v=4"), false, false).await;
     let item = MissingItem { id, url: format!("/covers/{id}.jpg?v=4") };
-    assert!(cc::clear_address(&pool, &item, true).await.unwrap());
+    let cleared = cc::clear_address(&pool, &item, true).await.unwrap().expect("cleared");
+    assert!(cleared.queue_created);
     assert_eq!(cover_of(&pool, id).await, None);
     assert_eq!(queued(&pool).await, vec![id]);
-    cc::restore_address(&pool, &item, true).await.unwrap();
+    cc::restore_address(&pool, &item, cleared.queue_created).await.unwrap();
     assert_eq!(cover_of(&pool, id).await, Some(item.url.clone()), "the address is back");
     assert!(queued(&pool).await.is_empty(), "the lookup the clear queued is dequeued");
 
+    // Review pass 2 (L4): a lookup already queued before the clear stays.
+    mybibli::models::metadata_retry::MetadataRetryModel::enqueue_fresh(&pool, id).await.unwrap();
+    let cleared = cc::clear_address(&pool, &item, true).await.unwrap().expect("cleared");
+    assert!(!cleared.queue_created, "the row was live before");
+    cc::restore_address(&pool, &item, cleared.queue_created).await.unwrap();
+    assert_eq!(queued(&pool).await, vec![id], "an earlier lookup is not dequeued");
+
     // An address written meanwhile is never overwritten.
-    assert!(cc::clear_address(&pool, &item, false).await.unwrap());
+    assert!(cc::clear_address(&pool, &item, false).await.unwrap().is_some());
     sqlx::query("UPDATE titles SET cover_image_url = ? WHERE id = ?")
         .bind(format!("/covers/{id}.jpg?v=9"))
         .bind(id)
@@ -483,7 +491,7 @@ async fn a_put_back_address_takes_its_lookup_off_the_queue(pool: DbPool) {
         .unwrap();
     cc::restore_address(&pool, &item, false).await.unwrap();
     assert_eq!(cover_of(&pool, id).await, Some(format!("/covers/{id}.jpg?v=9")));
-    assert!(!cc::clear_address(&pool, &item, false).await.unwrap(), "a changed address is not cleared");
+    assert!(cc::clear_address(&pool, &item, false).await.unwrap().is_none(), "a changed address is not cleared");
 }
 
 #[sqlx::test(migrations = "./migrations")]

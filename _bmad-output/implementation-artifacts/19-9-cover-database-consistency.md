@@ -1,6 +1,6 @@
 # Story 19.9: Cover / database consistency (closes #658)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -196,6 +196,20 @@ Two reviews (safety, acceptance). Items and outcomes:
 
 Gates: clippy `--all-targets -D warnings` clean; `cargo test --lib` 2028 passed; integration `cover_consistency::` (11), `admin_`, `locale_parity::`, the declaration check: 105 passed. E2E not run yet.
 
+## Review pass 2 (2026-11-26)
+
+No Medium+ finding: the story is clean. The Lows and their outcome:
+- L1 (no message of its own when the next title id cannot be read — needs new copy) — deferred to a GitHub issue (opened by the coordinator).
+- L2, L3 — passed to the manual note of story 19-11.
+- L4 — fixed: `clear_address` returns `Cleared { queue_created }` (whether a live retry row existed before the clear); `restore_address` dequeues only when the clear created it. Test: `a_put_back_address_takes_its_lookup_off_the_queue` (a lookup queued before the clear stays).
+- L5 — fixed (Rule #21): when "Repair…" answers with the refreshed check instead of the modal, the removed button's `data-modal-focus-fallback` sends the focus to "Check covers" (`modal.js`, `htmx:afterSettle`), never to `<body>`. E2E: two tabs check; the second repairs; the first's stale "Repair…" gets the refreshed check and `#admin-covers-check` is focused.
+- L6 (the result left stale after an error mid-repair) — deferred to a GitHub issue (opened by the coordinator).
+- L7 — fixed: the module doc of `services/cover_consistency.rs` says ownership is re-checked once per 500-orphan chunk (`OWNED_CHUNK`), just before that chunk's deletions.
+- L8 — fixed: the completion note about a stopped repair now says `not_handled`; the module doc of `routes/admin_covers.rs` lists every 409 refusal (D11, D12 and the wrong-database guard on the fresh plan, unreadable folder) and the modal's refresh case.
+- L9 — fixed: the E2E asserts `naturalWidth > 0` for the kept cover, and the busy-retry loop fails with a clear message ("a backup or a restore still held the guard after N presses") after two presses.
+
+Gates after pass 2: clippy `--all-targets -D warnings` clean; `cargo test --lib` 2050 passed; integration `cover_consistency::`, `admin_`, `locale_parity::`, the declaration check: 110 passed; tsc, `waitForTimeout` grep, `vcode-literals.sh` clean; image rebuilt `--no-cache`, the cover spec alone green, then after a reset the full suite `CI=true --workers=2`: 520 passed, 2 skipped, 0 flaky.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -212,7 +226,7 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - Missing-cover precedence: pending cover proposal (left alone, D7) > Trash (D4) > set by hand (D5) > no code (D6 note) > cleared and queued.
 - **Deviation from T6:** the modal is opened by `POST /admin/covers/repair/confirm` (not a GET): the check's "Repair…" form posts every listed item (hidden fields), which can be far more than a URL holds. The modal recomputes a fresh plan and carries only the listed items it still holds (`confirm`); when none is left or the folder now looks unmounted, the refreshed check replaces the result (`HX-Retarget #admin-covers-result`).
 - T4 refinement: after an address is cleared the file is checked again; if it appeared meanwhile (a cover being installed: file first, address next), the address is put back (`WHERE cover_image_url IS NULL`). No row lock is taken (Rule #22 not engaged).
-- The repair stops (remaining items counted as skipped) when `maintenance::write_permit()` is refused.
+- The repair stops when `maintenance::write_permit()` is refused; the items left are counted as `not_handled` (its own line since review pass 1), never as skipped.
 - Row lists have no column headers (no approved copy for them): `name · size · date` lines, titles linked with their note.
 - D13: change request #744 opened (purge leaves cover files).
 - Gates: `cargo clippy --all-targets -D warnings` clean; `cargo test --lib` 2024 passed; integration `cover_consistency::` 5/5, plus `locale_parity::`, `backup_*`, `admin_trash*`, `every_test_file_is_declared` green; no query macro added (`.sqlx/` unchanged); E2E `tsc --noEmit`, `waitForTimeout` grep, `vcode-literals.sh` clean. **E2E not run** (pending the lead's go).
@@ -241,3 +255,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — E2E green (spec alone + full suite, CI shape); status → review.
 - 2026-11-26 — wrong-database guard replaced by the never-given-id rule (project lead).
 - 2026-11-26 — E2E again after the never-given-id rule (image rebuilt `--no-cache`): spec alone green; full suite `CI=true --workers=2` 520 passed, 2 skipped, 0 flaky.
+- 2026-11-26 — code review pass 2: clean (no Medium+), Lows fixed or deferred; status → done.

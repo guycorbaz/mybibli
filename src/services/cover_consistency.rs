@@ -20,9 +20,11 @@
 //!   refuses.
 //! - **The repair** ([`repair`], T4, T7) acts only on what the check listed
 //!   (the items the modal posts), re-checked against a fresh plan and then
-//!   item by item right before the change: an orphan is deleted only if no
-//!   title row has its id or names it and its size and modification time
-//!   are the listed ones; an address is cleared with a guarded `UPDATE`
+//!   right before the change: whether a title row has an orphan's id or an
+//!   address names it is read once per chunk of [`OWNED_CHUNK`] (500)
+//!   orphans, just before that chunk's deletions, and each file is deleted
+//!   only if its size and modification time are still the listed ones; an
+//!   address is cleared with a guarded `UPDATE`
 //!   (listed value, no `version` / `updated_at` change, so no series
 //!   proposal is outdated) only while the file is still missing. It holds
 //!   the backup guard (`try_lock_owned`, D11) in a task spawned in the
@@ -702,9 +704,17 @@ pub async fn has_pending_cover_proposal(pool: &DbPool, title_id: u64) -> Result<
     Ok(found.is_some())
 }
 
+/// What a clear did (review pass 2, L4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cleared {
+    /// The clear queued a lookup that was not already queued (a live retry
+    /// row did not exist before): only then does a put-back dequeue it.
+    pub queue_created: bool,
+}
+
 /// Clear the listed address (guarded, no `version` / `updated_at` change)
-/// and queue a lookup when `queue`; `false` when the row changed.
-pub async fn clear_address(pool: &DbPool, item: &MissingItem, queue: bool) -> Result<bool, AppError> {
+/// and queue a lookup when `queue`; `None` when the row changed.
+pub async fn clear_address(pool: &DbPool, item: &MissingItem, queue: bool) -> Result<Option<Cleared>, AppError> {
     let mut tx = pool.begin().await?;
     let done = sqlx::query(
         "UPDATE titles SET cover_image_url = NULL, updated_at = updated_at \
@@ -715,19 +725,29 @@ pub async fn clear_address(pool: &DbPool, item: &MissingItem, queue: bool) -> Re
     .execute(&mut *tx)
     .await?;
     if done.rows_affected() != 1 {
-        return Ok(false);
+        return Ok(None);
     }
+    let mut queue_created = false;
     if queue {
+        let live: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM metadata_fetch_retries WHERE title_id = ? AND deleted_at IS NULL",
+        )
+        .bind(item.id)
+        .fetch_one(&mut *tx)
+        .await?;
+        queue_created = live == 0;
         crate::models::metadata_retry::MetadataRetryModel::enqueue_fresh(&mut *tx, item.id).await?;
     }
     tx.commit().await?;
-    Ok(true)
+    Ok(Some(Cleared { queue_created }))
 }
 
 /// A file appeared right after the clear (a cover being installed): put
 /// the address back unless something else wrote one meanwhile, and take
-/// the lookup the clear queued off the queue (review pass 1, L3).
-pub async fn restore_address(pool: &DbPool, item: &MissingItem, queued: bool) -> Result<(), AppError> {
+/// the lookup the clear queued off the queue (review pass 1, L3) — only
+/// when the clear created it (review pass 2, L4: a lookup already queued
+/// before stays).
+pub async fn restore_address(pool: &DbPool, item: &MissingItem, dequeue: bool) -> Result<(), AppError> {
     sqlx::query(
         "UPDATE titles SET cover_image_url = ?, updated_at = updated_at \
          WHERE id = ? AND cover_image_url IS NULL",
@@ -736,7 +756,7 @@ pub async fn restore_address(pool: &DbPool, item: &MissingItem, queued: bool) ->
     .bind(item.id)
     .execute(pool)
     .await?;
-    if queued {
+    if dequeue {
         crate::models::metadata_retry::MetadataRetryModel::dequeue(pool, item.id).await?;
     }
     Ok(())
@@ -805,14 +825,14 @@ async fn apply(pool: &DbPool, covers_dir: &Path, confirmed: &Confirmed, done: &m
             continue;
         }
         let queue = action.queues();
-        if !clear_address(pool, item, queue).await? {
+        let Some(cleared) = clear_address(pool, item, queue).await? else {
             done.skipped += 1;
             continue;
-        }
+        };
         let p = path.clone();
         if !blocking(move || absent(&p)).await? {
             // A cover was installed meanwhile (file first, address next).
-            if let Err(e) = restore_address(pool, item, queue).await {
+            if let Err(e) = restore_address(pool, item, cleared.queue_created).await {
                 tracing::error!(error = %e, id = item.id, url = %item.url, "Cover repair: a cleared address could not be put back");
                 return Err(e);
             }

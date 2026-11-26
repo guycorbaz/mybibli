@@ -6,12 +6,17 @@
 //!   the listed items (T5) and its "Repair…" button.
 //! - `POST /admin/covers/repair/confirm`: the UX-DR8 modal in `#modal-slot`
 //!   (D8). Its form carries the listed items that a fresh check still
-//!   holds; when none is left, or the folder now looks unmounted, the
-//!   refreshed check replaces the result instead (`HX-Retarget`). A POST,
+//!   holds; when none is left, or the repair is now refused (D12, the
+//!   wrong-database guard), the refreshed check replaces the result instead
+//!   (`HX-Retarget`), and `modal.js` moves the focus from the removed
+//!   "Repair…" button to its `data-modal-focus-fallback`, "Check covers"
+//!   (Rule #21, review pass 2). A POST,
 //!   not the GET of T6: the listed items can be many more than a URL holds.
 //! - `POST /admin/covers/repair`: the repair
-//!   (`services::cover_consistency::repair`). A refusal (D11 busy, D12,
-//!   unreadable folder) answers 409, which lands in the modal's error
+//!   (`services::cover_consistency::repair`). A refusal (D11 busy, D12 on
+//!   the fresh plan, the wrong-database guard on the fresh plan — an
+//!   orphan id never handed out —, unreadable folder) answers 409, which
+//!   lands in the modal's error
 //!   region; the success replaces `#admin-covers-result` with the line and
 //!   the refreshed check, and `modal.js` closes the dialog.
 //!

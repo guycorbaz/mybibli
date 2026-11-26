@@ -133,42 +133,72 @@ test.describe("Story 19-9 — cover check and repair", () => {
     await deleteTitle(page, id);
     await purgeTitle(page, id, isbn);
 
-    // The check lists the file the purge left behind (D13).
+    // The check lists the file the purge left behind (D13). Two tabs check:
+    // the second repairs, the first keeps its stale list for Rule #21.
     const own = `${id}.jpg · `;
     await page.goto("/admin?tab=backups");
     let result = await checkCovers(page);
     await expect(result.locator("#admin-covers-orphans")).toContainText(own);
+    const other = await page.context().newPage();
+    await other.goto("/admin?tab=backups");
+    const otherResult = await checkCovers(other);
+    await expect(otherResult.locator("#admin-covers-orphans")).toContainText(own);
 
     // "Repair…" opens the UX-DR8 modal; "Repair" deletes. One retry when
-    // a backup or a restore holds the guard (D11).
-    const open = page.getByRole("button", { name: REPAIR_OPEN });
+    // a backup or a restore holds the guard (D11); a second refusal fails.
+    const open = other.getByRole("button", { name: REPAIR_OPEN });
     await expectHtmxProcessed(open);
     await open.click();
-    const modal = page.locator("#modal-slot dialog[open]");
+    const modal = other.locator("#modal-slot dialog[open]");
     await expect(modal).toBeVisible({ timeout: 10000 });
     const confirm = modal.locator("[data-modal-confirm]");
     await expectHtmxProcessed(confirm);
     let presses = 0;
+    let busy = true;
     await expect(async () => {
       if (presses === 2) return;
       presses += 1;
-      const answer = page.waitForResponse(
+      const answer = other.waitForResponse(
         (r) => new URL(r.url()).pathname === "/admin/covers/repair" && r.request().method() === "POST",
         { timeout: 60000 },
       );
       await confirm.click();
       const body = await (await answer).text();
-      expect(body, "the guard was free").not.toMatch(BUSY);
+      busy = BUSY.test(body);
+      expect(busy, "the guard was free").toBe(false);
     }).toPass({ intervals: [5000], timeout: 150000 });
-    await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0, { timeout: 10000 });
-    await expect(page.locator("#admin-covers-result")).toContainText(REPAIRED);
-    await expect(page.locator("#admin-covers-result")).not.toContainText(own);
+    expect(busy, `a backup or a restore still held the guard after ${presses} presses`).toBe(false);
+    await expect(other.locator("#modal-slot dialog[open]")).toHaveCount(0, { timeout: 10000 });
+    await expect(other.locator("#admin-covers-result")).toContainText(REPAIRED);
+    await expect(other.locator("#admin-covers-result")).not.toContainText(own);
+    await other.close();
 
-    // A new check no longer lists it; the kept cover is still in use.
+    // Rule #21 (review pass 2, L5): in the first tab, "Repair…" now has
+    // nothing left to repair — the refreshed check comes back instead of
+    // the modal, and the focus goes to "Check covers", never to <body>.
+    const stale = page.getByRole("button", { name: REPAIR_OPEN });
+    await expectHtmxProcessed(stale);
+    const refreshed = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === "/admin/covers/repair/confirm" && r.request().method() === "POST",
+    );
+    await stale.click();
+    expect((await refreshed).ok()).toBe(true);
+    await expect(page.locator("#admin-covers-result")).not.toContainText(own);
+    await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0);
+    await expect(page.locator("#admin-covers-check")).toBeFocused();
+
+    // A new check no longer lists it; the kept cover is still in use and
+    // really loads.
     result = await checkCovers(page);
     await expect(result).not.toContainText(REPAIRED);
     await expect(result).not.toContainText(own);
     await page.goto(`/title/${kept}`);
-    await expect(page.locator(`img[src*="/covers/${kept}.jpg"]`).first()).toBeVisible();
+    const keptImg = page.locator(`img[src*="/covers/${kept}.jpg"]`).first();
+    await expect(keptImg).toBeVisible();
+    await expect
+      .poll(() => keptImg.evaluate((el) => (el as HTMLImageElement).naturalWidth), {
+        message: "the kept cover file is served",
+      })
+      .toBeGreaterThan(0);
   });
 });
