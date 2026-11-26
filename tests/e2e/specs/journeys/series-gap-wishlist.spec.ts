@@ -73,6 +73,10 @@ test.describe("Series gap to the wish list (story 20-2)", () => {
     await expect(card).toHaveAttribute("data-position", "2");
     await expect(page.locator('[data-gap-wishlist="2"]')).toHaveCount(0);
 
+    // Back to the form: Save is usable again (review pass 2, `pageshow`).
+    await page.goBack();
+    await expect(page.locator("#expected-tome-save")).toBeEnabled();
+
     // The entry is on the wish list.
     await page.goto("/wishlist");
     await expect(page.locator(`a[href="${href}"]`).first()).toContainText(
@@ -128,5 +132,24 @@ test.describe("Series gap to the wish list (story 20-2)", () => {
 
     await page.goto(seriesPath);
     await expect(page.locator("[data-expected-tome]")).toHaveCount(0);
+  });
+
+  test("a failed send gives Save back", async ({ page }) => {
+    await loginAs(page, "librarian");
+    await createClosedSeries(page, `GW-Fail-${RUN}`, 3);
+    await openGapWishlist(page, 1);
+    // The post never reaches the server and the browser stays on the form
+    // (a 204 answer navigates nowhere): nothing is created.
+    await page.route("**/expected-tomes", (route) =>
+      route.request().method() === "POST"
+        ? route.fulfill({ status: 204, body: "" })
+        : route.continue(),
+    );
+    const save = page.locator("#expected-tome-save");
+    await save.click();
+    await expect(save).toBeDisabled();
+    // Review pass 2: re-enabled after the submit-once timeout (10 s).
+    await expect(save).toBeEnabled({ timeout: 15000 });
+    await expect(page).toHaveURL(/wishlist=1$/);
   });
 });

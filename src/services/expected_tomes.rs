@@ -761,9 +761,16 @@ impl ExpectedTomeService {
             }
         }
         if let Some(title_id) = chosen {
-            let result =
-                Self::settle_one(conn, title_id, tome_id, series, position, attach).await?;
-            tracing::info!(title_id, tome_id, result = ?result, "Expected tome settled on entry");
+            // Review pass 2 (20-2): log "settled" only when it was.
+            match Self::settle_one(conn, title_id, tome_id, series, position, attach).await? {
+                Some(SettleResult::Settled) => {
+                    tracing::info!(title_id, tome_id, "Expected tome settled on entry");
+                }
+                Some(other) => {
+                    tracing::info!(title_id, tome_id, result = ?other, "Expected tome not settled on entry");
+                }
+                None => {}
+            }
         }
         Ok(())
     }

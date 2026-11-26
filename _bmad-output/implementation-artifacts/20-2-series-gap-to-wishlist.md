@@ -167,6 +167,20 @@ Checked against the code: `templates/components/series_gap_grid.html`, `template
 
 Gates after the fixes: `cargo clippy --all-targets -- -D warnings` clean; integration `series_gap_wishlist::` `expected_tomes_web::` `expected_tomes::` `locale_parity::` `every_test_file_is_declared` `templates_audit` `series` `wishlist` — 158 passed; lib `series_expected_tomes` `expected_tomes` `routes::series` `templates_audit` — 63 passed; `tsc --noEmit` and the waitForTimeout grep pass. The two series E2E specs are not re-run yet (stack lent to story 19-8).
 
+## Review pass 2 (2026-11-26)
+
+No Medium or higher finding.
+
+| # | Severity | Finding | Outcome |
+|---|---|---|---|
+| L1 | Low | `initSubmitOnce` re-enabled Save only on a `pageshow` from the back/forward cache; Firefox restores disabled controls on back navigation without it. | Fixed: re-enabled on every `pageshow` (`resetSubmitOnce`). E2E: back from the series page, Save is enabled. |
+| L2 | Low | A stopped or failed navigation left Save disabled. | Fixed: flag cleared and buttons re-enabled after `SUBMIT_ONCE_RESET_MS` (10 s). E2E: "a failed send gives Save back" (the POST answered 204, the browser stays on the form, Save disabled then enabled again). |
+| L3 | Low | A submit another listener cancelled still marked the form. | Fixed: `if (e.defaultPrevented) return;`; the comment says full-page forms only. No dedicated test (no form here has a cancelling listener). |
+| L4 | Low | The wish list dedup runs before the position check. | Accepted: an existing entry for the same tome answers first; nothing is written either way. |
+| Nit | — | `settle_with_owned_title` logged "Expected tome settled on entry" when nothing was settled. | Fixed: "settled" only for `SettleResult::Settled`, "not settled" with the reason otherwise, nothing when no attempt applied. |
+
+Gates: `cargo clippy --all-targets -- -D warnings` clean; integration `series_gap_wishlist::` `expected_tomes_web::` `expected_tomes::` `locale_parity::` `every_test_file_is_declared` `templates_audit` `series` `wishlist` — 158 passed; `tsc --noEmit` and the waitForTimeout grep pass. The series E2E specs (with the two new cases) are not re-run yet (stack lent to story 19-8).
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -211,6 +225,7 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Change Log
 
+- 2026-11-26 — code review pass 2: clean (no Medium+); L1–L3 and the log nit fixed, L4 accepted; E2E re-run pending.
 - 2026-11-26 — code review pass 1: findings 1–5 fixed, M3 open (copy decision), L3/L5 accepted; E2E re-run pending.
 - 2026-11-26 — E2E green (505 passed, 2 skipped); status review.
 - 2026-11-26 — dev-story: gap → wish list form (tome + entry in one transaction), shared wish list dedup, field-level refusals in the expected-tome form, success entry on the series page. E2E pending.

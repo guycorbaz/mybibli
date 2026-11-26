@@ -536,12 +536,26 @@
         });
     }
 
-    // Story 20-2 (review pass 1) — a full-page POST form marked
-    // `data-submit-once` is sent once: its submit buttons are disabled on
-    // the first submit, so a double click cannot post twice. Re-enabled
-    // when the page comes back from the back/forward cache. CSP-clean.
+    // Story 20-2 (review passes 1–2) — full-page forms only: a POST form
+    // marked `data-submit-once` (not an HTMX form) is sent once. Its
+    // submit buttons are disabled on the first submit, so a double click
+    // cannot post twice. They come back after SUBMIT_ONCE_RESET_MS (a
+    // stopped or failed navigation) and on every `pageshow` (back/forward
+    // cache, or a browser restoring disabled controls on back
+    // navigation). A submit another listener cancelled is ignored.
+    // CSP-clean.
+    var SUBMIT_ONCE_RESET_MS = 10000;
+
+    function resetSubmitOnce(form) {
+        form.removeAttribute("data-submitting");
+        form.querySelectorAll("button[type='submit']").forEach(function (b) {
+            b.disabled = false;
+        });
+    }
+
     function initSubmitOnce() {
         document.addEventListener("submit", function (e) {
+            if (e.defaultPrevented) return;
             var form = e.target;
             if (!form || !form.matches || !form.matches("form[data-submit-once]")) return;
             if (form.getAttribute("data-submitting") === "true") {
@@ -555,15 +569,12 @@
                     b.disabled = true;
                 });
             }, 0);
+            setTimeout(function () {
+                resetSubmitOnce(form);
+            }, SUBMIT_ONCE_RESET_MS);
         });
-        window.addEventListener("pageshow", function (e) {
-            if (!e.persisted) return;
-            document.querySelectorAll("form[data-submit-once]").forEach(function (form) {
-                form.removeAttribute("data-submitting");
-                form.querySelectorAll("button[type='submit']").forEach(function (b) {
-                    b.disabled = false;
-                });
-            });
+        window.addEventListener("pageshow", function () {
+            document.querySelectorAll("form[data-submit-once]").forEach(resetSubmitOnce);
         });
     }
 
