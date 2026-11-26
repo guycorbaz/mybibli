@@ -999,7 +999,7 @@ admin:
       heading: Backup
       last: "Ultimo backup: %{when} (%{file})"
       last_none: "Ultimo backup: ancora nessuno"
-      next: "Prossimo controllo: circa %{when}. Un backup viene scritto solo se qualcosa è cambiato."
+      next: "Prossimo controllo: verso %{when}. Un backup viene scritto solo se qualcosa è cambiato."
       next_soon: "Prossimo controllo: entro un minuto."
       "off": "Il backup automatico è disattivato (Admin → Sistema)."
       last_check_unchanged: "Ultimo controllo: %{when}; non era cambiato nulla."

@@ -119,28 +119,63 @@ async fn observe(
     .unwrap_or((FolderState::Missing, None))
 }
 
-/// Log the folder state only when it changes (D2).
-fn note_folder(cfg: &BackupConfig, state: FolderState) {
+/// How the folder state moved between two wakes (D2: one log line per
+/// change, none while it stays the same).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FolderChange {
+    Same,
+    BecameUnusable,
+    BecameUsable,
+}
+
+/// Pure: the change from the previous state (`None` before the first
+/// wake) to `usable`. A first wake on a usable folder logs nothing (the
+/// startup line already named it); on an unusable one it warns once.
+pub fn folder_change(previous: Option<bool>, usable: bool) -> FolderChange {
+    match (previous, usable) {
+        (Some(true) | None, false) => FolderChange::BecameUnusable,
+        (Some(false), true) => FolderChange::BecameUsable,
+        _ => FolderChange::Same,
+    }
+}
+
+/// Store the folder state and log it only when it changes (D2).
+fn note_folder(cfg: &BackupConfig, state: FolderState) -> FolderChange {
     let usable = state == FolderState::Ready;
-    match (cfg.status.set_folder_usable(usable), usable) {
-        (Some(true) | None, false) => tracing::warn!(
+    let change = folder_change(cfg.status.set_folder_usable(usable), usable);
+    match change {
+        FolderChange::BecameUnusable => tracing::warn!(
             backup_dir = %cfg.dir.display(),
             state = ?state,
             "Backups folder not usable; no automatic backup is written until it is"
         ),
-        (Some(false), true) => tracing::info!(
+        FolderChange::BecameUsable => tracing::info!(
             backup_dir = %cfg.dir.display(),
             "Backups folder usable again; automatic backups resume"
         ),
-        _ => {}
+        FolderChange::Same => {}
     }
+    change
 }
 
+/// The instance id: read once successfully and kept (it never changes
+/// while the process runs); a failed read warns once per outage.
 async fn instance_id_of(state: &AppState) -> Option<String> {
+    let status = &state.backup.status;
+    if let Some(id) = status.snapshot().instance_id {
+        return Some(id);
+    }
     match crate::services::instance_id::read(&state.pool).await {
-        Ok(id) => id,
+        Ok(Some(id)) => {
+            status.set_instance_id(id.clone());
+            Some(id)
+        }
+        // Not created yet: the first backup creates it.
+        Ok(None) => None,
         Err(e) => {
-            tracing::warn!(error = %e, "Backup scheduler could not read the instance id");
+            if status.note_instance_id_unreadable() {
+                tracing::warn!(error = %e, "Backup scheduler could not read the instance id");
+            }
             None
         }
     }
@@ -151,13 +186,22 @@ async fn instance_id_of(state: &AppState) -> Option<String> {
 pub async fn run_check(state: &AppState, now: DateTime<Utc>) -> CheckRun {
     let cfg = &state.backup;
     let hours = state.backup_interval_hours();
-    let instance_id = instance_id_of(state).await;
-    let (folder, newest) = observe(cfg.dir.clone(), instance_id.clone(), now).await;
-    note_folder(cfg, folder);
+    // The id only serves to find the newest backup: not read while off.
+    let instance_id = if hours == 0 { None } else { instance_id_of(state).await };
+    let (observed, newest) = observe(cfg.dir.clone(), instance_id.clone(), now).await;
+    // A folder `access(W_OK)` calls writable but that refused the last
+    // write (CIFS / NFS uid mapping) stays "not writable" until a backup
+    // succeeds: no info / warn pair every minute.
+    let seen = if observed == FolderState::Ready && cfg.status.snapshot().write_refused {
+        FolderState::NotWritable
+    } else {
+        observed
+    };
+    note_folder(cfg, seen);
     if hours == 0 {
         return CheckRun::Off;
     }
-    if folder != FolderState::Ready {
+    if observed != FolderState::Ready {
         return CheckRun::FolderUnusable;
     }
     let last_check = cfg.status.snapshot().last_check.map(|c| c.at);
@@ -170,12 +214,19 @@ pub async fn run_check(state: &AppState, now: DateTime<Utc>) -> CheckRun {
 
     let run = match write_backup_if_changed(&state.pool, cfg).await {
         Err(BackupError::AlreadyRunning) => return CheckRun::Busy,
-        Err(BackupError::FolderMissing(_)) => {
-            note_folder(cfg, FolderState::Missing);
-            return CheckRun::FolderUnusable;
-        }
-        Err(BackupError::FolderNotWritable(_)) => {
-            note_folder(cfg, FolderState::NotWritable);
+        Err(e @ (BackupError::FolderMissing(_) | BackupError::FolderNotWritable(_))) => {
+            // The folder looked usable but the write was refused: record
+            // a failed check (the next one comes one interval later, not
+            // a full dump every minute) and keep the folder unusable.
+            cfg.status.set_write_refused(true);
+            note_folder(
+                cfg,
+                match e {
+                    BackupError::FolderMissing(_) => FolderState::Missing,
+                    _ => FolderState::NotWritable,
+                },
+            );
+            cfg.status.record_check(now, CheckResult::Failed);
             return CheckRun::FolderUnusable;
         }
         Err(BackupError::Io(_) | BackupError::Database(_)) => {
@@ -191,6 +242,7 @@ pub async fn run_check(state: &AppState, now: DateTime<Utc>) -> CheckRun {
             CheckRun::Unchanged
         }
     };
+    note_folder(cfg, FolderState::Ready);
     // The writer created the id if it was missing.
     let instance_id = match instance_id {
         Some(id) => Some(id),
@@ -237,6 +289,39 @@ mod tests {
         let future = Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap();
         assert_eq!(due_at(1, None, Some(future), at(12, 0)), Some(at(12, 0)));
         assert_eq!(due_at(1, Some(future), Some(at(10, 0)), at(12, 0)), Some(at(11, 0)));
+    }
+
+    #[test]
+    fn the_folder_state_is_logged_once_per_change() {
+        use FolderChange::*;
+        assert_eq!(folder_change(None, true), Same, "the startup line already named it");
+        assert_eq!(folder_change(None, false), BecameUnusable);
+        assert_eq!(folder_change(Some(false), false), Same, "no warn every minute");
+        assert_eq!(folder_change(Some(false), true), BecameUsable);
+        assert_eq!(folder_change(Some(true), true), Same);
+        assert_eq!(folder_change(Some(true), false), BecameUnusable);
+    }
+
+    /// AC3 — one `warn` when the folder becomes unusable, none while it
+    /// stays so, one `info` when it is usable again.
+    #[test]
+    #[tracing_test::traced_test]
+    fn a_folder_state_change_logs_one_line() {
+        let cfg = BackupConfig::new(PathBuf::from("/nowhere/backups"), PathBuf::from("/nowhere/covers"));
+        for _ in 0..3 {
+            note_folder(&cfg, FolderState::Missing);
+        }
+        note_folder(&cfg, FolderState::Ready);
+        note_folder(&cfg, FolderState::Ready);
+        logs_assert(|lines: &[&str]| {
+            let warns = lines.iter().filter(|l| l.contains("Backups folder not usable")).count();
+            let infos = lines.iter().filter(|l| l.contains("Backups folder usable again")).count();
+            if warns == 1 && infos == 1 {
+                Ok(())
+            } else {
+                Err(format!("{warns} warn(s), {infos} info(s)"))
+            }
+        });
     }
 
     #[test]

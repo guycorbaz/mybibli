@@ -94,32 +94,36 @@ pub fn build_backup_panel(input: &BackupHealthInput, tz: Tz, loc: &str) -> Backu
         },
         warning: false,
     });
+    // No check runs while the folder is unusable: the warning alone.
+    let folder_usable = input.folder == FolderState::Ready;
     let due = due_at(
         input.interval_hours,
         last_check.map(|c| c.at),
         input.newest.as_ref().map(|(_, at)| *at),
         input.now,
     );
-    lines.push(BackupHealthLine {
-        id: "health-backup-next",
-        text: match due {
-            None => rust_i18n::t!("admin.health.backup.off", locale = loc).to_string(),
-            Some(due) => {
-                // Before the scheduler's first wake, nothing runs earlier.
-                let next = match input.status.first_wake_at {
-                    Some(first) if first > due => first,
-                    _ => due,
-                };
-                if next <= input.now {
-                    rust_i18n::t!("admin.health.backup.next_soon", locale = loc).to_string()
-                } else {
-                    rust_i18n::t!("admin.health.backup.next", locale = loc, when = when(next, tz))
-                        .to_string()
+    if folder_usable {
+        lines.push(BackupHealthLine {
+            id: "health-backup-next",
+            text: match due {
+                None => rust_i18n::t!("admin.health.backup.off", locale = loc).to_string(),
+                Some(due) => {
+                    // Before the scheduler's first wake, nothing runs earlier.
+                    let next = match input.status.first_wake_at {
+                        Some(first) if first > due => first,
+                        _ => due,
+                    };
+                    if next <= input.now {
+                        rust_i18n::t!("admin.health.backup.next_soon", locale = loc).to_string()
+                    } else {
+                        rust_i18n::t!("admin.health.backup.next", locale = loc, when = when(next, tz))
+                            .to_string()
+                    }
                 }
-            }
-        },
-        warning: false,
-    });
+            },
+            warning: false,
+        });
+    }
     if let Some(check) = last_check.filter(|c| c.result == CheckResult::Unchanged) {
         lines.push(BackupHealthLine {
             id: "health-backup-last-check",
@@ -155,12 +159,20 @@ pub async fn current_backup_panel(state: &AppState, instance_id: &str, loc: &str
     })
     .await
     .unwrap_or((FolderState::Missing, None));
+    let status = state.backup.status.snapshot();
+    // A folder that refused the last write although `access(W_OK)` calls
+    // it writable (CIFS / NFS uid mapping) shows as not writable.
+    let folder = if folder == FolderState::Ready && status.write_refused {
+        FolderState::NotWritable
+    } else {
+        folder
+    };
     let input = BackupHealthInput {
         dir,
         folder,
         newest,
         interval_hours: state.backup_interval_hours(),
-        status: state.backup.status.snapshot(),
+        status,
         now,
     };
     build_backup_panel(&input, state.time_zone(), loc)
@@ -273,6 +285,16 @@ mod tests {
         i.interval_hours = 0;
         let p = build_backup_panel(&i, Zurich, "en");
         assert!(p.lines[0].text.starts_with("Warning: mybibli cannot write"));
+        // No check runs while the folder is unusable: no "Next check" line.
+        for folder in [FolderState::Missing, FolderState::NotWritable] {
+            for hours in [0, 6] {
+                let mut i = input();
+                i.folder = folder;
+                i.interval_hours = hours;
+                let p = build_backup_panel(&i, Zurich, "en");
+                assert!(p.lines.iter().all(|l| l.id != "health-backup-next"), "{folder:?} {hours}");
+            }
+        }
     }
 
     #[test]

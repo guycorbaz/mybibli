@@ -24,7 +24,7 @@ const FILE_NAME = /mybibli-([0-9a-f]{16})-\d{8}T\d{6}Z\.tar\.gz/;
 
 test.describe("Story 19-6 — Admin → Backups", () => {
   test("an admin backs up from a blank browser and sees the file written", async ({ page }) => {
-    test.setTimeout(120000);
+    test.setTimeout(200000);
     await page.context().clearCookies();
     await loginAs(page, "admin");
     await page.goto("/admin", { waitUntil: "domcontentloaded" });

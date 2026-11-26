@@ -42,6 +42,14 @@ pub struct StatusSnapshot {
     pub folder_usable: Option<bool>,
     /// When the scheduler's first wake comes (after its warm-up).
     pub first_wake_at: Option<DateTime<Utc>>,
+    /// The last write was refused for the folder although `access(W_OK)`
+    /// said it was writable (CIFS / NFS uid mapping): the folder counts as
+    /// not writable until a backup succeeds.
+    pub write_refused: bool,
+    /// The instance id, once read (it never changes while the process runs).
+    pub instance_id: Option<String>,
+    /// The last attempt to read the instance id failed (one `warn` per outage).
+    pub instance_id_unreadable: bool,
 }
 
 /// Shared, cheap to clone.
@@ -57,9 +65,33 @@ impl BackupStatus {
         self.lock().clone()
     }
 
-    /// The backup just written (its archive and sidecar are in place).
+    /// The backup just written (its archive and sidecar are in place). A
+    /// successful backup (manual or scheduled) also clears an earlier
+    /// failed check and a refused folder: the folder works.
     pub fn remember(&self, remembered: Remembered) {
-        self.lock().remembered = Some(remembered);
+        let mut s = self.lock();
+        s.remembered = Some(remembered);
+        s.write_refused = false;
+        if s.last_check.as_ref().is_some_and(|c| c.result == CheckResult::Failed) {
+            s.last_check = None;
+        }
+    }
+
+    pub fn set_write_refused(&self, refused: bool) {
+        self.lock().write_refused = refused;
+    }
+
+    /// Store the instance id once read.
+    pub fn set_instance_id(&self, id: String) {
+        let mut s = self.lock();
+        s.instance_id = Some(id);
+        s.instance_id_unreadable = false;
+    }
+
+    /// Note a failed read of the instance id; returns whether it is the
+    /// first of this outage (the one to log).
+    pub fn note_instance_id_unreadable(&self) -> bool {
+        !std::mem::replace(&mut self.lock().instance_id_unreadable, true)
     }
 
     pub fn remembered(&self) -> Option<Remembered> {
@@ -98,6 +130,42 @@ mod tests {
         assert_eq!(b.set_folder_usable(true), None);
         assert_eq!(a.set_folder_usable(false), Some(true));
         assert!(a.remembered().is_none());
+    }
+
+    fn remembered() -> Remembered {
+        Remembered {
+            fingerprint: super::super::fingerprint::Fingerprint {
+                sql_sha256: "aa".into(),
+                covers: vec![],
+            },
+            file_name: "f".into(),
+            bytes: 1,
+        }
+    }
+
+    #[test]
+    fn a_successful_backup_clears_a_failed_check_and_a_refused_folder() {
+        let s = BackupStatus::default();
+        let at = Utc.with_ymd_and_hms(2026, 11, 26, 8, 0, 0).unwrap();
+        s.record_check(at, CheckResult::Failed);
+        s.set_write_refused(true);
+        s.remember(remembered());
+        let snap = s.snapshot();
+        assert!(snap.last_check.is_none());
+        assert!(!snap.write_refused);
+        // A skipped check stays as it is.
+        s.record_check(at, CheckResult::Unchanged);
+        s.remember(remembered());
+        assert_eq!(s.snapshot().last_check.unwrap().result, CheckResult::Unchanged);
+    }
+
+    #[test]
+    fn an_unreadable_instance_id_is_reported_once_per_outage() {
+        let s = BackupStatus::default();
+        assert!(s.note_instance_id_unreadable());
+        assert!(!s.note_instance_id_unreadable());
+        s.set_instance_id("0123456789abcdef".into());
+        assert!(s.note_instance_id_unreadable(), "a new outage");
     }
 
     #[test]

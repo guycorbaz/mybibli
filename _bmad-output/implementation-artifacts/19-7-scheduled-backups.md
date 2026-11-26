@@ -173,6 +173,10 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
 - The Health block reads the folder at each render: do that listing in `spawn_blocking` too (#729 L3), not on the async worker.
 - Heavy commands under `flock -w 10800 /tmp/station-heavy.lock mem-guard …`; never run `cargo fmt`; do not touch kesh's containers, ports or databases.
 
+### Known limit of the skip rule (D3 trade-off, recorded after review pass 1)
+
+- Condition 2 checks the remembered archive by name and size only. An archive replaced by hand with another file of the **same name and the same size** is not detected: the next check skips while the database is unchanged. Detecting it would need a hash of the archive at each check (reading the whole file, waking the NAS disks every hour), which D3 rejected. The next real change writes a fresh backup; a restart forgets the fingerprint and writes.
+
 ### Couplings (Rule #24)
 
 - **19-6** (merged before this story): reuses `write_backup`, the name shape, the guard and the Backups tab. The writer's stages are split, not duplicated.
@@ -247,6 +251,8 @@ Claude Opus 5.5 (claude-opus-5-5), dev-story workflow, non-interactive.
 - D8: no id rule changed. The comment on #729 (T9) was posted by the orchestrating session on 2026-11-26 (issuecomment-7189316996), from this text: "19-7 does not change the instance-id rules. 19-8 keeps the local `instance_id` across a restore (rewrites the row after loading). The manual (19-11) says one backups folder per instance and never point a test database at the production folder."
 - T9: CLAUDE.md Backups bullet extended; `docs/auth-threat-model.md` § 5.13 extended. Locales ×4 (DE/IT translated; `locale_parity` green).
 - Gates: `cargo clippy --all-targets -- -D warnings` clean; `cargo test --lib` 1942 passed (1 ignored); `cargo test --test integration` 994 passed (22 in `backup_schedule::`, 4 in `backup_rotation::`); `cargo sqlx prepare --check` clean (no typed macro added); `tsc --noEmit` clean; `waitForTimeout` and V-code literal gates clean; full E2E suite green (502 passed, 2 skipped, no flaky).
+
+- **Code review pass 1 fixes (2026-11-26):** the E2E setting restore moved to an `afterAll` on a fresh context; `backUpNow` presses at most twice (one retry); a write refused for the folder although `access(W_OK)` allowed it is recorded as a failed check (next one an interval later) and keeps the folder "not writable" (`BackupStatus::write_refused`) until a backup succeeds — no info/warn pair or full dump every minute; the instance id is read once and kept, not read while the schedule is off, one `warn` per outage; `run`'s temporary sweep, name checks and cover listing run in `spawn_blocking` (closes #729 L3 for those calls; the dump's own writes to its scratch file stay on the worker, as in 19-6); a successful backup clears an earlier failed check; the Health block shows no "Next check" line while the folder is unusable; DE/IT wording; the read-only test is named `…_unless_run_as_root` and asserts more; the one-log-per-change rule is unit-tested through the pure `folder_change` and through the log lines themselves (`tracing_test`: three wakes on a missing folder, then two on a usable one → one `warn`, one `info`). The rotation rule is unchanged pending the lead's decision on the forward-clock-jump Medium.
 
 ### File List
 

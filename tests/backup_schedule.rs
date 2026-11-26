@@ -242,10 +242,14 @@ async fn off_runs_no_check_and_a_change_applies_at_the_next_wake(pool: DbPool) {
     let f = Folders::new();
     let state = state_with(&pool, f.config());
     set_interval(&state, 0);
+    instance_id(&pool).await;
     assert_eq!(run_check(&state, Utc::now()).await, CheckRun::Off);
     assert!(names_in(&f.backups()).is_empty());
+    assert!(state.backup.status.snapshot().instance_id.is_none(), "the id is not read while off");
     set_interval(&state, 6);
     assert!(matches!(run_check(&state, Utc::now()).await, CheckRun::Written(_)));
+    let id = mybibli::services::instance_id::read(&pool).await.unwrap();
+    assert_eq!(state.backup.status.snapshot().instance_id, id, "read once and kept");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -332,20 +336,49 @@ async fn a_missing_folder_writes_and_creates_nothing(pool: DbPool) {
     )));
 }
 
+/// Skipped (with a line on stderr) when the tests run as root: root writes
+/// in a `0500` folder, so there is no read-only folder to test.
 #[sqlx::test(migrations = "./migrations")]
-async fn a_read_only_folder_writes_nothing(pool: DbPool) {
+async fn a_read_only_folder_writes_nothing_unless_run_as_root(pool: DbPool) {
     let f = Folders::new();
     std::fs::set_permissions(f.backups(), std::fs::Permissions::from_mode(0o500)).unwrap();
     if std::fs::write(f.backups().join("probe"), b"").is_ok() {
         std::fs::remove_file(f.backups().join("probe")).unwrap();
-        eprintln!("skipped: this user writes in a 0500 folder");
+        std::fs::set_permissions(f.backups(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        eprintln!("skipped: this user writes in a 0500 folder (root)");
         return;
     }
     let state = state_with(&pool, f.config());
-    let run = run_check(&state, Utc::now()).await;
+    let first = run_check(&state, Utc::now()).await;
+    let second = run_check(&state, Utc::now() + Duration::minutes(1)).await;
     std::fs::set_permissions(f.backups(), std::fs::Permissions::from_mode(0o700)).unwrap();
-    assert_eq!(run, CheckRun::FolderUnusable);
-    assert!(names_in(&f.backups()).is_empty());
+    assert_eq!(first, CheckRun::FolderUnusable);
+    assert_eq!(second, CheckRun::FolderUnusable, "the task keeps going");
+    assert!(names_in(&f.backups()).is_empty(), "nothing written, not even a scratch file");
+    let status = state.backup.status.snapshot();
+    assert_eq!(status.folder_usable, Some(false));
+    assert!(status.last_check.is_none(), "no check ran");
+    // Writable again: the next wake writes.
+    assert!(matches!(run_check(&state, Utc::now()).await, CheckRun::Written(_)));
+    assert_eq!(state.backup.status.snapshot().folder_usable, Some(true));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_successful_backup_clears_a_failed_check(pool: DbPool) {
+    let f = Folders::new();
+    let state = state_with(&pool, f.config());
+    state.backup.status.record_check(Utc::now(), CheckResult::Failed);
+    state.backup.status.set_write_refused(true);
+    write_backup(&pool, &state.backup).await.unwrap();
+    let status = state.backup.status.snapshot();
+    assert!(status.last_check.is_none(), "the failure is no longer the news");
+    assert!(!status.write_refused);
+    let app = mybibli::routes::build_router_with_mcp(state, mybibli::mcp::McpConfig::default());
+    seed_admin(&pool, "sched_admin_cleared").await;
+    let admin = Browser::login(&app, "sched_admin_cleared").await;
+    let (_, health) = admin.get(&app, "/admin?tab=health").await;
+    assert!(!health.contains("id=\"health-backup-failed\""), "{health}");
+    assert!(health.contains("id=\"health-backup-next\""));
 }
 
 // ─── AC6 — the Health block ──────────────────────────────────────

@@ -394,25 +394,30 @@ async fn run(
     let instance_id = crate::services::instance_id::ensure(pool).await?;
     // Review of story 19-6 (L2): temporary files left by a backup cut short
     // (crash, OOM kill, container restart) are removed under the guard —
-    // only names of this instance's shape (Rule #20).
-    sweep_stale_temporaries(&cfg.dir, &instance_id);
-
-    // Two requests within the same second would get the same name: wait
-    // for the next second rather than overwrite (bounded).
-    let mut created_at = Utc::now();
-    let mut file_name = backup_file_name(&instance_id, created_at);
-    for _ in 0..3 {
-        if !cfg.dir.join(&file_name).exists() && !sidecar_path(&cfg.dir, &file_name).exists() {
-            break;
+    // only names of this instance's shape (Rule #20). Story 19-7 review
+    // (#729 L3): the sweep and the name checks run in a blocking task.
+    let (dir, id) = (cfg.dir.clone(), instance_id.clone());
+    let (created_at, file_name) = blocking("naming", move || {
+        sweep_stale_temporaries(&dir, &id);
+        // Two requests within the same second would get the same name:
+        // wait for the next second rather than overwrite (bounded).
+        let mut created_at = Utc::now();
+        let mut file_name = backup_file_name(&id, created_at);
+        for _ in 0..3 {
+            if !dir.join(&file_name).exists() && !sidecar_path(&dir, &file_name).exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+            created_at = Utc::now();
+            file_name = backup_file_name(&id, created_at);
         }
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-        created_at = Utc::now();
-        file_name = backup_file_name(&instance_id, created_at);
-    }
+        if dir.join(&file_name).exists() {
+            return Err(BackupError::Io(format!("{file_name} already exists")));
+        }
+        Ok((created_at, file_name))
+    })
+    .await?;
     let final_path = cfg.dir.join(&file_name);
-    if final_path.exists() {
-        return Err(BackupError::Io(format!("{file_name} already exists")));
-    }
     let tmp_archive = cfg.dir.join(format!("{TMP_PREFIX}{file_name}"));
     let tmp_sql = cfg.dir.join(format!("{TMP_PREFIX}{file_name}.database.sql"));
     let tmp_sidecar = cfg.dir.join(format!("{TMP_PREFIX}{file_name}.sha256"));
@@ -433,8 +438,11 @@ async fn run(
     sql_file.sync_all()?;
     drop(sql_file);
 
-    // 2. Covers are listed after the dump (D3).
-    let cover_list = covers::list_covers(&cfg.covers_dir)?;
+    // 2. Covers are listed after the dump (D3), in a blocking task (one
+    //    `stat` per cover; story 19-7 review, #729 L3).
+    let covers_dir = cfg.covers_dir.clone();
+    let cover_list =
+        blocking("cover listing", move || Ok(covers::list_covers(&covers_dir)?)).await?;
     let fingerprint = fingerprint::Fingerprint::new(sql_digest.sha256.clone(), &cover_list);
 
     // 3. The archive, in a blocking task (tar + gzip are synchronous).
@@ -481,6 +489,16 @@ async fn run(
         },
         fingerprint,
     ))
+}
+
+/// Run blocking file work off the async worker.
+async fn blocking<T: Send + 'static>(
+    what: &str,
+    work: impl FnOnce() -> Result<T, BackupError> + Send + 'static,
+) -> Result<T, BackupError> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| BackupError::Io(format!("{what} task ended abnormally: {e}")))?
 }
 
 /// Review of story 19-6 (L2) — whether `name` is a temporary file a backup

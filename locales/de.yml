@@ -1017,7 +1017,7 @@ admin:
       last_check_unchanged: "Letzte Prüfung: %{when}; es hatte sich nichts geändert."
       folder_missing: "Achtung: Der Sicherungsordner %{path} existiert nicht, daher wird keine Sicherung geschrieben. Binden Sie dort einen Ordner ein (siehe Handbuch, „Sicherungen“)."
       folder_not_writable: "Achtung: mybibli kann nicht in den Sicherungsordner %{path} schreiben, daher wird keine Sicherung geschrieben. Geben Sie dem Benutzer des Containers Schreibrechte dafür (siehe Handbuch)."
-      failed: "Achtung: Die automatische Sicherung von %{when} ist fehlgeschlagen, daher wurde nichts behalten. Die Protokolle nennen den Grund."
+      failed: "Achtung: Die automatische Sicherung vom %{when} ist fehlgeschlagen, daher wurde nichts aufbewahrt. Die Protokolle nennen den Grund."
     maintenance_heading: Wartung
     bulk_cover_fetch:
       missing_covers_label: "Titel mit fehlendem Cover"

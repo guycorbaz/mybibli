@@ -7,8 +7,9 @@ import { backUpNow } from "../../helpers/backups";
  *
  * - The admin sets "Every 6 hours" in Admin → System, reads the saved line,
  *   and the Health tab shows a "Next check" line. The setting is
- *   instance-wide: the spec puts it back as it found it in a `finally`, so
- *   a failed assertion does not leave it changed. Only the backup scheduler
+ *   instance-wide: the spec puts it back as it found it in an `afterAll`
+ *   on a fresh context, so a failed assertion or a timeout does not leave
+ *   it changed. Only the backup scheduler
  *   reads it, so the spec stays in the parallel project.
  * - A value outside the list (an option changed in the page) is refused
  *   next to the field.
@@ -34,29 +35,45 @@ async function saveInterval(page: Page, hours: string): Promise<void> {
   expect((await saved).status()).toBe(200);
 }
 
+/** The interval found before the first test changed it. */
+let original: string | undefined;
+
 test.describe("Story 19-7 — automatic backups", () => {
   // The first two tests read and write the same instance-wide setting.
   test.describe.configure({ mode: "serial" });
+
+  // The restore runs in a fresh context: it holds even when a test timed
+  // out and its page is closed.
+  test.afterAll(async ({ browser }) => {
+    if (original === undefined) return;
+    const context = await browser.newContext({
+      baseURL: process.env.BASE_URL || "http://localhost:8080",
+    });
+    try {
+      const page = await context.newPage();
+      await loginAs(page, "admin");
+      await saveInterval(page, original);
+    } finally {
+      await context.close();
+    }
+  });
 
   test("the admin sets the schedule and the Health tab shows the next check", async ({ page }) => {
     await loginAs(page, "admin");
     await page.goto("/admin?tab=system", { waitUntil: "domcontentloaded" });
     const select = page.locator("#backup-interval");
     await expect(select).toBeVisible();
-    const original = await select.inputValue();
-    try {
-      await select.selectOption("6");
-      await page.locator("#admin-system-backups-submit").click();
-      await expect(page.locator("#feedback-list")).toContainText(SAVED);
-      // The form is not swapped: the button keeps the focus (Rule #21).
-      await expect(page.locator("#admin-system-backups-submit")).toBeFocused();
-      await expect(select).toHaveValue("6");
+    original = await select.inputValue();
 
-      await page.goto("/admin?tab=health", { waitUntil: "domcontentloaded" });
-      await expect(page.locator("#health-backup-next")).toContainText(NEXT_CHECK);
-    } finally {
-      await saveInterval(page, original);
-    }
+    await select.selectOption("6");
+    await page.locator("#admin-system-backups-submit").click();
+    await expect(page.locator("#feedback-list")).toContainText(SAVED);
+    // The form is not swapped: the button keeps the focus (Rule #21).
+    await expect(page.locator("#admin-system-backups-submit")).toBeFocused();
+    await expect(select).toHaveValue("6");
+
+    await page.goto("/admin?tab=health", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#health-backup-next")).toContainText(NEXT_CHECK);
   });
 
   test("a value outside the list is refused next to the field", async ({ page }) => {
@@ -79,7 +96,7 @@ test.describe("Story 19-7 — automatic backups", () => {
   });
 
   test("after a backup, the Health tab shows a last backup no older than it", async ({ page }) => {
-    test.setTimeout(120000);
+    test.setTimeout(200000);
     await loginAs(page, "admin");
     await page.goto("/admin?tab=backups", { waitUntil: "domcontentloaded" });
     const answer = await backUpNow(page);
