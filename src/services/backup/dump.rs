@@ -340,7 +340,12 @@ impl InsertBatcher {
         // Close the open statement first when this row would take it past
         // the budget (pass-2 review): a statement never holds more than
         // one row beyond the budget.
-        let row_len: usize = 2 + literals.iter().map(|l| l.len() + 1).sum::<usize>();
+        // Exactly what a non-first row adds: `,\n`, the parentheses, the
+        // literals and the commas between them.
+        let row_len: usize = 2
+            + 2
+            + literals.iter().map(|l| l.len()).sum::<usize>()
+            + literals.len().saturating_sub(1);
         if self.rows_in > 0 && self.bytes_in + row_len > INSERT_BYTE_BUDGET {
             out.write_all(b";\n")?;
             self.rows_in = 0;

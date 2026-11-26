@@ -261,3 +261,19 @@ Low, deferred (same issue as L3–L9):
 - **L10:** two instances that share an `instance_id` (a copy loaded elsewhere, L8) and the same folder would sweep each other's temporary files.
 
 Verification: clippy is clean, `cargo test --lib backup` passes (23), and the integration tests `backup_` pass (9).
+
+### Review pass 3
+
+**Date:** 2026-11-26. This was an independent re-review of pass 2. **It found no Medium or High.** The other credentials in the schema were checked:
+- API keys and passwords are hashed (Argon2).
+- `cover_uploads.token` works only with its own key in clear.
+- There is no setup or reset token.
+- Many rows holding `''` load without error, since the index on `session_token` is not unique.
+
+Low, fixed:
+- The batcher's row estimate was 1 byte short (it counted one comma per literal and left out the `,\n` separator), so a statement could reach the budget + 1. It now counts exactly what a row adds.
+
+Low, kept as they are:
+- The provider keys (Google Books, OMDb, TMDb) are in the file in clear, as the manual already says ("The file is sensitive"). A restore needs them.
+- The round-trip comparison of `pending_metadata_updates` leaves out the timestamps.
+- The seeded pending token is not the token of a seeded session. Rowless plus blanked covers both anyway.
