@@ -1,10 +1,13 @@
 // Fix #200 — fold / unfold support for the /locations tree.
 //
-// The Rust render (`src/routes/locations.rs::render_node_at_depth`)
-// emits, for every parent node, a `<button class="tree-toggle">` with
-// `data-tree-target="tree-children-<id>"` pointing at the wrapper
-// `<div class="tree-children" id="tree-children-<id>">` that holds the
-// node's children. This script does three things:
+// Story 20-5 (#700): the tree is a nested list with disclosure buttons,
+// not an ARIA tree. The Rust render
+// (`src/routes/locations.rs::render_node_at_depth`) emits, for every
+// parent node, a native `<button class="tree-toggle">` carrying
+// `aria-expanded` and `aria-controls="tree-children-<id>"`, pointing at
+// the `<ul class="tree-children" id="tree-children-<id>">` that holds the
+// node's children. Enter and Space toggle the button natively: no key
+// handling here. This script does three things:
 //
 //   1. Click delegation: a single document-level listener flips the
 //      target's hidden state, mirrors that into `aria-expanded` on the
@@ -86,7 +89,7 @@
             const target = document.getElementById("tree-children-" + id);
             if (!target) continue;
             const toggle = document.querySelector(
-                `.tree-toggle[data-tree-target="tree-children-${CSS.escape(id)}"]`
+                `.tree-toggle[aria-controls="tree-children-${CSS.escape(id)}"]`
             );
             if (!toggle) continue;
             collapse(toggle, target);
@@ -97,7 +100,7 @@
         const toggle = event.target.closest(".tree-toggle");
         if (!toggle) return;
         event.preventDefault();
-        const targetId = toggle.getAttribute("data-tree-target");
+        const targetId = toggle.getAttribute("aria-controls");
         if (!targetId) return;
         const target = document.getElementById(targetId);
         if (!target) return;

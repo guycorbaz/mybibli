@@ -1,6 +1,8 @@
 //! Story 19-1 (#698) — deleting a location from the `/locations` tree goes
 //! through the UX-DR8 modal: the modal route, the delete answer, refusals
 //! in the request locale, a location deleted meanwhile, and the Admin gate.
+//! Story 20-5 (#700): a parent left without a live child is updated out of
+//! band in the same answer.
 //!
 //! The test instance's default request language is French; `?lang=en`
 //! switches one request to English.
@@ -79,7 +81,86 @@ async fn a_confirmed_delete_removes_the_row_and_closes_the_modal(pool: DbPool) {
     let html = body_string(res).await;
     assert!(html.contains(r#"data-feedback-variant="success""#), "{html}");
     assert!(html.contains(&format!(r#"<div id="tree-node-{id}" hx-swap-oob="delete"></div>"#)));
+    // Story 20-5 — a root has no parent to update.
+    assert!(!html.contains("tree-children-"), "{html}");
     assert!(is_deleted(&pool, id).await);
+}
+
+/// The parent OOBs of story 20-5 for parent `p`.
+fn parent_oob(p: u64) -> [String; 3] {
+    [
+        format!(r#"<ul id="tree-children-{p}" hx-swap-oob="delete"></ul>"#),
+        format!(r#"<span id="tree-toggle-{p}" class="w-6" aria-hidden="true" hx-swap-oob="outerHTML"></span>"#),
+        format!(r#"<span id="tree-icon-{p}" class="text-stone-500 dark:text-stone-400" aria-hidden="true" hx-swap-oob="outerHTML">📍</span>"#),
+    ]
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn deleting_the_only_child_turns_its_parent_into_a_leaf(pool: DbPool) {
+    let parent = add_location(&pool, "Bibliothèque", "L0010", None).await;
+    let child = add_location(&pool, "Rayon", "L0011", Some(parent)).await;
+    // A child already in the Trash does not count as a live child.
+    let trashed = add_location(&pool, "Ancien rayon", "L0012", Some(parent)).await;
+    sqlx::query("UPDATE storage_locations SET deleted_at = NOW() WHERE id = ?")
+        .bind(trashed)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (app, browser) = admin(&pool).await;
+
+    let res = browser.send(&app, "DELETE", &format!("/locations/{child}"), "", true).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let html = body_string(res).await;
+    let row = html
+        .find(&format!(r#"<div id="tree-node-{child}" hx-swap-oob="delete"></div>"#))
+        .expect("the row is removed");
+    for oob in parent_oob(parent) {
+        let at = html.find(&oob).unwrap_or_else(|| panic!("missing {oob} in {html}"));
+        assert!(row < at, "the row removal comes first");
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn deleting_one_of_two_children_leaves_the_parent_alone(pool: DbPool) {
+    let parent = add_location(&pool, "Bureau", "L0020", None).await;
+    let first = add_location(&pool, "Tiroir", "L0021", Some(parent)).await;
+    add_location(&pool, "Étagère", "L0022", Some(parent)).await;
+    let (app, browser) = admin(&pool).await;
+
+    let res = browser.send(&app, "DELETE", &format!("/locations/{first}"), "", true).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let html = body_string(res).await;
+    assert!(html.contains(&format!(r#"<div id="tree-node-{first}" hx-swap-oob="delete"></div>"#)));
+    assert!(!html.contains("tree-children-"), "{html}");
+    assert!(!html.contains("tree-toggle-"), "{html}");
+    assert!(!html.contains("tree-icon-"), "{html}");
+}
+
+/// Story 20-5 — the last child deleted in another tab: both "already
+/// deleted" answers update the parent like a deletion made here.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_last_child_deleted_meanwhile_also_updates_its_parent(pool: DbPool) {
+    let parent = add_location(&pool, "Garage", "L0030", None).await;
+    let child = add_location(&pool, "Carton", "L0031", Some(parent)).await;
+    let (app, browser) = admin(&pool).await;
+    sqlx::query("UPDATE storage_locations SET deleted_at = NOW() WHERE id = ?")
+        .bind(child)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    for (method, path) in [
+        ("GET", format!("/locations/{child}/delete-modal")),
+        ("DELETE", format!("/locations/{child}")),
+    ] {
+        let res = browser.send(&app, method, &path, "", true).await;
+        assert_eq!(res.status(), StatusCode::OK, "{method} {path}");
+        let html = body_string(res).await;
+        assert!(html.contains(&format!(r#"<div id="tree-node-{child}" hx-swap-oob="delete"></div>"#)));
+        for oob in parent_oob(parent) {
+            assert!(html.contains(&oob), "{method}: missing {oob} in {html}");
+        }
+    }
 }
 
 #[sqlx::test(migrations = "./migrations")]
