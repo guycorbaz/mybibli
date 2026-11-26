@@ -8,7 +8,7 @@
         <a href="/wishlist" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; {{ label_back }}</a>
     </nav>
 
-    {# CR #242 — feedback target for the "Mark as bought" delete modal.
+    {# CR #242 — feedback target for the "Bought" / "Remove" modals.
        The modal's `hx-target="#wishlist-feedback"` carries the inline
        error message when the soft-delete fails (e.g. optimistic-lock
        Conflict). Without this slot on the detail page, HTMX has
@@ -55,13 +55,23 @@
             {% when None %}{% endmatch %}
 
             {% if can_edit %}
-            <div class="mt-6">
+            <div class="mt-6 flex flex-wrap gap-3">
                 <button type="button"
-                        hx-get="/wishlist/{{ item.id }}/delete-modal"
+                        hx-get="/wishlist/{{ item.id }}/delete-modal?action=bought"
                         hx-target="#modal-slot"
                         hx-swap="innerHTML"
+                        aria-label="{{ bought_label }}"
                         class="px-4 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-md hover:bg-emerald-100 dark:hover:bg-emerald-900/50">
                     ✓ {{ label_action_bought }}
+                </button>
+                {# Story 20-1 (D1, D6) — remove without buying. #}
+                <button type="button"
+                        hx-get="/wishlist/{{ item.id }}/delete-modal?action=remove"
+                        hx-target="#modal-slot"
+                        hx-swap="innerHTML"
+                        aria-label="{{ remove_label }}"
+                        class="px-4 py-2 text-sm font-medium text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded-md hover:bg-red-50 dark:hover:bg-red-900/30">
+                    {{ label_action_remove }}
                 </button>
             </div>
             {% endif %}

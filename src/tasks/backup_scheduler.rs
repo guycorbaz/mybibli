@@ -217,6 +217,10 @@ pub async fn run_check(state: &AppState, now: DateTime<Utc>) -> CheckRun {
         return CheckRun::NotDue(due);
     }
 
+    // The rotation runs at the later of `now` and the stamp of the archive
+    // just written: a write ending in a later second must not read as a
+    // "future" backup and leave an older day standing in for today (#733).
+    let mut rotate_at = now;
     let run = match write_backup_if_changed(&state.pool, cfg).await {
         Err(BackupError::AlreadyRunning) => return CheckRun::Busy,
         Err(e @ (BackupError::FolderMissing(_) | BackupError::FolderNotWritable(_))) => {
@@ -239,6 +243,9 @@ pub async fn run_check(state: &AppState, now: DateTime<Utc>) -> CheckRun {
             return CheckRun::Failed;
         }
         Ok(CheckOutcome::Written(w)) => {
+            if let Some((_, stamp)) = listing::parse_backup_name(&w.file_name) {
+                rotate_at = rotate_at.max(stamp);
+            }
             cfg.status.record_check(now, CheckResult::Written(w.file_name.clone()));
             CheckRun::Written(w.file_name)
         }
@@ -254,7 +261,7 @@ pub async fn run_check(state: &AppState, now: DateTime<Utc>) -> CheckRun {
         None => instance_id_of(state).await,
     };
     if let Some(id) = instance_id {
-        rotation::rotate(cfg, &id, now, state.time_zone(), state.backup_retention_days()).await;
+        rotation::rotate(cfg, &id, rotate_at, state.time_zone(), state.backup_retention_days()).await;
     }
     run
 }

@@ -41,6 +41,21 @@
             </select>
         </div>
 
+        {# Story 20-4 (#716) — optional description (where to find it).
+           Plain text, escaped by Askama; no maxlength (the server is the
+           authority, 500 characters). The textarea content sits on the
+           same line as its tags: a leading newline would be eaten. #}
+        <div>
+            <label for="edit-description" class="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">{{ description_label }}</label>
+            <textarea id="edit-description" name="description" rows="4"
+                      {% if description_error.is_some() %}aria-invalid="true" aria-describedby="edit-description-help edit-description-error"{% else %}aria-describedby="edit-description-help"{% endif %}
+                      class="w-full px-3 py-2 border {% if description_error.is_some() %}border-red-500{% else %}border-stone-300 dark:border-stone-600{% endif %} rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">{{ description_value }}</textarea>
+            {% if let Some(message) = description_error %}
+            <p id="edit-description-error" class="mt-1 text-sm text-red-700 dark:text-red-300">{{ message }}</p>
+            {% endif %}
+            <p id="edit-description-help" class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ description_help }}</p>
+        </div>
+
         {# CR #280 — organizational checkbox. Checked means the row
            can only hold child locations, not volumes. Flipping a row
            that already has volumes attached is rejected server-side
@@ -64,8 +79,8 @@
             <button type="submit" id="edit-location-submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md min-h-[44px]">
                 {{ submit_label }}
             </button>
-            <a href="/locations" class="px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-md min-h-[44px] flex items-center">
-                ← Back
+            <a href="/locations" class="px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-md min-h-[44px] flex items-center gap-1">
+                <span aria-hidden="true">←</span> {{ back_label }}
             </a>
         </div>
     </form>

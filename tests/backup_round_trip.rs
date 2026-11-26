@@ -40,7 +40,8 @@ INSERT INTO labels (name, color) VALUES ('RT label', 'teal');
 SET @l = LAST_INSERT_ID();
 INSERT INTO title_labels (title_id, label_id) VALUES (@t, @l);
 INSERT INTO location_node_types (name) VALUES ('RT shelf');
-INSERT INTO storage_locations (name, node_type, label) VALUES ('RT room', 'RT shelf', 'L9871');
+INSERT INTO storage_locations (name, node_type, label, description)
+  VALUES ('RT room', 'RT shelf', 'L9871', 'Bibliothèque de gauche, "étagère" du haut\r\nderrière l''armoire — ✓ 📚');
 SET @loc = LAST_INSERT_ID();
 INSERT INTO volume_states (name, is_loanable) VALUES ('RT state', 1);
 SET @vs = LAST_INSERT_ID();
