@@ -58,4 +58,11 @@
         <h3 id="admin-system-proposals-heading" class="text-lg font-semibold mb-3">{{ section_proposals }}</h3>
         {{ proposals_form_html|safe }}
     </section>
+
+    {# Story 19-7 (#657, D1) — Backups section: the automatic backup
+       interval, read by the backup scheduler at each wake. #}
+    <section aria-labelledby="admin-system-backups-heading">
+        <h3 id="admin-system-backups-heading" class="text-lg font-semibold mb-3">{{ section_backups }}</h3>
+        {{ backups_form_html|safe }}
+    </section>
 </section>

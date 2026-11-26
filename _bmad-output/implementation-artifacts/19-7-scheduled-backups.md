@@ -1,6 +1,6 @@
 # Story 19.7: Scheduled backups and rotation (#657, part 2)
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -145,15 +145,15 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Setting `backup_interval_hours` (D1): `AppSettings` field + default + `load_from_db` validation, `ALLOWED_BACKUP_INTERVALS` constant, accessor, whitelist key in `fetch_setting_rows` (one more `?` in the `IN` list, and its #406 test in `tests/admin_system_integration.rs`), the `#[cfg(test)]` default. A seed migration `migrations/<timestamp>_settings_backup_interval.sql` inserts the row `backup_interval_hours` = the default (`save_setting` only updates an existing row).
-- [ ] T2 — `routes/admin_system_backups.rs` + `fragments/admin_system_backups_form.html` + the section in `admin_system_panel.html` (pre-rendered `backups_form_html` field, like `time_zone_form_html`) + the route in `routes/mod.rs` (AC1, AC7).
-- [ ] T3 — Writer stages (D3, D7): `Fingerprint` (dump SHA-256 + cover list), `BackupStatus` in `BackupConfig`, `write_backup_if_changed`, `write_backup` recording its fingerprint; `covers::list_covers` also returns size and modification time. Keep `mod.rs` focused; put the fingerprint in `backup/fingerprint.rs` if it grows.
-- [ ] T4 — `services/backup/rotation.rs`: `plan` (pure) + `apply` (deletes under `try_lock`, sidecars, logs) (D4, D5, AC5).
-- [ ] T5 — `tasks/backup_scheduler.rs` (D2): warm-up, 60 s wake, due-time function (pure, unit-tested), check, rotation, state transitions and logs; spawned from `main.rs` next to the auto-purge scheduler. Call the rotation after a successful manual backup in `routes/admin_backups.rs`.
-- [ ] T6 — Health block (D6): `routes/admin_health_backup.rs` + `fragments/admin_health_backup.html`, included by `admin_health_panel.html`, one field in `AdminHealthPanel` (`routes/admin.rs` stays under 2000 lines).
-- [ ] T7 — Locales ×4 (D1, D6 copy as approved); `touch src/lib.rs` before the build.
-- [ ] T8 — Tests (AC2–AC8): unit tests in each new module; `tests/backup_schedule.rs`, `tests/backup_rotation.rs` (+ `tests/common/backup.rs` helpers from 19-6); E2E spec `admin-backup-schedule.spec.ts`.
-- [ ] T9 — `CLAUDE.md` Key Patterns: extend the Backups bullet (schedule, skip rule, rotation, in-memory status, foreign backups never deleted). `docs/auth-threat-model.md` § 5.13: add that mybibli now deletes files in the folder on its own, only own-id backup names and their sidecars, never a foreign backup, never the newest. Comment on #729 (D8). The manual is story 19-11 (schedule, rotation, "one folder per instance").
+- [x] T1 — Setting `backup_interval_hours` (D1): `AppSettings` field + default + `load_from_db` validation, `ALLOWED_BACKUP_INTERVALS` constant, accessor, whitelist key in `fetch_setting_rows` (one more `?` in the `IN` list, and its #406 test in `tests/admin_system_integration.rs`), the `#[cfg(test)]` default. A seed migration `migrations/<timestamp>_settings_backup_interval.sql` inserts the row `backup_interval_hours` = the default (`save_setting` only updates an existing row).
+- [x] T2 — `routes/admin_system_backups.rs` + `fragments/admin_system_backups_form.html` + the section in `admin_system_panel.html` (pre-rendered `backups_form_html` field, like `time_zone_form_html`) + the route in `routes/mod.rs` (AC1, AC7).
+- [x] T3 — Writer stages (D3, D7): `Fingerprint` (dump SHA-256 + cover list), `BackupStatus` in `BackupConfig`, `write_backup_if_changed`, `write_backup` recording its fingerprint; `covers::list_covers` also returns size and modification time. Keep `mod.rs` focused; put the fingerprint in `backup/fingerprint.rs` if it grows.
+- [x] T4 — `services/backup/rotation.rs`: `plan` (pure) + `apply` (deletes under `try_lock`, sidecars, logs) (D4, D5, AC5).
+- [x] T5 — `tasks/backup_scheduler.rs` (D2): warm-up, 60 s wake, due-time function (pure, unit-tested), check, rotation, state transitions and logs; spawned from `main.rs` next to the auto-purge scheduler. Call the rotation after a successful manual backup in `routes/admin_backups.rs`.
+- [x] T6 — Health block (D6): `routes/admin_health_backup.rs` + `fragments/admin_health_backup.html`, included by `admin_health_panel.html`, one field in `AdminHealthPanel` (`routes/admin.rs` stays under 2000 lines).
+- [x] T7 — Locales ×4 (D1, D6 copy as approved); `touch src/lib.rs` before the build.
+- [x] T8 — Tests (AC2–AC8): unit tests in each new module; `tests/backup_schedule.rs`, `tests/backup_rotation.rs` (+ `tests/common/backup.rs` helpers from 19-6); E2E spec `admin-backup-schedule.spec.ts`.
+- [x] T9 — `CLAUDE.md` Key Patterns: extend the Backups bullet (schedule, skip rule, rotation, in-memory status, foreign backups never deleted). `docs/auth-threat-model.md` § 5.13: add that mybibli now deletes files in the folder on its own, only own-id backup names and their sidecars, never a foreign backup, never the newest. Comment on #729 (D8). The manual is story 19-11 (schedule, rotation, "one folder per instance").
 
 ## Dev Notes
 
@@ -227,8 +227,65 @@ Changed:
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5), dev-story workflow, non-interactive.
+
 ### Debug Log References
+
+- **E2E suite vs the 10-minute warm-up (D9):** full suite `CI=true --workers=2` on a freshly reset stack: 502 passed, 2 skipped, 0 flaky, **3.5 min** (211 s wall clock for `npx playwright test`; the reset itself took 4.5 min, before the app's clock starts the warm-up only at boot). The suite stays well under the 10-minute warm-up locally; CI's 18-minute job includes the build and stack start, so the first scheduled check can still land in a CI run. Hence the adopted retry: `helpers/backups.ts::backUpNow` (used by `admin-backups.spec.ts` and `admin-backup-schedule.spec.ts`) retries the press after 5 s when the answer is "already running".
+- First full run: one failure, `proposals-review.spec.ts` "a cover proposal shows its staged image…": `propose_cover` answered "Title N was edited while your proposal was being filed" right after the scan (the background metadata fetch bumping the title's version), then both retries timed out on the spec's fixed data. Unrelated to this story (no backup code on that path; the dump's consistent-snapshot read takes no locks); after a stack reset the whole suite passed with no flaky test. Worth an issue if it recurs (race between scan → background metadata fetch and an immediate `propose_cover`).
+- One integration test of mine first failed because it updated a non-existent settings key (`overdue_threshold_days` instead of `overdue_loan_threshold_days`): no row changed, so the skip rule rightly said "unchanged". Fixed the test.
+- Askama escapes `'` as `&#39;`: route tests compare unescaped text.
 
 ### Completion Notes List
 
+- D1 as approved: `backup_interval_hours` (K/V, seeded `1` by `migrations/20261126090000_settings_backup_interval.sql`), `ALLOWED_BACKUP_INTERVALS`, `parse_backup_interval_hours` (positive shape: digits, no leading zero, in the list), `AppState::backup_interval_hours()`, whitelisted in `fetch_setting_rows`. Admin → System → "Backups" section, `POST /admin/system/backups` (`routes/admin_system_backups.rs`). Rule #21: the form is never swapped; its target is the field slot `#backup-interval-error` (refusal via `field_refusal`, 400), a save empties it, refreshes the hidden version out of band (`#backup-interval-version-slot`) and puts the saved line in `#feedback-list`. Save button label (not in D1): "Save automatic backup" / « Enregistrer la sauvegarde automatique ».
+- D3 as adopted after validation: `write_backup_if_changed` hashes the dump into `std::io::sink()` and lists covers + folder in `spawn_blocking`; on "unchanged" nothing at all is written. With no remembered fingerprint (restart) it skips the probe dump and writes directly. Condition 2 compares name **and** size (validator's suggestion), against the newest own backup **stamped at or before now** (same rule as D2 / D4, so a stray future-stamped file does not force a write every hour). `covers::CoverList.files` is now `Vec<CoverFile { name, path, size, modified_ns }>`.
+- D7: `BackupStatus` (`backup/status.rs`) in `BackupConfig`; the fingerprint is recorded after the sidecar rename by both `write_backup` and `write_backup_if_changed` (shared `guarded` stage, 19-6's guard / `0600` / temp-file cleanup untouched).
+- D2: `tasks/backup_scheduler.rs` (`due_at` pure, `run_check(&state, now)`), spawned in `main.rs`. Choice: a **last check** later than now is ignored for the base too (like a future stamp), so a clock set back never delays the schedule. Folder state is observed at every wake (schedule on or off) for the one-`warn` / one-`info` transitions. No rotation after a failed write (safest). The Health "next check" accounts for the scheduler's first wake (`first_wake_at`) so it does not say "in a minute" during the warm-up.
+- D4/D5: `backup/rotation.rs` (`plan` pure, `rotate` under `try_lock` in `spawn_blocking`), after every scheduled check that wrote or skipped and after each successful manual backup (`routes/admin_backups.rs`). Tier 3 considers only stamps at or before now (future ones are kept by tier 2). Orphan sidecar = own sidecar with **no entry** of the archive's name (a link or directory of that name keeps its sidecar: fewer deletions). Foreign backups are never candidates. Folder listing helpers in `backup/listing.rs` (`parse_backup_name` rejects unreal stamps).
+- D6: `routes/admin_health_backup.rs` + `fragments/admin_health_backup.html`, after the watching panel; folder read in `spawn_blocking`; "last backup" is the newest own backup stamped at or before now. `routes/admin.rs` 1890 lines, `routes/admin_system.rs` 1796 (Rule #12).
+- D8: no id rule changed. **Not done: the comment on #729** (T9) — I did not post to GitHub from this non-interactive run (an external, public write); text to post: "19-7 does not change the instance-id rules. 19-8 keeps the local `instance_id` across a restore (rewrites the row after loading). The manual (19-11) says one backups folder per instance and never point a test database at the production folder."
+- T9: CLAUDE.md Backups bullet extended; `docs/auth-threat-model.md` § 5.13 extended. Locales ×4 (DE/IT translated; `locale_parity` green).
+- Gates: `cargo clippy --all-targets -- -D warnings` clean; `cargo test --lib` 1942 passed (1 ignored); `cargo test --test integration` 994 passed (22 in `backup_schedule::`, 4 in `backup_rotation::`); `cargo sqlx prepare --check` clean (no typed macro added); `tsc --noEmit` clean; `waitForTimeout` and V-code literal gates clean; full E2E suite green (502 passed, 2 skipped, no flaky).
+
 ### File List
+
+- migrations/20261126090000_settings_backup_interval.sql (new)
+- src/config.rs
+- src/lib.rs
+- src/main.rs
+- src/services/admin_system.rs
+- src/services/backup/mod.rs
+- src/services/backup/covers.rs
+- src/services/backup/archive.rs
+- src/services/backup/fingerprint.rs (new)
+- src/services/backup/listing.rs (new)
+- src/services/backup/rotation.rs (new)
+- src/services/backup/status.rs (new)
+- src/tasks/mod.rs
+- src/tasks/backup_scheduler.rs (new)
+- src/routes/mod.rs
+- src/routes/admin.rs
+- src/routes/admin_system.rs
+- src/routes/admin_system_backups.rs (new)
+- src/routes/admin_health_backup.rs (new)
+- src/routes/admin_backups.rs
+- templates/fragments/admin_system_panel.html
+- templates/fragments/admin_system_backups_form.html (new)
+- templates/fragments/admin_health_panel.html
+- templates/fragments/admin_health_backup.html (new)
+- locales/en.yml, locales/fr.yml, locales/de.yml, locales/it.yml
+- tests/integration.rs
+- tests/backup_schedule.rs (new)
+- tests/backup_rotation.rs (new)
+- tests/e2e/helpers/backups.ts (new)
+- tests/e2e/specs/journeys/admin-backups.spec.ts
+- tests/e2e/specs/journeys/admin-backup-schedule.spec.ts (new)
+- CLAUDE.md
+- docs/auth-threat-model.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- _bmad-output/implementation-artifacts/19-7-scheduled-backups.md
+
+### Change Log
+
+- 2026-11-26 — dev-story: schedule, skip rule, rotation, Health block, Admin → System setting (story 19-7).

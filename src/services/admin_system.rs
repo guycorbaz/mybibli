@@ -35,6 +35,8 @@ pub const KEY_SHOW_VALUE_INDICATORS: &str = "show_value_indicators";
 // Story 15-1 (#602) — the instance time zone (IANA name). Seeded by
 // migration 20261104120000; `routes/admin_system_time_zone.rs` writes it.
 pub const KEY_TIME_ZONE: &str = "time_zone";
+/// Story 19-7 (#657, D1) — the automatic backup interval (hours, 0 = off).
+pub const KEY_BACKUP_INTERVAL_HOURS: &str = "backup_interval_hours";
 
 // v1.7.1 fix #308 — runtime log-level. CR #301 (v1.7.0) advertised
 // "flip log level from /admin > System without a redeploy", but the

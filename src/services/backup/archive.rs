@@ -188,7 +188,8 @@ pub fn write_archive(
         bytes: 0,
         skipped: covers.skipped,
     };
-    for (name, path) in &covers.files {
+    for cover in &covers.files {
+        let (name, path) = (&cover.name, &cover.path);
         let bytes = match std::fs::read(path) {
             Ok(b) => b,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

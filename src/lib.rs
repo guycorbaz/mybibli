@@ -331,6 +331,16 @@ impl AppState {
             .unwrap_or(crate::utils::local_time::DEFAULT_TIME_ZONE)
     }
 
+    /// Story 19-7 (#657, D1): hours between two automatic backup checks
+    /// (`0` = off). Read by the backup scheduler at each wake, so an
+    /// Admin → System change applies within a minute.
+    pub fn backup_interval_hours(&self) -> u32 {
+        self.settings
+            .read()
+            .map(|s| s.backup_interval_hours)
+            .unwrap_or_else(|poisoned| poisoned.into_inner().backup_interval_hours)
+    }
+
     /// Story 15-1 (#602): "now" in the instance zone, for day counts.
     pub fn local_clock(&self) -> crate::utils::local_time::LocalClock {
         crate::utils::local_time::LocalClock::now(self.time_zone())

@@ -318,6 +318,26 @@ pub const AUTO_PURGE_INTERVAL_MIN_SECS: u64 = 60;
 /// run past any plausible operator-attention window.
 pub const AUTO_PURGE_INTERVAL_MAX_SECS: u64 = 7 * 86_400;
 
+/// Story 19-7 (#657, D1) — the intervals (hours) Admin → System offers for
+/// the automatic backup check; `0` is off. Positive shape: any other stored
+/// value loads as [`DEFAULT_BACKUP_INTERVAL_HOURS`], any other posted value
+/// is refused.
+pub const ALLOWED_BACKUP_INTERVALS: &[u32] = &[0, 1, 2, 3, 4, 6, 8, 12, 24];
+/// Story 19-7 (D1) — every hour.
+pub const DEFAULT_BACKUP_INTERVAL_HOURS: u32 = 1;
+
+/// Story 19-7 (D1) — a backup interval as stored or posted: decimal digits
+/// naming one of [`ALLOWED_BACKUP_INTERVALS`], nothing else (no blanks, no
+/// sign, no leading zero).
+pub fn parse_backup_interval_hours(raw: &str) -> Option<u32> {
+    let digits_only = !raw.is_empty() && raw.bytes().all(|b| b.is_ascii_digit());
+    if !digits_only || (raw.len() > 1 && raw.starts_with('0')) {
+        return None;
+    }
+    let hours: u32 = raw.parse().ok()?;
+    ALLOWED_BACKUP_INTERVALS.contains(&hours).then_some(hours)
+}
+
 /// Runtime application settings loaded from the `settings` table.
 /// Stored in `AppState` as `Arc<RwLock<AppSettings>>` for thread-safe reads.
 #[derive(Debug, Clone)]
@@ -424,6 +444,11 @@ pub struct AppSettings {
     /// `Europe/Zurich` by migration 20261104120000; an invalid row warn-
     /// logs and reads as that default.
     pub time_zone: chrono_tz::Tz,
+    // === Story 19-7 (#657, D1) — automatic backups ===
+    /// Hours between two automatic backup checks (`0` = off), one of
+    /// [`ALLOWED_BACKUP_INTERVALS`]. Seeded to `1` by migration
+    /// 20261126090000; read by `tasks::backup_scheduler` at each wake.
+    pub backup_interval_hours: u32,
 }
 
 impl Default for AppSettings {
@@ -461,6 +486,7 @@ impl Default for AppSettings {
             // CR #396: no overrides — every provider uses the scalar above.
             metadata_chain_provider_timeout_overrides: std::collections::HashMap::new(),
             time_zone: crate::utils::local_time::DEFAULT_TIME_ZONE,
+            backup_interval_hours: DEFAULT_BACKUP_INTERVAL_HOURS,
         }
     }
 }
@@ -710,6 +736,15 @@ impl AppSettings {
                         key = %key,
                         value = %value,
                         "time_zone is not an IANA zone name, using default Europe/Zurich"
+                    ),
+                },
+                // Story 19-7 (#657, D1): automatic backup interval.
+                "backup_interval_hours" => match parse_backup_interval_hours(value) {
+                    Some(hours) => settings.backup_interval_hours = hours,
+                    None => tracing::warn!(
+                        key = %key,
+                        value = %value,
+                        "backup_interval_hours is not one of the offered intervals, using default 1"
                     ),
                 },
                 "log_level" => {
@@ -1029,6 +1064,36 @@ mod tests {
         }
     }
 
+    /// Story 19-7 (#657, D1) — the migration seeds `1`; a listed value
+    /// takes effect; anything else warns and reads as the default.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn load_from_db_backup_interval_seeded_listed_and_unlisted(pool: DbPool) {
+        let settings = AppSettings::load_from_db(&pool).await.expect("load ok");
+        assert_eq!(settings.backup_interval_hours, 1);
+        for (value, expected) in [("0", 0), ("24", 24), ("5", 1), ("06", 1), (" 6", 1), ("", 1), ("x", 1)] {
+            sqlx::query(
+                "UPDATE settings SET setting_value = ? WHERE setting_key = 'backup_interval_hours'",
+            )
+            .bind(value)
+            .execute(&pool)
+            .await
+            .expect("update setting");
+            let settings = AppSettings::load_from_db(&pool).await.expect("load ok");
+            assert_eq!(settings.backup_interval_hours, expected, "row {value:?}");
+        }
+    }
+
+    #[test]
+    fn only_the_offered_backup_intervals_parse() {
+        for hours in ALLOWED_BACKUP_INTERVALS {
+            assert_eq!(parse_backup_interval_hours(&hours.to_string()), Some(*hours));
+        }
+        for raw in ["5", "7", "48", "-1", "+1", "01", "1.0", " 1", "1 ", "", "abc", "99999999999"] {
+            assert_eq!(parse_backup_interval_hours(raw), None, "{raw:?}");
+        }
+        assert_eq!(AppSettings::default().backup_interval_hours, 1);
+    }
+
     #[test]
     fn test_config_with_all_vars() {
         let vars = HashMap::from([
@@ -1117,6 +1182,7 @@ mod tests {
                 12_u64,
             )]),
             time_zone: chrono_tz::America::New_York,
+            backup_interval_hours: 6,
         };
         let cloned = settings.clone();
         assert_eq!(cloned.overdue_threshold_days, 60);
@@ -1132,6 +1198,7 @@ mod tests {
         assert_eq!(cloned.metadata_chain_per_provider_timeout_secs, 7);
         assert_eq!(cloned.provider_health_probe_timeout_secs, 15);
         assert_eq!(cloned.time_zone, chrono_tz::America::New_York);
+        assert_eq!(cloned.backup_interval_hours, 6);
         assert_eq!(
             cloned
                 .metadata_chain_provider_timeout_overrides
