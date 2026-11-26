@@ -530,6 +530,9 @@ error:
     purchase_negligible_invalid: "Enter an amount from 0 to 99999999.99, with at most two decimals."
     purchase_gap_invalid: "Enter a whole number between %{min} and %{max}."
     time_zone_invalid: "Unknown time zone — use an IANA name such as Europe/Zurich."
+    # Story 19-7 (#657, D1) — a backup interval outside the list (tampered form).
+    backup_interval_invalid: "Choose one of the listed intervals."
+    backup_retention_invalid: "Enter a whole number from 1 to 365."
     version_mismatch: "Settings were modified by another admin — reload and retry"
     provider_version_mismatch: "%{provider} was modified by another admin — reload and retry"
   code:
@@ -1026,6 +1029,18 @@ admin:
       addresses_other: "and %{count} more not listed"
       above_marker: above the usual level
       footnote: "Counted in memory since the last start; a restart resets them. The details are in the logs."
+    # Story 19-7 (#657, UX-DR45, D6) — backup status.
+    backup:
+      heading: Backups
+      last: "Last backup: %{when} (%{file})"
+      last_none: "Last backup: none yet"
+      next: "Next check: around %{when}. A backup is written only if something changed."
+      next_soon: "Next check: in a minute or less."
+      "off": "Automatic backup is off (Admin → System)."
+      last_check_unchanged: "Last check: %{when}; nothing had changed."
+      folder_missing: "Warning: the backups folder %{path} does not exist, so no backup is written. Mount a folder there (see the manual, “Backups”)."
+      folder_not_writable: "Warning: mybibli cannot write in the backups folder %{path}, so no backup is written. Give the container's user write access to it (see the manual)."
+      failed: "Warning: the automatic backup at %{when} failed, so nothing was kept. The logs say why."
     maintenance_heading: Maintenance
     bulk_cover_fetch:
       missing_covers_label: "Titles with missing covers"
@@ -1173,6 +1188,17 @@ admin:
     time_zone_label: "Time zone"
     time_zone_help: "IANA zone name (e.g. Europe/Zurich, Europe/Paris, America/New_York) in which pages show dates and cut days (added since, overdue loans). Stored dates, the API and AI agents stay in UTC. Applied to the next page, no restart required. Default: Europe/Zurich."
     btn_save_time_zone: "Save time zone"
+    # Story 19-7 (#657, D1) — Backups section (automatic backup).
+    section_backups: "Backups"
+    backup_interval_label: "Automatic backup"
+    backup_interval_off: "Off"
+    backup_interval_hourly: "Every hour"
+    backup_interval_hours: "Every %{n} hours"
+    backup_interval_daily: "Once a day"
+    backup_interval_help: "mybibli checks at this interval and writes a backup into the backups folder only if something changed since the last one."
+    backup_retention_label: "Daily backups to keep"
+    backup_retention_help: "mybibli keeps every backup of the last 24 hours, then the last one of each of the %{n} most recent days on which a backup was written."
+    btn_save_backups: "Save automatic backup"
     # v1.7.9 fix #334 — Metadata-chain + provider-health timeouts.
     metadata_chain_timeout_label: "Per-provider metadata timeout (seconds)"
     metadata_chain_timeout_help: "Maximum time the chain waits for one provider before falling through to the next. Default 5. Raise if your DNS or TLS handshake is slow (rural fiber, VPN, satellite). Bounded 1–60. Applied on the next scan — no restart."
@@ -1330,6 +1356,7 @@ success:
     proposals_saved: "Proposal settings saved — applied to the next proposal, no restart required"
     purchase_thresholds_saved: "Purchase price thresholds saved."
     time_zone_saved: "Time zone saved — applied to the next page, no restart required"
+    backups_saved: "Automatic backup saved: %{interval}."
     no_changes: "No changes"
     provider_set: "%{provider} key saved"
     provider_cleared: "%{provider} key cleared"

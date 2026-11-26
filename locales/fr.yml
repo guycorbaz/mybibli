@@ -526,6 +526,9 @@ error:
     purchase_negligible_invalid: "Saisissez un montant de 0 à 99999999.99, avec deux décimales au plus."
     purchase_gap_invalid: "Saisissez un nombre entier entre %{min} et %{max}."
     time_zone_invalid: "Fuseau horaire inconnu — indiquez un nom IANA comme Europe/Zurich."
+    # Story 19-7 (#657, D1) — un intervalle hors de la liste (formulaire modifié).
+    backup_interval_invalid: "Choisissez l'un des intervalles proposés."
+    backup_retention_invalid: "Indiquez un nombre entier entre 1 et 365."
     version_mismatch: "Les paramètres ont été modifiés par un autre administrateur — rechargez et réessayez"
     provider_version_mismatch: "%{provider} a été modifié par un autre administrateur — rechargez et réessayez"
   code:
@@ -1023,6 +1026,18 @@ admin:
       addresses_other: "et %{count} autres non listées"
       above_marker: au-dessus du niveau habituel
       footnote: "Comptés en mémoire depuis le dernier démarrage ; un redémarrage les remet à zéro. Le détail est dans les journaux."
+    # Story 19-7 (#657, UX-DR45, D6) — état des sauvegardes.
+    backup:
+      heading: Sauvegardes
+      last: "Dernière sauvegarde : %{when} (%{file})"
+      last_none: "Dernière sauvegarde : aucune pour l'instant"
+      next: "Prochaine vérification : vers %{when}. Une sauvegarde n'est écrite que si quelque chose a changé."
+      next_soon: "Prochaine vérification : d'ici une minute."
+      "off": "La sauvegarde automatique est désactivée (Admin → Système)."
+      last_check_unchanged: "Dernière vérification : %{when} ; rien n'avait changé."
+      folder_missing: "Attention : le dossier de sauvegarde %{path} n'existe pas ; aucune sauvegarde n'est écrite. Montez un dossier à cet endroit (voir le manuel, « Sauvegardes »)."
+      folder_not_writable: "Attention : mybibli ne peut pas écrire dans le dossier de sauvegarde %{path} ; aucune sauvegarde n'est écrite. Donnez au compte du conteneur le droit d'y écrire (voir le manuel)."
+      failed: "Attention : la sauvegarde automatique du %{when} a échoué ; rien n'a été conservé. Les journaux en donnent la raison."
     maintenance_heading: Maintenance
     bulk_cover_fetch:
       missing_covers_label: "Titres sans couverture"
@@ -1169,6 +1184,17 @@ admin:
     time_zone_label: "Fuseau horaire"
     time_zone_help: "Nom de zone IANA (p. ex. Europe/Zurich, Europe/Paris, America/New_York) dans lequel les pages affichent les dates et découpent les jours (ajouté depuis, prêts en retard). Les dates enregistrées, l'API et les agents IA restent en UTC. Appliqué à la page suivante, sans redémarrage. Par défaut : Europe/Zurich."
     btn_save_time_zone: "Enregistrer le fuseau horaire"
+    # Story 19-7 (#657, D1) — section Sauvegardes (sauvegarde automatique).
+    section_backups: "Sauvegardes"
+    backup_interval_label: "Sauvegarde automatique"
+    backup_interval_off: "Désactivée"
+    backup_interval_hourly: "Toutes les heures"
+    backup_interval_hours: "Toutes les %{n} heures"
+    backup_interval_daily: "Une fois par jour"
+    backup_interval_help: "mybibli vérifie à cet intervalle et n'écrit une sauvegarde dans le dossier de sauvegarde que si quelque chose a changé depuis la précédente."
+    backup_retention_label: "Sauvegardes quotidiennes à garder"
+    backup_retention_help: "mybibli garde toutes les sauvegardes des dernières 24 heures, puis la dernière de chacun des %{n} derniers jours où une sauvegarde a été écrite."
+    btn_save_backups: "Enregistrer la sauvegarde automatique"
     # v1.7.9 fix #334 — Délais d'attente metadata-chain + provider-health.
     metadata_chain_timeout_label: "Délai d'attente par fournisseur de métadonnées (secondes)"
     metadata_chain_timeout_help: "Temps maximal d'attente d'un fournisseur avant de passer au suivant dans la chaîne. Par défaut 5. Augmentez si votre DNS ou TLS est lent (fibre rurale, VPN, satellite). Bornes 1–60. Appliqué au prochain scan — sans redémarrage."
@@ -1326,6 +1352,7 @@ success:
     proposals_saved: "Réglages des propositions enregistrés — appliqués à la prochaine proposition, sans redémarrage"
     purchase_thresholds_saved: "Seuils du prix d'achat enregistrés."
     time_zone_saved: "Fuseau horaire enregistré — appliqué à la page suivante, sans redémarrage"
+    backups_saved: "Sauvegarde automatique enregistrée : %{interval}."
     no_changes: "Aucune modification"
     provider_set: "Clé %{provider} enregistrée"
     provider_cleared: "Clé %{provider} effacée"

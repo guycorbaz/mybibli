@@ -1,0 +1,13 @@
+{# Admin → Health: "Backups" (story 19-7, #657, UX-DR45). Included by
+   `admin_health_panel.html`; reads only `backup`
+   (`routes::admin_health_backup::BackupHealthPanel`). A warning gets the
+   warning colour AND its text starts with "Warning:" (not colour alone,
+   NFR12). Paths and file names are escaped by Askama. #}
+<section id="health-backup" aria-labelledby="health-backup-heading" class="mb-8">
+    <h2 id="health-backup-heading" class="text-lg font-semibold text-stone-900 dark:text-stone-100 mb-4">{{ backup.heading }}</h2>
+    <ul class="space-y-1 text-sm">
+        {% for l in backup.lines %}
+        <li id="{{ l.id }}" class="{% if l.warning %}text-amber-800 dark:text-amber-300 font-semibold{% else %}text-stone-700 dark:text-stone-300{% endif %}">{{ l.text }}</li>
+        {% endfor %}
+    </ul>
+</section>

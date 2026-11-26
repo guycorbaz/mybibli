@@ -8,7 +8,8 @@
 //! by the 8-2 middleware like every other mutation.
 //!
 //! The writer is `services::backup::write_backup`; this module only
-//! renders. A refusal (folder missing / not writable, a backup already
+//! renders. Story 19-7 (D4): a successful backup is followed by a
+//! rotation pass (`services::backup::rotation`). A refusal (folder missing / not writable, a backup already
 //! running) and a failure answer 200 with an error entry, so HTMX swaps
 //! it into the tab's region; the folder line is refreshed out of band on
 //! every answer.
@@ -110,6 +111,17 @@ pub async fn admin_backups_run(
                 file = %written.file_name,
                 "Backup requested from Admin → Backups"
             );
+            // Story 19-7 (D4): a manual backup is rotated like any other.
+            if let Some((id, _)) = backup::listing::parse_backup_name(&written.file_name) {
+                backup::rotation::rotate(
+                    &state.backup,
+                    id,
+                    chrono::Utc::now(),
+                    state.time_zone(),
+                    state.backup_retention_days(),
+                )
+                .await;
+            }
             feedback_html("success", &success_message(&written, loc), "")
         }
         Err(e) => feedback_html("error", &e.localized(loc), ""),

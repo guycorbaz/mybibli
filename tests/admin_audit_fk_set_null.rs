@@ -19,7 +19,8 @@ async fn fk_is_set_null_after_migration(pool: MySqlPool) {
     let row: Option<(String, String)> = sqlx::query_as(
         "SELECT CONSTRAINT_NAME, DELETE_RULE \
            FROM information_schema.REFERENTIAL_CONSTRAINTS \
-          WHERE TABLE_NAME = 'admin_audit' \
+          WHERE CONSTRAINT_SCHEMA = DATABASE() \
+            AND TABLE_NAME = 'admin_audit' \
             AND REFERENCED_TABLE_NAME = 'users'",
     )
     .fetch_optional(&pool)
@@ -35,7 +36,8 @@ async fn fk_is_set_null_after_migration(pool: MySqlPool) {
 async fn user_id_column_is_nullable_after_migration(pool: MySqlPool) {
     let (is_nullable,): (String,) = sqlx::query_as(
         "SELECT IS_NULLABLE FROM information_schema.COLUMNS \
-          WHERE TABLE_NAME = 'admin_audit' AND COLUMN_NAME = 'user_id'",
+          WHERE TABLE_SCHEMA = DATABASE() \
+            AND TABLE_NAME = 'admin_audit' AND COLUMN_NAME = 'user_id'",
     )
     .fetch_one(&pool)
     .await
