@@ -179,6 +179,17 @@ impl UserModel {
         Ok(id.0)
     }
 
+    /// Issue #70 / story 19-9 review pass 1 — the name an audit row records
+    /// for the acting user `id` (deactivated users included), or
+    /// `user-<id>` when the row is gone.
+    pub async fn actor_username(pool: &DbPool, id: u64) -> Result<String, AppError> {
+        let name: Option<String> = sqlx::query_scalar("SELECT username FROM users WHERE id = ?")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+        Ok(name.unwrap_or_else(|| format!("user-{id}")))
+    }
+
     /// Find a user by username, including deactivated users.
     pub async fn find_by_username(
         pool: &DbPool,

@@ -1,0 +1,20 @@
+{# Story 19-9 (#658, D1) — Admin → Backups → Cover check. The check is
+   read only; its answer (D2) lands in `#admin-covers-result`, the repair
+   (D8) goes through the UX-DR8 modal in #modal-slot. #}
+<section id="admin-covers" aria-labelledby="admin-covers-heading" class="space-y-3">
+    <h3 id="admin-covers-heading" class="text-lg font-semibold">{{ covers_heading }}</h3>
+    <p class="text-sm text-stone-700 dark:text-stone-300 max-w-3xl">{{ covers_intro }}</p>
+    <div>
+        <button type="button"
+                id="admin-covers-check"
+                hx-post="/admin/covers/check"
+                hx-target="#admin-covers-result"
+                hx-swap="innerHTML"
+                hx-sync="this:drop"
+                class="px-4 py-2 rounded-md bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2 min-h-[44px] md:min-h-0">{{ covers_check_label }}</button>
+    </div>
+    {# Review pass 1 (L6): only this short line is announced; every answer
+       refreshes its content out of band. #}
+    <p id="admin-covers-status" class="sr-only" aria-live="polite"></p>
+    <div id="admin-covers-result" class="space-y-3 max-w-3xl"></div>
+</section>
