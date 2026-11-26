@@ -179,6 +179,16 @@ async fn round_trip(pool: &DbPool, target: &str) {
     let manifest = manifest_of(&members);
     assert_members_match(&members, &manifest);
     let sql = String::from_utf8(members[0].1.clone()).expect("database.sql is UTF-8");
+    // Review of story 19-6: no session token of the source appears anywhere
+    // in the dump (sessions are rowless, pending updates' token blanked).
+    let tokens: Vec<(String,)> = sqlx::query_as("SELECT token FROM sessions")
+        .fetch_all(pool)
+        .await
+        .unwrap();
+    assert!(!tokens.is_empty(), "a session is seeded");
+    for (token,) in tokens.iter().chain(std::iter::once(&("rt-token".to_string(),))) {
+        assert!(!sql.contains(token.as_str()), "session token {token} leaked into database.sql");
+    }
     let target_pool = MySqlPool::connect(&url_for(target)).await.unwrap();
     sqlx::raw_sql(&sql).execute(&target_pool).await.expect("database.sql loads");
     target_pool.close().await;
@@ -201,6 +211,29 @@ async fn round_trip(pool: &DbPool, target: &str) {
             assert!(src.1 > 0, "{t} is seeded in the source");
             assert_eq!(dst.1, 0, "{t}: no row is copied");
             assert_eq!(manifest.tables.get(t), Some(&0), "manifest row count of {t}");
+            continue;
+        }
+        if t == "pending_metadata_updates" {
+            // Its session token is blanked: the rows are kept, the token is
+            // empty; every other column matches.
+            assert_eq!(src.1, dst.1, "{t}: every row is copied");
+            let blank: i64 = sqlx::query_scalar(&format!(
+                "SELECT COUNT(*) FROM `{target}`.`{t}` WHERE session_token <> ''"
+            ))
+            .fetch_one(pool)
+            .await
+            .unwrap();
+            assert_eq!(blank, 0, "{t}: the session token is blanked");
+            let same: i64 = sqlx::query_scalar(&format!(
+                "SELECT COUNT(*) FROM `{source}`.`{t}` s JOIN `{target}`.`{t}` d ON d.id = s.id \
+                 AND d.title_id <=> s.title_id AND d.status <=> s.status \
+                 AND d.deleted_at <=> s.deleted_at AND d.version <=> s.version"
+            ))
+            .fetch_one(pool)
+            .await
+            .unwrap();
+            assert_eq!(same, src.1, "{t}: the other columns are kept");
+            assert_eq!(manifest.tables.get(t), Some(&(src.1 as u64)), "manifest row count of {t}");
             continue;
         }
         assert_eq!(src, dst, "table {t}: (checksum, rows) differ after the round trip");

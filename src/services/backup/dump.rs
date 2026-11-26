@@ -42,6 +42,18 @@ pub fn is_rowless(table: &str) -> bool {
     ROWLESS_TABLES.contains(&table)
 }
 
+/// Review of story 19-6 (pass 2, same decision as [`ROWLESS_TABLES`]) —
+/// columns written as an empty string instead of their value: they hold a
+/// session token in clear. `pending_metadata_updates.session_token` is the
+/// cookie of the session that scanned the title; the rows themselves are
+/// kept (the home page counts the failed ones), and a token matching no
+/// session is already ignored by `middleware::pending_updates`.
+pub const BLANKED_COLUMNS: &[(&str, &str)] = &[("pending_metadata_updates", "session_token")];
+
+pub fn is_blanked(table: &str, column: &str) -> bool {
+    BLANKED_COLUMNS.iter().any(|(t, c)| *t == table && *c == column)
+}
+
 /// How a column's values are written as SQL literals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueKind {
@@ -106,8 +118,18 @@ pub struct TableSpec {
 impl TableSpec {
     /// The `SELECT` that renders each row as its literals, one per column.
     pub fn select_sql(&self) -> String {
-        let exprs: Vec<String> =
-            self.columns.iter().map(|c| literal_expr(&c.name, c.kind)).collect();
+        let exprs: Vec<String> = self
+            .columns
+            .iter()
+            .map(|c| {
+                if is_blanked(&self.name, &c.name) {
+                    // The SQL literal `''`, whatever the stored value.
+                    "''''''".to_string()
+                } else {
+                    literal_expr(&c.name, c.kind)
+                }
+            })
+            .collect();
         let mut sql = format!("SELECT {} FROM {}", exprs.join(", "), quote_ident(&self.name));
         if !self.primary_key.is_empty() {
             let keys: Vec<String> = self.primary_key.iter().map(|k| quote_ident(k)).collect();
@@ -315,6 +337,15 @@ impl InsertBatcher {
     }
 
     pub fn push_row<W: Write>(&mut self, out: &mut W, literals: &[Vec<u8>]) -> std::io::Result<()> {
+        // Close the open statement first when this row would take it past
+        // the budget (pass-2 review): a statement never holds more than
+        // one row beyond the budget.
+        let row_len: usize = 2 + literals.iter().map(|l| l.len() + 1).sum::<usize>();
+        if self.rows_in > 0 && self.bytes_in + row_len > INSERT_BYTE_BUDGET {
+            out.write_all(b";\n")?;
+            self.rows_in = 0;
+            self.bytes_in = 0;
+        }
         if self.rows_in == 0 {
             out.write_all(self.head.as_bytes())?;
             self.bytes_in = self.head.len();
@@ -404,6 +435,24 @@ mod tests {
     }
 
     #[test]
+    fn the_pending_updates_session_token_is_blanked() {
+        let spec = TableSpec {
+            name: "pending_metadata_updates".to_string(),
+            create_sql: String::new(),
+            columns: vec![
+                ColumnSpec { name: "id".to_string(), kind: ValueKind::Number },
+                ColumnSpec { name: "session_token".to_string(), kind: ValueKind::Text },
+            ],
+            primary_key: vec!["id".to_string()],
+        };
+        let sql = spec.select_sql();
+        assert!(!sql.contains("QUOTE(`session_token`)"), "{sql}");
+        assert!(sql.contains("''''''"), "{sql}");
+        assert!(is_blanked("pending_metadata_updates", "session_token"));
+        assert!(!is_blanked("titles", "session_token"));
+    }
+
+    #[test]
     fn sessions_are_dumped_without_their_rows() {
         assert!(is_rowless("sessions"));
         assert!(!is_rowless("users"));
@@ -423,7 +472,9 @@ mod tests {
         assert_eq!(text.matches("INSERT INTO").count(), 2);
         assert_eq!(text.matches(";\n").count(), 2);
 
-        // Big rows: closed once the budget is reached, long before 500 rows.
+        // Big rows: a statement is closed before a row would take it past the
+        // budget, long before 500 rows (a quarter-budget row plus its framing:
+        // three fit, a fourth would not).
         let big = vec![b'x'; INSERT_BYTE_BUDGET / 4];
         let mut out = Vec::new();
         let mut b = InsertBatcher::new("INSERT INTO `t` (`a`) VALUES\n".to_string());
@@ -433,10 +484,10 @@ mod tests {
         assert_eq!(b.finish(&mut out).unwrap(), 10);
         let text = String::from_utf8(out).unwrap();
         let statements: Vec<&str> = text.split(";\n").filter(|s| !s.is_empty()).collect();
-        assert_eq!(statements.len(), 3, "4 + 4 + 2 rows");
+        assert_eq!(statements.len(), 4, "3 + 3 + 3 + 1 rows");
         for st in &statements {
             assert!(st.starts_with("INSERT INTO"), "{}", &st[..20]);
-            assert!(st.len() <= INSERT_BYTE_BUDGET + big.len() + 64, "{}", st.len());
+            assert!(st.len() <= INSERT_BYTE_BUDGET, "{}", st.len());
         }
 
         // A single row above the budget is written alone.

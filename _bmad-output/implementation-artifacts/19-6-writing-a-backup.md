@@ -240,3 +240,24 @@ Low, deferred (issue to be filed):
 - **L9:** the manual names the 19-9 tool before it ships (same release).
 
 Verification: `cargo clippy --all-targets -- -D warnings` is clean, `cargo test --lib backup` passes (22), and the integration tests `backup_` pass (9, round trip included).
+
+### Review pass 2
+
+**Date:** 2026-11-26. This was an independent re-review of the pass-1 fixes, as Rule #6 requires.
+
+**Medium, fixed under the project lead's M2 decision — tokens in `pending_metadata_updates`.**
+- **The risk:** `pending_metadata_updates.session_token` holds the same cookie value as `sessions.token`, so the file still carried live credentials after M2.
+- **The fix:**
+  - `dump::BLANKED_COLUMNS` = `[("pending_metadata_updates", "session_token")]`, so the column is dumped as `''` and the rows are kept.
+  - The round trip asserts the same row count, `''` everywhere and the other columns equal, and that no session token appears in `database.sql`.
+  - The threat model § 5.13, the manual (EN/FR) and `CLAUDE.md` now say "no session token".
+  - Nothing visible changes.
+
+Low, fixed:
+- `InsertBatcher` checks the budget **before** adding a row, so a statement never passes the budget unless it holds one row only. Its unit test now expects 3 + 3 + 3 + 1 statements and asserts that each fits within the budget.
+- A doc comment that pass 1 had moved went back onto `sidecar_path`.
+
+Low, deferred (same issue as L3–L9):
+- **L10:** two instances that share an `instance_id` (a copy loaded elsewhere, L8) and the same folder would sweep each other's temporary files.
+
+Verification: clippy is clean, `cargo test --lib backup` passes (23), and the integration tests `backup_` pass (9).

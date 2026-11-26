@@ -376,7 +376,6 @@ async fn run(pool: &DbPool, cfg: &BackupConfig) -> Result<BackupWritten, BackupE
     })
 }
 
-/// The sidecar of a backup: `<name>.sha256`.
 /// Review of story 19-6 (L2) — whether `name` is a temporary file a backup
 /// of instance `instance_id` writes: `.tmp-` + a backup name of that
 /// instance, alone or followed by `.database.sql` / `.sha256`.
@@ -409,6 +408,7 @@ fn sweep_stale_temporaries(dir: &Path, instance_id: &str) {
     }
 }
 
+/// The sidecar of a backup: `<name>.sha256`.
 pub fn sidecar_path(dir: &Path, file_name: &str) -> PathBuf {
     dir.join(format!("{file_name}.sha256"))
 }
