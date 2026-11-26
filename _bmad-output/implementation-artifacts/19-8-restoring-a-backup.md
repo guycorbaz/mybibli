@@ -1,6 +1,6 @@
 # Story 19.8: Restoring a backup (#657, part 3)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -240,6 +240,12 @@ E2E deviation (L10): the spec presses Escape on the outcome line to check the fo
 - **L-6 — the tests now cover what their names say.** A real panic is driven through `restore_backup`'s `catch_unwind` (debug-build hook `restore::PANIC_AFTER_FIRST_CHANGE`, keyed by file name): `a_panic_after_the_first_change_keeps_maintenance_and_the_guard`. On both stuck states (`a_stuck_restore_keeps_the_backup_guard` too) `run_check` and `rotate` answer Busy and no file is written or deleted.
 - **L-7 — for the manual (story 19-11):** if both the audit row and the journal removal fail after a successful restore, the next boot does not recognise the journal and puts the library back from the safety backup (the restore is undone). Rare (two independent failures, both logged at `error`); the manual should tell the operator to check the log after a restore and remove a leftover `.restore-in-progress.json` by hand once the restored library is confirmed.
 
+## Review pass 3 (2026-11-26)
+
+Independent reviewer, whole story with the pass-2 fixes: **no Medium+ findings** — the story is clean (Rule #6). Every pass-2 fix verified (restore id settles any audit row; `Progress` flag before every first change; `open_checked`; `hx-sync="this:drop"`; the panic hook compiled out of release builds; the deterministic E2E hold).
+
+Three Low findings, all needing a panic or a narrow race, deferred to #740: a panic in `reload_caches` after a successful restore shows the "restore by hand" copy; a panic between the journal write and `mark_changed` leaves a live journal; the restore POST runs session resolution and CSRF without an admission.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -281,4 +287,5 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — dev-story: implemented; unit, integration and static gates green; E2E written, not yet run (status in-progress).
 - 2026-11-26 — code review pass 1: three Medium and eleven Low findings fixed (see Review pass 1); E2E still to run.
 - 2026-11-26 — code review pass 2: one Medium and seven Low findings handled (see Review pass 2).
+- 2026-11-26 — code review pass 3: no Medium+ (three Lows in #740); story done.
 - 2026-11-26 — E2E green (504 passed, 2 skipped, no flaky test); status review.
