@@ -1,6 +1,6 @@
 # Story 19.6: Writing a backup (#657, part 1)
 
-Status: review
+Status: done
 
 ## Story
 
