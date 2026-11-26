@@ -17,8 +17,9 @@
  *   "Locations inside {name}", and Enter collapses then expands it (20-5).
  *
  * Data: spec id "E0". ISBN `specIsbn("E0", …)` derived from the run stamp
- * and the attempt's slot (a retry or a re-run never scans an ISBN it
- * already catalogued); series and location names run-stamped; the two
+ * and the attempt's slot (a retry never scans an ISBN it already
+ * catalogued; a re-run on a stack that was not reset repeats a sequence
+ * only after ~37 minutes, 1 in 9 000); series and location names run-stamped; the two
  * L-codes drawn in bucket 9, L9800–L9997, among the codes /locations does
  * not list yet. No V-code is created. Assertions only on this spec's rows
  * (Rule #23).
@@ -76,7 +77,9 @@ test.describe("Epic 20 smoke — wish list, series and locations", () => {
     await page.locator("#assign-series").selectOption({ label: seriesName });
     await page.locator("#assign-position").fill("1");
     await page.locator("#assign-series-submit").click();
-    await page.waitForURL(/\/title\/\d+/);
+    // The POST redirects to the page it came from: wait for what only the
+    // answer shows (the assignment's link to the series) before leaving it.
+    await expect(page.locator(`main a[href="${seriesPath}"]`).first()).toBeVisible();
     await page.goto(seriesPath);
     await expect(
       page.locator(`a[role="gridcell"][href="/title/${titleId}"]`),
@@ -92,7 +95,7 @@ test.describe("Epic 20 smoke — wish list, series and locations", () => {
     await expect(page.locator("#expected-tome-position")).toHaveValue("3");
     const wishTitle = await page.locator("#expected-tome-title").inputValue();
     expect(wishTitle).toContain(seriesName);
-    expect(wishTitle).toContain("3");
+    expect(wishTitle.replace(seriesName, "")).toMatch(/\b3\b/);
     await expect(page.locator("#expected-tome-wishlist-help")).toBeVisible();
     await page.locator("#expected-tome-save").click();
 

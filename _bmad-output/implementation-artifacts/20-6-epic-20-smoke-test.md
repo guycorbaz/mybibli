@@ -1,6 +1,6 @@
 # Story 20.6: Epic 20 smoke test (Foundation Rule #7)
 
-Status: review
+Status: done
 
 No GitHub issue. Covers: Foundation Rule #7. Epic 20; ships in v1.29.0 (with Epic 19). Sprint-status key: `20-6-epic-20-smoke-test`.
 
@@ -142,3 +142,7 @@ Validated on 2026-11-26 against `main` at `7b2d1afa` (20-1, 20-2, 20-4, 20-5 mer
 **Rules checked.** Rule #7 (blank browser, `loginAs`), #23 (every assertion on the spec's series, title, wish list entry and locations; no count over a whole list), no `waitForTimeout`, `expectHtmxProcessed` before the modal Confirm, i18n regexes EN | FR, Rule #21 not involved (no focus move asserted other than the toggle keeping it), Rule #24 (the spec edits no shared spec; the helper move touches `epic13-smoke.spec.ts` only, which no other epic-20 story edits).
 
 **Open questions.** None. No visible copy or behaviour change is needed.
+
+## Review (2026-11-26)
+
+Independent reviewer: no Medium+. Lows fixed: the assignment POST now waits for the series link on the answer before leaving the page; the pre-filled title is checked for the position outside the series name; the header states the re-run limit of the ISBN sequence. Found at a re-run: `createChildLocation` matched the parent's edit link in English only, while another spec can leave the librarian in French; it now accepts "Edit" or "Modifier". The L-code pair collision under `--repeat-each` with several workers is accepted. Full suite on a fresh stack: 520 passed, 0 flaky.

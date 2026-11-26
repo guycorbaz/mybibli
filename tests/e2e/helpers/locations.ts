@@ -37,11 +37,12 @@ export async function createChildLocation(
   lcode: string,
 ): Promise<string> {
   await page.goto("/locations");
-  // Exact accessible name ("Edit {name}", rendered by routes/locations.rs)
-  // so a parent whose name is a prefix of another never matches it.
+  // Exact accessible name ("Edit {name}" / "Modifier {name}", rendered by
+  // routes/locations.rs) so a parent whose name is a prefix of another never
+  // matches it. Either language: another spec may have changed the user's.
+  const escaped = parentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const parentEditLink = page.getByRole("link", {
-    name: `Edit ${parentName}`,
-    exact: true,
+    name: new RegExp(`^(Edit|Modifier) ${escaped}$`),
   });
   await expect(parentEditLink).toBeVisible({ timeout: 5000 });
   const parentId = (await parentEditLink.getAttribute("href"))?.match(
