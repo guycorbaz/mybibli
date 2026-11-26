@@ -8,6 +8,7 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 
 ## Changelog
 
+- **2026-11-26** — Added **Epic 20: Daily-use fixes for the wish list, series and locations** (#714, #715, #716, #524, #700 visible part), with new requirements FR183–FR185 and UX-DR47. Decided by the project lead on 2026-11-26 from the usage feedback of 2026-11-25; ships together with Epic 19 as v1.29.0.
 - **2026-11-18** — Added **Epic 19: Fewer bugs, and built-in backup** (#698, #685, #499, #554, #528, #674, #663 items 1–3, #541, #519, #689, #538, #708, #657, #658), with new requirements FR178–FR182, NFR49 and UX-DR45–UX-DR46. Decided by the project lead on 2026-11-18, after the v1.28.1 patch and its retrospective: one user feature (built-in backup and restore) and fewer bugs — both fixing open ones and producing fewer. Ships as v1.29.0.
 - **2026-11-11** — Added **Epic 18: Maintenance** (#506, #599, #526, #681), with no new requirement and no new feature: two dependency updates, two fixes and the rmcp upgrade. Decided by the project lead on 2026-11-11 after a review of the dependency versions; ships as v1.28.0. Built-in backup (#657, #658, #663, #679) moves to Epic 19; the larger dependency upgrades (sqlx 0.9, rust-i18n 4, askama 0.16, reqwest 0.13, …) get their own epic later; htmx 4 waits until early 2027; the database engine question is on hold.
 - **2026-11-04** — Added **Epic 15: The agent's next tasks** (#564, #590, #614, #602), with new requirements FR161–FR166 and UX-DR40–UX-DR41. Decided by the project lead on 2026-11-04; ships as v1.25.0.
@@ -209,6 +210,9 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - FR180: Backups rotate — hourly ones kept 24 hours, then the last of each day (instance time zone) kept 14 days — and rotation deletes only backups this instance wrote; a backup from another instance is kept until it has been restored; when the folder is not mounted, mybibli writes no backup, keeps running and warns on the Health tab
 - FR181: An Admin restores a backup present in the folder from the admin page: the checksum is verified before anything is touched, a safety backup of the current state is written first, the application refuses other requests during the restore and logs every user out afterwards; a backup from a newer version is refused, an older one is upgraded by the migrations
 - FR182: An Admin finds and repairs cover / database mismatches — cover files no title owns (live or in the Trash) are deleted, titles pointing to a missing local file have their cover cleared and a re-download queued — after reviewing the list and confirming
+- FR183: A librarian can remove a wish list entry that is no longer wanted, apart from marking it bought; each action has its own confirmation and its own audit record
+- FR184: A librarian can send a missing position of a series to the wish list from the series grid; the expected tome and the wish list entry are recorded together
+- FR185: A librarian can give a storage location an optional description (where to find it), shown on the location page and returned by the API
 
 ### NonFunctional Requirements
 
@@ -346,6 +350,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR44: Title id shown on the title page; default skills marked "provided by mybibli" in Admin → Skills
 - UX-DR45: Health tab: a "Production watching" panel (FR178 counters, warning colour above a threshold) and a backup status line (last backup, next one, folder missing warning)
 - UX-DR46: Admin → Backups tab: the backups present in the folder with date, origin (this instance / another one), version and size; restore and cover repair go through the UX-DR8 modal with explicit confirmation
+- UX-DR47: Location tree as a nested list with disclosure buttons (`aria-expanded`, `aria-controls`, a name that includes the location), native Tab order and no ARIA tree; the parent row updates when its last child is deleted
 
 ### FR Coverage Map
 
@@ -414,6 +419,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 | FR167-FR171 | 16 | Amounts on the volume page, purchase price proposals, cover upload, scan warning, retry log level |
 | FR172-FR177 | 17 | Lowercase V-code, add a volume from the title page, one ISBN rule, typed-code warnings, title id search, default skills |
 | FR178-FR182 | 19 | Production watching, backups written and rotated, restore, cover / database consistency |
+| FR183-FR185 | 20 | Wish list removal, series gap to the wish list, location description |
 | FR153-FR160 | 13 | Date added, move a volume, anomaly marks (by hand and proposed), tome number and hint, owned title fills an expected tome, full location paths |
 
 **NFR Distribution:**
@@ -450,8 +456,9 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR42 → Epic 16
 - UX-DR43, UX-DR44 → Epic 17
 - UX-DR45, UX-DR46 → Epic 19
+- UX-DR47 → Epic 20
 
-**Coverage: 182/182 FRs, 49/49 NFRs, 31/31 ARs, 46/46 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04; Epic 15 added 2026-11-04; Epic 16 added 2026-11-06; Epic 17 added 2026-11-09; Epic 18 added 2026-11-11, no new requirement; Epic 19 added 2026-11-18.)
+**Coverage: 185/185 FRs, 49/49 NFRs, 31/31 ARs, 47/47 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30; Epic 13 added 2026-11-03; Epic 14 added 2026-11-04; Epic 15 added 2026-11-04; Epic 16 added 2026-11-06; Epic 17 added 2026-11-09; Epic 18 added 2026-11-11, no new requirement; Epic 19 added 2026-11-18; Epic 20 added 2026-11-26.)
 
 ## Epic List
 
@@ -3818,3 +3825,241 @@ So that I can set it up and use it on the day I need it.
 **And** `docker-compose.yml` and `.env.example` carry the mount; the PDFs are rebuilt
 **And** Rule #19 in `CLAUDE.md` names the manual's environment-variable table and the "current release" sentence of `website/roadmap.html` (A4)
 **And** release documentation (Foundation Rule #19, v1.29.0, including the upgrade note on the new mount) is done at release time, not in this story
+
+### Epic 20: Daily-use fixes for the wish list, series and locations
+
+Usage feedback of 2026-11-25 asked for three small things: removing a wish list entry that is no longer wanted, sending a missing series position to the wish list, and describing where a storage location is. Two older findings go with them: expected tomes that a lowered total or a Trash restore leaves in states that creation refuses (#524), and a location tree that announces a keyboard pattern it does not implement (#700). No new dependency, one migration.
+
+**FRs:** FR183–FR185
+**NFRs:** none new (NFR3 CSP and NFR12 a11y unchanged)
+**UX-DRs:** UX-DR47
+**Issues:** #714, #715, #716, #524, #700 (the visible part: the tree pattern and the stale parent after a deletion)
+
+**Release.** v1.29.0, shipped together with Epic 19 after both retrospectives.
+
+**What the issues did not say.**
+- #714: the "✓ Bought" button already removes an entry (list, mobile card, entry page). What is missing is a "Remove" that is not "Bought". The current modal also claims the entry can be restored from the Trash; `wishlist_items` is in neither `ALLOWED_TABLES` nor `PURGE_DELETION_ORDER`, so it cannot.
+- #524: story 11-11 already lists these tomes under "Expected tomes to review". What is left is preventing the two states: the hand edit of a series total (it compares the total with the owned count only) and the title restore (`TrashService::detect_restore_conflicts` has no `titles` arm). The `series_update` proposal already refuses a total below a live expected tome (story 15-4).
+- The series and location forms are plain POST forms: a refusal comes back as a bare 400 fragment. Rule #3 asks for the message next to the field, so 20.3 and 20.4 re-render their form with the error, as `routes/series_expected_tomes.rs::render_form` does.
+- `templates/pages/location_edit.html` has a hard-coded English "← Back"; 20.4 puts it through `t!()`.
+- French copy says "wish list" everywhere; the copy below keeps that term.
+
+**Decisions (project lead, 2026-11-26).**
+- D1: a separate "Remove" next to "Bought", each with its own modal copy and audit action (`wishlist_removed`, `wishlist_bought`). The scan banner keeps the "bought" modal (a scanned ISBN means the book is in hand).
+- D2: fix the modal text — a removed entry cannot be restored. Putting wish list items in the Trash (and purging removed rows) is a change request of its own if wanted.
+- D3: after Confirm, keep the full reload to `/wishlist` (`HX-Redirect`).
+- D4: a gap sent to the wish list records an expected tome first, in one form and one transaction (tome + wish list entry).
+- D5: after saving, the librarian is back on the series page, with the success entry and its link in `#series-feedback`.
+- D6: the title is pre-filled "{series}, tome {position}", editable.
+- D7: a series total below a live, unsettled expected tome is refused, next to the total field, naming the highest position.
+- D8: restoring a title onto a position an expected tome took meanwhile succeeds; the tome is settled when it carries the title's ISBN, otherwise an information line links to the series.
+- D9: the location description is edited on the edit form only and shown on `/location/{id}` only (not in the tree, not searched); 500 characters, plain text; `GET /api/v1/locations` returns it; MCP unchanged.
+- D10: the location tree becomes a nested list with disclosure buttons; no ARIA tree.
+- D11: the copy below (EN and FR; DE and IT translated in the stories and reviewed like the others).
+- D12: Epics 19 and 20 get two short retrospectives on the same day, before the v1.29.0 cut (Rule #8).
+
+**Sequencing.** 20.1 and 20.4 can start at once. 20.2 → 20.3 (shared `src/routes/series.rs`). 20.5 after 20.4 (shared `src/routes/locations.rs`). Then 20.6 (epic smoke, Rule #7) → 20.7 (documentation, merged with or after 19.11) → retrospectives → release v1.29.0.
+
+**Couplings (Rule #24).**
+- **Locale files** `locales/{en,fr,de,it}.yml`: every story adds keys, each only in its own block (`wishlist:`, `expected_tome:`, `series:`, `location:`), so rebases stay trivial. Run `cargo test --test integration locale_parity::` after each rebase.
+- **`src/routes/series.rs`**: 20.2 touches `series_detail_page` (success entry after the combined form); 20.3 touches `update_series` / `edit_series_form`. Different functions, same file: 20.3 rebases on 20.2.
+- **Series page**: 20.2 changes `templates/components/series_gap_grid.html`. 20.3 does not touch the grid or `series_detail.html`; it changes `series_form.html`. The "Expected tomes to review" section stays as it is.
+- **`src/routes/series_expected_tomes.rs`**: only 20.2 touches it. 20.3 adds its rule in `services/series.rs` and `models/expected_tome.rs`, not in the routes.
+- **`src/routes/locations.rs`**: 20.4 touches `LocationEditTemplate`, `LocationDetailTemplate`, the update form and its handler. 20.5 touches `render_tree_html` / `render_node_at_depth` / `delete_success_response`. `LocationModel` gains a field in 20.4; the tree code reads other fields only. 20.4 does not touch `templates/pages/locations.html`; 20.5 changes its tree container.
+- **E2E specs**: `tests/e2e/specs/journeys/locations.spec.ts` and `tests/e2e/specs/accessibility-full.spec.ts` select `[role="treeitem"]` (about 20 places); 20.5 owns those edits. 20.1, 20.2, 20.3 and 20.4 each put their cases in a new spec with its own `specIsbn` id, so no shared spec is edited by two stories.
+- **`wishlist.rs` / `WishlistItemModel`**: 20.1 changes the list, detail and modal code. 20.2 adds `WishlistItemModel::create_in` (connection variant) in `models/wishlist.rs`. Different functions; 20.1's E2E data must not use a title or ISBN that 20.2's dedup (ISBN, or title + note) would match.
+- **Manual and PDFs**: 19.11 and 20.7 both edit `docs/manual/{en,fr}/*.tex` and rebuild the PDFs. 20.7 goes after 19.11's merge, or the two are done as one story, so the PDFs are rebuilt once.
+- **`sprint-status.yaml`**: the `epic-20` block is added by a chore PR (Rule #16), before 20.1. Each story PR then changes its own line plus `last_updated`; that header conflicts on every rebase, so take `main`'s and rewrite it.
+- **Migration and backups**: 20.4's migration is additive (`description` NULL). A v1.28 backup restored by 19.8 goes through the migrations and gets the column. The 19-6 dump takes every column; `tests/backup_round_trip.rs` covers it once a location in its fixture has a description.
+
+**Stories:**
+
+#### Story 20.1: Remove an entry from the wish list (closes #714)
+
+As a librarian,
+I want to remove a wish list entry I no longer want, without saying I bought it,
+So that the list holds only books I still want, and its history says what really happened.
+
+**Covers:** FR183
+
+**Acceptance Criteria:**
+
+**Given** the `/wishlist` list (table row and mobile card) and an entry page `/wishlist/{id}`, as a Librarian or Admin
+**Then** each entry shows two actions: "Bought" (unchanged) and "Remove", each with an accessible name that includes the entry's title
+**When** "Remove" is used
+**Then** the UX-DR8 modal opens in `#modal-slot` with the "remove" copy and a "Remove" confirm button; scanner-guard protects it (no `hx-confirm=`)
+**And** on Confirm the entry is soft-deleted (`WishlistItemModel::soft_delete`, version-guarded); an `admin_audit` row `wishlist_removed` is written (the "Bought" path keeps `wishlist_bought`); the browser goes to `/wishlist` and the entry is gone
+**And** neither modal claims a Trash restore any more
+**And** an entry already removed in another tab answers, inside the modal, a message that says so and what to do; an E2E case asserts it (Rule #3)
+**And** Anonymous sees neither action; `DELETE /wishlist/{id}` stays Librarian-gated
+**And** the scan banner's "Remove from wish list" opens the "bought" modal as it does today
+**And** the modal route takes `?action=remove|bought` (default `bought`); an unknown value falls back to "bought" (positive shape, Rule #20)
+**And** unit tests cover the copy per action and the absence of any Trash claim in the four locales; a DB integration test covers the two audit actions and a stale-version delete that writes nothing; an E2E spec (`wishlist-remove.spec.ts`) removes from the list and from the entry page, checks a sibling stays (Rule #23), covers the refusal case and runs axe on `/wishlist`
+
+#### Story 20.2: Send a missing series position to the wish list (closes #715)
+
+As a librarian looking at a series,
+I want to add a missing position to the wish list from the series grid,
+So that I do not retype the series and the tome number on `/wishlist/new`.
+
+**Covers:** FR184
+
+**Acceptance Criteria:**
+
+**Given** a series page whose grid shows a plain gap (a missing position with no expected tome), as a Librarian or Admin
+**Then** the gap offers "Add to wish list" next to "Name this tome", with an accessible name that includes the position
+**When** it is used
+**Then** the expected-tome form opens in "wish list" mode (`/series/{id}/expected-tomes/new?position=N&wishlist=1`): the position is pre-filled, the title is pre-filled with "{series}, tome N" (editable), the ISBN is optional, and a help line says the tome is also recorded as expected
+**And** on save, one transaction locks the series row by primary key (the existing lock order: series → tomes; no new `FOR UPDATE`, Rule #22), creates the expected tome (`ExpectedTomeService::create_in`) and the wish list entry (`WishlistItemModel::create_in`, note = `wishlist_note`), with the same dedup as the expected-tome path: ISBN, or title + note
+**And** the browser returns to the series page; `#series-feedback` shows "… was added to your wish list" with a link to the entry (`?wishlist_item={id}`, checked server-side), and the gap now shows the expected tome
+**And** a position already on the wish list (same ISBN, or same title + note) creates nothing, neither entry nor tome, and answers with a link to the existing entry
+**And** an ISBN a live title already holds answers the existing "already in your catalog" message, and nothing is added
+**And** every refusal is shown next to its field, with the values typed kept: blank title, invalid ISBN, a position held or out of range because the series changed meanwhile (`ExpectedTomeError::localized`)
+**And** a series deleted meanwhile answers the "not found" page; Anonymous sees no action
+**And** the query parser accepts `wishlist=1` only (positive shape); the wish list dedup and messages are shared by the two paths (DRY)
+**And** a DB integration test covers the combined create, both dedups, a failed wish list insert leaving no tome, and the lock scope (the combined create on series A does not wait on a tome write of series B); an E2E spec (`series-gap-wishlist.spec.ts`) adds a gap from a series it created, checks the feedback link, the named gap and the entry on `/wishlist`, the existing-entry answer, and the blank-title refusal next to the field
+
+#### Story 20.3: Expected tomes stay consistent with the series total and Trash restores (closes #524)
+
+As a librarian,
+I want the series edit and the Trash restore to stop leaving expected tomes in states their creation refuses,
+So that the series page and the agent see a consistent series.
+
+**Covers:** fix (#524)
+
+**Acceptance Criteria:**
+
+**Given** a closed series with a live, unsettled expected tome at position P
+**When** a librarian saves the series form with a total below P (or switches it to closed with such a total)
+**Then** the save is refused; the form is shown again with the values typed and the message next to the total field, naming the highest such position
+**And** the check runs in one transaction that locks the series row by primary key first, then reads the tomes without a locking read; tome creation also locks the series row first, so the two serialise (Rule #22); a lock-scope test is written with the query
+**And** the existing refusals of the form (name required, duplicate name, total required, total below owned count) are shown the same way, next to their fields
+**Given** a title in the Trash whose `title_series` row is still live, and an expected tome created meanwhile at that position
+**When** an Admin restores the title from the Trash
+**Then** the restore succeeds; `ExpectedTomeService::settle_for_title_id` then records the settlement when the tome carries the title's ISBN (positive shape, Rule #20); otherwise the restore answer adds an information line that names the series, the position and the tome, with a link to the series page, where the tome is listed under "Expected tomes to review"
+**And** a restore that touches no expected tome answers exactly as today
+**And** DB integration tests cover: lowering below a tome refused and the row unchanged; lowering to exactly P accepted; a settled tome not blocking; the race (tome creation at position 5 against a total lowered to 4 on two connections, one wins, the end state is consistent); the lock scope; the restore with an equal and with a different ISBN; an E2E spec (`series-total-tomes.spec.ts`) covers the refusal next to the total field and the restore information line with its link
+
+#### Story 20.4: A description for a storage location (closes #716)
+
+As a librarian,
+I want to describe where a storage location is,
+So that anyone can find "the left bookcase, top shelf, behind the door".
+
+**Covers:** FR185
+
+**Acceptance Criteria:**
+
+**Given** a migration adding `storage_locations.description TEXT NULL` (additive, no default text)
+**Then** the edit form `/locations/{id}/edit` offers an optional multi-line "Description" field with a help line; blank saves `NULL`; the text is trimmed and stored as typed (no rewriting, Rule #20); the create forms are unchanged
+**And** more than 500 characters is refused next to the field, with the values typed kept (Rule #3)
+**And** the location page `/location/{id}` shows the description under its heading, escaped by Askama, line breaks kept (`whitespace-pre-line`), never as HTML; nothing is shown when it is empty; the tree and the search do not show it
+**And** `GET /api/v1/locations` returns `description` (null when unset), documented in the API chapter; MCP is unchanged
+**And** the edit page's "← Back" goes through `t!()`
+**And** a backup written by 19-6 and restored by 19-8 keeps the description (the round-trip fixture has one)
+**And** unit tests cover the length check (500 accepted, 501 refused, blank → `None`) and the escaping of `<b>` on the location page; a DB integration test covers save, clear and a version conflict; an E2E spec (`location-description.spec.ts`) sets, reads and clears a description on a location it created, covers the 501-character refusal next to the field and runs axe on the edit page
+
+#### Story 20.5: The location tree says what it does (closes the visible part of #700)
+
+As a keyboard or screen-reader user on `/locations`,
+I want the tree to behave the way it is announced,
+So that the keys I press do what the page told me they would.
+
+**Covers:** fix (#700), UX-DR47
+
+**Acceptance Criteria:**
+
+**Given** `/locations`
+**Then** the locations are a nested list (`<ul>` / `<li>`, one list labelled by the page heading); no `role="tree"`, `treeitem` or `group` remains
+**And** each location with children has a disclosure button before its link: `aria-expanded`, `aria-controls` = its child list, and an accessible name that includes the location name; the collapsed state still persists in `localStorage` (`locations-tree-toggle.js`)
+**And** Tab reaches, in order, each row's disclosure button, link, add, edit and delete controls; nothing needs arrow keys
+**And** deleting a location's last child updates its parent at once: the disclosure button and the empty child list go, the icon becomes the leaf icon (server OOB in `delete_success_response`); a deletion that leaves other children changes nothing else
+**And** after a deletion, focus goes to the parent's link (or "Add a root location" for a root), as 19-1 does, with the `data-modal-focus-fallback` selector updated to the new markup (Rule #21)
+**And** axe passes on `/locations` with nested, collapsed and expanded rows; the templates audit still passes
+**And** unit tests check the rendered tree (no tree roles; a parent's button points at an existing id; a leaf has none; the parent OOB only for a last child); E2E cases cover the Tab order through one row, Enter and Space on the disclosure button with `aria-expanded` following, the last-child deletion without a reload and the collapse kept across a reload; `locations.spec.ts` and `accessibility-full.spec.ts` select rows by `#tree-node-{id}` / `li[data-tree-node-id]`
+
+#### Story 20.6: Epic 20 smoke test (Foundation Rule #7)
+
+As the project,
+I want one end-to-end journey from a blank browser over what the epic built,
+So that the epic is proven done.
+
+**Covers:** Foundation Rule #7
+
+**Acceptance Criteria:**
+
+**Given** a blank browser with no injected cookie
+**When** the test runs
+**Then** it chains: `loginAs` → a closed series of total 4 with one title, created by the spec → a gap sent to the wish list from the grid → the entry found on `/wishlist`, then removed through "Remove" → the series total lowered below that expected tome and refused next to the field → a location created by the spec, given a description, read on its page → the location tree reached by keyboard, a parent collapsed and expanded with Enter
+**And** it asserts only on its own rows (Rule #23); no `waitForTimeout`; green under `CI=true npx playwright test --workers=2`; if this test fails, the epic is not done (`epic20-smoke.spec.ts`, its own `specIsbn` id)
+
+#### Story 20.7: Documentation
+
+As a librarian reading the manual,
+I want it to describe the new actions,
+So that I find them without asking.
+
+**Covers:** FR183–FR185 (documentation)
+
+**Acceptance Criteria:**
+
+**Given** the user manual (English and French)
+**Then** `03-usage.tex` describes "Remove" versus "Bought" on the wish list, sending a gap to the wish list, the location description, and the total rule for expected tomes; `11-api-integrations.tex` documents `description` in `GET /api/v1/locations`; `06-roles-permissions.tex` is checked for the new actions (Librarian+)
+**And** `CLAUDE.md` Key Patterns: "Expected tomes" gains the hand-edit total rule and the restore settlement; a short note describes the location tree as a disclosure list (no ARIA tree)
+**And** the PDFs are rebuilt once, after 19.11 (or 19.11 and 20.7 are one story)
+**And** release documentation (Foundation Rule #19, v1.29.0) is done at release time, not in this story
+
+**Approved copy (EN / FR).** Field refusals are short; operation errors follow "what happened → why → what you can do" (`docs/error-message-style.md`). DE and IT are translated in the stories.
+
+*20.1 Wish list*
+
+| Key | EN | FR |
+|---|---|---|
+| `wishlist.action_remove` | Remove | Retirer |
+| `wishlist.action_remove_named` (aria-label) | Remove “%{title}” from the wish list | Retirer « %{title} » de la wish list |
+| `wishlist.action_bought_named` (aria-label) | Mark “%{title}” as bought | Marquer « %{title} » comme acheté |
+| `wishlist.remove_modal_title` | Remove “%{title}” from the wish list? | Retirer « %{title} » de la wish list ? |
+| `wishlist.remove_modal_body` | The entry leaves the wish list. It cannot be restored: add it again if you change your mind. | L’entrée quitte la wish list. Elle ne peut pas être restaurée : ajoutez-la à nouveau si vous changez d’avis. |
+| `wishlist.delete_modal_body` (fixed, "bought") | The entry leaves the wish list. It cannot be restored afterwards. | L’entrée quitte la wish list. Elle ne pourra pas être restaurée ensuite. |
+| `wishlist.already_removed` | This entry is no longer on the wish list. It was probably removed in another tab or by another librarian. Reload the list to see it as it is now. | Cette entrée n’est plus dans la wish list. Elle a sans doute été retirée dans un autre onglet ou par un autre bibliothécaire. Rechargez la liste pour la voir à jour. |
+
+*20.2 Gap to the wish list*
+
+| Key | EN | FR |
+|---|---|---|
+| `expected_tome.gap_add_to_wishlist` | Add to wish list | Ajouter à la wish list |
+| `expected_tome.gap_add_to_wishlist_named` (aria-label) | Add tome %{position} to the wish list | Ajouter le tome %{position} à la wish list |
+| `expected_tome.form_title_wishlist` | Add tome %{position} to the wish list | Ajouter le tome %{position} à la wish list |
+| `expected_tome.wishlist_form_help` | mybibli also records this tome as expected in the series, so the gap shows its title. | mybibli enregistre aussi ce tome comme attendu dans la série : la case manquante affiche alors son titre. |
+| `expected_tome.wishlist_title_prefill` | %{series}, tome %{position} | %{series}, tome %{position} |
+| `expected_tome.wishlist_save` | Add to wish list | Ajouter à la wish list |
+
+Reused unchanged: `wishlist_added`, `wishlist_already`, `wishlist_open`, `wishlist_owned`, `wishlist_note`, `error.title_required`, the position and ISBN refusals of `ExpectedTomeError`.
+
+*20.3 Series total and restore*
+
+| Key | EN | FR |
+|---|---|---|
+| `series.total_below_expected` (field) | Total must be at least %{position}: an expected tome is recorded at position %{position}. | Le total doit être d’au moins %{position} : un tome attendu est enregistré à la position %{position}. |
+| `admin.trash.restore_tome_to_review` | “%{title}” is back at position %{position} of “%{series}”, where an expected tome was recorded meanwhile. Check it under “Expected tomes to review” on the series page. | « %{title} » retrouve la position %{position} de « %{series} », où un tome attendu a été enregistré entre-temps. Vérifiez-le sous « Tomes attendus à revoir » sur la page de la série. |
+| `admin.trash.restore_tome_settled` | The expected tome at position %{position} of “%{series}” now counts as owned. | Le tome attendu à la position %{position} de « %{series} » compte désormais comme possédé. |
+| link label | Open the series | Ouvrir la série |
+
+Existing refusals shown next to their fields from now on (copy unchanged): `series.name_required`, `series.name_duplicate`, `series.total_required_for_closed`, `series.total_below_owned`.
+
+*20.4 Location description*
+
+| Key | EN | FR |
+|---|---|---|
+| `location.description_label` | Description | Description |
+| `location.description_help` | Optional. Where to find it, for example “left bookcase, top shelf, behind the door”. | Facultatif. Où le trouver, par exemple « bibliothèque de gauche, étagère du haut, derrière la porte ». |
+| `location.description_too_long` (field) | Description must be at most 500 characters. | La description doit compter au plus 500 caractères. |
+| `location.back_to_tree` (replaces "← Back") | Back to locations | Retour aux emplacements |
+
+*20.5 Location tree*
+
+| Key | EN | FR |
+|---|---|---|
+| `location.tree.toggle_named` (aria-label; state from `aria-expanded`) | Locations inside %{name} | Emplacements dans %{name} |
+
+`location.tree.toggle` ("Toggle subtree" / "Afficher / masquer la sous-arborescence") is removed once unused.
