@@ -56,13 +56,14 @@ From `_bmad-output/planning-artifacts/epics.md` → Story 20.5 (verbatim intent,
     - `<ul id="tree-children-{p}" hx-swap-oob="delete"></ul>` — the now-empty child list;
     - `<span id="tree-toggle-{p}" class="w-6" aria-hidden="true" hx-swap-oob="outerHTML"></span>` — the disclosure button becomes the leaf spacer (same classes as the leaf spacer in `render_node_at_depth`; share one const so they cannot drift);
     - `<span id="tree-icon-{p}" class="text-stone-500 dark:text-stone-400" aria-hidden="true" hx-swap-oob="outerHTML">📍</span>` — the leaf icon (same classes as the rendered icon span; share them).
+    Emit the child's `row_removal_oob` first, then these three (if the list went first, the row OOB would only miss its target).
     Prefer these three targeted OOBs over re-rendering the parent `<li>`: a full re-render needs the depth (indent class), the recursive volume count, node types, next L-code, rights and CSRF token, and would wipe an open inline "add child" form.
   - [ ] `row_removal_oob(id)` stays `<div id="tree-node-{id}" hx-swap-oob="delete"></div>` (the tag of a `delete` OOB is irrelevant) — `tests/location_delete_modal.rs` and the unit tests assert that exact string; no churn needed.
   - [ ] The OOB elements must be in the answer **before** `modal-close` runs: they are (same response, `HX-Trigger-After-Swap`); the focus fallback then finds the parent's link, which the targeted OOBs do not replace.
 - [ ] **T5 — Locales** (D11) `locales/{en,fr,de,it}.yml`, `location.tree:` block only: add `toggle_named`, remove `toggle`. Run `cargo test --test integration locale_parity::` and `touch src/lib.rs` before building.
 - [ ] **T6 — Unit tests** (AC 7) in `src/routes/locations.rs` `mod tests` (render helpers `render_salon` / `render_salon_in`, `loc()`):
   - [ ] Rewrite `render_tree_html_emits_toggle_and_children_container_for_parents` for the new markup: a parent has `<button … id="tree-toggle-1" … aria-controls="tree-children-1" … aria-expanded="true"` and the output contains `id="tree-children-1"` (the id `aria-controls` names exists); a leaf (id 2) has no `tree-toggle-2`, no `tree-children-2`.
-  - [ ] New: `render_tree_html` output (and the rendered `/locations` template, via `LocationsTemplate::render` with a non-empty `tree_html`) contains no `role="tree"`, `role="treeitem"`, `role="group"`. Match the **attribute** `role="group"`, not the word `group` (the row's Tailwind `group` class stays).
+  - [ ] New: `render_tree_html` output (and the rendered `/locations` template, via `LocationsTemplate::render` with a non-empty `tree_html` and `base: crate::utils::test_base_context("admin", "locations", …)` as `test_location_detail_template_renders` does) contains no `role="tree"`, `role="treeitem"`, `role="group"`. Match the **attribute** `role="group"`, not the word `group` (the row's Tailwind `group` class stays).
   - [ ] New: every `<li` opened is closed; children lists are `<ul class="tree-children"` inside the parent `<li>` (a 3-level fixture: root → child → grandchild).
   - [ ] New: the toggle's name is `Locations inside Salon` in `en`, `Emplacements dans Salon` in `fr`, and a name with `<b>"` is escaped once (pattern of `control_labels_are_localized_and_escaped`).
   - [ ] Update `delete_success_answer_removes_the_row_and_closes_the_modal` for the new signature; new: with `Some(1)` the body carries the three parent OOBs (`tree-children-1` delete, `tree-toggle-1` and `tree-icon-1` outerHTML); with `None` it carries none of them.
@@ -124,6 +125,34 @@ From `_bmad-output/planning-artifacts/epics.md` → Story 20.5 (verbatim intent,
 - `_bmad-output/implementation-artifacts/19-1-location-tree-delete-modal.md` → D2 (OOB row removal, `tree-node-{id}`), review pass 1 finding 3 (focus fallback) and kept finding 10 (stale parent — fixed here).
 - `_bmad-output/implementation-artifacts/19-4-what-the-user-reads.md` → `data-modal-focus-fallback` alternatives.
 - CLAUDE.md → CSP & hardening headers, Modal lifecycle hardening, E2E Test Patterns, Rules #3, #13, #21, #23, #24.
+
+## Validation
+
+Checked on 2026-11-26 against `main` at `be26c23` and the unmerged `story/20-4-location-description` (`5088e8d`).
+
+**Confirmed in the code.**
+- Tree markup has one producer, `render_node_at_depth`, reached only through `render_tree_html` ← `locations_page`; the container is `templates/pages/locations.html:15`. No other template, JS module or Rust file emits `role="tree"`, `treeitem` or `group` (repo-wide grep; `src/templates_audit.rs` has no rule about these roles, so the audit is unaffected).
+- `location.tree.toggle` is used only at `locations.rs:358`; no JS bundle reads it — removing it from the four locale files is safe.
+- `delete_location` does not know the parent today; `LocationService::delete_location` has a single caller (the handler), so reading the parent in the handler (T4) is enough and the service keeps its signature.
+- `modal.js` resolves `data-modal-focus-fallback` at close time, after `HX-Trigger-After-Swap` — i.e. after htmx 2 has applied the OOB swaps; the targeted OOBs of T4 never replace the parent's link, so the 19-1 selector `#tree-node-{p} > div > a[href=…]` keeps working with `li > div > a`.
+- 20-4's diff touches `LocationModel` (+ `description` in every SELECT, `find_children` included), the edit / detail templates and handlers, and the test helper `loc()`; it does not touch `render_node_at_depth`, `render_tree_html`, `delete_location`, `delete_success_response`, `locations.html` or `locations.spec.ts`. The rebase (T0) should be conflict-free apart from `sprint-status.yaml`'s header.
+- No E2E today exercises the disclosure toggle or `mybibli-locations-collapsed` (grep of `tests/e2e`) — the keyboard and persistence cases are new coverage, not rewrites.
+- No document-level key handler on `/locations` takes Enter or Space (`mybibli.js` shortcuts use Ctrl/Cmd; `shortcuts.js` takes `?` and `g`; scanner-guard acts only while a modal is open).
+- `locations.spec.ts` has 16 `[role="treeitem"]` uses, `accessibility-full.spec.ts` 2 (+ 2 comments). The free L-code range `L5705`–`L5715` was checked against every literal under `tests/e2e/` (bucket 9 is 20-4's `specLcode(9, …)`).
+
+**Gaps fixed in this file during validation.**
+- T4: order of the OOB elements (row removal first).
+- T6: the `/locations` template render test needs `crate::utils::test_base_context` (existing helper).
+- `tests/location_delete_modal.rs` added to the touched files (T7): the plan's file list omitted it, but the parent OOB is only observable end-to-end through the handler.
+- T8: the ancestor-matching trap of `filter({ hasText })` on nested `<li>` rows (the existing l. 225 locator already selects the parent instead of the child).
+- Guardrails: `role="list"` on the `<ul>`s (VoiceOver drops list semantics under `list-style: none`); the unit test must match `role="group"` as an attribute, since the row keeps the Tailwind `group` class.
+
+**Open questions (visible behaviour not covered by D10 / D11 or the plan's copy) — not decided here.**
+1. **A child deleted in another tab.** When this tab's modal finds the child already gone (`already_gone_response`, at open or at Confirm), the stale row is removed but its parent may be left with a toggle over an empty list — the same defect as AC 4, by another path. *Recommendation:* apply the same parent check and OOB there (same helper, one read), and add a unit test; it is cheap and makes AC 4 hold whatever the path.
+2. **Untranslated volume count in tree rows.** `render_node_at_depth` writes `"{n} vol"` as a literal (l. 222), not through `t!()`: French, German and Italian users read "vol". Not part of #700 and no approved copy exists. *Recommendation:* open a separate `type:bug` issue (copy to approve, four locales) rather than widen 20-5.
+3. **Last root location deleted.** The root `<ul>` stays, empty, instead of the "no locations yet" empty state until a reload (pre-existing; the OOB only removes rows). *Recommendation:* leave as is (rare, once per library, reload fixes it); mention it in the 20-5 review notes, no issue unless the lead wants one.
+
+DE / IT wording of `location.tree.toggle_named` (`Standorte in %{name}`, `Ubicazioni in %{name}`) is a proposal, to be reviewed like the other translations (D11 leaves DE / IT to the stories).
 
 ## Dev Agent Record
 
