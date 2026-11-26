@@ -183,6 +183,7 @@ loads it into an empty database, for a test copy or to look at real
 data (for example to try a data-rewriting change on the whole catalogue
 before it ships, Rule~\#20 of the project):
 \begin{lstlisting}
+sudo -v
 sudo tar -xzf backups/mybibli-<id>-<date>.tar.gz database.sql
 mariadb -u root -p -e "CREATE DATABASE mybibli_copy"
 sudo cat database.sql | mariadb -u root -p mybibli_copy
@@ -415,12 +416,16 @@ This section is for that person.
         Docker restarts it again and again). Restore the safety backup
         by hand, from the folder holding \texttt{docker-compose.yml}
         (bundled database; the root password is
-        \texttt{MYSQL\_ROOT\_PASSWORD} of \texttt{.env}):
+        \texttt{MYSQL\_ROOT\_PASSWORD} of \texttt{.env}). Run the lines
+        one at a time; go on only if the first one prints \texttt{OK}
+        and \texttt{backups/database.sql} exists (the third line checks
+        it again before it drops the database):
 \begin{lstlisting}
 docker compose stop mybibli
 sudo sh -c 'cd backups && sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256 \
     && tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql'
-docker compose exec -T db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+sudo test -s backups/database.sql && docker compose exec -T db \
+    sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
     -e "DROP DATABASE $MYSQL_DATABASE;
         CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"'
 sudo cat backups/database.sql | docker compose exec -T db \
@@ -554,7 +559,7 @@ docker compose exec -T db sh -c 'exec mariadb-dump \
     -u root -p"$MYSQL_ROOT_PASSWORD" \
     --single-transaction --routines --triggers \
     "$MYSQL_DATABASE"' \
-    > backups/mybibli-$(date +%Y%m%d-%H%M%S).sql
+    | sudo tee backups/mybibli-$(date +%Y%m%d-%H%M%S).sql > /dev/null
 \end{lstlisting}
 
 The \texttt{--single-transaction} flag is important: it dumps a
@@ -566,7 +571,7 @@ and future-proof).
 Compress the dump if disk space is a concern:
 
 \begin{lstlisting}
-gzip backups/mybibli-*.sql
+sudo gzip backups/mybibli-*.sql
 \end{lstlisting}
 
 \subsection*{Database — external MariaDB}
@@ -582,7 +587,7 @@ For a host-mounted covers directory (bind-mount installs), a plain
 \texttt{tar} archive is enough:
 
 \begin{lstlisting}
-tar czf backups/mybibli-files-$(date +%Y%m%d).tar.gz \
+sudo tar czf backups/mybibli-files-$(date +%Y%m%d).tar.gz \
     .env "$COVERS_HOST_PATH"
 \end{lstlisting}
 
@@ -601,7 +606,7 @@ docker run --rm \
     -v "$(pwd)/backups:/backup" \
     alpine \
     tar czf "/backup/mybibli-covers-$(date +%Y%m%d).tar.gz" -C /source .
-tar czf "backups/mybibli-env-$(date +%Y%m%d).tar.gz" .env
+sudo tar czf "backups/mybibli-env-$(date +%Y%m%d).tar.gz" .env
 \end{lstlisting}
 
 The throwaway \texttt{alpine} container mounts the named volume
@@ -636,14 +641,17 @@ environment and verify the title and loan counts match what
 
 \subsection*{Database}
 
-For the bundled-database setup:
+For the bundled-database setup, run the lines one at a time; the
+database is dropped only if the dump file reads back whole:
 
 \begin{lstlisting}
 docker compose stop mybibli
-docker compose exec -T db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+sudo zcat backups/mybibli-20260513-1200.sql.gz > /dev/null \
+    && docker compose exec -T db \
+    sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
     -e "DROP DATABASE $MYSQL_DATABASE;
         CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"'
-zcat backups/mybibli-20260513-1200.sql.gz | docker compose exec -T db \
+sudo zcat backups/mybibli-20260513-1200.sql.gz | docker compose exec -T db \
     sh -c 'exec mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"'
 docker compose start mybibli
 \end{lstlisting}
@@ -656,7 +664,7 @@ against the external server.
 For a host-bind-mount install:
 
 \begin{lstlisting}
-tar xzf backups/mybibli-files-20260513.tar.gz
+sudo tar xzf backups/mybibli-files-20260513.tar.gz
 \end{lstlisting}
 
 For the default named-volume install, restore through a throwaway
@@ -670,7 +678,7 @@ docker run --rm \
     -v "$(pwd)/backups:/backup:ro" \
     alpine \
     sh -c "rm -rf /target/* && tar xzf /backup/mybibli-covers-20260513.tar.gz -C /target"
-tar xzf backups/mybibli-env-20260513.tar.gz
+sudo tar xzf backups/mybibli-env-20260513.tar.gz
 docker compose start mybibli
 \end{lstlisting}
 

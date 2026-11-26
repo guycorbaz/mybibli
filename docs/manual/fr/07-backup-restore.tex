@@ -206,6 +206,7 @@ sur des données réelles (par exemple essayer une modification qui
 réécrit des données sur tout le catalogue avant de la livrer, règle~\#20
 du projet) :
 \begin{lstlisting}
+sudo -v
 sudo tar -xzf backups/mybibli-<id>-<date>.tar.gz database.sql
 mariadb -u root -p -e "CREATE DATABASE mybibli_copie"
 sudo cat database.sql | mariadb -u root -p mybibli_copie
@@ -461,7 +462,7 @@ sécurité. La même raison figure dans les journaux au niveau
         (\texttt{docker compose restart mybibli}) et vérifiez la
         bibliothèque. Ne restaurez rien à la main --- cela annulerait la
         restauration.
-  \item \textbf{Redémarrez une fois.} Si le journal est là, redémarrez
+  \item \textbf{Redémarrez une fois.} Si ce fichier est là, redémarrez
         mybibli : au démarrage, avant toute autre chose, il lit le
         journal et remet la bibliothèque en état depuis la sauvegarde de
         sécurité qu'il nomme. Si cela réussit, les journaux indiquent
@@ -472,12 +473,17 @@ sécurité. La même raison figure dans les journaux au niveau
         short}, et Docker le relance sans fin). Restaurez la sauvegarde
         de sécurité à la main, depuis le dossier qui contient
         \texttt{docker-compose.yml} (base embarquée ; le mot de passe
-        root est \texttt{MYSQL\_ROOT\_PASSWORD} dans \texttt{.env}) :
+        root est \texttt{MYSQL\_ROOT\_PASSWORD} dans \texttt{.env}).
+        Lancez les lignes une à une ; ne continuez que si la première
+        affiche \texttt{OK} et que \texttt{backups/database.sql} existe
+        (la troisième le vérifie à nouveau avant de supprimer la
+        base) :
 \begin{lstlisting}
 docker compose stop mybibli
 sudo sh -c 'cd backups && sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256 \
     && tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql'
-docker compose exec -T db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+sudo test -s backups/database.sql && docker compose exec -T db \
+    sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
     -e "DROP DATABASE $MYSQL_DATABASE;
         CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"'
 sudo cat backups/database.sql | docker compose exec -T db \
@@ -631,7 +637,7 @@ docker compose exec -T db sh -c 'exec mariadb-dump \
     -u root -p"$MYSQL_ROOT_PASSWORD" \
     --single-transaction --routines --triggers \
     "$MYSQL_DATABASE"' \
-    > backups/mybibli-$(date +%Y%m%d-%H%M%S).sql
+    | sudo tee backups/mybibli-$(date +%Y%m%d-%H%M%S).sql > /dev/null
 \end{lstlisting}
 
 Le drapeau \texttt{--single-transaction} est important : il fait un
@@ -643,7 +649,7 @@ coûteux et future-proof).
 Compressez le dump si l'espace disque est une préoccupation :
 
 \begin{lstlisting}
-gzip backups/mybibli-*.sql
+sudo gzip backups/mybibli-*.sql
 \end{lstlisting}
 
 \subsection*{Base de données — MariaDB externe}
@@ -659,7 +665,7 @@ Pour un répertoire de couvertures monté en bind-mount sur l'hôte,
 une simple archive \texttt{tar} suffit :
 
 \begin{lstlisting}
-tar czf backups/mybibli-files-$(date +%Y%m%d).tar.gz \
+sudo tar czf backups/mybibli-files-$(date +%Y%m%d).tar.gz \
     .env "$COVERS_HOST_PATH"
 \end{lstlisting}
 
@@ -678,7 +684,7 @@ docker run --rm \
     -v "$(pwd)/backups:/backup" \
     alpine \
     tar czf "/backup/mybibli-covers-$(date +%Y%m%d).tar.gz" -C /source .
-tar czf "backups/mybibli-env-$(date +%Y%m%d).tar.gz" .env
+sudo tar czf "backups/mybibli-env-$(date +%Y%m%d).tar.gz" .env
 \end{lstlisting}
 
 Le conteneur \texttt{alpine} jetable monte le volume nommé en
@@ -715,14 +721,17 @@ de titres et de prêts correspondent à ce que rapporte
 
 \subsection*{Base de données}
 
-Pour le setup avec base embarquée :
+Pour le setup avec base embarquée, lancez les lignes une à une ; la
+base n'est supprimée que si le fichier du dump se relit en entier :
 
 \begin{lstlisting}
 docker compose stop mybibli
-docker compose exec -T db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+sudo zcat backups/mybibli-20260513-1200.sql.gz > /dev/null \
+    && docker compose exec -T db \
+    sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
     -e "DROP DATABASE $MYSQL_DATABASE;
         CREATE DATABASE $MYSQL_DATABASE CHARACTER SET utf8mb4;"'
-zcat backups/mybibli-20260513-1200.sql.gz | docker compose exec -T db \
+sudo zcat backups/mybibli-20260513-1200.sql.gz | docker compose exec -T db \
     sh -c 'exec mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"'
 docker compose start mybibli
 \end{lstlisting}
@@ -735,7 +744,7 @@ fonctionnent contre le serveur externe.
 Pour un install bind-mount hôte :
 
 \begin{lstlisting}
-tar xzf backups/mybibli-files-20260513.tar.gz
+sudo tar xzf backups/mybibli-files-20260513.tar.gz
 \end{lstlisting}
 
 Pour l'install par défaut (volume nommé), restaurez via un
@@ -749,7 +758,7 @@ docker run --rm \
     -v "$(pwd)/backups:/backup:ro" \
     alpine \
     sh -c "rm -rf /target/* && tar xzf /backup/mybibli-covers-20260513.tar.gz -C /target"
-tar xzf backups/mybibli-env-20260513.tar.gz
+sudo tar xzf backups/mybibli-env-20260513.tar.gz
 docker compose start mybibli
 \end{lstlisting}
 

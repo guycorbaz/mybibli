@@ -112,6 +112,9 @@ Three Medium and seven Low findings, all fixed (EN and FR):
 - **M3** — a cover downloaded while the backup was written has a number at or above the dumped next title id: after restoring that backup the repair stays blocked by the wrong-database guard; said in "A cover written during the backup" (pointing to the guard) and in the cover-check note (also a file left by a restore by hand).
 - **Lows** — the double failure named (audit row and journal removal; see the log) in ch. 7 and 10; restore-by-hand step 4 "unless it reports one of its guards"; the scan banner quoted as in the locales ("This ISBN is on your wish list. Remove it?" / « Cet ISBN est sur votre wish list. La retirer ? »); "the location's pencil"; API description "as typed (leading and trailing spaces removed)"; "Recommended cadence" rewritten (automatic backup covers database and covers; `.env` and an off-site copy of `backups/` with `sudo` remain); FR wording (« appliquent chacune leur rotation aux sauvegardes de l'autre », « vers cette version », « Cherchez le fichier `.restore-in-progress.json` »).
 
+- **Pass 2, M-a** — the `DROP DATABASE` never runs after a failed check: "Restoring by hand" and the old "Restore procedure" say to run the lines one at a time and go on only on `OK` / a readable dump, and the drop itself is gated (`sudo test -s backups/database.sql && …`; `sudo zcat FILE > /dev/null && …`).
+- **Pass 2, lows** — old backup procedure writes through `sudo tee`, `sudo gzip`, `sudo tar` (and the old restore reads with `sudo zcat` / `sudo tar`); FR step 2 « Si ce fichier est là »; `sudo -v` before the test-database recipe.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -155,3 +158,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — create-story (with 20-7).
 - 2026-11-26 — review: checked against the merged copy (19-9 merged); done.
 - 2026-11-26 — independent review: M1–M3 and L1–L7 fixed, PDFs rebuilt.
+- 2026-11-26 — review pass 2: gated drop, sudo; PDFs rebuilt.
