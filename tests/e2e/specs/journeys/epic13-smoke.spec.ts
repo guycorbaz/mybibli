@@ -34,9 +34,9 @@
 import { test, expect, request as playwrightRequest, type Page } from "@playwright/test";
 import { revokeApiKey, createApiKey } from "../../helpers/api-keys";
 import { loginAs } from "../../helpers/auth";
-import { specIsbn, specLcode } from "../../helpers/isbn";
+import { specIsbn } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
-import { createLocation, createChildLocation } from "../../helpers/locations";
+import { createLocation, createChildLocation, freeLcodePair } from "../../helpers/locations";
 import { createLabel } from "../../helpers/labels";
 import { mcpCallTool } from "../../helpers/mcp";
 import { acceptFromDetail } from "../../helpers/proposals";
@@ -70,18 +70,6 @@ function utcDay(offsetDays: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + offsetDays);
   return d.toISOString().slice(0, 10);
-}
-
-/** Two consecutive bucket-8 L-codes /locations does not list yet. */
-async function freeLcodePair(page: Page): Promise<[string, string]> {
-  await page.goto("/locations");
-  const listed = await page.content();
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const seq = Math.floor(Math.random() * 499) * 2;
-    const pair: [string, string] = [specLcode(8, seq), specLcode(8, seq + 1)];
-    if (!listed.includes(pair[0]) && !listed.includes(pair[1])) return pair;
-  }
-  throw new Error("no free L-code pair left in bucket 8");
 }
 
 /** Apply the home "added since" form (the current query is kept). */
@@ -132,7 +120,7 @@ test.describe("Epic 13 smoke — catalogue corrections, end to end", () => {
     const markerIsbn = specIsbn("TN", 91000 + (SECONDS % 9000));
     const otherIsbn = specIsbn(SPEC, RUN);
     const vcode = specVcode(SPEC, 0);
-    const [rootCode, shelfCode] = await freeLcodePair(page);
+    const [rootCode, shelfCode] = await freeLcodePair(page, 8, 0, 998);
     const root = `E3-House-${SECONDS}`;
     const shelf = `E3-Shelf-${SECONDS}`;
     const labelName = `Smoke doubtful ${RUN}-${crypto.randomUUID().slice(0, 6)}`;

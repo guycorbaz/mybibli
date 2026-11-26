@@ -1,5 +1,6 @@
 import { test, expect, Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { expectHtmxProcessed } from "../../helpers/htmx";
 
 // CR #62 — Rewrite of the 8-7 P9 spec. The original wrapped every
 // assertion in `if (tableExists) { if (btnExists) { ... } }`, which
@@ -148,5 +149,21 @@ test.describe("Story 8-7: Permanent Delete & Auto-Purge", () => {
     // valid post-swap, but the page must not be in an in-flight state.
     const swapped = page.locator("#admin-trash-panel");
     await expect(swapped).toBeVisible();
+  });
+
+  // Regression #750: a name search in the Trash answered 500.
+  test("SC4: searching the Trash by name lists the row", async ({ page }) => {
+    const name = await seedSoftDeletedSeries(page, "search");
+    await page.goto("/admin?tab=trash", { waitUntil: "domcontentloaded" });
+    const field = page.locator("#search-trash");
+    await expectHtmxProcessed(field);
+    const answer = page.waitForResponse(
+      (r) => r.url().includes("/admin/trash") && r.url().includes("search="),
+    );
+    await field.pressSequentially(name, { delay: 10 });
+    expect((await answer).status()).toBe(200);
+    await expect(
+      page.locator("#admin-trash-panel tbody tr").filter({ hasText: name }),
+    ).toHaveCount(1, { timeout: 10000 });
   });
 });

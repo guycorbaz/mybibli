@@ -82,7 +82,7 @@ impl TrashModel {
         let (final_query, search_term) = if let Some(search) = trimmed {
             let escaped = escape_like_pattern(search);
             let subquery = format!(
-                "({}) AS trash WHERE item_name LIKE ? ESCAPE '|' ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
+                "SELECT * FROM ({}) AS trash WHERE item_name LIKE ? ESCAPE '|' ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
                 query_builder
             );
             (subquery, Some(format!("%{}%", escaped)))
