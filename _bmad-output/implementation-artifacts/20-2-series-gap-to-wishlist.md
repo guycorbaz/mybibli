@@ -1,6 +1,6 @@
 # Story 20.2: Send a missing series position to the wish list
 
-Status: in-progress
+Status: review
 
 <!-- Closes #715. Source: _bmad-output/planning-artifacts/epics.md, Epic 20, Story 20.2; decisions D4, D5, D6 (approved by the project lead, 2026-11-26). Open questions Q1–Q4 (see Validation) approved by the project lead as recommended, 2026-11-26. -->
 
@@ -174,7 +174,7 @@ Claude Opus 5.5 (claude-opus-5-5)
 - `wish_tome` (the 11-11 button) now uses the same `existing_wish`, `wish_already_html`, `wish_added_html`.
 - Series page: `parse_wishlist_item` (ASCII digits, > 0) → live item → `wish_added_html` inside `#series-feedback`.
 - Lock-scope test bounds the HTTP send with a 5 s `tokio::time::timeout` instead of `SET SESSION innodb_lock_wait_timeout` (the request runs on a pool connection the test cannot configure); the server's wait timeout (50 s) is far above the bound.
-- E2E spec written (`series-gap-wishlist.spec.ts`), `tsc --noEmit`, waitForTimeout grep and `vcode-literals.sh` pass; not run yet (stack busy). It uses no ISBN (every row hangs on a run-stamped series), so `specIsbn("GW")` is not called. The existing `series-expected-tomes.spec.ts` refusal now reads `#expected-tome-isbn-error` (Q3).
+- E2E spec written (`series-gap-wishlist.spec.ts`), `tsc --noEmit`, waitForTimeout grep and `vcode-literals.sh` pass. E2E run (image rebuilt `--no-cache`, binary checked for the new form markup): the two series specs 7/7; after a fresh reset, the full suite `CI=true --workers=2` 505 passed, 2 skipped, no flaky test, no fix needed. It uses no ISBN (every row hangs on a run-stamped series), so `specIsbn("GW")` is not called. The existing `series-expected-tomes.spec.ts` refusal now reads `#expected-tome-isbn-error` (Q3).
 - Gates: `cargo clippy --all-targets -- -D warnings` clean; `cargo test --lib` 1957 passed; integration `series_gap_wishlist::` (12), `expected_tomes_web::`, `expected_tomes::`, `locale_parity::`, `every_test_file_is_declared`, `templates_audit`, `locale_html_safety::` — 61 passed; `series`, `wishlist`, `form_refusals` filters — 123 passed.
 
 ### File List
@@ -196,4 +196,5 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Change Log
 
+- 2026-11-26 — E2E green (505 passed, 2 skipped); status review.
 - 2026-11-26 — dev-story: gap → wish list form (tome + entry in one transaction), shared wish list dedup, field-level refusals in the expected-tome form, success entry on the series page. E2E pending.
