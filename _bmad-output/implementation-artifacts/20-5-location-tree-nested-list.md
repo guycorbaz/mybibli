@@ -1,6 +1,6 @@
 # Story 20.5: The location tree says what it does (closes the visible part of #700)
 
-Status: in-progress
+Status: review
 
 ## Story
 
@@ -76,7 +76,7 @@ From `_bmad-output/planning-artifacts/epics.md` → Story 20.5 (verbatim intent,
   - [x] New test — axe on `/locations` with nested rows: parent + child + grandchild created by the spec, axe with `["wcag2a", "wcag2aa", "wcag22aa"]` (as `accessibility-full.spec.ts`), once expanded, once with the parent collapsed. Assert `[role="tree"], [role="treeitem"], [role="group"]` count 0 on the page.
   - [x] Assert only on the spec's own rows (Rule #23); no `waitForTimeout`; `expectHtmxProcessed` is not needed for these full-page forms.
 - [x] **T9 — `tests/e2e/specs/accessibility-full.spec.ts`** (AC 7): the 3 `[role="treeitem"]` uses (l. 159, 216 and the comments l. 94, 144) become `li[data-tree-node-id]` (the "populated" guard and the seed lookup). The seed lookup by text keeps `.first()` — it seeds a root only.
-- [ ] **T10 — Gates.** `cargo check`, `cargo clippy -- -D warnings`, `cargo test` for `routes::locations` + `--test integration location_delete_modal:: locale_parity::`, `templates_audit`; `cd tests/e2e && npx tsc --noEmit`; the `waitForTimeout` grep; E2E on the reset stack with `CI=true npx playwright test --workers=2` (Rule #13 point 4: the specs create locations on the shared DB). Heavy commands under `flock -w 10800 /tmp/station-heavy.lock mem-guard …`.
+- [x] **T10 — Gates.** `cargo check`, `cargo clippy -- -D warnings`, `cargo test` for `routes::locations` + `--test integration location_delete_modal:: locale_parity::`, `templates_audit`; `cd tests/e2e && npx tsc --noEmit`; the `waitForTimeout` grep; E2E on the reset stack with `CI=true npx playwright test --workers=2` (Rule #13 point 4: the specs create locations on the shared DB). Heavy commands under `flock -w 10800 /tmp/station-heavy.lock mem-guard …`.
 
 ## Dev Notes
 
@@ -166,7 +166,7 @@ Claude Opus 5.5 (dev-story, 2026-11-26)
 - `cargo test --lib`: 1970 passed (templates_audit included).
 - `cargo test --test integration -- location_delete_modal:: locale_parity:: templates_audit every_test_file_is_declared location`: 32 passed.
 - `tests/e2e`: `npx tsc --noEmit` clean; `waitForTimeout` grep empty; `vcode-literals.sh` clean.
-- E2E not run yet (shared stack in use): T10 stays open until `CI=true npx playwright test --workers=2` on the reset stack.
+- E2E (image rebuilt `--no-cache`, stack reset on port 18080): `locations.spec.ts` + `accessibility-full.spec.ts` 39 passed; after a second reset, full suite `CI=true npx playwright test --workers=2`: 512 passed, 2 skipped, 0 flaky.
 
 ### Completion Notes List
 
@@ -201,3 +201,4 @@ No Medium+ finding (story clean). Low findings:
 
 - 2026-11-26 — dev-story: nested list with disclosure buttons, parent updated after its last child's deletion (all three delete answers), unit + DB + E2E tests written; E2E run pending.
 - 2026-11-26 — code review pass 1: clean (no Medium+); L1 fixed, L2 accepted, L3 deliberate.
+- 2026-11-26 — E2E green (full suite, 2 workers); status → review.
