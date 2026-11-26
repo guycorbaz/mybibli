@@ -2,8 +2,9 @@
 //!
 //! In this story the tab shows the backups folder and its state, a
 //! "Back up now" button and the answer in the tab's own feedback region
-//! (`#admin-backups-feedback`). The list of backups comes with story 19-8,
-//! the schedule with 19-7. Admin only (every handler starts with
+//! (`#admin-backups-feedback`). Story 19-8: the list of the backups in
+//! the folder and the restore (`routes::admin_backups_restore`), the list
+//! refreshed out of band after every "Back up now". Admin only (every handler starts with
 //! `require_role_with_return(Role::Admin, …)`); the POST is CSRF-checked
 //! by the 8-2 middleware like every other mutation.
 //!
@@ -39,6 +40,8 @@ struct AdminBackupsPanel {
     panel_heading: String,
     folder_line: String,
     run_label: String,
+    /// Story 19-8 (D1): the list, built by `admin_backups_restore`.
+    list_html: String,
 }
 
 fn t(key: &str, loc: &str) -> String {
@@ -78,6 +81,7 @@ pub(crate) async fn render_panel_html(
         panel_heading: t("admin.tabs.backups", loc),
         folder_line: folder_line(dir, folder, loc),
         run_label: t("admin.backups.run", loc),
+        list_html: crate::routes::admin_backups_restore::render_list_html(state, loc).await?,
     }
     .render()
     .map_err(|_| AppError::TemplateRenderFailed { template: "admin_backups_panel" })
@@ -127,17 +131,26 @@ pub async fn admin_backups_run(
         Err(e) => feedback_html("error", &e.localized(loc), ""),
     };
     let dir = &state.backup.dir;
+    let list = crate::routes::admin_backups_restore::render_list_html(&state, loc).await?;
     Ok(HtmxResponse {
         main,
-        oob: vec![OobUpdate {
-            swap_mode: Default::default(),
-            target: FOLDER_ID.to_string(),
-            content: crate::utils::html_escape(&folder_line(
-                dir,
-                backup::folder_state(dir),
-                loc,
-            )),
-        }],
+        oob: vec![
+            OobUpdate {
+                swap_mode: Default::default(),
+                target: FOLDER_ID.to_string(),
+                content: crate::utils::html_escape(&folder_line(
+                    dir,
+                    backup::folder_state(dir),
+                    loc,
+                )),
+            },
+            // Story 19-8 (D1): the new file, and what the rotation removed.
+            OobUpdate {
+                swap_mode: Default::default(),
+                target: crate::routes::admin_backups_restore::LIST_ID.to_string(),
+                content: list,
+            },
+        ],
     }
     .into_response())
 }

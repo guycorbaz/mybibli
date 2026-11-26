@@ -1,0 +1,17 @@
+{# Story 19-8 (#657, D7, D10, T12) — what replaces the restore modal once
+   the restore ended: the line, and the "Log in again" link (everyone is
+   logged out), which takes the focus (`data-modal-default-focus`, the
+   modal's own content). No Confirm button, so not the UX-DR8 macro; still
+   `aria-modal`, so scanner-guard sees it. #}
+<dialog open aria-modal="true" aria-labelledby="admin-backups-restore-done-text" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 rounded-lg">
+    <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-md w-full mx-4 border border-stone-200 dark:border-stone-700">
+        <div class="p-6 space-y-4">
+            <p id="admin-backups-restore-done-text" role="status" class="text-stone-900 dark:text-white"{% if !show_login %} tabindex="-1" data-modal-default-focus{% endif %}>{{ text }}</p>
+            {% if show_login %}
+            <div class="flex justify-end">
+                <a id="admin-backups-login-again" href="/login" data-modal-default-focus class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-semibold">{{ login_label }}</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</dialog>

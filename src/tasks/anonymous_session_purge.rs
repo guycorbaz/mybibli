@@ -40,6 +40,9 @@ const RETENTION_DAYS: u64 = 7;
 /// default (24h initial delay). See migration 20260526075700.
 const KEY_LAST_PURGE_AT: &str = "last_anonymous_session_purge_at";
 
+/// Story 19-8 (T7): how long a run skipped for a restore waits.
+const RESTORE_RETRY_SECS: u64 = 3600;
+
 /// Spawn the daily purge task. Swallows all errors — maintenance must
 /// never crash the app. Call from `main.rs` once per process.
 ///
@@ -50,7 +53,10 @@ const KEY_LAST_PURGE_AT: &str = "last_anonymous_session_purge_at";
 /// re-arming a fresh 24 h sleep that resets on every restart. If
 /// the row is missing or empty (fresh install), the spec default
 /// 24 h sleep is preserved.
-pub fn spawn(pool: DbPool) {
+///
+/// Story 19-8 (T7): a run is skipped while a restore runs (retried an
+/// hour later); a purge in progress holds the maintenance gate.
+pub fn spawn(pool: DbPool, maintenance: std::sync::Arc<crate::services::maintenance::Maintenance>) {
     tokio::spawn(async move {
         let initial_delay = compute_initial_delay(&pool).await;
         tracing::info!(
@@ -59,11 +65,26 @@ pub fn spawn(pool: DbPool) {
         );
         tokio::time::sleep(initial_delay).await;
         loop {
-            purge_once(&pool).await;
-            record_purge_at(&pool, Utc::now()).await;
+            if !run_once(&pool, &maintenance).await {
+                tokio::time::sleep(Duration::from_secs(RESTORE_RETRY_SECS)).await;
+                continue;
+            }
             tokio::time::sleep(Duration::from_secs(PURGE_INTERVAL_SECS)).await;
         }
     });
+}
+
+/// Story 19-8 review (pass 1) — one purge: skipped (`false`) while a
+/// restore runs; otherwise run holding the maintenance gate.
+pub async fn run_once(pool: &DbPool, maintenance: &crate::services::maintenance::Maintenance) -> bool {
+    let Some(admission) = maintenance.enter() else {
+        tracing::info!("anonymous session purge: skipped, a restore is running");
+        return false;
+    };
+    purge_once(pool).await;
+    record_purge_at(pool, Utc::now()).await;
+    drop(admission);
+    true
 }
 
 /// Decide the sleep duration before the first purge of this process.
@@ -185,6 +206,17 @@ fn initial_delay_from(last: Option<DateTime<Utc>>, now: DateTime<Utc>) -> Durati
 mod tests {
     use super::*;
     use chrono::Duration as ChronoDuration;
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn a_purge_is_skipped_while_a_restore_runs(pool: DbPool) {
+        let m = std::sync::Arc::new(crate::services::maintenance::Maintenance::new());
+        let on = m.begin(Duration::from_secs(1)).await.unwrap();
+        assert!(!run_once(&pool, &m).await, "skipped while active");
+        assert!(read_last_purge_at(&pool).await.is_none(), "nothing recorded");
+        drop(on);
+        assert!(run_once(&pool, &m).await);
+        assert!(read_last_purge_at(&pool).await.is_some());
+    }
 
     // ─── Fix #46 (v1.7.9) — initial_delay_from semantics ─────────
 

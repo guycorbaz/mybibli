@@ -1,0 +1,21 @@
+{# Story 19-8 (#657, D6) — restore confirm (UX-DR8 macro, Pattern A in
+   #modal-slot): the explicit button alone (a safety backup makes the
+   action reversible, the consequences are spelled out). `body_html` and
+   `inner_form_html` (the "Restoring…" line, shown while the request runs)
+   are built and escaped by the handler. The answer replaces the dialog
+   (success / rollback) or lands in its error region (a refusal, 409). #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "delete",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "POST",
+    csrf_token,
+    "#modal-slot",
+    "innerHTML",
+    0,
+    inner_form_html,
+) %}{% endcall %}

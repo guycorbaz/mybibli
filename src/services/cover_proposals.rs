@@ -537,7 +537,10 @@ impl CoverProposalService {
             sources,
             _permit: permit,
         };
-        tokio::spawn(job.run())
+        // Story 19-8 review (pass 1): the job carries the request's
+        // maintenance scope; it files nothing once a restore started since.
+        let scope = crate::services::maintenance::current_scope();
+        tokio::spawn(crate::services::maintenance::rescoped(scope, job.run()))
             .await
             .map_err(|e| AppError::Internal(format!("cover proposal task: {e}")))?
     }
@@ -601,6 +604,11 @@ impl FilingJob {
                 expected_version: Some(self.version),
                 proposed_values: values,
             }],
+        };
+        let Some(_permit) = crate::services::maintenance::write_permit() else {
+            cover_staging::discard_all(&self.staging_dir, std::slice::from_ref(&staged_file)).await;
+            tracing::info!(title_id = self.title_id, "Cover proposal not filed: a restore ran or is running");
+            return Err(AppError::Internal("a restore ran during the filing".to_string()).into());
         };
         let proposal_id = match file_capped(&self.pool, &proposal, None).await {
             Ok(id) => id,

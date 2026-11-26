@@ -20,11 +20,17 @@ use crate::services::cover::{CoverService, resolve_cover_url_with_fallback};
 /// watcher task awaits the join handle and logs panics with the supplied
 /// context (typically the title id + code) so failed fetches are
 /// post-mortem-able.
-pub fn spawn_fetch<F>(context: &'static str, title_id: u64, future: F)
-where
+pub fn spawn_fetch<F>(
+    maintenance: &std::sync::Arc<crate::services::maintenance::Maintenance>,
+    context: &'static str,
+    title_id: u64,
+    future: F,
+) where
     F: Future<Output = ()> + Send + 'static,
 {
-    let handle = tokio::spawn(future);
+    // Story 19-8 (T7): the fetch captures the maintenance generation now;
+    // its writes are dropped once a restore started since.
+    let handle = tokio::spawn(crate::services::maintenance::scoped(maintenance, future));
     tokio::spawn(async move {
         if let Err(join_err) = handle.await
             && join_err.is_panic()
@@ -117,7 +123,17 @@ pub async fn fetch_metadata_chain(
         force_refresh,
     )
     .await;
+    let Some(_permit) = crate::services::maintenance::write_permit() else {
+        log_dropped(title_id);
+        return;
+    };
     crate::tasks::metadata_retry::note_fetch_outcome(&pool, title_id, outcome, "scan").await;
+}
+
+/// Story 19-8 (T7): a fetch that started before a restore writes nothing
+/// into the restored database (its title id may name another title).
+fn log_dropped(title_id: u64) {
+    tracing::info!(title_id, "Metadata fetch result dropped: a restore ran or is running");
 }
 
 /// #419 — same as [`fetch_metadata_chain`] but reports the per-title
@@ -147,6 +163,7 @@ pub async fn fetch_metadata_chain_outcome(
     );
 
     if force_refresh
+        && let Some(_permit) = crate::services::maintenance::write_permit()
         && let Err(e) =
             crate::services::title::TitleService::invalidate_metadata_cache(&pool, &code).await
     {
@@ -180,18 +197,25 @@ pub async fn fetch_metadata_chain_outcome(
     match chain_outcome.result {
         Some(metadata) => {
             tracing::info!(title_id = title_id, code = %code, "Metadata fetch completed successfully");
-            if let Err(e) = update_title_from_metadata(&pool, title_id, &metadata).await {
-                tracing::warn!(title_id = title_id, error = %e, "Failed to update title from metadata");
-                mark_failed(&pool, title_id).await;
-                return FetchOutcome::Failed;
-            }
+            {
+                // Story 19-8 (T7): held while writing (a restore waits).
+                let Some(_permit) = crate::services::maintenance::write_permit() else {
+                    log_dropped(title_id);
+                    return FetchOutcome::Failed;
+                };
+                if let Err(e) = update_title_from_metadata(&pool, title_id, &metadata).await {
+                    tracing::warn!(title_id = title_id, error = %e, "Failed to update title from metadata");
+                    mark_failed(&pool, title_id).await;
+                    return FetchOutcome::Failed;
+                }
 
-            // #202 — record the provenance only when the chain actually names a
-            // provider. A cache hit resolves the metadata but reports no source,
-            // and overwriting a previously-recorded name with NULL there would
-            // make a re-fetch ERASE the badge it had earned on the first run.
-            if let Some(source) = chain_source.as_deref() {
-                record_metadata_source(&pool, title_id, source).await;
+                // #202 — record the provenance only when the chain actually names a
+                // provider. A cache hit resolves the metadata but reports no source,
+                // and overwriting a previously-recorded name with NULL there would
+                // make a re-fetch ERASE the badge it had earned on the first run.
+                if let Some(source) = chain_source.as_deref() {
+                    record_metadata_source(&pool, title_id, source).await;
+                }
             }
 
             // Story 11-18 — a cover set by hand (upload, accepted proposal)
@@ -211,6 +235,11 @@ pub async fn fetch_metadata_chain_outcome(
                     Ok(bytes) => crate::services::cover::encode_cover(&bytes).map(|e| e.jpeg),
                     Err(e) => Err(e),
                 };
+                let permit = crate::services::maintenance::write_permit();
+                if permit.is_none() {
+                    log_dropped(title_id);
+                    return FetchOutcome::Failed;
+                }
                 match fetched {
                     Ok(jpeg) => {
                         match store_fetched_cover(&pool, title_id, &covers_dir, &jpeg).await {
@@ -237,10 +266,18 @@ pub async fn fetch_metadata_chain_outcome(
                 FetchOutcome::NotFound
             };
 
+            let Some(_permit) = crate::services::maintenance::write_permit() else {
+                log_dropped(title_id);
+                return FetchOutcome::Failed;
+            };
             mark_resolved(&pool, title_id).await;
             outcome
         }
         None => {
+            let Some(_permit) = crate::services::maintenance::write_permit() else {
+                log_dropped(title_id);
+                return FetchOutcome::Failed;
+            };
             if chain_outcome.throttled {
                 tracing::info!(title_id = title_id, code = %code, "Metadata chain throttled (429/503), no result");
                 mark_failed(&pool, title_id).await;
@@ -758,7 +795,8 @@ mod tests {
     /// panic didn't escape out of `spawn_fetch` itself.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn spawn_fetch_recovers_from_panic_in_inner_future() {
-        super::spawn_fetch("test_panic", 42, async {
+        let m = std::sync::Arc::new(crate::services::maintenance::Maintenance::new());
+        super::spawn_fetch(&m, "test_panic", 42, async {
             panic!("simulated panic inside fetch_metadata_chain");
         });
         // Give the watcher task a chance to observe the panic and log.
@@ -774,7 +812,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn spawn_fetch_normal_completion_is_silent() {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        super::spawn_fetch("test_ok", 7, async move {
+        let m = std::sync::Arc::new(crate::services::maintenance::Maintenance::new());
+        super::spawn_fetch(&m, "test_ok", 7, async move {
             tx.send(()).unwrap();
         });
         // Future ran to completion; nothing should panic.
