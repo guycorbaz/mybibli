@@ -1,6 +1,6 @@
 # Story 20.1: Remove an entry from the wish list (closes #714)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -123,6 +123,14 @@ Precisions (no product choice):
 - D6-A gives light classes only; the dark variants follow the neighbours (`dark:text-red-400` on the list, `dark:border-red-700 dark:text-red-300` + `hover:bg-red-50 dark:hover:bg-red-900/30` on the entry page).
 - `templates_audit` polices literal `aria-label` values; `aria-label="{{ row.remove_label }}"` (an Askama expression) passes, as the story requires.
 - E2E: `loginAs(page, "librarian")` exists with that signature; the two pages of the refusal case share the context's session cookie; `VCODE_BLOCKS` needs no entry (no V-code created).
+
+## Senior Developer Review (AI)
+
+### Review pass 1 (2026-11-26, independent reviewer)
+
+No Medium+ findings: the story is clean (Rule #6). Checked: the version-guarded soft delete and its refusal in `[data-modal-error]`, the `action` parser (positive shape), authorization, the UX-DR8 modal, focus, dark mode, the four locales, E2E isolation.
+
+Low findings, all deferred to #734: the `already_removed` copy also shown on the entry page; accessible names not starting with the visible word (WCAG 2.5.3); no E2E step for the D7 opener refusal; a weak status assertion for the anonymous DELETE; `docs/route-role-matrix.md` lists `GET /wishlist` as Librarian.
 
 ## Dev Agent Record
 
