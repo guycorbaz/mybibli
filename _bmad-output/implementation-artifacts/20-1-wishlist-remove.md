@@ -110,6 +110,18 @@ What exists (read on `main` at `a608f56`):
 - #714; `_bmad-output/planning-artifacts/epics.md` "Epic 20" (decisions D1–D3, D11, copy table) and "Story 20.1"; FR183.
 - `src/routes/wishlist.rs` (`wishlist_page`, `wishlist_detail`, `wishlist_delete_modal`, `wishlist_delete`, `autolink_feedback_html`), `src/models/wishlist.rs`, `templates/pages/wishlist.html`, `templates/pages/wishlist_detail.html`, `templates/fragments/wishlist_delete_modal.html`, `templates/components/modal.html`, `static/js/modal.js`, `src/middleware/modal_confirm_retarget_guard.rs`, `src/models/admin_audit.rs::AdminAuditModel::create`, `tests/borrower_delete_modal.rs` (modal route test shape), `tests/e2e/specs/journeys/wishlist.spec.ts`, `tests/e2e/specs/journeys/admin-modal-lifecycle.spec.ts` (`[data-modal-error]` assertions), `docs/error-message-style.md`.
 
+## Validation (2026-11-26)
+
+Checked against `epics.md` "Story 20.1" (every epic AC maps to AC1–AC9; FR183 covered), the code on `e979c1b` and CLAUDE.md. No product gap found; the decisions D1–D8 stand. Facts confirmed: `src/routes/wishlist.rs` is 677 lines; the four handlers, `autolink_feedback_html` and the routes at `src/routes/mod.rs:452-457` are as described; `wishlist.action_remove` exists in the four locales and nothing reads it; `wishlist_items` is in neither `ALLOWED_TABLES` nor `PURGE_DELETION_ORDER`; `modal.js` Path A puts a failed Confirm's body in `[data-modal-error]` unless the answer still carries `HX-Retarget`; `mybibli.js`'s `htmx:responseError` inserts a 404 `.feedback-entry` from a non-modal opener (D7-A); the existing `wishlist.spec.ts` matcher `/Bought|Acheté/i` still finds only the "bought" button (the remove names hold no "bought").
+
+Precisions (no product choice):
+- `src/routes/wishlist.rs` has **no test module** today: T6 creates `#[cfg(test)] mod tests`. To unit-test the copy per action without a DB, T2 puts it in a pure helper (e.g. `WishlistAction::modal_copy(self, title, loc) -> (title, body, confirm)`), called by `wishlist_delete_modal`.
+- AC9 "a delete whose `soft_delete` matches 0 rows": the router cannot interleave between the handler's read and write, so this case is tested on the model (stale version → `0`, the row still live with its version, no audit row written) — the handler's `0`-row branch and its `None` branch answer the same `already_removed` (AC5); the `None` branch is the one the second-DELETE router test drives.
+- Router tests: `GET …/delete-modal` needs `HX-Request` (else 405) — `Browser::send(…, htmx: true)`; an Anonymous modal request answers `UnauthorizedWithReturn("/wishlist")` (303 to `/login?next=…`) before the HTMX check; seed users through `common::web::{seed_librarian, seed_admin}` and set `preferred_language = 'en'` when asserting English copy (as `tests/scan_vcode_case.rs` does).
+- D6-A gives light classes only; the dark variants follow the neighbours (`dark:text-red-400` on the list, `dark:border-red-700 dark:text-red-300` + `hover:bg-red-50 dark:hover:bg-red-900/30` on the entry page).
+- `templates_audit` polices literal `aria-label` values; `aria-label="{{ row.remove_label }}"` (an Askama expression) passes, as the story requires.
+- E2E: `loginAs(page, "librarian")` exists with that signature; the two pages of the refusal case share the context's session cookie; `VCODE_BLOCKS` needs no entry (no V-code created).
+
 ## Dev Agent Record
 
 ### Agent Model Used
