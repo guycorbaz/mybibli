@@ -81,7 +81,7 @@ Technical choices made in this story (no visible behaviour beyond D9):
 - **CSP / audit** — `src/templates_audit.rs` checks templates (no inline style, CSRF first child of a POST form — already there) and the production Rust code; nothing new is built in Rust here.
 - **MariaDB** — `TEXT` decodes as `String` through `sqlx::query()` (it is `BLOB` only for `JSON`); keep `deleted_at IS NULL` on every read touched.
 - **Rule #20** — "stored as typed": trim only. No collapsing of spaces, no line-ending conversion, no HTML stripping (`html_to_plain_text` is for providers only).
-- **E2E data** — no ISBN, no V-code needed. L-codes: bucket 9 is unused by `specLcode` (only `L9998` / `L9999` are taken, by `highest-label-codes.spec.ts` and `shelving.spec.ts`): use `specLcode(9, 101…)` and names prefixed `LDS-`. Reach the location without the tree markup that 20.5 changes: after `createLocation(page, name, code)` (`helpers/locations.ts`), `page.goto("/scan?code=" + code)` lands on `/location/{id}` (story 9-9); read the id from the URL and go to `/locations/{id}/edit`. Selectors: `#edit-description`, `#edit-description-error`, `#edit-location-submit`, `#location-description`. Assert only on the spec's own location (Rule #23); no `waitForTimeout`. Use `loginAs(page)` in `beforeEach`. The textarea fill of 501 characters: `"x".repeat(501)`; the refused page keeps the 501 characters (`toHaveValue`).
+- **E2E data** — no ISBN, no V-code needed. L-codes: bucket 9 is unused by `specLcode` (only `L9998` / `L9999` are taken, by `highest-label-codes.spec.ts` and `shelving.spec.ts`): use `specLcode(9, 100 + vcodeSlot() * 10 + n)` (`specLcode` from `helpers/isbn.ts`, `vcodeSlot` from `helpers/vcode.ts`; `n` < 10 per test, unique across the spec's tests) and names prefixed `LDS-` with the same slot, so a CI retry on the same stack never meets its own earlier location (V2). Reach the location without the tree markup that 20.5 changes: after `createLocation(page, name, code)` (`helpers/locations.ts`), `page.goto("/scan?code=" + code)` lands on `/location/{id}` (story 9-9); read the id from the URL and go to `/locations/{id}/edit`. Selectors: `#edit-description`, `#edit-description-error`, `#edit-location-submit`, `#location-description`. Assert only on the spec's own location (Rule #23); no `waitForTimeout`. Use `loginAs(page)` in `beforeEach`. The textarea fill of 501 characters: `"x".repeat(501)`; the refused page keeps the 501 characters (`toHaveValue`).
 - **Migration ordering** — 19-7 (in progress, PR #730) adds `20261126100000_…`; this story's timestamp must sort after it, whichever merges first, so production applies both in order in v1.29.0.
 - `mem-guard` + the station lock for every heavy command; pass the rule to any sub-agent that compiles or tests. Never run `cargo fmt`.
 
@@ -93,6 +93,41 @@ Technical choices made in this story (no visible behaviour beyond D9):
 - `tests/backup_round_trip.rs` l. 21–80, `tests/api_v1_series.rs`, `tests/form_refusals.rs` (#676 field-refusal tests).
 - Story 19-1 (`19-1-location-tree-delete-modal.md`) — last story on these files.
 - CLAUDE.md — Foundation Rules #3, #20, #21, #23, #24; "i18n", "DB queries", "CSP & hardening headers", "Backups".
+
+## Validation (2026-11-26)
+
+Checked against the code of `main` at `a608f56` (`src/routes/locations.rs`, `src/models/location.rs`, `src/services/locations.rs`, `src/routes/api_v1.rs`, `src/routes/home_scan.rs`, `src/mcp/`, the two location templates, `tests/backup_round_trip.rs`, `tests/integration.rs`, `tests/e2e/helpers/{locations,isbn,vcode}.ts`, `tests/e2e/playwright.config.ts`, the E2E specs that use L-codes).
+
+Facts confirmed:
+- `LocationModel` is built only in `src/models/location.rs` (five readers, three test literals) and in `loc()` of `src/routes/locations.rs`; no other file constructs it. `update_with_locking` has one caller (`LocationService::update_location`), which has one caller (the route). `LocationEditTemplate` / `LocationDetailTemplate` are built once each, plus the detail render test.
+- No typed `sqlx::query!` reads `storage_locations` (`.sqlx/` has no entry for it): no offline-cache change.
+- No MCP tool returns a `storage_locations` row; `get_title` gives a volume's location path only. D9 "MCP unchanged" needs no code.
+- No `hx-boost` anywhere: the edit form is a native POST, so a 422 page renders as a page (the `series_expected_tomes` pattern works as is).
+- No textarea in `templates/` carries `maxlength` (series description, title description): T-b matches the project.
+- `location.breadcrumb_label` exists in the four locales and is unused, while `location_detail.html:9` hard-codes `aria-label="Location path"` — fixed in AC7 (existing copy, no decision needed).
+- `/scan?code=<L-code>` redirects to `/location/{id}` (`routes/home_scan.rs:127`), which lets the E2E spec avoid the tree markup that 20.5 rewrites.
+- `tests/backup_round_trip.rs` asserts every table is non-empty and compares `CHECKSUM TABLE`, so a seeded description is compared byte for byte after the load.
+- Story 19-8 (restore) is still `backlog`: AC8 is met through the 19-6 round trip (load of `database.sql` into a fresh schema), which is what 19-8 will run.
+
+Gaps fixed in this file (no product decision involved):
+- **V1 — line breaks and the 500 limit.** A textarea submits line breaks as `\r\n`; a plain `chars().count()` would refuse a 495-character text with five line breaks. T-a counts `\r\n` as one character and stores the text as received. (Counting is per Unicode scalar value: a composed emoji counts as several characters — acceptable for a 500-character note.)
+- **V2 — E2E data on retries.** CI runs `retries: 2` on the same stack; a fixed L-code would make a retry fail on "This L-code is already in use". The Dev Notes now derive the codes from `vcodeSlot()` in the unused `specLcode` bucket 9 (only `L9998` / `L9999` are taken there).
+- **V3 — the API chapter.** Story 20.4's AC says the API field is "documented in the API chapter", and story 20.7's AC says `11-api-integrations.tex` documents it; the couplings give every `docs/manual/` edit to 19.11 / 20.7 so the PDFs are rebuilt once. AC6 hands the manual to 20.7; this story does not edit `docs/manual/`.
+- **V4 — migration order.** 19-7 (open, PR #730) adds `20261126100000_settings_backup_retention.sql`; AC1 requires a later timestamp so the two apply in order whichever merges first.
+- **V5 — locale placement.** The keys go in the `location:` block away from its `tree:` sub-block, which 20.5 edits (Rule #24 coupling).
+- **V6 — `aria-describedby`.** The error id is named only when the error is rendered, so the textarea never points at a missing id.
+- **V7 — sprint status.** `epic-20` stays `backlog` in `sprint-status.yaml`: Rule #16 lets this PR change only its own line and the header; the epic line is for a chore PR (or the first story merged, per the project's practice).
+
+Pre-existing, left as is (outside the story):
+- `LocationService::create_location` / `update_location` / `validate_parent_chain` build their refusals with `t!()` without locale (instance language), and they still come back as a bare fragment from the plain form — see Q1. Same class as #710's "`t!()` without locale near the touched code".
+- A version conflict on the edit form answers a bare 409 fragment.
+
+### Open questions (product decisions — not decided here)
+
+- **Q1 — the edit form's other refusals.** The epic notes that the location form shows refusals as a bare 400 page and that 20.4 "re-renders its form with the error"; the approved 20.4 AC names only the description refusal (20.3's AC, by contrast, lists the series form's existing refusals). Once this story builds the re-render, the other refusals (blank name, invalid type, cycle, organizational location that still holds volumes) could be shown next to their fields with their current copy, in the request locale. Under Rule #3 each would then need its E2E case.
+  *Recommendation:* keep 20.4 to the description refusal as approved, and open a `type:change-request` issue for the four others (and the 409), to be done by a later story with their E2E cases.
+- **Q2 — where a save lands.** A save redirects to `/locations` (today's behaviour), where the description is not shown (D9), so a librarian does not see what was just saved without opening the location page.
+  *Recommendation:* keep the redirect as it is (no behaviour change in this story); revisit with Q1's issue if usage asks for it.
 
 ## Dev Agent Record
 
