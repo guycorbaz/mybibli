@@ -281,6 +281,8 @@ So that I find them without asking.
 
 ## Decisions for the project lead (practice A3)
 
+**Approved by the project lead on 2026-11-26:** the story cut (20.1–20.7); D1 = A (a separate "Remove"), D2 = A (fix the false Trash text), D3 = A (keep the reload); D4 = A, D5 = A, D6 = A; D7 = A (refuse a total below an expected tome); D8 = A (restore; settle on an equal ISBN, otherwise an information line with a link to the series); D9 as recommended; D10 = B (nested list with disclosure buttons); D11, the copy below; D12, two short retrospectives on the same day, before the v1.29.0 cut. Every decision below is therefore settled as recommended.
+
 **D1 — #714: what "remove" means.**
 - A. Add a separate "Remove" next to "Bought". Each has its own modal copy and audit action (`wishlist_removed`, `wishlist_bought`). The scan banner keeps the "bought" modal (a scanned ISBN means the book is in hand).
 - B. Keep one action, renamed "Bought or no longer wanted".
