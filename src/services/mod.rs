@@ -10,6 +10,7 @@ pub mod bulk_cover_fetch;
 pub mod contributor;
 pub mod cover;
 pub mod cover_acceptance;
+pub mod cover_consistency;
 pub mod cover_proposals;
 pub mod cover_staging;
 pub mod cover_uploads;

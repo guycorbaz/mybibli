@@ -990,6 +990,30 @@ admin:
       success: "Backup %{file} restored (%{titles} titles, %{covers} covers). The safety backup of the previous state is %{safety}. Everyone has been logged out."
       rolled_back: "The restore failed, so mybibli put the library back as it was just before, from the safety backup %{safety}. Everyone has been logged out. The logs say why the restore failed."
       login_again: "Log in again"
+  # Story 19-9 (#658, D1-D12) — the cover check and its repair.
+  covers:
+    heading: "Cover check"
+    intro: "Compares the covers folder with the library: cover files that no title owns, and titles whose cover file is missing. The check itself changes nothing."
+    check: "Check covers"
+    orphans_heading: "Cover files that no title owns (%{count})"
+    missing_heading: "Titles whose cover file is missing (%{count})"
+    more: "… and %{count} more."
+    left_alone: "Left alone: %{others} other entries in the covers folder, %{remote} titles whose cover address has another form."
+    match: "Covers and library match: %{files} cover files checked, nothing to repair."
+    unreadable: "mybibli cannot read the covers folder %{path}, so nothing was checked. Give the container's user access to that folder, then try again."
+    note_trash: "in the Trash"
+    note_hand: "set by hand: upload it again"
+    note_no_code: "no ISBN, ISSN or UPC: nothing to download"
+    note_pending: "a cover proposal is pending: accept it to install a cover"
+    unmounted: "%{missing} of the %{total} covers the library uses are missing from %{path}. That looks like a covers folder that is not mounted, so mybibli will not repair anything. Check the covers volume of the installation (see the manual), then check again."
+    repair_open: "Repair…"
+    repair:
+      title: "Repair the covers?"
+      body: "%{orphans} cover files that no title owns will be deleted. %{cleared} titles lose the address of their missing cover; %{queued} of them are queued for a new download. A deleted file can only come back from a backup."
+      cancel: "Cancel"
+      confirm: "Repair"
+      done: "Covers repaired: %{deleted} files deleted, %{cleared} cover addresses cleared, %{queued} downloads queued."
+      skipped: "%{skipped} items had changed since the check and were left alone."
   trash:
     badge_aria: "Trash, %{count} items"
     heading: Trash bin (soft-deleted items)

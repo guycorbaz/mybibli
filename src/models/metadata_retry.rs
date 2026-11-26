@@ -59,7 +59,9 @@ impl MetadataRetryModel {
     /// Story 13-3 (#584) — queue `title_id` for a lookup due now, with a
     /// fresh schedule (`attempts = 0`) whether the row is new, dequeued or
     /// still live: an identifier change makes any earlier schedule moot.
-    /// Used only by the startup ISBN-10 conversion, inside its transaction.
+    /// Used by the startup ISBN-10 conversion, inside its transaction, and
+    /// by the cover repair (story 19-9, D6) for a title whose cover
+    /// address it cleared.
     pub async fn enqueue_fresh<'e, E>(executor: E, title_id: u64) -> Result<(), AppError>
     where
         E: sqlx::Executor<'e, Database = sqlx::MySql>,

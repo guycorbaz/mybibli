@@ -1,0 +1,395 @@
+//! Story 19-9 (#658, AC3–AC6) — the cover check and its repair through the
+//! routes: the check changes nothing; the repair deletes the orphan,
+//! follows D4–D7 for the missing covers, queues the live title, leaves
+//! every other entry alone, bumps no `version` and writes one audit row;
+//! D12 (a folder that looks unmounted), an item changed since the check,
+//! D11 (busy) and access.
+
+use crate::common;
+
+use std::path::Path;
+
+use axum::http::StatusCode;
+use common::backup::{Folders, names_in};
+use common::web::{Browser, get_anonymous, seed_admin, seed_librarian};
+use mybibli::AppState;
+use mybibli::db::DbPool;
+
+struct Fixture {
+    f: Folders,
+    state: AppState,
+    app: axum::Router,
+    admin: Browser,
+}
+
+async fn fixture(pool: &DbPool, admin: &str) -> Fixture {
+    let f = Folders::new();
+    let mut state = common::mcp::state_with_pool(pool.clone());
+    state.covers_dir = f.covers();
+    state.backup = f.config();
+    seed_admin(pool, admin).await;
+    let app = mybibli::routes::build_router_with_mcp(state.clone(), mybibli::mcp::McpConfig::default());
+    let admin = Browser::login(&app, admin).await;
+    Fixture { f, state, app, admin }
+}
+
+/// A title row with what the plan reads; returns its id.
+async fn title(
+    pool: &DbPool,
+    name: &str,
+    isbn: Option<&str>,
+    cover: Option<&str>,
+    hand_set: bool,
+    trashed: bool,
+) -> u64 {
+    let id = sqlx::query(
+        "INSERT INTO titles (title, media_type, genre_id, isbn, manually_edited_fields, deleted_at) \
+         VALUES (?, 'book', (SELECT MIN(id) FROM genres), ?, ?, IF(?, '2026-11-20 08:00:00', NULL))",
+    )
+    .bind(name)
+    .bind(isbn)
+    .bind(hand_set.then_some(r#"["cover_image_url"]"#))
+    .bind(trashed)
+    .execute(pool)
+    .await
+    .unwrap()
+    .last_insert_id();
+    if let Some(cover) = cover {
+        let url = cover.replace("{id}", &id.to_string());
+        sqlx::query("UPDATE titles SET cover_image_url = ?, updated_at = updated_at WHERE id = ?")
+            .bind(url)
+            .bind(id)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+    id
+}
+
+async fn pending_cover_proposal(pool: &DbPool, title_id: u64) {
+    let key = sqlx::query(
+        "INSERT INTO api_keys (label, key_hash, key_prefix, scope) VALUES ('cc', 'h', 'mybibli_pr_x', 'propose')",
+    )
+    .execute(pool)
+    .await
+    .unwrap()
+    .last_insert_id();
+    let p = sqlx::query(
+        "INSERT INTO proposals (kind, api_key_id, sources, equivalence_key) VALUES ('cover', ?, '[]', ?)",
+    )
+    .bind(key)
+    .bind(format!("cover:titles/{title_id}:x"))
+    .execute(pool)
+    .await
+    .unwrap()
+    .last_insert_id();
+    sqlx::query(
+        "INSERT INTO proposal_items (proposal_id, target_table, target_id, target_version, proposed_values) \
+         VALUES (?, 'titles', ?, 1, '{\"line\":\"cover\"}')",
+    )
+    .bind(p)
+    .bind(title_id)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+fn write_cover(dir: &Path, id: u64) {
+    std::fs::write(dir.join(format!("{id}.jpg")), b"\xff\xd8jpeg").unwrap();
+}
+
+/// Every title's cover address, version and `updated_at`.
+async fn titles_state(pool: &DbPool) -> Vec<(u64, Option<String>, i32, String, Option<String>)> {
+    sqlx::query_as(
+        "SELECT CAST(id AS SIGNED) AS id, cover_image_url, version, CAST(CAST(updated_at AS DATETIME) AS CHAR), \
+                CAST(manually_edited_fields AS CHAR) FROM titles ORDER BY id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap()
+    .into_iter()
+    .map(|(id, url, v, at, mef): (i64, Option<String>, i32, String, Option<String>)| (id as u64, url, v, at, mef))
+    .collect()
+}
+
+async fn cover_of(pool: &DbPool, id: u64) -> Option<String> {
+    sqlx::query_scalar("SELECT cover_image_url FROM titles WHERE id = ?")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+async fn queued(pool: &DbPool) -> Vec<u64> {
+    let ids: Vec<i64> = sqlx::query_scalar(
+        "SELECT CAST(title_id AS SIGNED) FROM metadata_fetch_retries WHERE deleted_at IS NULL ORDER BY title_id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap();
+    ids.into_iter().map(|i| i as u64).collect()
+}
+
+async fn audit_rows(pool: &DbPool) -> Vec<serde_json::Value> {
+    let rows: Vec<Option<String>> = sqlx::query_scalar(
+        "SELECT CAST(details AS CHAR) FROM admin_audit WHERE action = 'cover_repair' ORDER BY id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap();
+    rows.into_iter().map(|d| serde_json::from_str(&d.unwrap()).unwrap()).collect()
+}
+
+/// The hidden fields `name="<name>"` of an answer, as a form body.
+fn posted_items(html: &str) -> String {
+    let mut body = Vec::new();
+    for name in ["orphan", "missing"] {
+        let needle = format!(r#"name="{name}" value=""#);
+        let mut rest = html;
+        while let Some(at) = rest.find(&needle) {
+            rest = &rest[at + needle.len()..];
+            let end = rest.find('"').unwrap();
+            let value = rest[..end].replace("&#x2f;", "/").replace("&#47;", "/").replace("&amp;", "&");
+            body.push(format!("{name}={}", urlencode(&value)));
+            rest = &rest[end..];
+        }
+    }
+    body.join("&")
+}
+
+fn urlencode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// The library of AC4: returns (orphan id, live, trash, hand, pending,
+/// no code, present).
+async fn seed_library(pool: &DbPool, covers: &Path) -> [u64; 7] {
+    let live = title(pool, "CC live", Some("9782070000011"), Some("/covers/{id}.jpg?v=1"), false, false).await;
+    let trash = title(pool, "CC trash", Some("9782070000028"), Some("/covers/{id}.jpg"), false, true).await;
+    let hand = title(pool, "CC hand", Some("9782070000035"), Some("/covers/{id}.jpg?v=2"), true, false).await;
+    let pending = title(pool, "CC pending", Some("9782070000042"), Some("/covers/{id}.jpg"), false, false).await;
+    pending_cover_proposal(pool, pending).await;
+    let no_code = title(pool, "CC no code", None, Some("/covers/{id}.jpg"), false, false).await;
+    let present = title(pool, "CC present", None, Some("/covers/{id}.jpg"), false, false).await;
+    write_cover(covers, present);
+    // Enough present covers that the missing ones stay under half (D12).
+    for i in 0..5 {
+        let id = title(pool, &format!("CC present {i}"), None, Some("/covers/{id}.jpg?v=3"), false, false).await;
+        write_cover(covers, id);
+    }
+    let orphan = 900_001;
+    write_cover(covers, orphan);
+    std::fs::create_dir(covers.join(".staging")).unwrap();
+    std::fs::write(covers.join(".staging").join("x.jpg"), b"x").unwrap();
+    std::fs::write(covers.join("notes.txt"), b"x").unwrap();
+    // An own name no title holds, as a link: counted, never an orphan.
+    std::os::unix::fs::symlink(covers.join("notes.txt"), covers.join("800000.jpg")).unwrap();
+    [orphan, live, trash, hand, pending, no_code, present]
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_check_changes_nothing_and_the_repair_follows_d4_to_d7(pool: DbPool) {
+    let fx = fixture(&pool, "cc_admin").await;
+    let covers = fx.f.covers();
+    let [orphan, live, trash, hand, pending, no_code, present] = seed_library(&pool, &covers).await;
+    let before = titles_state(&pool).await;
+    let names_before = names_in(&covers);
+
+    // AC3 — the check lists, changes nothing, writes no audit row.
+    let (status, html) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    assert_eq!(status, StatusCode::OK, "{html}");
+    assert!(html.contains("aucun titre ne possède (1)"), "{html}");
+    assert!(html.contains(&format!("{orphan}.jpg · ")), "{html}");
+    assert!(html.contains("Titres dont le fichier de couverture manque (5)"), "{html}");
+    for (id, name) in [(live, "CC live"), (trash, "CC trash"), (hand, "CC hand"), (pending, "CC pending"), (no_code, "CC no code")] {
+        assert!(html.contains(&format!(r#"href="/title/{id}""#)), "{name}: {html}");
+    }
+    assert!(!html.contains(&format!(r#"href="/title/{present}""#)));
+    assert!(html.contains("dans la corbeille"), "{html}");
+    assert!(html.contains("choisie à la main : téléversez-la à nouveau"));
+    assert!(html.contains("ni ISBN, ni ISSN, ni UPC : rien à télécharger"));
+    assert!(html.contains("une proposition de couverture est en attente : acceptez-la pour installer une couverture"));
+    assert!(html.contains("Laissés tels quels : 3 autres éléments dans le dossier des couvertures"), "{html}");
+    assert!(html.contains(r#"id="admin-covers-repair""#));
+    assert_eq!(titles_state(&pool).await, before, "the check changes no row");
+    assert_eq!(names_in(&covers), names_before, "the check changes no file");
+    assert!(audit_rows(&pool).await.is_empty(), "a check writes no audit row (D10)");
+
+    // D8 — the modal: the counts of what will change.
+    let items = posted_items(&html);
+    let (status, modal) = fx.admin.post_form(&fx.app, "/admin/covers/repair/confirm", &items).await;
+    assert_eq!(status, StatusCode::OK, "{modal}");
+    assert!(modal.contains("Réparer les couvertures ?"), "{modal}");
+    assert!(
+        modal.contains("1 fichiers de couverture") && modal.contains("seront supprimés. 4 titres perdent")
+            && modal.contains("couverture manquante ; 1 d"),
+        "{modal}"
+    );
+    assert!(modal.contains(r#"hx-post="/admin/covers/repair""#));
+    assert!(!modal.contains(&format!("{pending}:/covers/")), "the pending one is not posted");
+
+    // The repair.
+    let (status, done) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &posted_items(&modal)).await;
+    assert_eq!(status, StatusCode::OK, "{done}");
+    assert!(
+        done.contains("Couvertures réparées : 1 fichiers supprimés, 4 adresses de couverture effacées, 1 téléchargements mis en file."),
+        "{done}"
+    );
+    assert!(!done.contains("avaient changé depuis le contrôle"), "{done}");
+    assert!(done.contains("Titres dont le fichier de couverture manque (1)"), "the check is refreshed: {done}");
+
+    let names = names_in(&covers);
+    assert!(!names.contains(&format!("{orphan}.jpg")), "the orphan is gone");
+    for kept in ["800000.jpg", "notes.txt", ".staging", &format!("{present}.jpg")] {
+        assert!(names.contains(&kept.to_string()), "{kept} is left alone: {names:?}");
+    }
+    assert!(covers.join(".staging").join("x.jpg").exists());
+    assert_eq!(cover_of(&pool, live).await, None);
+    assert_eq!(cover_of(&pool, trash).await, None, "D4: cleared in the Trash");
+    assert_eq!(cover_of(&pool, hand).await, None, "D5: cleared");
+    assert_eq!(cover_of(&pool, no_code).await, None);
+    assert_eq!(cover_of(&pool, pending).await.as_deref(), Some(format!("/covers/{pending}.jpg").as_str()), "D7");
+    assert_eq!(cover_of(&pool, present).await.as_deref(), Some(format!("/covers/{present}.jpg").as_str()));
+    assert_eq!(queued(&pool).await, vec![live], "D6: only the live title with a code, not set by hand");
+
+    let after = titles_state(&pool).await;
+    for (b, a) in before.iter().zip(after.iter()) {
+        assert_eq!((b.0, b.2, &b.3, &b.4), (a.0, a.2, &a.3, &a.4), "no version / updated_at / mark change");
+    }
+
+    let audit = audit_rows(&pool).await;
+    assert_eq!(audit.len(), 1, "one audit row per repair");
+    let d = &audit[0];
+    assert_eq!((d["deleted"].as_u64(), d["cleared"].as_u64(), d["queued"].as_u64(), d["skipped"].as_u64()), (Some(1), Some(4), Some(1), Some(0)));
+    assert_eq!(d["user_username"], "cc_admin");
+    assert_eq!(d["user_role"], "admin");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_item_changed_since_the_check_is_left_alone_and_counted(pool: DbPool) {
+    let fx = fixture(&pool, "cc_changed").await;
+    let covers = fx.f.covers();
+    let [orphan, live, _, _, _, _, _] = seed_library(&pool, &covers).await;
+    let (_, html) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    let items = posted_items(&html);
+
+    // A title now holds the orphan's id; the live title got a new address.
+    sqlx::query("INSERT INTO titles (id, title, media_type, genre_id) VALUES (?, 'CC new', 'book', (SELECT MIN(id) FROM genres))")
+        .bind(orphan)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE titles SET cover_image_url = ? WHERE id = ?")
+        .bind(format!("/covers/{live}.jpg?v=99"))
+        .bind(live)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (status, done) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &items).await;
+    assert_eq!(status, StatusCode::OK, "{done}");
+    assert!(done.contains("Couvertures réparées : 0 fichiers supprimés, 3 adresses de couverture effacées, 0 téléchargements mis en file."), "{done}");
+    assert!(done.contains("2 éléments avaient changé depuis le contrôle et ont été laissés tels quels."), "{done}");
+    assert!(covers.join(format!("{orphan}.jpg")).exists(), "the file of a title is kept");
+    assert_eq!(cover_of(&pool, live).await, Some(format!("/covers/{live}.jpg?v=99")));
+    assert!(queued(&pool).await.is_empty());
+    assert_eq!(audit_rows(&pool).await[0]["skipped"].as_u64(), Some(2));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn d12_an_emptied_folder_offers_no_repair_and_the_post_changes_nothing(pool: DbPool) {
+    let fx = fixture(&pool, "cc_unmounted").await;
+    let covers = fx.f.covers();
+    let mut ids = Vec::new();
+    for i in 0..4 {
+        let id = title(&pool, &format!("CC mounted {i}"), Some(&format!("978207000{i}000")), Some("/covers/{id}.jpg"), false, false).await;
+        write_cover(&covers, id);
+        ids.push(id);
+    }
+    // The volume is not mounted: an empty folder.
+    for id in &ids {
+        std::fs::remove_file(covers.join(format!("{id}.jpg"))).unwrap();
+    }
+    let before = titles_state(&pool).await;
+    let (status, html) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        html.contains(&format!("4 des 4 couvertures utilisées par la bibliothèque manquent dans {}.", covers.display())),
+        "{html}"
+    );
+    assert!(html.contains("Titres dont le fichier de couverture manque (4)"), "the lists are shown: {html}");
+    assert!(!html.contains(r#"id="admin-covers-repair""#), "no repair offered: {html}");
+
+    let items: Vec<String> = ids.iter().map(|id| format!("missing={}", urlencode(&format!("{id}:/covers/{id}.jpg")))).collect();
+    let items = items.join("&");
+    let (status, modal) = fx.admin.post_form(&fx.app, "/admin/covers/repair/confirm", &items).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!modal.contains("Réparer les couvertures ?"), "no modal: {modal}");
+    assert!(modal.contains("couvertures utilisées par la bibliothèque manquent"), "the refreshed check instead: {modal}");
+    let (status, body) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &items).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("Cela ressemble à un dossier des couvertures non monté"), "{body}");
+    assert_eq!(titles_state(&pool).await, before, "nothing changed");
+    assert!(queued(&pool).await.is_empty());
+    assert!(audit_rows(&pool).await.is_empty());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn d11_the_repair_is_refused_while_a_backup_or_restore_runs(pool: DbPool) {
+    let fx = fixture(&pool, "cc_busy").await;
+    let covers = fx.f.covers();
+    let [orphan, ..] = seed_library(&pool, &covers).await;
+    let (_, html) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    let items = posted_items(&html);
+    let before = titles_state(&pool).await;
+    let held = fx.state.backup.guard.clone().lock_owned().await;
+
+    // The check is never refused (read only).
+    let (status, _) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &items).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("Une sauvegarde ou une restauration est déjà en cours."), "{body}");
+    assert!(covers.join(format!("{orphan}.jpg")).exists());
+    assert_eq!(titles_state(&pool).await, before);
+    assert!(audit_rows(&pool).await.is_empty());
+    drop(held);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn only_an_admin_checks_and_repairs(pool: DbPool) {
+    let fx = fixture(&pool, "cc_access").await;
+    let covers = fx.f.covers();
+    let [orphan, ..] = seed_library(&pool, &covers).await;
+    let items = format!("orphan={}", urlencode(&format!("{orphan}:6:0")));
+
+    for path in ["/admin/covers/check", "/admin/covers/repair/confirm", "/admin/covers/repair"] {
+        let res = get_anonymous(&fx.app, path).await;
+        assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED, "{path}: POST only");
+        let anon = Browser::anonymous(&fx.app).await;
+        let (status, _) = anon.post_form(&fx.app, path, &items).await;
+        assert!(status == StatusCode::SEE_OTHER || status == StatusCode::OK, "anonymous {path}: {status}");
+    }
+    seed_librarian(&pool, "cc_lib").await;
+    let lib = Browser::login(&fx.app, "cc_lib").await;
+    for path in ["/admin/covers/check", "/admin/covers/repair/confirm", "/admin/covers/repair"] {
+        let (status, _) = lib.post_form(&fx.app, path, &items).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "librarian {path}");
+    }
+    let forged = Browser { cookie: fx.admin.cookie.clone(), csrf: "not-the-token".into() };
+    let (status, _) = forged.post_form(&fx.app, "/admin/covers/repair", &items).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "the CSRF token is required");
+    assert!(covers.join(format!("{orphan}.jpg")).exists(), "nothing was deleted");
+    assert!(audit_rows(&pool).await.is_empty());
+
+    // The section is on the Backups tab.
+    let (status, page) = fx.admin.get(&fx.app, "/admin?tab=backups").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains(r#"id="admin-covers-check""#), "{page}");
+    assert!(page.contains("Contrôle des couvertures"), "{page}");
+}

@@ -1,6 +1,6 @@
 # Story 19.9: Cover / database consistency (closes #658)
 
-Status: ready-for-dev
+Status: in-progress
 
 ## Story
 
@@ -110,11 +110,11 @@ Each D has a recommendation; one word ("A", "yes", "as proposed") is enough. EN 
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `services/cover_consistency.rs`: shapes, pure plan, DB read, repair (T2–T4) + unit tests (AC1, AC2).
-- [ ] T2 — `routes/admin_covers.rs` + fragments + routes in `routes/mod.rs` + include in the Backups panel (D1, D2, D8).
-- [ ] T3 — Locales ×4 (copy as approved); `touch src/lib.rs` before the build.
-- [ ] T4 — Tests AC3–AC6; E2E spec (AC7).
-- [ ] T5 — `CLAUDE.md`: a "Cover consistency" bullet (shapes, plan, guard, maintenance scope); the manual is story 19-11.
+- [x] T1 — `services/cover_consistency.rs`: shapes, pure plan, DB read, repair (T2–T4) + unit tests (AC1, AC2).
+- [x] T2 — `routes/admin_covers.rs` + fragments + routes in `routes/mod.rs` + include in the Backups panel (D1, D2, D8).
+- [x] T3 — Locales ×4 (copy as approved); `touch src/lib.rs` before the build.
+- [ ] T4 — Tests AC3–AC6 (done); E2E spec (AC7) written, tsc / grep / vcode-literals clean — **not run yet** (E2E stack in use).
+- [x] T5 — `CLAUDE.md`: a "Cover consistency" bullet (shapes, plan, guard, maintenance scope); the manual is story 19-11.
 
 ## Dev Notes
 
@@ -171,13 +171,36 @@ Notes for the lead (no change made):
 
 ### Agent Model Used
 
+Claude Opus 5.5 (dev-story, 2026-11-26).
+
 ### Debug Log References
+
+- Logs under `/home/gcorbaz/devel/.wt-targets/19-9-logs/` (clippy, lib, integration).
 
 ### Completion Notes List
 
+- Implemented as approved (D1–D13 A). Shapes: `own_cover_id` = exactly `format!("{id}.jpg")`, id ≥ 1; `local_cover_id` = `/covers/<id>.jpg[?v=<digits>]`. An entry with an own name that is not a regular file (link, directory) counts as present: its title is never "missing", the entry is never an orphan.
+- Missing-cover precedence: pending cover proposal (left alone, D7) > Trash (D4) > set by hand (D5) > no code (D6 note) > cleared and queued.
+- **Deviation from T6:** the modal is opened by `POST /admin/covers/repair/confirm` (not a GET): the check's "Repair…" form posts every listed item (hidden fields), which can be far more than a URL holds. The modal recomputes a fresh plan and carries only the listed items it still holds (`confirm`); when none is left or the folder now looks unmounted, the refreshed check replaces the result (`HX-Retarget #admin-covers-result`).
+- T4 refinement: after an address is cleared the file is checked again; if it appeared meanwhile (a cover being installed: file first, address next), the address is put back (`WHERE cover_image_url IS NULL`). No row lock is taken (Rule #22 not engaged).
+- The repair stops (remaining items counted as skipped) when `maintenance::write_permit()` is refused.
+- Row lists have no column headers (no approved copy for them): `name · size · date` lines, titles linked with their note.
+- D13: change request #744 opened (purge leaves cover files).
+- Gates: `cargo clippy --all-targets -D warnings` clean; `cargo test --lib` 2024 passed; integration `cover_consistency::` 5/5, plus `locale_parity::`, `backup_*`, `admin_trash*`, `every_test_file_is_declared` green; no query macro added (`.sqlx/` unchanged); E2E `tsc --noEmit`, `waitForTimeout` grep, `vcode-literals.sh` clean. **E2E not run** (pending the lead's go).
+
 ### File List
+
+- `src/services/cover_consistency.rs` (new), `src/services/mod.rs`
+- `src/routes/admin_covers.rs` (new), `src/routes/mod.rs`, `src/routes/admin_backups.rs`
+- `src/models/metadata_retry.rs` (doc comment of `enqueue_fresh`)
+- `templates/fragments/admin_covers_section.html`, `admin_covers_check.html`, `admin_covers_repair_modal.html` (new), `admin_backups_panel.html`
+- `locales/{en,fr,de,it}.yml`
+- `tests/cover_consistency.rs` (new), `tests/integration.rs`
+- `tests/e2e/specs/journeys/admin-cover-check.spec.ts` (new, spec id `KC`)
+- `CLAUDE.md`
 
 ### Change Log
 
 - 2026-11-26 — create-story: story 19-9 written, decisions D1–D11 for the project lead.
 - 2026-11-26 — validate-story: checked against the code; D12, D13, T7 added, AC1, AC4, AC7, D2, T2, T4 corrected (see Validation).
+- 2026-11-26 — dev-story: implemented (T1–T3, T5, tests AC1–AC6); E2E spec written, run pending. Status stays in-progress.

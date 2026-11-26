@@ -2,6 +2,7 @@ pub mod admin;
 pub mod admin_api_keys;
 pub mod admin_backups;
 pub mod admin_backups_restore;
+pub mod admin_covers;
 pub mod admin_health_backup;
 pub mod admin_health_watch;
 pub mod audit;
@@ -898,6 +899,10 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
             axum::routing::get(admin_backups_restore::restore_modal)
                 .post(admin_backups_restore::restore_run),
         )
+        // Story 19-9 (#658): the cover check and its repair.
+        .route("/admin/covers/check", axum::routing::post(admin_covers::check_covers))
+        .route("/admin/covers/repair/confirm", axum::routing::post(admin_covers::repair_modal))
+        .route("/admin/covers/repair", axum::routing::post(admin_covers::repair_covers))
         // Story 8-8 — first-launch setup wizard. Whitelisted by the
         // setup-gate middleware (so this is reachable on a fresh install
         // even though every other route 303s to /setup); each handler

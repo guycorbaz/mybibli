@@ -975,6 +975,30 @@ admin:
       success: "Sicherung %{file} wiederhergestellt (%{titles} Titel, %{covers} Cover). Die Sicherheitskopie des vorherigen Zustands ist %{safety}. Alle wurden abgemeldet."
       rolled_back: "Die Wiederherstellung ist fehlgeschlagen, daher hat mybibli die Bibliothek aus der Sicherheitskopie %{safety} in den Zustand von unmittelbar davor zurückversetzt. Alle wurden abgemeldet. Die Protokolle nennen den Grund des Fehlschlags."
       login_again: "Erneut anmelden"
+  # Story 19-9 (#658, D1-D12) — the cover check and its repair.
+  covers:
+    heading: "Cover-Prüfung"
+    intro: "Vergleicht den Cover-Ordner mit der Bibliothek: Cover-Dateien, die zu keinem Titel gehören, und Titel, deren Cover-Datei fehlt. Die Prüfung selbst ändert nichts."
+    check: "Cover prüfen"
+    orphans_heading: "Cover-Dateien, die zu keinem Titel gehören (%{count})"
+    missing_heading: "Titel, deren Cover-Datei fehlt (%{count})"
+    more: "… und %{count} weitere."
+    left_alone: "Unverändert gelassen: %{others} andere Einträge im Cover-Ordner, %{remote} Titel, deren Cover-Adresse eine andere Form hat."
+    match: "Cover und Bibliothek stimmen überein: %{files} Cover-Dateien geprüft, nichts zu reparieren."
+    unreadable: "mybibli kann den Cover-Ordner %{path} nicht lesen, daher wurde nichts geprüft. Geben Sie dem Benutzer des Containers Zugriff auf diesen Ordner und versuchen Sie es dann erneut."
+    note_trash: "im Papierkorb"
+    note_hand: "von Hand gewählt: laden Sie es erneut hoch"
+    note_no_code: "weder ISBN noch ISSN noch UPC: nichts herunterzuladen"
+    note_pending: "ein Cover-Vorschlag steht aus: nehmen Sie ihn an, um ein Cover einzurichten"
+    unmounted: "%{missing} der %{total} Cover, die die Bibliothek verwendet, fehlen in %{path}. Das sieht nach einem nicht eingebundenen Cover-Ordner aus, daher repariert mybibli nichts. Prüfen Sie das Cover-Volume der Installation (siehe Handbuch) und prüfen Sie dann erneut."
+    repair_open: "Reparieren…"
+    repair:
+      title: "Die Cover reparieren?"
+      body: "%{orphans} Cover-Dateien, die zu keinem Titel gehören, werden gelöscht. %{cleared} Titel verlieren die Adresse ihres fehlenden Covers; %{queued} davon werden für einen neuen Download eingereiht. Eine gelöschte Datei kann nur aus einer Sicherung zurückkommen."
+      cancel: "Abbrechen"
+      confirm: "Reparieren"
+      done: "Cover repariert: %{deleted} Dateien gelöscht, %{cleared} Cover-Adressen geleert, %{queued} Downloads eingereiht."
+      skipped: "%{skipped} Einträge hatten sich seit der Prüfung geändert und wurden unverändert gelassen."
   trash:
     badge_aria: "Papierkorb, %{count} Einträge"
     heading: Papierkorb (gelöschte Einträge)
