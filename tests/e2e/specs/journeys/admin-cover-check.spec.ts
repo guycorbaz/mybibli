@@ -10,6 +10,10 @@
  * (one retry when a backup or restore holds the guard, D11 — parallel specs
  * write backups); a new check no longer lists it.
  *
+ * The repair acts on the whole instance, so this spec runs in its own
+ * Playwright project after every other test (`instance-cover-check`,
+ * playwright.config.ts); run it alone with `--no-deps`.
+ *
  * Rule #23: assertions only on this spec's own file, never on counts. A
  * missing file cannot be made from the browser (the covers folder is inside
  * the container): tests/cover_consistency.rs covers it.
@@ -74,9 +78,30 @@ async function deleteTitle(page: Page, id: string): Promise<void> {
   await page.waitForURL((url) => url.pathname === "/", { timeout: 10000 });
 }
 
-/** Permanently delete title `id` from the Trash (type-to-confirm modal). */
+/**
+ * Permanently delete title `id` from the Trash (type-to-confirm modal).
+ * A direct navigation to `/admin/trash?…` drops the filters
+ * (`admin_trash_panel` renders the default panel), so the Trash tab is
+ * opened and searched through its own field (an HTMX panel swap on keyup:
+ * `fill` alone fires none, hence the key press). The ISBN is this spec's
+ * own, so the search alone narrows the list to its title.
+ */
 async function purgeTitle(page: Page, id: string, isbn: string): Promise<void> {
-  await page.goto(`/admin/trash?entity_type=titles&search=${encodeURIComponent(isbn)}`);
+  const panelSwap = (needle: string) =>
+    page.waitForResponse(
+      (r) =>
+        new URL(r.url()).pathname === "/admin/trash" &&
+        r.request().method() === "GET" &&
+        r.url().includes(needle) &&
+        r.ok(),
+    );
+  await page.goto("/admin?tab=trash");
+  const search = page.locator("#search-trash");
+  await expectHtmxProcessed(search);
+  const searched = panelSwap(`search=${isbn}`);
+  await search.fill(isbn);
+  await search.press("End");
+  await searched;
   const button = page.locator(`button[hx-get^="/admin/trash/titles/${id}/permanent-delete"]`);
   await expect(button).toHaveCount(1, { timeout: 10000 });
   const row = page.locator("tbody tr").filter({ has: button });
