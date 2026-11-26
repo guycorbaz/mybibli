@@ -34,9 +34,16 @@ wishlist:
   col_notes: "Notes"
   action_bought: "Acheté"
   action_remove: "Retirer"
+  # Story 20-1 — accessible names of the two actions (they name the entry).
+  action_bought_named: "Marquer « %{title} » comme acheté"
+  action_remove_named: "Retirer « %{title} » de la wish list"
   back_to_list: "Retour à la wish list"
-  delete_modal_title: "Marquer %{title} comme acheté ?"
-  delete_modal_body: "Cela retire l'entrée de la wish list. L'action est réversible depuis le panneau Corbeille de l'admin dans les 30 jours."
+  delete_modal_title: "Marquer « %{title} » comme acheté ?"
+  delete_modal_body: "L’entrée quitte la wish list. Elle ne pourra pas être restaurée ensuite."
+  # Story 20-1 (#714) — "Remove" without buying; a removed entry cannot be restored.
+  remove_modal_title: "Retirer « %{title} » de la wish list ?"
+  remove_modal_body: "L’entrée quitte la wish list. Elle ne peut pas être restaurée : ajoutez-la à nouveau si vous changez d’avis."
+  already_removed: "Cette entrée n’est plus dans la wish list. Elle a sans doute été retirée dans un autre onglet ou par un autre bibliothécaire. Rechargez la liste pour la voir à jour."
   print_title: "Ma wish list"
   print_count_one: "%{count} livre"
   print_count_other: "%{count} livres"
