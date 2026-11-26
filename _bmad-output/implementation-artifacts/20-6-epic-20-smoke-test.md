@@ -1,6 +1,6 @@
 # Story 20.6: Epic 20 smoke test (Foundation Rule #7)
 
-Status: ready-for-dev
+Status: review
 
 No GitHub issue. Covers: Foundation Rule #7. Epic 20; ships in v1.29.0 (with Epic 19). Sprint-status key: `20-6-epic-20-smoke-test`.
 
@@ -38,8 +38,8 @@ so that the epic is proven done.
 
 ## Tasks / Subtasks
 
-- [ ] **T1 — helper (D5).** `tests/e2e/helpers/locations.ts`: `export async function freeLcodePair(page, bucket, minSeq, maxSeq): Promise<[string, string]>` (reads `/locations`, draws `seq = minSeq + Math.floor(Math.random() * Math.floor((maxSeq - minSeq) / 2)) * 2`, returns `[specLcode(bucket, seq), specLcode(bucket, seq + 1)]` when neither appears in the page content, 50 attempts, then throws). `epic13-smoke.spec.ts` imports it (`freeLcodePair(page, 8, 0, 998)`) and drops its local copy.
-- [ ] **T2 — `tests/e2e/specs/journeys/epic20-smoke.spec.ts` (AC1–AC6).** Header comment: story, journey, data (as the other smokes). One `test.describe("Epic 20 smoke — wish list, series and locations")`, one test, `test.setTimeout(120000)`:
+- [x] **T1 — helper (D5).** `tests/e2e/helpers/locations.ts`: `export async function freeLcodePair(page, bucket, minSeq, maxSeq): Promise<[string, string]>` (reads `/locations`, draws `seq = minSeq + Math.floor(Math.random() * Math.floor((maxSeq - minSeq) / 2)) * 2`, returns `[specLcode(bucket, seq), specLcode(bucket, seq + 1)]` when neither appears in the page content, 50 attempts, then throws). `epic13-smoke.spec.ts` imports it (`freeLcodePair(page, 8, 0, 998)`) and drops its local copy.
+- [x] **T2 — `tests/e2e/specs/journeys/epic20-smoke.spec.ts` (AC1–AC6).** Header comment: story, journey, data (as the other smokes). One `test.describe("Epic 20 smoke — wish list, series and locations")`, one test, `test.setTimeout(120000)`:
   1. `context.clearCookies()`; `loginAs(page, "librarian")`.
   2. Series: `/series/new`, `#series-name`, `#series-type` = `closed`, `#series-total` = 4, `#series-form-submit`; `waitForURL(/\/series\/\d+$/)`; keep `seriesPath`.
   3. Title: `/catalog`, `simulateScan(page, "#scan-field", isbn)`, `titleIdFromSkeleton(page)`; `/title/{id}`, `#assign-series` `selectOption({ label: seriesName })`, `#assign-position` = 1, `#assign-series-submit`, `waitForURL(/\/title\/\d+/)`. On `seriesPath`: the owned cell `a[role="gridcell"][href="/title/{id}"]` is visible.
@@ -51,7 +51,7 @@ so that the epic is proven done.
   9. Locations: `const [rootCode, childCode] = await freeLcodePair(page, 9, 800, 998)`; `createLocation(page, rootName, rootCode)`; `createChildLocation(page, rootName, childName, childCode)`; `/scan?code={rootCode}` → `/location/{pid}` (read `pid` from the URL); `#location-description` count 0.
   10. `/locations/{pid}/edit`: `#edit-description` fill a two-line text with the run stamp; `#edit-location-submit`; `toHaveURL(/\/locations\/?$/)`. `/location/{pid}`: `#location-description` visible, contains both lines.
   11. `/locations`: toggle `#tree-toggle-{pid}` has the accessible name `^(Locations inside|Emplacements dans) {rootName}$`, `aria-expanded="true"`, `#tree-children-{pid}` visible. Focus the root's link (D8), `page.keyboard.press("Shift+Tab")` → toggle focused; `Enter` → `aria-expanded="false"`, `#tree-children-{pid}` hidden, toggle focused; `Enter` → `"true"`, the child row (`#tree-children-{pid}` filtered by `childName`) visible.
-- [ ] **T3 — gates.** `cd tests/e2e && npx tsc --noEmit`; the `waitForTimeout` grep gate; `tests/e2e/vcode-literals.sh` (no V-code literal); the spec alone against a fresh stack (`./scripts/e2e-reset.sh` under `flock … mem-guard`), then `epic13-smoke.spec.ts` alone (helper move); then the full suite once, `CI=true npx playwright test --workers=2` under `flock -w 10800 /tmp/station-heavy.lock mem-guard`. No Rust change: no `cargo` gate beyond what 20-3 ran.
+- [x] **T3 — gates.** `cd tests/e2e && npx tsc --noEmit`; the `waitForTimeout` grep gate; `tests/e2e/vcode-literals.sh` (no V-code literal); the spec alone against a fresh stack (`./scripts/e2e-reset.sh` under `flock … mem-guard`), then `epic13-smoke.spec.ts` alone (helper move); then the full suite once, `CI=true npx playwright test --workers=2` under `flock -w 10800 /tmp/station-heavy.lock mem-guard`. No Rust change: no `cargo` gate beyond what 20-3 ran.
 
 ## Dev Notes
 
@@ -103,9 +103,26 @@ None. No visible copy or behaviour change is needed.
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Completion Notes List
 
+- T1: `freeLcodePair(page, bucket, minSeq, maxSeq)` moved to `tests/e2e/helpers/locations.ts`; `epic13-smoke.spec.ts` calls it with `(8, 0, 998)` (same draw: even starts 0–996) and no longer imports `specLcode` (V2).
+- T2: `epic20-smoke.spec.ts` written as specified; V1 applied (wait for the Remove dialog to close before the row check), V3 applied (local `escapeRegExp` on the Remove button name and the toggle name).
+- T3: image rebuilt `--no-cache` (#735), stack reset; `npx tsc --noEmit` green, `waitForTimeout` grep clean, `vcode-literals.sh` green. The new spec passed alone (also on a second, non-reset run); `epic13-smoke.spec.ts` passed alone on the fresh stack (a second run without reset fails on its V-code, as its header documents — after the L-code draw, which worked). After a reset, full suite `CI=true npx playwright test --workers=2`: 520 passed, 2 skipped, 0 flaky, 0 failed (3.8 min).
+- No Rust, template, locale or JS change (D10).
+
 ### File List
+
+- `tests/e2e/specs/journeys/epic20-smoke.spec.ts` (new)
+- `tests/e2e/helpers/locations.ts` (modified)
+- `tests/e2e/specs/journeys/epic13-smoke.spec.ts` (modified)
+- `_bmad-output/implementation-artifacts/20-6-epic-20-smoke-test.md` (modified)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified)
+
+### Change Log
+
+- 2026-11-26 — dev-story: Epic 20 smoke spec added, `freeLcodePair` shared; E2E green.
 
 ## Validation
 
