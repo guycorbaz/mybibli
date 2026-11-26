@@ -1,6 +1,6 @@
 # Story 20.5: The location tree says what it does (closes the visible part of #700)
 
-Status: review
+Status: done
 
 ## Story
 
