@@ -36,6 +36,8 @@ Practice A3: every user-visible behaviour and copy below not settled on #658 is 
 
 ## Decisions for the project lead
 
+**Approved by the project lead, 2026-11-26: D1–D13 all as recommended (A), EN and FR copy as written.**
+
 Each D has a recommendation; one word ("A", "yes", "as proposed") is enough. EN and FR copy is given in full; DE and IT are translated at dev time from EN/FR (as in 19-6 – 19-8) and reviewed in the code review.
 
 - **D1 — where the tool lives.**
