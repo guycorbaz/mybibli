@@ -34,9 +34,16 @@ wishlist:
   col_notes: "Note"
   action_bought: "Acquistato"
   action_remove: "Rimuovi"
+  # Story 20-1 — accessible names of the two actions (they name the entry).
+  action_bought_named: "Segna «%{title}» come acquistato"
+  action_remove_named: "Rimuovi «%{title}» dalla lista dei desideri"
   back_to_list: "Torna alla lista dei desideri"
-  delete_modal_title: "Segnare %{title} come acquistato?"
-  delete_modal_body: "La voce viene rimossa dalla lista dei desideri. L'azione è reversibile entro 30 giorni dal pannello Cestino dell'amministrazione."
+  delete_modal_title: "Segnare «%{title}» come acquistato?"
+  delete_modal_body: "La voce lascia la lista dei desideri. Non potrà essere ripristinata in seguito."
+  # Story 20-1 (#714) — "Remove" without buying; a removed entry cannot be restored.
+  remove_modal_title: "Rimuovere «%{title}» dalla lista dei desideri?"
+  remove_modal_body: "La voce lascia la lista dei desideri. Non può essere ripristinata: aggiungila di nuovo se cambi idea."
+  already_removed: "Questa voce non è più nella lista dei desideri. Probabilmente è stata rimossa in un'altra scheda o da un altro bibliotecario. Ricarica la lista per vederla aggiornata."
   print_title: "La mia lista dei desideri"
   print_count_one: "%{count} libro"
   print_count_other: "%{count} libri"

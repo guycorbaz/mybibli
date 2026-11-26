@@ -1,6 +1,6 @@
 # Story 20.1: Remove an entry from the wish list (closes #714)
 
-Status: ready-for-dev
+Status: in-progress
 
 ## Story
 
@@ -74,13 +74,15 @@ What exists (read on `main` at `a608f56`):
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `WishlistAction { Bought, Remove }` in `src/routes/wishlist.rs` with `from_query(Option<&str>)`, `audit_action()` (`"wishlist_bought"` / `"wishlist_removed"`), `query_value()`; a `#[derive(Deserialize)] struct WishlistActionQuery { action: Option<String> }` (no `deny_unknown_fields`) (D5, AC8).
-- [ ] T2 — `wishlist_delete_modal`: take `Query<WishlistActionQuery>`; pick title / body / confirm label per action; `action_url = format!("/wishlist/{id}?action={}", action.query_value())`; D7 (if approved): `None` → `NotFound(wishlist.already_removed)` (AC2, AC5).
-- [ ] T3 — `wishlist_delete`: take the same query; `None` or `0` rows → `AppError::NotFound(wishlist.already_removed)` (404 → body into `[data-modal-error]`), audit with `action.audit_action()`; the redirect unchanged (AC3, AC5).
-- [ ] T4 — Templates: list row + card + entry page get the "Remove" button and both `aria-label`s (D6). The labels depend on the title: build them in Rust — e.g. a `WishlistRow { item, bought_label, remove_label }` view for the list (`items: Vec<WishlistRow>`), two `String` fields on `WishlistDetailTemplate` — never `t!()` in the template. Update the module doc's surface map and the modal fragment's header comment (no "Mark as bought" only) (AC1).
-- [ ] T5 — Locales ×4, `wishlist:` block only (D4, D8 if approved); `touch src/lib.rs && cargo build`; `cargo test --test integration locale_parity::` (AC4).
-- [ ] T6 — Unit tests, `tests/wishlist_remove.rs` (+ `mod wishlist_remove;` in `tests/integration.rs`, alphabetical), E2E `wishlist-remove.spec.ts` (AC9).
+- [x] T1 — `WishlistAction { Bought, Remove }` in `src/routes/wishlist.rs` with `from_query(Option<&str>)`, `audit_action()` (`"wishlist_bought"` / `"wishlist_removed"`), `query_value()`; a `#[derive(Deserialize)] struct WishlistActionQuery { action: Option<String> }` (no `deny_unknown_fields`) (D5, AC8).
+- [x] T2 — `wishlist_delete_modal`: take `Query<WishlistActionQuery>`; pick title / body / confirm label per action; `action_url = format!("/wishlist/{id}?action={}", action.query_value())`; D7 (if approved): `None` → `NotFound(wishlist.already_removed)` (AC2, AC5).
+- [x] T3 — `wishlist_delete`: take the same query; `None` or `0` rows → `AppError::NotFound(wishlist.already_removed)` (404 → body into `[data-modal-error]`), audit with `action.audit_action()`; the redirect unchanged (AC3, AC5).
+- [x] T4 — Templates: list row + card + entry page get the "Remove" button and both `aria-label`s (D6). The labels depend on the title: build them in Rust — e.g. a `WishlistRow { item, bought_label, remove_label }` view for the list (`items: Vec<WishlistRow>`), two `String` fields on `WishlistDetailTemplate` — never `t!()` in the template. Update the module doc's surface map and the modal fragment's header comment (no "Mark as bought" only) (AC1).
+- [x] T5 — Locales ×4, `wishlist:` block only (D4, D8 if approved); `touch src/lib.rs && cargo build`; `cargo test --test integration locale_parity::` (AC4).
+- [x] T6 — Unit tests, `tests/wishlist_remove.rs` (+ `mod wishlist_remove;` in `tests/integration.rs`, alphabetical), E2E `wishlist-remove.spec.ts` (AC9).
 - [ ] T7 — Gates (AC10); commit per workflow step (Rule #10).
+  - [x] `cargo clippy --all-targets -- -D warnings`, `cargo test --lib` (templates audit included), `cargo test --test integration -- wishlist_remove:: locale_parity::`, `npx tsc --noEmit`, `waitForTimeout` grep, `vcode-literals.sh`
+  - [ ] E2E run pending: `wishlist-remove.spec.ts` + `wishlist.spec.ts` under `CI=true npx playwright test --workers=2` (stack in use by story 19-7 at dev time)
 
 ## Dev Notes
 
@@ -126,6 +128,31 @@ Precisions (no product choice):
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
+### Debug Log References
+
+- Worktree first build, `cargo clippy --all-targets -- -D warnings`: clean.
+- `cargo test --lib` (with the test DB): 1919 passed, 0 failed, 1 ignored — includes the 6 new `routes::wishlist::tests` and `templates_audit`.
+- `cargo test --test integration -- wishlist_remove:: locale_parity:: every_test_file_is_declared`: 13 passed (9 `wishlist_remove`, 3 `locale_parity`, the declaration check).
+- `tests/e2e`: `npx tsc --noEmit` OK; `waitForTimeout` grep gate OK; `vcode-literals.sh` OK.
+- **E2E run pending:** the local E2E stack (port 18080) was in use by story 19-7; `wishlist-remove.spec.ts` and `wishlist.spec.ts` must still pass under `CI=true npx playwright test --workers=2` before review.
+- No query macro added or changed: `.sqlx/` untouched (the new test file uses dynamic `sqlx::query_as`).
+
 ### Completion Notes List
 
+- `WishlistAction { Bought, Remove }` with `from_query` (exactly `remove` → Remove, anything else Bought), `audit_action`, `query_value`, `modal_copy` (title, body, confirm label — a pure helper, unit-tested in the four locales); `WishlistActionQuery` without `deny_unknown_fields`, read by both routes.
+- `wishlist_delete_modal`: copy per action, `action_url = /wishlist/{id}?action=…`; an entry already gone → `NotFound(wishlist.already_removed)` (D7-A).
+- `wishlist_delete`: `None` or 0 rows → `NotFound(wishlist.already_removed)`, nothing written; audit row named by the action; `HX-Redirect: /wishlist` unchanged.
+- List rows / mobile cards (`WishlistRow { item, bought_label, remove_label }`) and the entry page show "✓ Bought" + "Remove" (D6-A, red text / bordered red secondary, dark variants as noted in the validation), both with named `aria-label`s built in Rust; buttons open `?action=bought` / `?action=remove`. Scan banner unchanged (no parameter → bought).
+- Locales ×4: `action_bought_named`, `action_remove_named`, `remove_modal_title`, `remove_modal_body`, `already_removed` added; `delete_modal_title` quoted (D8-A); `delete_modal_body` no longer claims a Trash restore (D2/D4).
+- Deviation: none from D1–D8. The stale-version (0-row) case is tested through the model, as the validation notes.
+
 ### File List
+
+- `src/routes/wishlist.rs` (modified: action enum + query, modal/delete handlers, row view, unit tests)
+- `templates/pages/wishlist.html`, `templates/pages/wishlist_detail.html`, `templates/fragments/wishlist_delete_modal.html` (modified)
+- `locales/en.yml`, `locales/fr.yml`, `locales/de.yml`, `locales/it.yml` (modified, `wishlist:` block only)
+- `tests/wishlist_remove.rs` (new), `tests/integration.rs` (modified: `mod wishlist_remove;`)
+- `tests/e2e/specs/journeys/wishlist-remove.spec.ts` (new)
+- `_bmad-output/implementation-artifacts/20-1-wishlist-remove.md` (this file)

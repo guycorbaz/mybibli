@@ -34,9 +34,16 @@ wishlist:
   col_notes: "Notizen"
   action_bought: "Gekauft"
   action_remove: "Entfernen"
+  # Story 20-1 — accessible names of the two actions (they name the entry).
+  action_bought_named: "„%{title}“ als gekauft markieren"
+  action_remove_named: "„%{title}“ von der Wunschliste entfernen"
   back_to_list: "Zurück zur Wunschliste"
-  delete_modal_title: "%{title} als gekauft markieren?"
-  delete_modal_body: "Der Eintrag wird aus der Wunschliste entfernt. Die Aktion ist innerhalb von 30 Tagen über den Admin-Papierkorb umkehrbar."
+  delete_modal_title: "„%{title}“ als gekauft markieren?"
+  delete_modal_body: "Der Eintrag verlässt die Wunschliste. Er kann danach nicht wiederhergestellt werden."
+  # Story 20-1 (#714) — "Remove" without buying; a removed entry cannot be restored.
+  remove_modal_title: "„%{title}“ von der Wunschliste entfernen?"
+  remove_modal_body: "Der Eintrag verlässt die Wunschliste. Er kann nicht wiederhergestellt werden: Fügen Sie ihn erneut hinzu, wenn Sie es sich anders überlegen."
+  already_removed: "Dieser Eintrag steht nicht mehr auf der Wunschliste. Er wurde wahrscheinlich in einem anderen Tab oder von einer anderen Person entfernt. Laden Sie die Liste neu, um den aktuellen Stand zu sehen."
   print_title: "Meine Wunschliste"
   print_count_one: "%{count} Buch"
   print_count_other: "%{count} Bücher"
