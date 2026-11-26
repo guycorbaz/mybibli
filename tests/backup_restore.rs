@@ -551,6 +551,7 @@ async fn a_journal_left_by_a_crash_is_recovered_at_boot(pool: DbPool) {
     write_journal(
         &cfg.dir,
         &Journal {
+            restore_id: String::new(),
             backup: name_of(OTHER_ID, "20250101T000000Z"),
             safety: safety.file_name.clone(),
             instance_id: fx.local_id.clone(),
@@ -583,6 +584,7 @@ async fn a_journal_whose_safety_backup_fails_its_checks_stops_the_boot(pool: DbP
     let safety = write_backup(&pool, &cfg).await.unwrap();
     std::fs::remove_file(cfg.dir.join(format!("{}.sha256", safety.file_name))).unwrap();
     let journal = Journal {
+        restore_id: String::new(),
         backup: name_of(OTHER_ID, "20250101T000000Z"),
         safety: safety.file_name.clone(),
         instance_id: fx.local_id.clone(),
@@ -624,4 +626,92 @@ async fn the_service_refuses_a_restore_while_maintenance_cannot_drain(pool: DbPo
     let outcome = restore::restore_backup(&state, &backup.file_name, "x").await.unwrap();
     assert!(matches!(outcome, RestoreOutcome::Restored(_)), "{outcome:?}");
     assert!(!state.setup_gate.read().unwrap().active, "the setup gate was refreshed");
+}
+
+// ─── Review pass 1 ───────────────────────────────────────────────
+
+/// Medium 2: a journal whose removal failed after the restore ended is
+/// recognised by its restore id in the audit row: removed, not rolled back.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_journal_left_after_a_finished_restore_is_only_removed(pool: DbPool) {
+    let fx = fixture(&pool, "restore_admin_leftover").await;
+    seed(&pool, &fx.f.covers()).await;
+    let cfg = fx.state.backup.clone();
+    let backup = write_backup(&pool, &cfg).await.unwrap();
+    let (status, _) = post_restore(&fx, &backup.file_name).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, details) = mybibli::models::admin_audit::AdminAuditModel::newest_of_action(&pool, restore::AUDIT_ACTION)
+        .await
+        .unwrap()
+        .unwrap();
+    let restore_id = details["restore_id"].as_str().unwrap().to_string();
+    assert_eq!(restore_id.len(), 16, "the audit row names the restore");
+    // The journal "could not be removed": put it back as it was.
+    let safety = backup_names(&cfg.dir).into_iter().find(|n| *n != backup.file_name).unwrap();
+    let journal = Journal {
+        restore_id,
+        backup: backup.file_name.clone(),
+        safety,
+        instance_id: fx.local_id.clone(),
+        started_at: "2026-11-26T08:00:00Z".into(),
+    };
+    write_journal(&cfg.dir, &journal).unwrap();
+    sqlx::query("INSERT INTO titles (title, media_type, genre_id) VALUES ('Entered after the restore', 'book', (SELECT MIN(id) FROM genres))")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(restore::recover_at_boot(&pool, &cfg).await, Ok(None), "nothing rolled back");
+    assert!(title_exists(&pool, "Entered after the restore").await, "the restored library is kept");
+    assert!(!cfg.dir.join(JOURNAL_NAME).exists(), "the leftover journal is removed");
+    // An unknown restore id is not settled: a real cut-short restore.
+    let other = Journal { restore_id: "ffffffffffffffff".into(), ..journal };
+    assert!(!restore::journal_already_settled(&pool, &other).await);
+}
+
+/// Low 6: the load reads the descriptor the checks read, not the path.
+#[sqlx::test(migrations = "./migrations")]
+async fn the_load_reads_the_checked_file_not_the_path_again(pool: DbPool) {
+    let fx = fixture(&pool, "restore_admin_toctou").await;
+    seed(&pool, &fx.f.covers()).await;
+    let backup = write_backup(&pool, &fx.state.backup).await.unwrap();
+    let verified = restore::verify_in_folder(&fx.f.backups(), &backup.file_name).await.unwrap();
+    // The path is replaced after the checks (rename over it).
+    let other = fx.f.backups().join("other");
+    std::fs::write(&other, b"not a backup at all").unwrap();
+    std::fs::rename(&other, fx.f.backups().join(&backup.file_name)).unwrap();
+    sqlx::query("UPDATE titles SET title = 'changed' WHERE title = 'Restore — before'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let loaded = restore::load::load(&pool, &verified, &fx.f.covers()).await.expect("the checked file loads");
+    assert_eq!(loaded.covers.len(), 1);
+    assert!(title_exists(&pool, "Restore — before").await);
+}
+
+/// Medium 1: a restore whose rollback fails keeps the backup guard for the
+/// life of the process (no scheduled backup, no rotation).
+#[sqlx::test(migrations = "./migrations")]
+async fn a_stuck_restore_keeps_the_backup_guard(pool: DbPool) {
+    let fx = fixture(&pool, "restore_admin_stuck").await;
+    seed(&pool, &fx.f.covers()).await;
+    let good = write_backup(&pool, &fx.state.backup).await.unwrap();
+    let broken = name_of(&fx.local_id, "20250103T000000Z");
+    rebuild(&fx.f.backups().join(&good.file_name), &fx.f.backups(), &broken, true, |members, _| {
+        members[0].1.extend_from_slice(b"INSERT INTO `no_such_table` VALUES (1);\n");
+    });
+    // Make the rollback fail: the covers folder cannot be written into, so
+    // neither the load nor the rollback can stage a cover.
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(fx.f.covers(), std::fs::Permissions::from_mode(0o500)).unwrap();
+    if std::fs::write(fx.f.covers().join("probe.jpg"), b"x").is_ok() {
+        eprintln!("stuck test skipped: the tests run as root");
+        std::fs::remove_file(fx.f.covers().join("probe.jpg")).unwrap();
+        return;
+    }
+    let outcome = restore::restore_backup(&fx.state, &broken, "x").await;
+    std::fs::set_permissions(fx.f.covers(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(matches!(outcome, Ok(RestoreOutcome::Stuck { .. })), "{outcome:?}");
+    assert!(fx.state.backup.maintenance.is_active(), "maintenance stays on");
+    assert!(fx.state.backup.guard.clone().try_lock_owned().is_err(), "the guard is kept");
+    assert!(fx.f.backups().join(JOURNAL_NAME).exists(), "the journal stays for the next boot");
 }

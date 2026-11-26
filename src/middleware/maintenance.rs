@@ -68,6 +68,14 @@ fn locale_of(state: &AppState, request: &Request) -> &'static str {
     crate::i18n::resolve::resolve_locale(None, cookie_lang.as_deref(), None, accept, &state.default_language())
 }
 
+/// `X-Modal-Confirm: true` (set by `modal.js` on a Pattern A Confirm).
+fn is_modal_confirm(headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get("x-modal-confirm")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"))
+}
+
 /// The maintenance text in `loc` (the stuck text once a rollback failed).
 pub fn maintenance_text(stuck: Option<&str>, loc: &str) -> String {
     match stuck {
@@ -89,16 +97,30 @@ fn answer(state: &AppState, request: &Request) -> Response {
         let loc = locale_of(state, request);
         let text = maintenance_text(stuck.as_deref(), loc);
         if crate::middleware::htmx::is_htmx(request.headers()) {
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                [
-                    (header::CONTENT_TYPE, "text/html; charset=utf-8"),
-                    (header::HeaderName::from_static("hx-retarget"), "#feedback-list"),
-                    (header::HeaderName::from_static("hx-reswap"), "beforeend"),
-                ],
-                crate::utils::feedback_html("error", &text, ""),
-            )
-                .into_response()
+            let entry = crate::utils::feedback_html("error", &text, "");
+            if is_modal_confirm(request.headers()) {
+                // Review pass 1: a Pattern A modal Confirm — no retarget,
+                // so `modal.js` puts the text in the dialog's error region
+                // (a retargeted answer is left to `#feedback-list`, behind
+                // the backdrop, where nobody sees it).
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                    entry,
+                )
+                    .into_response()
+            } else {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    [
+                        (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                        (header::HeaderName::from_static("hx-retarget"), "#feedback-list"),
+                        (header::HeaderName::from_static("hx-reswap"), "beforeend"),
+                    ],
+                    entry,
+                )
+                    .into_response()
+            }
         } else {
             let page = MaintenancePage {
                 lang: loc,
@@ -135,7 +157,10 @@ pub async fn maintenance_middleware(State(state): State<AppState>, request: Requ
     }
     match maintenance.enter() {
         Some(admission) => {
-            let response = next.run(request).await;
+            // Review pass 1: the request runs in a write scope, so a job it
+            // spawns that may outlive it (cover filing / upload) drops its
+            // write once a restore started since.
+            let response = crate::services::maintenance::scoped(&maintenance, next.run(request)).await;
             drop(admission);
             response
         }

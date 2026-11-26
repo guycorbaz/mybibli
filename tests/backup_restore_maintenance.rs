@@ -29,6 +29,7 @@ async fn while_active_every_request_gets_the_maintenance_answer(pool: DbPool) {
     let app = app(state.clone());
     seed_admin(&pool, "maint_admin").await;
     let admin = Browser::login(&app, "maint_admin").await;
+    let sessions_before = session_rows(&pool).await;
     let guard = state.backup.maintenance.begin(Duration::from_secs(1)).await.unwrap();
 
     // A page: 503, Retry-After, the standalone page in the cookie's locale.
@@ -78,7 +79,25 @@ async fn while_active_every_request_gets_the_maintenance_answer(pool: DbPool) {
     let res = send(&app, Request::get("/static/js/modal.js").body(Body::empty()).unwrap()).await;
     assert_eq!(res.status(), StatusCode::OK, "static files are served");
 
-    // No session row was created for any refused request.
+    // A Pattern A modal Confirm: no retarget, so modal.js puts the text in
+    // the dialog's error region (review pass 1).
+    let res = send(
+        &app,
+        Request::post("/admin/backups/restore/mybibli-0123456789abcdef-20261126T080000Z.tar.gz")
+            .header("HX-Request", "true")
+            .header("X-Modal-Confirm", "true")
+            .header("cookie", "lang=en")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(res.headers().get("hx-retarget").is_none(), "no retarget inside a modal");
+    assert!(res.headers().get("hx-reswap").is_none());
+    assert!(body_string(res).await.contains("mybibli is restoring a backup."));
+
+    // No session row was created (nor touched) by any refused request.
+    assert_eq!(session_rows(&pool).await, sessions_before, "the refused requests wrote no session row");
     drop(guard);
     let res = send(&app, Request::get("/health").body(Body::empty()).unwrap()).await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -91,7 +110,7 @@ async fn a_stuck_restore_names_the_safety_backup_to_restore_by_hand(pool: DbPool
     let state = common::mcp::state_with_pool(pool.clone());
     let app = app(state.clone());
     let guard = state.backup.maintenance.begin(Duration::from_secs(1)).await.unwrap();
-    state.backup.maintenance.mark_stuck("mybibli-0123456789abcdef-20261126T080000Z.tar.gz");
+    state.backup.maintenance.mark_stuck("mybibli-0123456789abcdef-20261126T080000Z.tar.gz", None);
     drop(guard);
     let res = send(
         &app,
@@ -186,4 +205,23 @@ async fn the_scheduled_metadata_retry_skips_while_active(pool: DbPool) {
     .unwrap();
     assert_eq!((attempts, version), (1, 1), "the queue row is untouched");
     drop(guard);
+}
+
+async fn session_rows(pool: &DbPool) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM sessions").fetch_one(pool).await.unwrap()
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn no_scheduled_backup_runs_while_a_restore_does(pool: DbPool) {
+    let f = common::backup::Folders::new();
+    let mut state = common::mcp::state_with_pool(pool.clone());
+    state.backup = f.config();
+    state.settings.write().unwrap().backup_interval_hours = 1;
+    let guard = state.backup.maintenance.begin(Duration::from_secs(1)).await.unwrap();
+    let run = mybibli::tasks::backup_scheduler::run_check(&state, chrono::Utc::now()).await;
+    assert_eq!(run, mybibli::tasks::backup_scheduler::CheckRun::Busy);
+    assert!(common::backup::names_in(&f.backups()).is_empty(), "nothing written");
+    drop(guard);
+    let run = mybibli::tasks::backup_scheduler::run_check(&state, chrono::Utc::now()).await;
+    assert!(matches!(run, mybibli::tasks::backup_scheduler::CheckRun::Written(_)), "{run:?}");
 }

@@ -17,7 +17,6 @@ use crate::AppState;
 use crate::services::backup::status::{CheckResult, StatusSnapshot};
 use crate::services::backup::{FolderState, folder_state, listing};
 use crate::tasks::backup_scheduler::due_at;
-use crate::utils::local_time::format_local_date_time;
 
 /// What the fragment prints.
 pub struct BackupHealthPanel {
@@ -73,9 +72,7 @@ impl LastRestore {
     }
 }
 
-fn when(at: DateTime<Utc>, tz: Tz) -> String {
-    format_local_date_time(at.naive_utc(), tz)
-}
+use crate::utils::local_time::format_utc_date_time as when;
 
 /// The lines of the block (D6), in reading order: folder warning, failed
 /// automatic backup, last backup, schedule, last check skipped.

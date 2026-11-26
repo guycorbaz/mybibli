@@ -108,6 +108,10 @@ pub enum RestoreError {
     Refused(Refusal),
     /// D9 — the safety backup could not be written.
     SafetyBackupFailed(BackupError),
+    /// Something else failed before the first change (the instance id
+    /// could not be read, the journal could not be written, the task ended
+    /// abnormally): the generic backup failure copy; the reason is logged.
+    Failed(BackupError),
 }
 
 impl From<Refusal> for RestoreError {
@@ -126,6 +130,7 @@ impl RestoreError {
                 reason = e.localized(loc)
             )
             .to_string(),
+            RestoreError::Failed(e) => e.localized(loc),
         }
     }
 }
@@ -147,7 +152,7 @@ pub enum RestoreOutcome {
     Restored(Restored),
     /// D10 — the restore failed and the library was put back from the
     /// safety backup.
-    RolledBack { file_name: String, safety: String },
+    RolledBack { safety: String },
     /// D10 — the rollback failed too: maintenance stays on until a restart;
     /// the safety backup is to be restored by hand.
     Stuck { safety: String },
@@ -156,6 +161,11 @@ pub enum RestoreOutcome {
 /// `.restore-in-progress.json` (T11).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Journal {
+    /// Review pass 1: names this restore in its `admin_audit` row, so a
+    /// journal whose removal failed after the restore ended is recognised
+    /// at boot (and not rolled back).
+    #[serde(default)]
+    pub restore_id: String,
     pub backup: String,
     pub safety: String,
     pub instance_id: String,
@@ -218,7 +228,7 @@ async fn apply(
     verified: &Verified,
     local_id: &str,
 ) -> Result<(), load::LoadError> {
-    let loaded = load::load(pool, cfg.dir.join(&verified.file_name), verified, &cfg.covers_dir).await?;
+    let loaded = load::load(pool, verified, &cfg.covers_dir).await?;
     load::keep_instance_id(pool, local_id).await?;
     MIGRATOR
         .run(pool)
@@ -244,6 +254,7 @@ async fn apply(
 /// D13 — the audit row, in the database as it now is (best effort).
 async fn audit(pool: &DbPool, journal: &Journal, verified: Option<&Verified>, admin: &str, outcome: &str) {
     let details = serde_json::json!({
+        "restore_id": journal.restore_id,
         "backup": journal.backup,
         "origin": verified.map(|v| v.instance_id.clone()),
         "version": verified.map(|v| v.manifest.mybibli_version.clone()),
@@ -286,6 +297,7 @@ pub async fn restore_core(
         .await
         .map_err(RestoreError::SafetyBackupFailed)?;
     let journal = Journal {
+        restore_id: crate::services::instance_id::generate(),
         backup: verified.file_name.clone(),
         safety: safety.file_name.clone(),
         instance_id: local_id.to_string(),
@@ -293,10 +305,14 @@ pub async fn restore_core(
     };
     let dir = cfg.dir.clone();
     let written_journal = journal.clone();
-    tokio::task::spawn_blocking(move || write_journal(&dir, &written_journal))
+    let written = tokio::task::spawn_blocking(move || write_journal(&dir, &written_journal))
         .await
-        .map_err(|e| RestoreError::SafetyBackupFailed(BackupError::Io(e.to_string())))?
-        .map_err(|e| RestoreError::SafetyBackupFailed(BackupError::Io(e.to_string())))?;
+        .map_err(|e| e.to_string())
+        .and_then(|r| r.map_err(|e| e.to_string()));
+    if let Err(e) = written {
+        tracing::error!(error = %e, "Restore abandoned: the journal could not be written; nothing was changed");
+        return Err(RestoreError::Failed(BackupError::Io(format!("journal: {e}"))));
+    }
     tracing::warn!(
         file = %verified.file_name,
         origin = %verified.instance_id,
@@ -323,10 +339,7 @@ pub async fn restore_core(
                     audit(pool, &journal, Some(verified), admin, "rolled_back").await;
                     remove_journal(&cfg.dir);
                     tracing::warn!(safety = %journal.safety, "Restore: the library was put back from the safety backup");
-                    Ok(RestoreOutcome::RolledBack {
-                        file_name: verified.file_name.clone(),
-                        safety: journal.safety,
-                    })
+                    Ok(RestoreOutcome::RolledBack { safety: journal.safety })
                 }
                 Err(e) => {
                     tracing::error!(
@@ -410,9 +423,13 @@ pub async fn restore_backup(
     }
     // D5 again, under the guard, before anything is touched.
     let verified = verify_in_folder(&state.backup.dir, name).await?;
-    let local_id = crate::services::instance_id::ensure(&state.pool)
-        .await
-        .map_err(|e| RestoreError::SafetyBackupFailed(e.into()))?;
+    let local_id = match crate::services::instance_id::ensure(&state.pool).await {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::error!(error = %e, "Restore refused: the instance id could not be read");
+            return Err(RestoreError::Failed(e.into()));
+        }
+    };
     let state = state.clone();
     let admin = admin.to_string();
     // T9: the restore owns the guard, the maintenance guard and its
@@ -429,16 +446,83 @@ pub async fn restore_backup(
         if bulk_running(&state) {
             return Err(Refusal::BulkRunning.into());
         }
-        let outcome = restore_core(&state.pool, &state.backup, &held, &verified, &local_id, &admin).await;
+        let core = std::panic::AssertUnwindSafe(restore_core(
+            &state.pool,
+            &state.backup,
+            &held,
+            &verified,
+            &local_id,
+            &admin,
+        ));
+        let outcome = match futures::FutureExt::catch_unwind(core).await {
+            Ok(outcome) => outcome,
+            Err(_) => panicked_outcome(&state.backup.dir).await,
+        };
         match &outcome {
-            Ok(RestoreOutcome::Stuck { safety }) => maintenance.mark_stuck(safety),
+            // Review pass 1: stuck keeps maintenance on AND the backup
+            // guard, for the life of the process.
+            Ok(RestoreOutcome::Stuck { safety }) => maintenance.mark_stuck(safety, Some(held)),
             Ok(_) => reload_caches(&state).await,
             Err(_) => {}
         }
         outcome
     });
-    task.await
-        .map_err(|e| RestoreError::SafetyBackupFailed(BackupError::Io(format!("restore task ended abnormally: {e}"))))?
+    task.await.map_err(|e| {
+        tracing::error!(error = %e, "Restore task ended abnormally");
+        RestoreError::Failed(BackupError::Io(format!("restore task ended abnormally: {e}")))
+    })?
+}
+
+/// Review pass 1 (Low 4): the restore panicked. With a journal present the
+/// library may be half loaded: treat it as stuck (maintenance stays on, the
+/// next boot puts the safety backup back). Without one nothing was touched.
+async fn panicked_outcome(dir: &Path) -> Result<RestoreOutcome, RestoreError> {
+    let dir = dir.to_path_buf();
+    let journal = tokio::task::spawn_blocking(move || read_journal(&dir))
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .flatten();
+    match journal {
+        Some(j) => {
+            tracing::error!(safety = %j.safety, "Restore panicked after the journal was written; maintenance stays on until a restart");
+            Ok(RestoreOutcome::Stuck { safety: j.safety })
+        }
+        None => {
+            tracing::error!("Restore panicked before the first change; nothing was changed");
+            Err(RestoreError::Failed(BackupError::Io("the restore panicked".to_string())))
+        }
+    }
+}
+
+/// Review pass 1 (Medium 2): whether the database already records that the
+/// journal's restore ended (`restored` / `rolled_back` audit row carrying
+/// its id) — then the journal is a leftover of a failed removal. A database
+/// that cannot answer (half loaded) does not.
+pub async fn journal_already_settled(pool: &DbPool, journal: &Journal) -> bool {
+    if journal.restore_id.is_empty() {
+        return false;
+    }
+    let Ok(rows) = crate::models::admin_audit::AdminAuditModel::recent_details_of_action(pool, AUDIT_ACTION, 50).await
+    else {
+        return false;
+    };
+    rows.iter().any(|d| {
+        d.get("restore_id").and_then(|v| v.as_str()) == Some(journal.restore_id.as_str())
+            && matches!(
+                d.get("outcome").and_then(|v| v.as_str()),
+                Some("restored" | "rolled_back")
+            )
+    })
+}
+
+/// Review pass 1 (Low 5): the boot cannot see a journal in a folder that is
+/// not there.
+pub fn boot_folder_warning(state: super::FolderState) -> Option<&'static str> {
+    match state {
+        super::FolderState::Ready => None,
+        _ => Some("The backups folder is not usable: a restore cut short could not be detected at this boot"),
+    }
 }
 
 /// D10 at boot, **before the migrations**: a journal left by a restore cut
@@ -446,6 +530,9 @@ pub async fn restore_backup(
 /// it names. `Ok(None)`: no journal. `Err`: the boot must stop (the text
 /// is for the log).
 pub async fn recover_at_boot(pool: &DbPool, cfg: &BackupConfig) -> Result<Option<String>, String> {
+    if let Some(warning) = boot_folder_warning(super::folder_state(&cfg.dir)) {
+        tracing::warn!(backup_dir = %cfg.dir.display(), "{warning}");
+    }
     let dir = cfg.dir.clone();
     let journal = tokio::task::spawn_blocking(move || read_journal(&dir))
         .await
@@ -453,6 +540,15 @@ pub async fn recover_at_boot(pool: &DbPool, cfg: &BackupConfig) -> Result<Option
     let Some(journal) = journal else {
         return Ok(None);
     };
+    if journal_already_settled(pool, &journal).await {
+        tracing::warn!(
+            backup = %journal.backup,
+            restore_id = %journal.restore_id,
+            "A journal was left by a restore that had ended (its removal failed); removing it, nothing rolled back"
+        );
+        remove_journal(&cfg.dir);
+        return Ok(None);
+    }
     let stuck = |why: String| {
         format!(
             "A restore was cut short and the library could not be put back ({why}). \
@@ -516,9 +612,35 @@ mod tests {
         assert!(Refusal::NoSidecar { file: "f.tar.gz".into() }.localized("en").contains("f.tar.gz.sha256"));
         let newer = Refusal::Newer { version: "1.40.0".into(), current: "1.29.0".into() }.localized("fr");
         assert!(newer.contains("1.40.0") && newer.contains("1.29.0"), "{newer}");
+        let failed = RestoreError::Failed(BackupError::Io("journal".into())).localized("fr");
+        assert_eq!(failed, BackupError::Io("x".into()).localized("fr"), "the generic copy");
+        assert!(boot_folder_warning(crate::services::backup::FolderState::Missing).is_some());
+        assert!(boot_folder_warning(crate::services::backup::FolderState::Ready).is_none());
         let safety = RestoreError::SafetyBackupFailed(BackupError::AlreadyRunning).localized("en");
         assert!(safety.starts_with("Nothing was restored:"), "{safety}");
         assert!(safety.contains("already"), "{safety}");
+    }
+
+    #[tokio::test]
+    async fn a_panic_after_the_journal_is_stuck_and_before_it_changes_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(matches!(panicked_outcome(tmp.path()).await, Err(RestoreError::Failed(_))));
+        let safety = "mybibli-0123456789abcdef-20261126T080000Z.tar.gz";
+        write_journal(
+            tmp.path(),
+            &Journal {
+                restore_id: String::new(),
+                backup: "mybibli-fedcba9876543210-20261120T080000Z.tar.gz".into(),
+                safety: safety.into(),
+                instance_id: "0123456789abcdef".into(),
+                started_at: String::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            panicked_outcome(tmp.path()).await.unwrap(),
+            RestoreOutcome::Stuck { safety: safety.into() }
+        );
     }
 
     #[test]
@@ -527,6 +649,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         assert_eq!(read_journal(tmp.path()), Ok(None));
         let j = Journal {
+            restore_id: "0123456789abcdef".into(),
             backup: "mybibli-fedcba9876543210-20261120T080000Z.tar.gz".into(),
             safety: "mybibli-0123456789abcdef-20261126T080000Z.tar.gz".into(),
             instance_id: "0123456789abcdef".into(),

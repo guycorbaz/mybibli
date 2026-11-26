@@ -205,6 +205,31 @@ Notes for the lead (no change made):
 - A restored backup with no active Admin (for example one written before the setup wizard finished) opens the wizard, or needs `MYBIBLI_RESET_ADMIN`; not refused by D5 (the counts are not in the manifest). The manual (19-11) can say so.
 - Browsers may keep a replaced cover image cached under the same URL until it expires; cosmetic.
 
+## Review pass 1 (2026-11-26)
+
+Two independent reviews. Every finding below was fixed with a test, except the two recorded at the end.
+
+- **M1 — a stuck restore released the backup guard** (scheduled backups of the half-loaded database, rotation deleting the safety backup). Fixed: `Maintenance::mark_stuck(safety, Some(guard))` keeps the guard for the life of the process; `run_check` and `rotation::rotate` return Busy while maintenance is on; the rotation never deletes the files a present `.restore-in-progress.json` names (an unreadable journal stops the pass). Tests: `a_stuck_restore_keeps_the_backup_guard`, `no_scheduled_backup_runs_while_a_restore_does`, `no_rotation_runs_while_a_restore_does`, `the_files_a_restore_journal_names_are_never_rotated`, `a_stuck_restore_keeps_maintenance_on`.
+- **M2 — a journal whose removal failed reverted the library at the next boot.** Fixed: the journal and the `backup_restore` audit row carry a `restore_id`; at boot a journal whose id is in a `restored` / `rolled_back` row is only removed (`warn`), nothing rolled back (`restore::journal_already_settled`). Removal failures are logged at `error`. Test: `a_journal_left_after_a_finished_restore_is_only_removed`.
+- **M3 — a modal Confirm during maintenance showed nothing.** Fixed: with `X-Modal-Confirm: true` the 503 carries no `HX-Retarget` / `HX-Reswap`, so `modal.js` shows it in `[data-modal-error]`. Test in `while_active_every_request_gets_the_maintenance_answer`.
+- **L4 — a panic after the first change ended maintenance.** Fixed: `catch_unwind` around `restore_core`; with a journal present the outcome is Stuck (maintenance and guard kept), without one nothing was changed. Test: `a_panic_after_the_journal_is_stuck_and_before_it_changes_nothing`.
+- **L5 — boot recovery silently skipped on an unmounted folder.** Fixed: `recover_at_boot` warns when the folder is not Ready (`boot_folder_warning`, unit-tested).
+- **L6 — symlink / re-open TOCTOU.** Fixed: the file is opened with `O_NOFOLLOW` (and `fstat` checked regular); `Verified` carries the descriptor and the load reads it from offset 0. Threat model § 5.13: one sentence on restored SQL running with the app's rights. Test: `the_load_reads_the_checked_file_not_the_path_again`.
+- **L7 — cover filing / upload jobs could outlive their request across a restore.** Fixed: every admitted request runs in a maintenance write scope; the jobs are spawned in the captured scope (`maintenance::current_scope` / `rescoped`) and ask `write_permit()` before their transaction (the staged file is discarded otherwise). Test: `a_job_spawned_by_a_request_keeps_the_request_generation`.
+- **L8 — wrong reasons and leftovers.** The journal-write and `instance_id::ensure` failures are `RestoreError::Failed` (generic backup failure copy, reason logged), no longer `SafetyBackupFailed`; `RolledBack::file_name` removed; `when()` shared as `utils::local_time::format_utc_date_time`.
+- **L9 — untested skips.** `run_once(&pool, …, &maintenance) -> bool` extracted in `auto_purge_scheduler` and `anonymous_session_purge`; tests `a_pass_is_skipped_while_a_restore_runs`, `a_purge_is_skipped_while_a_restore_runs`.
+- **L10 — Escape on the outcome dialog sent focus to `<body>`.** Fixed in `modal.js`: a dialog replacing another inherits its trigger. E2E: Escape on the outcome line returns the focus to the row's "Restore…" button.
+- **L11 — Cancel / Escape during the restore POST.** Fixed: the restore modal carries `data-modal-lock-while-busy`; `modal.js` disables Cancel and ignores Escape, the backdrop and the native `cancel` while the Confirm runs (re-enabled on a refusal). E2E asserts the disabled Cancel, Escape ignored, and the "Restoring…" line with `expectReallySeen`.
+- **L12 — the row button.** `hx-disabled-elt="this"` while the modal is prepared.
+- **L13 — `instance_id::read` failure in the list.** Logged at `warn`, falls back to the id the scheduler remembers; with neither, no origin ("—") and no rotation mark (never "another instance" for an own backup). Unit test updated.
+- **L14 — session rows on refused requests.** Asserted unchanged in the maintenance route test.
+
+Recorded, not fixed:
+- No browser E2E for a refusal (AC9 exemption approved): the refusals cannot be produced from a browser; route tests cover them.
+- A reverse proxy's timeout may cut the restore POST (a minute or two); the restore itself continues (T9). For the manual (story 19-11).
+
+E2E deviation (L10): the spec presses Escape on the outcome line to check the focus, then opens `/login` itself instead of clicking "Log in again"; it still asserts the link's focus and `href`.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -244,3 +269,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — create-story: story 19-8 written, decisions D1–D13 for the project lead.
 - 2026-11-26 — validate-story: checked against the code; T9–T12 added, D5 and T6–T7 corrected (see Validation).
 - 2026-11-26 — dev-story: implemented; unit, integration and static gates green; E2E written, not yet run (status in-progress).
+- 2026-11-26 — code review pass 1: three Medium and eleven Low findings fixed (see Review pass 1); E2E still to run.

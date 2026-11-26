@@ -39,7 +39,6 @@ use crate::services::backup::restore::verify::Verified;
 use crate::services::backup::restore::{self, RestoreOutcome};
 use crate::services::backup::{listing, rotation};
 use crate::utils::html_escape;
-use crate::utils::local_time::format_local_date_time;
 
 const RETURN_TO: &str = "/admin?tab=backups";
 /// Id of the list wrapper (refreshed out of band).
@@ -82,12 +81,15 @@ struct BackupsList {
     rows: Vec<BackupRow>,
 }
 
-fn when(at: DateTime<Utc>, tz: Tz) -> String {
-    format_local_date_time(at.naive_utc(), tz)
-}
+use crate::utils::local_time::format_utc_date_time as when;
 
 fn origin(id: &str, local_id: Option<&str>, loc: &str) -> String {
-    if Some(id) == local_id {
+    // Review pass 1: without the local id the origin cannot be told; say
+    // nothing rather than call an own backup another instance's.
+    let Some(local_id) = local_id else {
+        return "—".to_string();
+    };
+    if id == local_id {
         t("admin.backups.list.origin_own", loc)
     } else {
         rust_i18n::t!("admin.backups.list.origin_other", locale = loc, id = id).to_string()
@@ -165,6 +167,20 @@ pub fn list_files(dir: &std::path::Path) -> Option<Vec<ListedFile>> {
     )
 }
 
+/// The local instance id for the list. Review pass 1: a failed read is
+/// logged and falls back to the id the scheduler remembers; with neither,
+/// no rotation mark and no origin are shown.
+async fn local_instance_id(state: &AppState) -> Option<String> {
+    match crate::services::instance_id::read(&state.pool).await {
+        Ok(id) => id,
+        Err(e) => {
+            let remembered = state.backup.status.snapshot().instance_id;
+            tracing::warn!(error = %e, fallback = remembered.is_some(), "Backups list: the instance id could not be read");
+            remembered
+        }
+    }
+}
+
 /// The list's HTML (the content of `#admin-backups-list`); empty when the
 /// folder cannot be listed.
 pub async fn render_list_html(state: &AppState, loc: &str) -> Result<String, AppError> {
@@ -175,7 +191,7 @@ pub async fn render_list_html(state: &AppState, loc: &str) -> Result<String, App
     let Some(files) = files else {
         return Ok(String::new());
     };
-    let local_id = crate::services::instance_id::read(&state.pool).await.ok().flatten();
+    let local_id = local_instance_id(state).await;
     let rows = build_rows(
         &files,
         local_id.as_deref(),
@@ -304,7 +320,9 @@ pub async fn restore_modal(
         loc,
     );
     let inner_form_html = format!(
-        r#"<p id="admin-backups-restoring" class="htmx-indicator text-sm text-stone-700 dark:text-stone-300" role="status">{}</p>"#,
+        // `data-modal-lock-while-busy` (review pass 1): `modal.js` keeps
+        // Cancel, Escape and the backdrop inert while the restore runs.
+        r#"<span data-modal-lock-while-busy hidden></span><p id="admin-backups-restoring" class="htmx-indicator text-sm text-stone-700 dark:text-stone-300" role="status">{}</p>"#,
         html_escape(&t("admin.backups.restore.running", loc))
     );
     let html = RestoreModal {
@@ -423,11 +441,11 @@ mod tests {
     }
 
     #[test]
-    fn without_a_local_id_every_backup_is_foreign_and_none_is_rotated() {
+    fn without_a_local_id_no_origin_and_no_rotation_mark_are_shown() {
         let now = Utc.with_ymd_and_hms(2026, 11, 26, 12, 0, 0).unwrap();
         let files = vec![file("mybibli-0123456789abcdef-20200101T000000Z.tar.gz", true, true)];
         let rows = build_rows(&files, None, now, Zurich, 1, "fr");
-        assert_eq!(rows[0].origin, "Autre instance (0123456789abcdef)");
+        assert_eq!(rows[0].origin, "—", "an own backup is never called another instance's");
         assert_eq!(rows[0].notes, "");
     }
 

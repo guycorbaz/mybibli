@@ -42,6 +42,10 @@ pub struct Maintenance {
     gate: Arc<RwLock<()>>,
     generation: AtomicU64,
     stuck: Mutex<Option<String>>,
+    /// Story 19-8 review (pass 1): once stuck, the backup guard is kept here
+    /// for the life of the process — no scheduled backup of the half-loaded
+    /// database, no rotation that could delete the safety backup.
+    kept_guard: Mutex<Option<tokio::sync::OwnedMutexGuard<()>>>,
     /// How long a restore waits for running requests ([`DRAIN_TIMEOUT`];
     /// shorter in tests).
     drain: Duration,
@@ -74,6 +78,7 @@ impl Maintenance {
             gate: Arc::new(RwLock::new(())),
             generation: AtomicU64::new(0),
             stuck: Mutex::new(None),
+            kept_guard: Mutex::new(None),
             drain,
         }
     }
@@ -97,9 +102,13 @@ impl Maintenance {
         self.stuck.lock().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
-    /// D10: the rollback failed; the state stays active until a restart.
-    pub fn mark_stuck(&self, safety: &str) {
+    /// D10: the rollback failed; the state stays active until a restart,
+    /// and the backup guard (when given) is kept until then too.
+    pub fn mark_stuck(&self, safety: &str, guard: Option<tokio::sync::OwnedMutexGuard<()>>) {
         *self.stuck.lock().unwrap_or_else(|p| p.into_inner()) = Some(safety.to_string());
+        if let Some(guard) = guard {
+            *self.kept_guard.lock().unwrap_or_else(|p| p.into_inner()) = Some(guard);
+        }
         self.active.store(true, Ordering::SeqCst);
     }
 
@@ -186,6 +195,22 @@ pub fn scoped<F: Future>(
     WRITE_SCOPE.scope((maintenance.clone(), maintenance.generation()), fut)
 }
 
+/// The scope of the current task, if any (review pass 1): a request runs
+/// inside one (set by the maintenance layer), so a job it spawns that may
+/// outlive it carries the request's generation ([`rescoped`]).
+pub fn current_scope() -> Option<(Arc<Maintenance>, u64)> {
+    WRITE_SCOPE.try_with(|(m, g)| (m.clone(), *g)).ok()
+}
+
+/// Run `fut` in a scope captured by [`current_scope`]; without one, in a
+/// scope that always permits (tests, boot).
+pub fn rescoped<F: Future>(
+    scope: Option<(Arc<Maintenance>, u64)>,
+    fut: F,
+) -> tokio::task::futures::TaskLocalFuture<(Arc<Maintenance>, u64), F> {
+    WRITE_SCOPE.scope(scope.unwrap_or_else(|| (Arc::new(Maintenance::new()), 0)), fut)
+}
+
 /// The permit for a write of the current task: `None` means "drop the
 /// write" (a restore is running, or ran since the work started).
 pub fn write_permit() -> Option<WritePermit> {
@@ -264,12 +289,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_job_spawned_by_a_request_keeps_the_request_generation() {
+        let m = Arc::new(Maintenance::new());
+        let (go_tx, go_rx) = tokio::sync::oneshot::channel::<()>();
+        // The request captures its scope and spawns a job that outlives it.
+        let scope = scoped(&m, async { current_scope() }).await;
+        assert!(scope.is_some());
+        let job = tokio::spawn(rescoped(scope, async move {
+            go_rx.await.unwrap();
+            write_permit().is_some()
+        }));
+        drop(m.begin(Duration::from_secs(1)).await.unwrap());
+        go_tx.send(()).unwrap();
+        assert!(!job.await.unwrap(), "a restore ran since the request: the write is dropped");
+        // Without a captured scope the job always writes.
+        assert!(tokio::spawn(rescoped(None, async { write_permit().is_some() })).await.unwrap());
+    }
+
+    #[tokio::test]
     async fn a_stuck_restore_keeps_maintenance_on() {
         let m = Arc::new(Maintenance::new());
         let guard = m.begin(Duration::from_secs(1)).await.unwrap();
-        m.mark_stuck("mybibli-0123456789abcdef-20261126T080000Z.tar.gz");
+        let backup_guard = Arc::new(tokio::sync::Mutex::new(()));
+        m.mark_stuck(
+            "mybibli-0123456789abcdef-20261126T080000Z.tar.gz",
+            Some(backup_guard.clone().try_lock_owned().unwrap()),
+        );
         drop(guard);
         assert!(m.is_active());
+        assert!(backup_guard.try_lock().is_err(), "the backup guard is kept for the life of the process");
         assert!(m.enter().is_none());
         assert!(m.stuck().unwrap().ends_with(".tar.gz"));
     }

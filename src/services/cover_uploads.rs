@@ -169,7 +169,10 @@ pub async fn receive(
         media_type,
         _permit: permit,
     };
-    tokio::spawn(job.run())
+    // Story 19-8 review (pass 1): the job carries the request's maintenance
+    // scope; it records nothing once a restore started since.
+    let scope = crate::services::maintenance::current_scope();
+    tokio::spawn(crate::services::maintenance::rescoped(scope, job.run()))
         .await
         .map_err(|e| AppError::Internal(format!("cover upload task: {e}")))?
 }
@@ -211,6 +214,11 @@ impl UploadJob {
             height: i64::from(encoded.height),
             bytes: encoded.jpeg.len() as i64,
             fingerprint: cover_fingerprint(&encoded.jpeg),
+        };
+        let Some(_permit) = crate::services::maintenance::write_permit() else {
+            cover_staging::discard_all(&self.staging_dir, std::slice::from_ref(&staged_file)).await;
+            tracing::info!("Cover upload not recorded: a restore ran or is running");
+            return Err(AppError::Internal("a restore ran during the upload".to_string()).into());
         };
         match record(&self.pool, self.api_key_id, &upload).await {
             Ok(expired_files) => {

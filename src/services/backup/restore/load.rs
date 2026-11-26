@@ -21,7 +21,7 @@
 //! `sqlx::raw_sql` in a spawned task fails the `Send` check (19-6).
 
 use std::io::{BufRead, BufReader, Read};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use flate2::read::GzDecoder;
 use sqlx::{Executor, MySqlConnection};
@@ -161,13 +161,16 @@ pub struct Loaded {
 /// (the verified manifest's list), sending the dump's statements to `tx`
 /// and staging the covers. Blocking.
 fn read_archive(
-    path: &Path,
+    file: &std::fs::File,
     expected: &[MemberEntry],
     covers_dir: &Path,
     tx: tokio::sync::mpsc::Sender<String>,
 ) -> Result<StagedCovers, LoadError> {
+    use std::io::{Seek, SeekFrom};
     let io = |e: std::io::Error| LoadError(format!("reading the archive: {e}"));
-    let file = std::fs::File::open(path).map_err(io)?;
+    // Review pass 1 (TOCTOU): the descriptor the checks read, from its start.
+    let mut file = file;
+    file.seek(SeekFrom::Start(0)).map_err(io)?;
     let mut archive = tar::Archive::new(GzDecoder::new(BufReader::with_capacity(1 << 16, file)));
     let mut staged = StagedCovers::new(covers_dir);
     let mut index = 0usize;
@@ -236,12 +239,7 @@ fn read_archive(
 /// dedicated connection; the covers are staged (not yet in place). On any
 /// failure the staged covers are removed and the database is left as the
 /// load left it (the caller rolls back).
-pub async fn load(
-    pool: &DbPool,
-    archive: PathBuf,
-    verified: &Verified,
-    covers_dir: &Path,
-) -> Result<Loaded, LoadError> {
+pub async fn load(pool: &DbPool, verified: &Verified, covers_dir: &Path) -> Result<Loaded, LoadError> {
     let mut conn = pool.acquire().await?;
     // Session settings change (FK checks, SQL mode): never back to the pool.
     conn.close_on_drop();
@@ -252,6 +250,7 @@ pub async fn load(
     let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(4);
     let expected = verified.manifest.members.clone();
     let covers = covers_dir.to_path_buf();
+    let archive = verified.file.clone();
     let reader = tokio::task::spawn_blocking(move || read_archive(&archive, &expected, &covers, tx));
     let mut statements = 0u64;
     let mut failed: Option<LoadError> = None;

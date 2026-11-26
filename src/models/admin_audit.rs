@@ -126,6 +126,26 @@ impl AdminAuditModel {
         }))
     }
 
+    /// Story 19-8 review (pass 1) — the details of the newest `limit` rows
+    /// of `action`, newest first (rows whose details are not JSON skipped).
+    pub async fn recent_details_of_action(
+        pool: &DbPool,
+        action: &str,
+        limit: u32,
+    ) -> Result<Vec<serde_json::Value>, AppError> {
+        let rows: Vec<(Option<String>,)> = sqlx::query_as(
+            "SELECT CAST(details AS CHAR) FROM admin_audit WHERE action = ? ORDER BY id DESC LIMIT ?",
+        )
+        .bind(action)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(d,)| d.and_then(|d| serde_json::from_str(&d).ok()))
+            .collect())
+    }
+
     // Fix #72 — `AdminAuditModel::list` was added during story 8-7
     // (Story 8-7 DF2) but no acceptance criterion / production caller
     // ever required it. The audit list is purely append-only forensics

@@ -172,6 +172,9 @@ pub struct Verified {
     /// Size of the archive in bytes.
     pub size: u64,
     pub manifest: Manifest,
+    /// Review pass 1 (TOCTOU): the file as it was opened and checked
+    /// (`O_NOFOLLOW`); the load reads this descriptor, never the path again.
+    pub file: std::sync::Arc<File>,
 }
 
 impl Verified {
@@ -263,14 +266,26 @@ pub fn verify_backup(dir: &Path, name: &str) -> Result<Verified, Refusal> {
     if !meta.file_type().is_file() {
         return Err(Refusal::Gone);
     }
-    let file = match File::open(&path) {
+    let opened = {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(nix::libc::O_NOFOLLOW)
+            .open(&path)
+    };
+    let file = match opened {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
             return Err(Refusal::NotReadable { file: name.to_string() });
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(Refusal::Gone),
-        Err(_) => return Err(Refusal::Damaged),
+        // ELOOP: the name became a link since the `stat` above.
+        Err(_) => return Err(Refusal::Gone),
     };
+    if !file.metadata().map(|m| m.is_file()).unwrap_or(false) {
+        return Err(Refusal::Gone);
+    }
+    let file = std::sync::Arc::new(file);
     let sidecar = sidecar_path(dir, name);
     let sidecar_name = format!("{name}.sha256");
     match std::fs::symlink_metadata(&sidecar) {
@@ -299,7 +314,7 @@ pub fn verify_backup(dir: &Path, name: &str) -> Result<Verified, Refusal> {
     // One read: the whole file through a hasher, the stream decoded on the
     // way; whatever the tar reader leaves (end padding) is drained so the
     // hash covers every byte.
-    let mut whole = HashingReader::new(BufReader::with_capacity(1 << 16, file));
+    let mut whole = HashingReader::new(BufReader::with_capacity(1 << 16, &*file));
     let scan = {
         let mut archive = tar::Archive::new(GzDecoder::new(&mut whole));
         scan_members(&mut archive)
@@ -333,6 +348,7 @@ pub fn verify_backup(dir: &Path, name: &str) -> Result<Verified, Refusal> {
         stamp,
         size,
         manifest,
+        file,
     })
 }
 

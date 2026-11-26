@@ -47,36 +47,7 @@ pub fn spawn(
 
         loop {
             interval.tick().await;
-            let Some(admission) = maintenance.enter() else {
-                tracing::info!("Auto-purge skipped: a restore is running; the next tick does it");
-                continue;
-            };
-
-            match AutoPurgeService::run_purge(&pool).await {
-                Ok(stats) => {
-                    tracing::info!(
-                        tables_attempted = stats.tables_attempted,
-                        tables_succeeded = stats.tables_succeeded,
-                        tables_errored = stats.tables_errored,
-                        rows_deleted = stats.rows_deleted,
-                        errors = stats.errors.len(),
-                        "Auto-purge completed"
-                    );
-
-                    if !stats.errors.is_empty() {
-                        tracing::warn!(
-                            errors = ?stats.errors,
-                            "Auto-purge encountered errors"
-                        );
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("Auto-purge task failed: {}", e);
-                    // Task continues; will retry on next scheduled time.
-                }
-            }
-            purge_cover_staging(&pool, &covers_dir).await;
-            drop(admission);
+            run_once(&pool, &covers_dir, &maintenance).await;
 
             // Pick up live settings changes for next cycle. `interval()` does
             // not expose a setter, so we just re-create it when the value
@@ -99,6 +70,46 @@ pub fn spawn(
             }
         }
     });
+}
+
+/// Story 19-8 review (pass 1) — one scheduled pass: skipped (`false`)
+/// while a restore runs; otherwise run holding the maintenance gate, so a
+/// restore waits for it.
+pub async fn run_once(
+    pool: &DbPool,
+    covers_dir: &Path,
+    maintenance: &crate::services::maintenance::Maintenance,
+) -> bool {
+    let Some(admission) = maintenance.enter() else {
+        tracing::info!("Auto-purge skipped: a restore is running; the next tick does it");
+        return false;
+    };
+    match AutoPurgeService::run_purge(pool).await {
+        Ok(stats) => {
+            tracing::info!(
+                tables_attempted = stats.tables_attempted,
+                tables_succeeded = stats.tables_succeeded,
+                tables_errored = stats.tables_errored,
+                rows_deleted = stats.rows_deleted,
+                errors = stats.errors.len(),
+                "Auto-purge completed"
+            );
+
+            if !stats.errors.is_empty() {
+                tracing::warn!(
+                    errors = ?stats.errors,
+                    "Auto-purge encountered errors"
+                );
+            }
+        }
+        Err(e) => {
+            tracing::error!("Auto-purge task failed: {}", e);
+            // Task continues; will retry on next scheduled time.
+        }
+    }
+    purge_cover_staging(pool, covers_dir).await;
+    drop(admission);
+    true
 }
 
 /// Story 11-14 — one pass of the staging purge, logged; errors never stop
@@ -146,6 +157,16 @@ fn read_interval_seconds(settings: &Arc<RwLock<AppSettings>>) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn a_pass_is_skipped_while_a_restore_runs(pool: DbPool) {
+        let m = std::sync::Arc::new(crate::services::maintenance::Maintenance::new());
+        let tmp = tempfile::tempdir().unwrap();
+        let on = m.begin(Duration::from_secs(1)).await.unwrap();
+        assert!(!run_once(&pool, tmp.path(), &m).await, "skipped while active");
+        drop(on);
+        assert!(run_once(&pool, tmp.path(), &m).await, "runs once the restore ended");
+    }
 
     /// Issue #75: a stale or SQL-inserted value larger than
     /// `AUTO_PURGE_INTERVAL_MAX_SECS` must be clamped at read, not just at

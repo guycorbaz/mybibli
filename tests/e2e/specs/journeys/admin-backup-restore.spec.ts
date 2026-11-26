@@ -5,6 +5,7 @@ import { specIsbn } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
 import { csrfHeaders } from "../../helpers/csrf";
 import { expectHtmxProcessed } from "../../helpers/htmx";
+import { expectReallySeen } from "../../helpers/visibility";
 
 /**
  * Story 19-8 (#657, FR181, AC9) — restoring a backup from Admin → Backups.
@@ -65,7 +66,8 @@ test.describe("Story 19-8 — restoring a backup", () => {
     expect(deleted.ok(), `delete answered ${deleted.status()}`).toBeTruthy();
     expect((await page.request.get(`/title/${titleId}`)).status()).toBe(404);
 
-    // 4. The list shows the spec's backup; "Restore…" opens the modal.
+    // 4. The list shows the spec's backup; "Restore…" opens the modal (the
+    //    button is disabled while the modal is prepared: `hx-disabled-elt`).
     await page.goto("/admin?tab=backups", { waitUntil: "domcontentloaded" });
     const row = page.locator(`#admin-backups-list tr[data-backup-file="${file}"]`);
     await expect(row).toBeVisible();
@@ -78,16 +80,28 @@ test.describe("Story 19-8 — restoring a backup", () => {
     await expect(dialog).toContainText(THIS_INSTANCE);
     await expect(dialog).toContainText(/mybibli \d+\.\d+\.\d+/);
 
-    // 5. Confirm: the line replaces the modal; "Log in again" takes the focus.
+    // 5. Confirm: while it runs the "Restoring…" line is really seen and the
+    //    modal cannot be closed (review pass 1); then the line replaces the
+    //    modal and "Log in again" takes the focus.
     const confirm = dialog.locator("[data-modal-confirm]");
     await expectHtmxProcessed(confirm);
     await confirm.click();
+    await expectReallySeen(page.locator("#admin-backups-restoring"));
+    await expect(dialog.locator("[data-modal-cancel]")).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#admin-backups-restoring")).toBeAttached();
     const done = page.locator("#admin-backups-restore-done-text");
     await expect(done).toContainText(file!, { timeout: 300000 });
     await expect(done).toContainText(EVERYONE_LOGGED_OUT);
     const again = page.locator("#admin-backups-login-again");
     await expect(again).toBeFocused();
-    await again.click();
+    await expect(again).toHaveAttribute("href", "/login");
+    // Rule #21 (review pass 1): Escape closes the line and gives the focus
+    // back to the button that opened the modal, not to <body>.
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0);
+    await expect(open).toBeFocused();
+    await page.goto("/login");
     await expect(page).toHaveURL(/\/login/);
 
     // 6. Everyone was logged out; logging in again, the title is back.
