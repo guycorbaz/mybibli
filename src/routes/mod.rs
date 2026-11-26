@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod admin_api_keys;
+pub mod admin_backups;
 pub mod admin_health_watch;
 pub mod audit;
 pub mod stats;
@@ -872,6 +873,13 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .route(
             "/admin/skills/{id}/delete",
             axum::routing::post(admin_skills::admin_skills_delete),
+        )
+        // Story 19-6 (#657) — Admin → Backups: the tab and "Back up now".
+        // Admin-gated; the POST is CSRF-protected by the 8-2 middleware.
+        .route(
+            "/admin/backups",
+            axum::routing::get(admin_backups::admin_backups_panel)
+                .post(admin_backups::admin_backups_run),
         )
         // Story 8-8 — first-launch setup wizard. Whitelisted by the
         // setup-gate middleware (so this is reachable on a fresh install

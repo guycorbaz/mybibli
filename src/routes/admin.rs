@@ -1,6 +1,6 @@
 //! Admin page shell + Health tab + Trash.
 //!
-//! One entry point (`GET /admin`) with seven tabs, all shipped:
+//! One entry point (`GET /admin`) with eight tabs, all shipped:
 //!   - Health        → this module
 //!   - Users         → `admin_users.rs`
 //!   - Reference     → `admin_reference_data.rs` + `admin_labels.rs`
@@ -8,6 +8,7 @@
 //!   - Trash         → this module (view, restore, permanent delete)
 //!   - API keys      → `admin_api_keys.rs`
 //!   - Skills        → `admin_skills.rs` (story 15-2)
+//!   - Backups       → `admin_backups.rs` (story 19-6)
 //!
 //! Middleware order follows AR16 — admin routes live at the top level
 //! alongside the non-catalog routes so they skip `pending_updates_middleware`
@@ -48,6 +49,8 @@ pub enum AdminTab {
     ApiKeys,
     /// Story 15-2 (#614) — MCP skills.
     Skills,
+    /// Story 19-6 (#657) — backups.
+    Backups,
 }
 
 impl AdminTab {
@@ -61,6 +64,7 @@ impl AdminTab {
             "system" => AdminTab::System,
             "api_keys" => AdminTab::ApiKeys,
             "skills" => AdminTab::Skills,
+            "backups" => AdminTab::Backups,
             _ => AdminTab::Health,
         }
     }
@@ -75,6 +79,7 @@ impl AdminTab {
             AdminTab::System => "system",
             AdminTab::ApiKeys => "api_keys",
             AdminTab::Skills => "skills",
+            AdminTab::Backups => "backups",
         }
     }
 
@@ -89,6 +94,7 @@ impl AdminTab {
             AdminTab::System => "system",
             AdminTab::ApiKeys => "api-keys",
             AdminTab::Skills => "skills",
+            AdminTab::Backups => "backups",
         }
     }
 }
@@ -142,6 +148,9 @@ struct AdminHealthPanel {
     app_version: &'static str,
     db_version_label: String,
     db_version: String,
+    // Story 19-6 (#657, D4) — names this library's backups; not editable.
+    instance_id_label: String,
+    instance_id: String,
     disk_usage_label: String,
     disk_usage_value: String,
     counts_heading: String,
@@ -1231,6 +1240,7 @@ fn render_shell(
                 rust_i18n::t!("admin.tabs.api_keys", locale = loc).to_string()
             }
             AdminTab::Skills => rust_i18n::t!("admin.tabs.skills", locale = loc).to_string(),
+            AdminTab::Backups => rust_i18n::t!("admin.tabs.backups", locale = loc).to_string(),
         },
         aria_selected: tab == active,
         badge_count: if tab == AdminTab::Trash {
@@ -1254,6 +1264,7 @@ fn render_shell(
             mk(AdminTab::System),
             mk(AdminTab::ApiKeys),
             mk(AdminTab::Skills),
+            mk(AdminTab::Backups),
         ],
         tabs_aria: rust_i18n::t!("admin.tabs_aria", locale = loc).to_string(),
         active_tab_name: active.as_str(),
@@ -1297,6 +1308,7 @@ async fn render_panel(
         AdminTab::Skills => {
             crate::routes::admin_skills::render_panel_html(state, loc, session).await
         }
+        AdminTab::Backups => crate::routes::admin_backups::render_panel_html(state, loc).await,
     }
 }
 
@@ -1431,6 +1443,11 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
 
     let counts = admin_health::entity_counts(pool).await?;
     let db_version = admin_health::mariadb_version(pool, &state.mariadb_version_cache).await;
+    let instance_id = crate::services::instance_id::read(pool)
+        .await?
+        // Created at startup; a failed creation is retried by the next
+        // backup. Until then, a dash.
+        .unwrap_or_else(|| "—".to_string());
 
     let disk_usage_value = match admin_health::format_disk_usage(admin_health::disk_usage(
         &state.covers_dir,
@@ -1497,6 +1514,8 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
         app_version: env!("CARGO_PKG_VERSION"),
         db_version_label: rust_i18n::t!("admin.health.db_version", locale = loc).to_string(),
         db_version,
+        instance_id_label: rust_i18n::t!("admin.health.instance_id", locale = loc).to_string(),
+        instance_id,
         disk_usage_label: rust_i18n::t!("admin.health.disk_usage", locale = loc).to_string(),
         disk_usage_value,
         counts_heading: rust_i18n::t!("admin.health.counts_heading", locale = loc).to_string(),
@@ -1682,6 +1701,12 @@ mod tests {
         );
         assert_eq!(AdminTab::Skills.as_str(), "skills");
         assert_eq!(AdminTab::Skills.hx_path(), "skills");
+        assert_eq!(
+            AdminTab::from_query_str(Some("backups")),
+            AdminTab::Backups
+        );
+        assert_eq!(AdminTab::Backups.as_str(), "backups");
+        assert_eq!(AdminTab::Backups.hx_path(), "backups");
     }
 
     #[test]

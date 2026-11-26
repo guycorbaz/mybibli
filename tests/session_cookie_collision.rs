@@ -39,6 +39,7 @@ fn state_with_pool(pool: DbPool) -> mybibli::AppState {
             mybibli::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
         )),
         log_level_reloader: mybibli::noop_log_level_reloader(),
+        backup: Default::default(),
     }
 }
 

@@ -85,6 +85,14 @@ services:
       # Or a bind mount if you want logs visible in the host
       # filesystem (Synology DSM Log Center, journald shipping):
       # - ${LOGS_HOST_PATH:-./logs-host}:/var/log/mybibli
+      # Story 19-6 (#657) — backups written from Admin → Backups. mybibli
+      # never creates this folder: without the mount, "Back up now" is
+      # refused and says why. A bind mount (not a named volume) so the
+      # files sit on the host, where you copy them elsewhere. They hold
+      # password and API-key hashes: they are written 0600; keep the host
+      # folder private. Override the in-container path with
+      # MYBIBLI_BACKUP_DIR (default /app/backups).
+      - ./backups:/app/backups
     depends_on:
       db:
         condition: service_healthy

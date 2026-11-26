@@ -32,6 +32,91 @@ Three artifacts together form a complete mybibli backup:
 The Docker images themselves are \emph{not} backup-critical — you
 can always pull them again from Docker Hub.
 
+\section{Backups}
+\label{sec:backups}
+
+Since 1.29.0 mybibli writes a backup of its own, on request, from
+\textbf{Admin → Backups}.\index{backup!Backups tab} One file holds the
+whole database and every cover, so the library can be recovered, or
+loaded elsewhere, without restoring all of MariaDB. The procedures of
+the next sections stay valid; this one is simpler.
+
+\subsection*{Mounting the backups folder}
+
+mybibli writes into \texttt{/app/backups} inside the container (the
+variable \texttt{MYBIBLI\_BACKUP\_DIR} changes it). It \emph{never
+creates that folder}: you mount it. The \texttt{docker-compose.yml}
+shipped with 1.29.0 has the line; on an older file, add it under the
+\texttt{volumes:} of the \texttt{mybibli} service and restart:
+
+\begin{lstlisting}
+    volumes:
+      - ./backups:/app/backups
+\end{lstlisting}
+
+The tab shows the folder and its state: \emph{ready}, \emph{missing}
+(no mount) or \emph{not writable} (give the container's user write
+access to the host folder). Until the folder is ready, a backup is
+refused with that reason and nothing is written anywhere.
+
+\subsection*{Writing a backup}
+
+Click \textbf{Back up now}. The answer appears under the button, for
+example \emph{Backup written:
+mybibli-3f9c0a1b2c3d4e5f-20261125T070409Z.tar.gz (2.4 MiB, 812 titles,
+640 covers)}. The name carries the \emph{instance id} of the library
+(shown on the Health tab, under Versions) and the time in UTC. One
+backup is written at a time; a second click meanwhile is refused.
+The catalogue keeps working during the backup: the database is read
+from a consistent snapshot, without locking anything. A failed backup
+leaves nothing behind; the log says why.
+
+\subsection*{What the file holds}
+
+The \texttt{.tar.gz} file holds, in order:
+\begin{itemize}
+  \item \texttt{database.sql} — every table, Trash included, with the
+        migration history;
+  \item \texttt{covers/} — every cover image (\texttt{<digits>.jpg});
+        the proposed covers of \texttt{.staging} are left out;
+  \item \texttt{manifest.json} — the instance id, the mybibli version,
+        the migration level, the date, the row count of each table and
+        the SHA-256 of each member.
+\end{itemize}
+Next to it, \texttt{<name>.sha256} lets you check the file:
+\begin{lstlisting}
+cd backups && sha256sum -c mybibli-*.tar.gz.sha256
+\end{lstlisting}
+
+\textbf{The file is sensitive.}\index{backup!sensitive} It holds the
+password hashes of the users, the hashes of the API keys and the
+provider keys of the System tab. It does not hold the open sessions:
+their table is saved empty, and no session token is kept, so after loading or restoring a backup
+everyone signs in again. mybibli writes it with mode
+\texttt{0600} (readable by its owner only); keep the host folder, and
+every copy you make of it, just as private.
+
+\subsection*{Loading the dump into another MariaDB}
+
+\texttt{database.sql} is a standard dump: the \texttt{mariadb} client
+loads it into an empty database, for a test copy or to look at real
+data (for example to try a data-rewriting change on the whole catalogue
+before it ships):
+\begin{lstlisting}
+tar -xzf mybibli-<id>-<date>.tar.gz database.sql
+mariadb -u root -p -e "CREATE DATABASE mybibli_copy"
+mariadb -u root -p mybibli_copy < database.sql
+\end{lstlisting}
+The copy is at the migration level of the backup. Restoring a backup
+into the running library comes with a later version.
+
+\subsection*{A cover written during the backup}
+
+Covers are copied after the database. A cover downloaded in the
+seconds between the two may be in the file without its title, or
+missing for a title that names it. The cover consistency tool reports
+and repairs both cases.
+
 \section{Backup procedure}
 
 \subsection*{Database — bundled MariaDB}

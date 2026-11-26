@@ -36,6 +36,100 @@ Trois artefacts forment ensemble une sauvegarde mybibli complète :
 Les images Docker elles-mêmes ne sont \emph{pas} critiques — vous
 pouvez toujours les re-tirer depuis Docker Hub.
 
+\section{Sauvegardes}
+\label{sec:backups}
+
+Depuis 1.29.0, mybibli écrit lui-même une sauvegarde, à la demande,
+depuis \textbf{Admin → Sauvegardes}.\index{sauvegarde!onglet Sauvegardes}
+Un seul fichier contient toute la base et toutes les couvertures : la
+bibliothèque peut être récupérée, ou chargée ailleurs, sans restaurer
+tout MariaDB. Les procédures des sections suivantes restent valables ;
+celle-ci est plus simple.
+
+\subsection*{Monter le dossier de sauvegarde}
+
+mybibli écrit dans \texttt{/app/backups} à l'intérieur du conteneur
+(la variable \texttt{MYBIBLI\_BACKUP\_DIR} le change). Il \emph{ne crée
+jamais ce dossier} : c'est vous qui le montez. Le
+\texttt{docker-compose.yml} livré avec 1.29.0 contient la ligne ; sur
+un fichier plus ancien, ajoutez-la sous les \texttt{volumes:} du
+service \texttt{mybibli} puis redémarrez :
+
+\begin{lstlisting}
+    volumes:
+      - ./backups:/app/backups
+\end{lstlisting}
+
+L'onglet montre le dossier et son état : \emph{prêt}, \emph{absent}
+(pas de montage) ou \emph{non accessible en écriture} (donnez au compte
+du conteneur le droit d'écrire dans le dossier de l'hôte). Tant que le
+dossier n'est pas prêt, une sauvegarde est refusée avec cette raison et
+rien n'est écrit nulle part.
+
+\subsection*{Écrire une sauvegarde}
+
+Cliquez sur \textbf{Sauvegarder maintenant}. La réponse s'affiche sous
+le bouton, par exemple \emph{Sauvegarde écrite :
+mybibli-3f9c0a1b2c3d4e5f-20261125T070409Z.tar.gz (2.4 MiB, 812 titres,
+640 couvertures).} Le nom porte l'\emph{identifiant d'instance} de la
+bibliothèque (affiché dans l'onglet Santé, sous Versions) et l'heure
+UTC. Une seule sauvegarde s'écrit à la fois ; un second clic pendant ce
+temps est refusé. Le catalogue reste utilisable pendant la sauvegarde :
+la base est lue dans un instantané cohérent, sans rien verrouiller. Une
+sauvegarde qui échoue ne laisse rien derrière elle ; les journaux
+disent pourquoi.
+
+\subsection*{Ce que contient le fichier}
+
+Le fichier \texttt{.tar.gz} contient, dans l'ordre :
+\begin{itemize}
+  \item \texttt{database.sql} — toutes les tables, corbeille comprise,
+        avec l'historique des migrations ;
+  \item \texttt{covers/} — toutes les images de couverture
+        (\texttt{<chiffres>.jpg}) ; les couvertures proposées de
+        \texttt{.staging} sont laissées de côté ;
+  \item \texttt{manifest.json} — l'identifiant d'instance, la version
+        de mybibli, le niveau de migration, la date, le nombre de
+        lignes de chaque table et le SHA-256 de chaque élément.
+\end{itemize}
+À côté, \texttt{<nom>.sha256} permet de vérifier le fichier :
+\begin{lstlisting}
+cd backups && sha256sum -c mybibli-*.tar.gz.sha256
+\end{lstlisting}
+
+\textbf{Le fichier est sensible.}\index{sauvegarde!sensible} Il
+contient les empreintes des mots de passe des utilisateurs, celles des
+clés d'API et les clés des fournisseurs de l'onglet Système. Il ne
+contient pas les sessions ouvertes : leur table est sauvegardée vide
+et aucun jeton de session n'est conservé,
+si bien qu'après le chargement ou la restauration d'une sauvegarde,
+chacun se reconnecte. mybibli
+l'écrit avec le mode \texttt{0600} (lisible par son seul propriétaire)
+; gardez le dossier de l'hôte, et chaque copie que vous en faites,
+tout aussi privés.
+
+\subsection*{Charger la base dans un autre MariaDB}
+
+\texttt{database.sql} est un dump standard : le client \texttt{mariadb}
+le charge dans une base vide, pour une copie de test ou pour travailler
+sur des données réelles (par exemple essayer une modification qui
+réécrit des données sur tout le catalogue avant de la livrer) :
+\begin{lstlisting}
+tar -xzf mybibli-<id>-<date>.tar.gz database.sql
+mariadb -u root -p -e "CREATE DATABASE mybibli_copie"
+mariadb -u root -p mybibli_copie < database.sql
+\end{lstlisting}
+La copie est au niveau de migration de la sauvegarde. La restauration
+d'une sauvegarde dans la bibliothèque en service viendra avec une
+version ultérieure.
+
+\subsection*{Une couverture écrite pendant la sauvegarde}
+
+Les couvertures sont copiées après la base. Une couverture téléchargée
+dans les secondes qui séparent les deux peut se trouver dans le fichier
+sans son titre, ou manquer pour un titre qui la cite. L'outil de
+cohérence des couvertures signale et répare les deux cas.
+
 \section{Procédure de sauvegarde}
 
 \subsection*{Base de données — MariaDB embarquée}

@@ -47,6 +47,11 @@ services:
       # Playwright loginAs() helper and the seeded-stack E2E suite.
       # The wizard-E2E override (docker-compose.wizard.yml) unsets this.
       MYBIBLI_SEED_DEV_USERS: "1"
+    # Story 19-6 (#657) — the backups folder (`/app/backups`, the default
+    # MYBIBLI_BACKUP_DIR). A tmpfs: it exists and is writable for the run,
+    # needs nothing on the host or in CI, and goes with `down`.
+    tmpfs:
+      - /app/backups
     depends_on:
       db:
         condition: service_healthy

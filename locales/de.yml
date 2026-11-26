@@ -406,6 +406,12 @@ series:
   omnibus_help_text: "Aktivieren, wenn das Buch mehrere Bände der Serie bündelt (z. B. ein Sammelband mit den Bänden 1–3). Das Formular zeigt dann ein Feld \"Endposition\", damit der Titel einen Bereich von Serienpositionen abdeckt anstatt nur einer."
   select_series: "Eine Serie auswählen…"
 error:
+  # Story 19-6 (#657) — backup refusals and failure (D8).
+  backup:
+    folder_missing: "Es wurde keine Sicherung geschrieben: Der Sicherungsordner %{path} existiert nicht. Binden Sie dort einen Ordner ein (siehe Handbuch, „Sicherungen“) und versuchen Sie es dann erneut."
+    folder_not_writable: "Es wurde keine Sicherung geschrieben: mybibli kann nicht in %{path} schreiben. Geben Sie dem Benutzer des Containers Schreibrechte für diesen Ordner (siehe Handbuch) und versuchen Sie es dann erneut."
+    already_running: "Es wird bereits eine Sicherung geschrieben. Warten Sie, bis sie fertig ist; sie wird hier angezeigt."
+    failed: "Die Sicherung konnte nicht geschrieben werden, daher wurde nichts behalten. Versuchen Sie es erneut; wenn es weiterhin fehlschlägt, nennen die Protokolle den Grund."
   # Story 15-2 (#614) — MCP skills validation and write errors.
   mcp_skills:
     name_required: "Name ist erforderlich"
@@ -907,6 +913,14 @@ admin:
     system: System
     api_keys: API-Schlüssel
     skills: "Skills"
+    backups: "Sicherungen"
+  # Story 19-6 (#657, D7) — Admin → Backups.
+  backups:
+    run: "Jetzt sichern"
+    folder_ready: "Ordner: %{path} — bereit"
+    folder_missing: "Ordner: %{path} — fehlt"
+    folder_not_writable: "Ordner: %{path} — nicht beschreibbar"
+    written: "Sicherung geschrieben: %{file} (%{size}, %{titles} Titel, %{covers} Cover)."
   trash:
     badge_aria: "Papierkorb, %{count} Einträge"
     heading: Papierkorb (gelöschte Einträge)
@@ -953,6 +967,7 @@ admin:
     versions_heading: Versionen
     app_version: Anwendungsversion
     db_version: Datenbankversion
+    instance_id: "Instanz-ID"
     disk_usage: Speicherbelegung
     disk_usage_format: "%{used} / %{total} belegt (%{pct} %)"
     disk_usage_unknown: Unbekannt

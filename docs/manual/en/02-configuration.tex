@@ -10,7 +10,7 @@ auto-purge cadence, provider keys).
 
 Everything in this chapter is configured from the
 \texttt{/admin}\index{admin panel} panel — there is no separate
-configuration file. The panel has six tabs:
+configuration file. The panel has eight tabs, among them:
 
 \begin{itemize}
   \item \textbf{Health} — read-only status dashboard. Besides versions,
@@ -29,6 +29,8 @@ configuration file. The panel has six tabs:
   \item \textbf{API keys} — mint and revoke the keys the HTTP API
         authenticates with (chapter~\ref{ch:api}), and the
         \emph{propose} keys of AI agents (chapter~\ref{ch:agents}).
+  \item \textbf{Backups} — since 1.29.0, write a backup of the whole
+        library on request (section~\ref{sec:backups}).
 \end{itemize}
 
 Only the \texttt{Admin} role sees the panel; \texttt{Librarian} and

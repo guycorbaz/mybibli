@@ -337,6 +337,12 @@ async fn main() {
     // deleted is never touched). Non-fatal; each failure is logged inside.
     mybibli::services::default_skills::insert_defaults(&pool).await;
 
+    // Story 19-6 (#657, D4): the instance id that names this library's
+    // backups, created once per database. Non-fatal: a backup retries it.
+    if let Err(e) = mybibli::services::instance_id::ensure(&pool).await {
+        tracing::warn!(error = %e, "Instance id could not be created (non-fatal, continuing)");
+    }
+
     // Load application settings from database
     let app_settings = AppSettings::load_from_db(&pool)
         .await
@@ -442,6 +448,24 @@ async fn main() {
         ),
     }
 
+    // Story 19-6 (#657, D1): the backups folder, read once. mybibli never
+    // creates it — the operator mounts it; a missing folder only makes
+    // "Back up now" refuse, with the reason.
+    let backup_dir = mybibli::services::backup::backup_dir_from_env(
+        std::env::var("MYBIBLI_BACKUP_DIR").ok(),
+    );
+    match mybibli::services::backup::folder_state(&backup_dir) {
+        mybibli::services::backup::FolderState::Ready => {
+            tracing::info!(backup_dir = %backup_dir.display(), "Backups folder configured")
+        }
+        state => tracing::warn!(
+            backup_dir = %backup_dir.display(),
+            ?state,
+            "Backups folder not usable; backups will be refused until it is mounted"
+        ),
+    }
+    let backup = mybibli::services::backup::BackupConfig::new(backup_dir, covers_dir.clone());
+
     // Admin → Health tab (story 8-1): provider-reachability map + MariaDB
     // version cache. Both start empty; the background ping task below
     // populates the map asynchronously without blocking admin page loads.
@@ -534,6 +558,7 @@ async fn main() {
             mybibli::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
         )),
         log_level_reloader,
+        backup,
     };
 
     // Spawn provider-health background task AFTER AppState is built so we

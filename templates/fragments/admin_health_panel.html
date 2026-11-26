@@ -12,6 +12,10 @@
             <dd class="text-base font-mono text-stone-900 dark:text-stone-100">{{ db_version }}</dd>
         </div>
         <div>
+            <dt class="text-sm text-stone-500 dark:text-stone-400">{{ instance_id_label }}</dt>
+            <dd id="health-instance-id" class="text-base font-mono text-stone-900 dark:text-stone-100">{{ instance_id }}</dd>
+        </div>
+        <div>
             <dt class="text-sm text-stone-500 dark:text-stone-400">{{ disk_usage_label }}</dt>
             <dd class="text-base font-mono text-stone-900 dark:text-stone-100">{{ disk_usage_value }}</dd>
         </div>

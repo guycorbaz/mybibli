@@ -400,6 +400,12 @@ series:
   omnibus_help_text: "Seleziona questa casella quando il libro raggruppa più volumi della serie (es. un omnibus che raccoglie i volumi 1–3). Il modulo mostrerà allora un campo «Posizione finale» in modo che il titolo copra un intervallo di posizioni invece di una sola."
   select_series: "Seleziona una serie…"
 error:
+  # Story 19-6 (#657) — backup refusals and failure (D8).
+  backup:
+    folder_missing: "Nessun backup è stato scritto: la cartella dei backup %{path} non esiste. Monta una cartella in quel punto (vedi il manuale, «Backup»), poi riprova."
+    folder_not_writable: "Nessun backup è stato scritto: mybibli non può scrivere in %{path}. Dai all'utente del container il permesso di scrivere in quella cartella (vedi il manuale), poi riprova."
+    already_running: "È già in corso la scrittura di un backup. Attendi che finisca; comparirà qui."
+    failed: "Non è stato possibile scrivere il backup, quindi non è stato conservato nulla. Riprova; se continua a non riuscire, i log ne indicano il motivo."
   # Story 15-2 (#614) — MCP skills validation and write errors.
   mcp_skills:
     name_required: "Il nome è obbligatorio"
@@ -895,6 +901,14 @@ admin:
     system: Sistema
     api_keys: Chiavi API
     skills: "Skill"
+    backups: "Backup"
+  # Story 19-6 (#657, D7) — Admin → Backups.
+  backups:
+    run: "Esegui il backup ora"
+    folder_ready: "Cartella: %{path} — pronta"
+    folder_missing: "Cartella: %{path} — assente"
+    folder_not_writable: "Cartella: %{path} — non scrivibile"
+    written: "Backup scritto: %{file} (%{size}, %{titles} titoli, %{covers} copertine)."
   trash:
     badge_aria: "Cestino, %{count} elementi"
     heading: Cestino (elementi eliminati)
@@ -941,6 +955,7 @@ admin:
     versions_heading: Versioni
     app_version: Versione applicazione
     db_version: Versione database
+    instance_id: "ID istanza"
     disk_usage: Utilizzo disco
     disk_usage_format: "%{used} / %{total} usati (%{pct} %)"
     disk_usage_unknown: Sconosciuto

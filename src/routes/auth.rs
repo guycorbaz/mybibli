@@ -560,6 +560,7 @@ mod language_tests {
                 crate::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
             )),
         log_level_reloader: crate::noop_log_level_reloader(),
+        backup: Default::default(),
         };
         Router::new()
             .route("/language", axum::routing::post(change_language))
@@ -807,6 +808,7 @@ mod language_tests {
                 crate::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
             )),
         log_level_reloader: crate::noop_log_level_reloader(),
+        backup: Default::default(),
         };
         let app = axum::Router::new()
             .route("/login", axum::routing::post(login))

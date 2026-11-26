@@ -148,6 +148,9 @@ pub struct AppState {
     /// Fix #308 (v1.7.1): runtime log-level swap closure. See
     /// [`LogLevelReloader`].
     pub log_level_reloader: LogLevelReloader,
+    /// Story 19-6 (#657): the backups folder, the covers to copy and the
+    /// one-backup-at-a-time guard (`services::backup`).
+    pub backup: services::backup::BackupConfig,
 }
 
 impl AppState {
