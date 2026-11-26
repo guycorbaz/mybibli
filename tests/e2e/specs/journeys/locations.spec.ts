@@ -1,7 +1,33 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { loginAs } from "../../helpers/auth";
+import { createChildLocation, createLocation } from "../../helpers/locations";
 import { simulateScan } from "../../helpers/scanner";
 import { effectiveOpacity, expectReallySeen } from "../../helpers/visibility";
+
+// Story 20-5 (#700) — the tree is a nested list: each location an
+// `li[data-tree-node-id]` whose first child is the row `div` (toggle, link,
+// controls). Filter the row `div`, never the `li`: an `li` filtered by text
+// also matches every ancestor `li` (it contains the child's text).
+const ROW = "li[data-tree-node-id] > div";
+
+/** The row of the first location whose row text contains `name`. */
+function rowOf(page: Page, name: string) {
+  return page.locator(ROW).filter({ hasText: name }).first();
+}
+
+/** The id of a location, read from its row's edit link. */
+async function idOf(page: Page, name: string): Promise<string> {
+  const edit = page.getByRole("link", {
+    name: new RegExp(`^(Edit|Modifier) ${name}$`),
+  });
+  await expect(edit).toHaveCount(1, { timeout: 5000 });
+  const id = (await edit.getAttribute("href"))?.match(/\/locations\/(\d+)/)?.[1];
+  expect(id, `edit link of ${name} carries its id`).toBeTruthy();
+  return id!;
+}
+
+const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag22aa"];
 
 test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
   test.beforeEach(async ({ page }) => {
@@ -166,7 +192,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("#new-name").fill("LO-ToDelete");
     await page.locator("#new-lcode").fill("L5005");
     await page.locator("#add-root-submit").click();
-    const row = page.locator('[role="treeitem"]').filter({ hasText: "LO-ToDelete" }).first();
+    const row = rowOf(page, "LO-ToDelete");
     await expect(row).toBeVisible({ timeout: 5000 });
 
     const deleteBtn = row.locator("button[data-modal-trigger]");
@@ -195,7 +221,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await confirmBtn.click();
     await expect(dialog).toHaveCount(0, { timeout: 5000 });
     expect(deletes).toHaveLength(1);
-    await expect(page.locator('[role="treeitem"]').filter({ hasText: "LO-ToDelete" })).toHaveCount(0, {
+    await expect(page.locator(ROW).filter({ hasText: "LO-ToDelete" })).toHaveCount(0, {
       timeout: 5000,
     });
     await expect(page.locator("#feedback-list .feedback-entry").first()).toContainText(
@@ -214,7 +240,9 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("#new-name").fill("LO-698-Parent");
     await page.locator("#new-lcode").fill("L5698");
     await page.locator("#add-root-submit").click();
-    const parent = page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Parent" }).first();
+    // The parent's `li` (its inline form sits outside the row `div`), reached
+    // through its own row so no ancestor `li` can match.
+    const parent = rowOf(page, "LO-698-Parent").locator("xpath=..");
     await expect(parent).toBeVisible({ timeout: 5000 });
 
     await parent.locator("[data-locations-toggle]").first().click();
@@ -222,11 +250,11 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await childForm.locator('input[name="name"]').fill("LO-698-Child");
     await childForm.locator('input[name="label"]').fill("L5699");
     await childForm.locator('button[type="submit"]').click();
-    await expect(page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Child" }).first()).toBeVisible({
+    await expect(rowOf(page, "LO-698-Child")).toBeVisible({
       timeout: 5000,
     });
 
-    const parentRow = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-Parent" }).first();
+    const parentRow = page.locator(ROW).filter({ hasText: "LO-698-Parent" }).first();
     await parentRow.locator("button[data-modal-trigger]").click();
     const dialog = page.locator("#modal-slot dialog[open]");
     await expect(dialog).toBeVisible({ timeout: 5000 });
@@ -243,12 +271,12 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await expect(parent).toBeVisible();
 
     // Deleting the child: focus falls back to the parent row's link (Rule #21).
-    const childRow = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-Child" }).first();
+    const childRow = page.locator(ROW).filter({ hasText: "LO-698-Child" }).first();
     await childRow.locator("button[data-modal-trigger]").click();
     await expect(dialog).toBeVisible({ timeout: 5000 });
     await page.locator("[data-modal-confirm]").click();
     await expect(dialog).toHaveCount(0, { timeout: 5000 });
-    await expect(page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Child" })).toHaveCount(0);
+    await expect(page.locator(ROW).filter({ hasText: "LO-698-Child" })).toHaveCount(0);
     await expect(parentRow.locator('a[href^="/location/"]')).toBeFocused();
   });
 
@@ -265,7 +293,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await context.clearCookies();
     await loginAs(page, "librarian");
     await page.goto("/locations");
-    const row = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-Librarian" }).first();
+    const row = page.locator(ROW).filter({ hasText: "LO-698-Librarian" }).first();
     await expect(row.locator('a[href$="/edit"]')).toHaveCount(1);
     await expect(row.locator("[data-locations-toggle]")).toHaveCount(1);
     await expect(row.locator("button[data-modal-trigger]")).toHaveCount(0);
@@ -279,7 +307,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("#new-name").fill("LO-698-FR");
     await page.locator("#new-lcode").fill("L5701");
     await page.locator("#add-root-submit").click();
-    const row = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-FR" }).first();
+    const row = page.locator(ROW).filter({ hasText: "LO-698-FR" }).first();
     await expect(row.locator('a[aria-label="Modifier LO-698-FR"]')).toHaveCount(1, { timeout: 5000 });
     await expect(row.locator('button[aria-label="Ajouter un emplacement dans LO-698-FR"]')).toHaveCount(1);
     const trigger = row.locator('button[aria-label="Supprimer LO-698-FR"]');
@@ -298,7 +326,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await childForm.locator('button[type="submit"]').click();
     await expect(page.locator("text=LO-698-FR-Child")).toBeVisible({ timeout: 5000 });
     await page
-      .locator('[role="treeitem"] > div')
+      .locator(ROW)
       .filter({ hasText: "LO-698-FR" })
       .first()
       .locator('button[aria-label="Supprimer LO-698-FR"]')
@@ -318,7 +346,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("#new-name").fill("LO-698-Gone");
     await page.locator("#new-lcode").fill("L5702");
     await page.locator("#add-root-submit").click();
-    const row = page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Gone" }).first();
+    const row = rowOf(page, "LO-698-Gone");
     await expect(row).toBeVisible({ timeout: 5000 });
     const href = await row.locator('a[href$="/edit"]').getAttribute("href");
     const id = href?.match(/\/locations\/(\d+)/)?.[1];
@@ -337,7 +365,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
       { timeout: 5000 },
     );
     await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0);
-    await expect(page.locator('[role="treeitem"]').filter({ hasText: "LO-698-Gone" })).toHaveCount(0);
+    await expect(page.locator(ROW).filter({ hasText: "LO-698-Gone" })).toHaveCount(0);
     await expect(page.locator("#add-root-summary")).toBeFocused();
   });
 
@@ -349,7 +377,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("#new-name").fill("LO-698-502");
     await page.locator("#new-lcode").fill("L5703");
     await page.locator("#add-root-submit").click();
-    const row = page.locator('[role="treeitem"] > div').filter({ hasText: "LO-698-502" }).first();
+    const row = page.locator(ROW).filter({ hasText: "LO-698-502" }).first();
     await expect(row).toBeVisible({ timeout: 5000 });
 
     await page.route("**/locations/*", (route) =>
@@ -397,7 +425,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("#add-root-submit").click();
 
     const row = page
-      .locator('[role="treeitem"] > div')
+      .locator(ROW)
       .filter({ hasText: "LO-Controls695" })
       .first();
     const editLink = row.locator('a[aria-label="Edit LO-Controls695"]');
@@ -504,7 +532,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("#add-root-submit").click();
 
     const firstRow = page
-      .locator('[role="treeitem"]')
+      .locator(ROW)
       .filter({ hasText: "L457 First" })
       .first();
     await expect(firstRow).toBeVisible({ timeout: 10000 });
@@ -527,7 +555,142 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("#new-name").fill("L457 Second");
     await page.locator("#add-root-submit").click();
     await expect(
-      page.locator('[role="treeitem"]').filter({ hasText: "L457 Second" }).first(),
+      page.locator(ROW).filter({ hasText: "L457 Second" }).first(),
     ).toBeVisible({ timeout: 10000 });
+  });
+
+  // ─── Story 20-5 (#700) — a nested list with disclosure buttons ──────
+
+  test("the disclosure button: native Tab order through the row, Enter and Space toggle it", async ({
+    page,
+  }) => {
+    await createLocation(page, "LO-700-KeyParent", "L5705");
+    await createChildLocation(page, "LO-700-KeyParent", "LO-700-KeyChild", "L5706");
+    await page.goto("/locations");
+    const pid = await idOf(page, "LO-700-KeyParent");
+    const row = page.locator(`#tree-node-${pid} > div`);
+    const toggle = page.locator(`#tree-toggle-${pid}`);
+    const list = page.locator(`#tree-children-${pid}`);
+
+    await expect(toggle).toHaveAccessibleName(
+      /^(Locations inside|Emplacements dans) LO-700-KeyParent$/,
+    );
+    await expect(toggle).toHaveAttribute("aria-controls", `tree-children-${pid}`);
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(list).toBeVisible();
+
+    // Tab walks the row in document order: button → link → add → edit → delete.
+    await toggle.focus();
+    await page.keyboard.press("Tab");
+    await expect(row.locator(`a[href="/location/${pid}"]`)).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(row.locator(`[data-locations-toggle="add-child-${pid}"]`)).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(row.locator(`a[href="/locations/${pid}/edit"]`)).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(row.locator("button[data-modal-trigger]")).toBeFocused();
+
+    // Enter and Space on the native button; aria-expanded follows.
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(list).toBeHidden();
+    await expect(toggle).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(list).toBeVisible();
+    await expect(rowOf(page, "LO-700-KeyChild")).toBeVisible();
+  });
+
+  test("a collapsed parent stays collapsed across a reload", async ({ page }) => {
+    await createLocation(page, "LO-700-KeepParent", "L5707");
+    await createChildLocation(page, "LO-700-KeepParent", "LO-700-KeepChild", "L5708");
+    await page.goto("/locations");
+    const pid = await idOf(page, "LO-700-KeepParent");
+    const toggle = page.locator(`#tree-toggle-${pid}`);
+    const list = page.locator(`#tree-children-${pid}`);
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(list).toBeHidden();
+
+    await page.reload();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(list).toBeHidden();
+    await expect(page.locator(`#tree-node-${pid}`)).toBeVisible();
+  });
+
+  test("deleting a parent's last child updates the parent without a reload", async ({ page }) => {
+    await createLocation(page, "LO-700-LastParent", "L5709");
+    await createChildLocation(page, "LO-700-LastParent", "LO-700-LastChild", "L5710");
+    await page.goto("/locations");
+    const pid = await idOf(page, "LO-700-LastParent");
+    const cid = await idOf(page, "LO-700-LastChild");
+    await expect(page.locator(`#tree-icon-${pid}`)).toHaveText("📁");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await page.evaluate(() => ((window as any).__noReload = true));
+
+    const dialog = page.locator("#modal-slot dialog[open]");
+    await page.locator(`#tree-node-${cid} > div button[data-modal-trigger]`).click();
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await page.locator("[data-modal-confirm]").click();
+    await expect(dialog).toHaveCount(0, { timeout: 5000 });
+
+    await expect(page.locator(`#tree-node-${cid}`)).toHaveCount(0);
+    await expect(page.locator(`#tree-node-${pid} > div .tree-toggle`)).toHaveCount(0);
+    await expect(page.locator(`#tree-children-${pid}`)).toHaveCount(0);
+    await expect(page.locator(`#tree-icon-${pid}`)).toHaveText("📍");
+    // Rule #21 — focus on the parent's link, as in 19-1.
+    await expect(page.locator(`#tree-node-${pid} > div > a[href="/location/${pid}"]`)).toBeFocused();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(await page.evaluate(() => (window as any).__noReload)).toBe(true);
+
+    // A parent keeping another child keeps its button and its list.
+    await createLocation(page, "LO-700-TwoParent", "L5711");
+    await createChildLocation(page, "LO-700-TwoParent", "LO-700-TwoChildA", "L5712");
+    await createChildLocation(page, "LO-700-TwoParent", "LO-700-TwoChildB", "L5713");
+    await page.goto("/locations");
+    const pid2 = await idOf(page, "LO-700-TwoParent");
+    const aid = await idOf(page, "LO-700-TwoChildA");
+    await page.locator(`#tree-node-${aid} > div button[data-modal-trigger]`).click();
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await page.locator("[data-modal-confirm]").click();
+    await expect(dialog).toHaveCount(0, { timeout: 5000 });
+    await expect(page.locator(`#tree-node-${aid}`)).toHaveCount(0);
+    await expect(page.locator(`#tree-toggle-${pid2}`)).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(`#tree-children-${pid2}`)).toBeVisible();
+    await expect(page.locator(`#tree-icon-${pid2}`)).toHaveText("📁");
+    await expect(page.locator(`#tree-children-${pid2}`).locator(ROW).filter({ hasText: "LO-700-TwoChildB" })).toHaveCount(1);
+  });
+
+  test("the nested tree passes WCAG 2.2 AA, expanded and collapsed, with no tree role", async ({
+    page,
+  }) => {
+    await createLocation(page, "LO-700-AxeRoot", "L5714");
+    await createChildLocation(page, "LO-700-AxeRoot", "LO-700-AxeChild", "L5715");
+    await createChildLocation(page, "LO-700-AxeChild", "LO-700-AxeGrandchild", "L5716");
+    await page.goto("/locations");
+    const pid = await idOf(page, "LO-700-AxeRoot");
+    await expect(rowOf(page, "LO-700-AxeGrandchild")).toBeVisible();
+    await expect(
+      page.locator('[role="tree"], [role="treeitem"], [role="group"]'),
+    ).toHaveCount(0);
+
+    for (const state of ["expanded", "collapsed"]) {
+      if (state === "collapsed") {
+        await page.locator(`#tree-toggle-${pid}`).click();
+        await expect(page.locator(`#tree-toggle-${pid}`)).toHaveAttribute("aria-expanded", "false");
+        await expect(page.locator(`#tree-children-${pid}`)).toBeHidden();
+      }
+      // Scoped to the tree: the page-wide "no tree role" check above stays.
+      const results = await new AxeBuilder({ page })
+        .include("#locations-tree")
+        .withTags(WCAG_TAGS)
+        .analyze();
+      expect(
+        results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`),
+        `axe on /locations (${state})`,
+      ).toEqual([]);
+    }
   });
 });

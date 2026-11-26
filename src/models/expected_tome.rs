@@ -554,6 +554,60 @@ impl ExpectedTomeModel {
         Ok(name)
     }
 
+    /// Story 20-3 (D7) — the highest position of a live, unsettled tome
+    /// of the series, `None` when it has none. A plain read (no locking
+    /// read: a share-locked range read would next-key lock the next
+    /// series' first tome, #627), for a caller whose transaction started
+    /// with the series row lock, so it sees every tome committed before.
+    pub async fn highest_unsettled_position_in(
+        conn: &mut MySqlConnection,
+        series_id: u64,
+    ) -> Result<Option<i32>, AppError> {
+        let highest: Option<i32> = sqlx::query_scalar(concat!(
+            "SELECT MAX(e.position) FROM series_expected_tomes e \
+             WHERE e.series_id = ? AND e.deleted_at IS NULL AND NOT ",
+            settled_predicate!()
+        ))
+        .bind(series_id)
+        .fetch_one(&mut *conn)
+        .await?;
+        Ok(highest)
+    }
+
+    /// Story 20-3 (D8) — the live, unsettled tomes sitting at a position
+    /// `title_id` holds in a live series: `(series id, series name,
+    /// position)`, one per (series, position), by series name then
+    /// position. A plain read (after a Trash restore).
+    pub async fn unsettled_tomes_on_title_positions(
+        pool: &DbPool,
+        title_id: u64,
+    ) -> Result<Vec<(u64, String, i32)>, AppError> {
+        let rows = sqlx::query(concat!(
+            "SELECT DISTINCT s.id AS series_id, CAST(s.name AS CHAR) AS series_name, \
+               e.position AS position \
+             FROM title_series ts \
+             JOIN series s ON s.id = ts.series_id AND s.deleted_at IS NULL \
+             JOIN series_expected_tomes e ON e.series_id = ts.series_id \
+               AND e.position = ts.position_number AND e.deleted_at IS NULL \
+             WHERE ts.title_id = ? AND ts.deleted_at IS NULL AND NOT ",
+            settled_predicate!(),
+            " ORDER BY series_name ASC, position ASC"
+        ))
+        .bind(title_id)
+        .fetch_all(pool)
+        .await?;
+        rows.iter()
+            .map(|r| {
+                Ok((
+                    r.try_get("series_id")?,
+                    r.try_get("series_name")?,
+                    r.try_get("position")?,
+                ))
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()
+            .map_err(AppError::Database)
+    }
+
     /// Record `title_id` as the title that settled the tome.
     pub async fn mark_settled_in(
         conn: &mut MySqlConnection,

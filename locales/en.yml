@@ -35,8 +35,8 @@ wishlist:
   action_bought: "Bought"
   action_remove: "Remove"
   # Story 20-1 — accessible names of the two actions (they name the entry).
-  action_bought_named: "Mark “%{title}” as bought"
-  action_remove_named: "Remove “%{title}” from the wish list"
+  action_bought_named: "Bought: “%{title}”"
+  action_remove_named: "Remove: “%{title}”"
   back_to_list: "Back to wish list"
   delete_modal_title: "Mark “%{title}” as bought?"
   delete_modal_body: "The entry leaves the wish list. It cannot be restored afterwards."
@@ -380,6 +380,7 @@ series:
   name_duplicate: "A series named \"%{name}\" already exists."
   total_required_for_closed: Total volume count is required for closed series.
   total_below_owned: "Total count (%{total}) cannot be less than owned count (%{owned})."
+  total_below_expected: "Total must be at least %{position}: an expected tome is recorded at position %{position}."
   detail_title: Series details
   save: Save
   cancel: Cancel
@@ -637,7 +638,7 @@ location:
   volumes_count: "%{count} volumes"
   breadcrumb_label: Location path
   tree:
-    toggle: Toggle subtree
+    toggle_named: "Locations inside %{name}"
     add_child_named: "Add a location under %{name}"
     edit_named: "Edit %{name}"
     delete_named: "Delete %{name}"
@@ -1041,6 +1042,8 @@ admin:
     restore_success: "Restored: %{name}"
     restore_error_not_found: "That item is no longer in the trash. It may have been restored or purged already."
     restore_contributor_name_taken: "“%{name}” was not restored: another contributor already has this name. Rename one of them, then restore it again."
+    restore_tome_to_review: "“%{title}” is back at position %{position} of “%{series}”, where an expected tome was recorded meanwhile. Check it under “Expected tomes to review” on the series page."
+    restore_tome_settled: "The expected tome at position %{position} of “%{series}” now counts as owned."
     delete_permanent_success: "Deleted permanently: %{name}"
     delete_permanent_modal_title: "Delete permanently?"
     delete_permanent_modal_warning: "This cannot be undone."
@@ -1426,7 +1429,7 @@ success:
     proposals_saved: "Proposal settings saved — applied to the next proposal, no restart required"
     purchase_thresholds_saved: "Purchase price thresholds saved."
     time_zone_saved: "Time zone saved — applied to the next page, no restart required"
-    backups_saved: "Automatic backup saved: %{interval}."
+    backups_saved: "Automatic backup saved: %{interval}. Daily backups to keep: %{days}."
     no_changes: "No changes"
     provider_set: "%{provider} key saved"
     provider_cleared: "%{provider} key cleared"
@@ -1521,7 +1524,7 @@ expected_tome:
   wishlist_owned: "“%{title}” is already in your catalog: nothing was added to the wish list. Its title holds this position in the series."
   # Story 20-2 (FR184, #715) — a series gap sent to the wish list.
   gap_add_to_wishlist: "Add to wish list"
-  gap_add_to_wishlist_named: "Add tome %{position} to the wish list"
+  gap_add_to_wishlist_named: "Add to wish list: tome %{position}"
   form_title_wishlist: "Add tome %{position} to the wish list"
   wishlist_form_help: "mybibli also records this tome as expected in the series, so the gap shows its title."
   wishlist_title_prefill: "%{series}, tome %{position}"

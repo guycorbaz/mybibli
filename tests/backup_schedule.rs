@@ -511,6 +511,8 @@ async fn the_admin_saves_the_two_settings_twice_in_a_row(pool: DbPool) {
     assert_eq!(res.status(), StatusCode::OK);
     let html = unescaped(body_string(res).await);
     assert!(html.contains("Sauvegarde automatique enregistrée : Toutes les 6 heures."), "{html}");
+    // The retention is named too (decided 2026-11-26, #733 item 2).
+    assert!(html.contains("Sauvegardes quotidiennes à garder : 30."), "{html}");
     let (value, v2) = interval_row(&pool).await;
     let (days, r2) = retention_row(&pool).await;
     assert_eq!((value.as_str(), days.as_str()), ("6", "30"));

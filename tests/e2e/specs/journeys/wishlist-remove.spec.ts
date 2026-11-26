@@ -42,7 +42,7 @@ function rowLink(page: Page, title: string) {
 
 function removeButton(page: Page, title: string) {
   return page.getByRole("button", {
-    name: new RegExp(`^(Remove|Retirer) .*${title}`),
+    name: new RegExp(`^(Remove|Retirer) ?: .*${title}`),
   });
 }
 
@@ -120,7 +120,7 @@ test.describe("Story 20-1 — remove an entry from the wish list", () => {
     await addEntry(page, title);
 
     await page
-      .getByRole("button", { name: new RegExp(`(Mark|Marquer).*${title}.*(bought|acheté)`, "i") })
+      .getByRole("button", { name: new RegExp(`^(Bought|Acheté) ?: .*${title}`, "i") })
       .click();
     const dialog = page.locator(DIALOG);
     await expect(dialog).toBeVisible();

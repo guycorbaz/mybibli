@@ -1035,7 +1035,13 @@ pub async fn admin_trash_restore(
     let success_msg =
         rust_i18n::t!("admin.trash.restore_success", locale = loc, name = &restored.item_name)
             .to_string();
-    let feedback = feedback_html("success", &success_msg, "");
+    let mut feedback = feedback_html("success", &success_msg, "");
+    if table == "titles" {
+        // Story 20-3 (D8): the expected tomes at the positions it holds again.
+        feedback.push_str(
+            &super::admin_trash_tomes::restore_tome_feedback(&state.pool, id, &restored.item_name, loc).await,
+        );
+    }
 
     // Re-render with the filters the admin was looking at, exactly as the
     // permanent-delete handler does (patch P12).

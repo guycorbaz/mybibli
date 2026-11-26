@@ -35,8 +35,8 @@ wishlist:
   action_bought: "Acheté"
   action_remove: "Retirer"
   # Story 20-1 — accessible names of the two actions (they name the entry).
-  action_bought_named: "Marquer « %{title} » comme acheté"
-  action_remove_named: "Retirer « %{title} » de la wish list"
+  action_bought_named: "Acheté : « %{title} »"
+  action_remove_named: "Retirer : « %{title} »"
   back_to_list: "Retour à la wish list"
   delete_modal_title: "Marquer « %{title} » comme acheté ?"
   delete_modal_body: "L’entrée quitte la wish list. Elle ne pourra pas être restaurée ensuite."
@@ -382,6 +382,7 @@ series:
   name_duplicate: "Une série nommée \"%{name}\" existe déjà."
   total_required_for_closed: Le nombre total de volumes est obligatoire pour une série fermée.
   total_below_owned: "Le total (%{total}) ne peut pas être inférieur au nombre possédé (%{owned})."
+  total_below_expected: "Le total doit être d’au moins %{position} : un tome attendu est enregistré à la position %{position}."
   detail_title: Détails de la série
   save: Enregistrer
   cancel: Annuler
@@ -633,7 +634,7 @@ location:
   volumes_count: "%{count} volumes"
   breadcrumb_label: Chemin de l'emplacement
   tree:
-    toggle: Afficher / masquer la sous-arborescence
+    toggle_named: "Emplacements dans %{name}"
     add_child_named: "Ajouter un emplacement dans %{name}"
     edit_named: "Modifier %{name}"
     delete_named: "Supprimer %{name}"
@@ -1038,6 +1039,8 @@ admin:
     restore_success: "Restauré : %{name}"
     restore_error_not_found: "Cet élément n'est plus dans la corbeille. Il a peut-être déjà été restauré ou purgé."
     restore_contributor_name_taken: "« %{name} » n'a pas été restauré : un autre contributeur porte déjà ce nom. Renommez l'un des deux, puis restaurez-le à nouveau."
+    restore_tome_to_review: "« %{title} » retrouve la position %{position} de « %{series} », où un tome attendu a été enregistré entre-temps. Vérifiez-le sous « Tomes attendus à revoir » sur la page de la série."
+    restore_tome_settled: "Le tome attendu à la position %{position} de « %{series} » compte désormais comme possédé."
     delete_permanent_success: "Supprimé définitivement : %{name}"
     delete_permanent_modal_title: "Supprimer définitivement ?"
     delete_permanent_modal_warning: "Ceci ne peut pas être annulé."
@@ -1422,7 +1425,7 @@ success:
     proposals_saved: "Réglages des propositions enregistrés — appliqués à la prochaine proposition, sans redémarrage"
     purchase_thresholds_saved: "Seuils du prix d'achat enregistrés."
     time_zone_saved: "Fuseau horaire enregistré — appliqué à la page suivante, sans redémarrage"
-    backups_saved: "Sauvegarde automatique enregistrée : %{interval}."
+    backups_saved: "Sauvegarde automatique enregistrée : %{interval}. Sauvegardes quotidiennes à garder : %{days}."
     no_changes: "Aucune modification"
     provider_set: "Clé %{provider} enregistrée"
     provider_cleared: "Clé %{provider} effacée"
@@ -1517,7 +1520,7 @@ expected_tome:
   wishlist_owned: "« %{title} » est déjà dans votre catalogue : rien n'a été ajouté à la wish list. Son titre occupe cette position de la série."
   # Story 20-2 (FR184, #715) — a series gap sent to the wish list.
   gap_add_to_wishlist: "Ajouter à la wish list"
-  gap_add_to_wishlist_named: "Ajouter le tome %{position} à la wish list"
+  gap_add_to_wishlist_named: "Ajouter à la wish list : tome %{position}"
   form_title_wishlist: "Ajouter le tome %{position} à la wish list"
   wishlist_form_help: "mybibli enregistre aussi ce tome comme attendu dans la série : la case manquante affiche alors son titre."
   wishlist_title_prefill: "%{series}, tome %{position}"

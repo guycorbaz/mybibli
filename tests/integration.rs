@@ -110,6 +110,7 @@ mod series_empty_state;
 mod series_gap_wishlist;
 mod series_list_all_names;
 mod series_list_counts;
+mod series_total_tomes;
 mod session_cookie_collision;
 mod setup_wizard;
 mod system_user;

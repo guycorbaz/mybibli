@@ -3,6 +3,10 @@
 {% block title %}{% if is_edit %}{{ edit_title }}{% else %}{{ create_title }}{% endif %} — mybibli{% endblock %}
 
 {% block content %}
+{#- Story 20-3 (AC3): a refusal re-renders this page (422) with the typed
+    values; the message sits under its field (`*_error_html`, escaped by the
+    handler), the refused input `aria-invalid` + `aria-describedby` +
+    `autofocus` (a full-page load). -#}
 <div class="max-w-2xl mx-auto px-4 py-8">
     <div class="mb-4">
         <a href="/series" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">&larr; {{ back_label }}</a>
@@ -24,7 +28,11 @@
             <label for="series-name" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ name_label }} *</label>
             <input type="text" id="series-name" name="name" required maxlength="255"
                    value="{{ name_value }}"
+                   {% if name_error_html.is_some() %}aria-invalid="true" aria-describedby="series-name-error" autofocus{% endif %}
                    class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            {% if let Some(message) = name_error_html %}
+            <p id="series-name-error" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ message|safe }}</p>
+            {% endif %}
         </div>
 
         <div>
@@ -50,12 +58,16 @@
             <label for="series-total" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ total_label }}</label>
             <input type="number" id="series-total" name="total_volume_count" min="1"
                    value="{{ total_value }}"
+                   {% if total_error_html.is_some() %}aria-invalid="true" aria-describedby="series-total-error"{% if name_error_html.is_none() %} autofocus{% endif %}{% endif %}
                    class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            {% if let Some(message) = total_error_html %}
+            <p id="series-total-error" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ message|safe }}</p>
+            {% endif %}
         </div>
 
         <div class="flex justify-end gap-3 pt-4">
             <a href="/series" class="px-3 py-1.5 text-sm text-stone-600 dark:text-stone-400">{{ cancel_label }}</a>
-            <button type="submit"
+            <button type="submit" id="series-form-submit"
                     class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">{{ save_label }}</button>
         </div>
     </form>

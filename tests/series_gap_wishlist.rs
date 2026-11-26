@@ -124,7 +124,7 @@ async fn a_plain_gap_offers_the_wish_list_to_a_librarian_only(pool: DbPool) {
             "gap {p}: {html}"
         );
         assert!(html.contains(&format!("data-gap-wishlist=\"{p}\"")));
-        assert!(html.contains(&format!("aria-label=\"Ajouter le tome {p} à la wish list\"")));
+        assert!(html.contains(&format!("aria-label=\"Ajouter à la wish list : tome {p}\"")));
     }
     // Position 2 holds an expected tome: not a plain gap.
     assert!(!html.contains("data-gap-wishlist=\"2\""));

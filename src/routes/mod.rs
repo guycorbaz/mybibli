@@ -16,6 +16,7 @@ pub mod admin_system;
 pub mod admin_system_backups;
 pub mod admin_system_proposals;
 pub mod admin_system_time_zone;
+pub mod admin_trash_tomes;
 pub mod admin_users;
 pub mod api_v1;
 pub mod auth;
