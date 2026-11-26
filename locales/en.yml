@@ -1495,6 +1495,13 @@ expected_tome:
   wishlist_already: "“%{title}” is already on your wish list: nothing was added."
   wishlist_open: "Open the wish list entry"
   wishlist_owned: "“%{title}” is already in your catalog: nothing was added to the wish list. Its title holds this position in the series."
+  # Story 20-2 (FR184, #715) — a series gap sent to the wish list.
+  gap_add_to_wishlist: "Add to wish list"
+  gap_add_to_wishlist_named: "Add tome %{position} to the wish list"
+  form_title_wishlist: "Add tome %{position} to the wish list"
+  wishlist_form_help: "mybibli also records this tome as expected in the series, so the gap shows its title."
+  wishlist_title_prefill: "%{series}, tome %{position}"
+  wishlist_save: "Add to wish list"
   # Story 11-11 — localized ExpectedTomeError (docs/error-message-style.md).
   error:
     title_required: "Title is required."

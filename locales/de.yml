@@ -1479,6 +1479,13 @@ expected_tome:
   wishlist_already: "„%{title}“ steht bereits auf Ihrer Wunschliste: Es wurde nichts hinzugefügt."
   wishlist_open: "Eintrag der Wunschliste öffnen"
   wishlist_owned: "„%{title}“ ist bereits in Ihrem Katalog: Es wurde nichts zur Wunschliste hinzugefügt. Sein Titel belegt diese Position der Reihe."
+  # Story 20-2 (FR184, #715) — a series gap sent to the wish list.
+  gap_add_to_wishlist: "Zur Wunschliste hinzufügen"
+  gap_add_to_wishlist_named: "Band %{position} zur Wunschliste hinzufügen"
+  form_title_wishlist: "Band %{position} zur Wunschliste hinzufügen"
+  wishlist_form_help: "mybibli erfasst diesen Band außerdem als erwartet in der Reihe: Die Lücke zeigt dann seinen Titel."
+  wishlist_title_prefill: "%{series}, Band %{position}"
+  wishlist_save: "Zur Wunschliste hinzufügen"
   # Story 11-11 — localized ExpectedTomeError (docs/error-message-style.md).
   error:
     title_required: "Titel ist erforderlich."

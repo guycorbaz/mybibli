@@ -51,6 +51,11 @@
                 <a href="/series/{{ series.id }}/expected-tomes/new?position={{ pos.position }}"
                    data-name-gap="{{ pos.position }}"
                    class="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">{{ tome_labels.name_gap }}</a>
+                {# Story 20-2 (FR184): the gap straight to the wish list. #}
+                <a href="/series/{{ series.id }}/expected-tomes/new?position={{ pos.position }}&amp;wishlist=1"
+                   data-gap-wishlist="{{ pos.position }}"
+                   aria-label="{{ tome_labels.gap_wishlist_named(pos.position) }}"
+                   class="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">{{ tome_labels.gap_add_to_wishlist }}</a>
                 {% endif %}
                 {% endif %}
             </div>

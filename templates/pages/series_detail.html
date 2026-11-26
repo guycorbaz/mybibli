@@ -46,7 +46,7 @@
     </div>
     {% endif %}
 
-    <div id="series-feedback" class="mt-4" aria-live="polite"></div>
+    <div id="series-feedback" class="mt-4" aria-live="polite">{% if let Some(feedback) = series_feedback_html %}{{ feedback|safe }}{% endif %}</div>
 
     {% if !positions.is_empty() %}
     {# Fix #235: sort dropdown above the position grid. The three keys
