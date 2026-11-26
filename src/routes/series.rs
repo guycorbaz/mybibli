@@ -774,6 +774,9 @@ mod tests {
             assert!(named.contains('4'), "{loc}: {named}");
             assert!(!named.contains("expected_tome."), "{loc}: {named}");
             assert!(!labels.gap_add_to_wishlist.contains("expected_tome."), "{loc}");
+            // WCAG 2.5.3 — the accessible name starts with the visible label
+            // (project rule, decided 2026-11-26, #734).
+            assert!(named.starts_with(&labels.gap_add_to_wishlist), "{loc}: {named}");
         }
     }
 
