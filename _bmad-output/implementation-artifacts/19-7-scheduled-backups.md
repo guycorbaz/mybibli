@@ -35,7 +35,7 @@ Practice A3: the setting and its copy (D1), the skip rule (D3), the rotation (D4
 
 Decisions marked **awaiting approval** belong to the project lead. The others are technical, proposed by this story, and may be changed in review.
 
-- **D1 — the setting.** *(Awaiting approval.)*
+- **D1 — the setting.** *(Approved by the project lead, 2026-11-26.)*
   - K/V key `backup_interval_hours`, an integer; `AppSettings::backup_interval_hours: u32`; accessor `AppState::backup_interval_hours()`.
   - Allowed values (positive shape): `0` (off), `1`, `2`, `3`, `4`, `6`, `8`, `12`, `24`. On load, any other value falls back to the default with a `warn` (like the other settings). On save, any other value is refused next to the field.
   - Default: **`1` (every hour)**. *Options:* A — 1 h (recommended: the hourly tier of the rotation exists for it, and the skip rule makes an unchanged hour cost a dump and no file); B — 24 h; C — off until the operator turns it on (but #657 wants a backup without operator action, once the folder is mounted).
@@ -56,7 +56,7 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
   - `AlreadyRunning` (a manual backup is being written, or a rotation is running): no check is recorded; the check stays due and is tried again at the next wake.
   - Folder missing or not writable: nothing is written, nothing is created, no rotation runs (a read-only folder would otherwise log a failed deletion per file per check), the task keeps running. One `warn` when the folder becomes unusable, one `info` when it is usable again (not one line per hour). The Health tab shows the warning (D6).
   - A failed write (`Io`, `Database`): the writer already logs it and leaves nothing; the check is recorded as failed, and the next one comes one interval later.
-- **D3 — skipping when nothing changed.** *(Awaiting approval.)*
+- **D3 — skipping when nothing changed.** *(Approved by the project lead, 2026-11-26.)*
   - Positive rule: a scheduled check **skips** only when all of these hold:
     1. this process remembers the fingerprint of a backup it wrote (scheduled or manual);
     2. that backup's archive is still in the folder, with the remembered size, and is still the newest own backup;
@@ -71,7 +71,7 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
   - *Validator note.* The rule is sound: the dump is the whole database (Trash, settings, schema text included), so an equal SHA-256 means equal data; the only blind spots are outside the dump, and covers are covered by condition 4. Two suggestions, for the lead:
     - Condition 2 checks the remembered file by name only. Also comparing its size to the remembered size costs one `stat` and catches a file replaced by hand under the same name.
     - Cost on a NAS: each unchanged hour still writes the full dump to a scratch file **in the backups folder**, then deletes it. On a NAS whose disks spin down, that wakes them every hour. An alternative (call it D): first hash the dump into a sink that writes nothing; only when it differs, run the normal write (a second snapshot, whose fingerprint is the one remembered). It costs a second dump only when something changed. Worth weighing together with D1's default.
-- **D4 — rotation.** *(Awaiting approval.)*
+- **D4 — rotation.** *(Approved by the project lead, 2026-11-26.)*
   - A pure function `services::backup::rotation::plan(names, instance_id, now_utc, tz) -> Vec<String>` returns the archives to delete. It is unit-tested over synthetic names and a clock.
   - **Candidates:** only names where `is_backup_name` holds and the id part equals this instance's id. Nothing else is ever deleted: other names, foreign backups (D5), temporary files (the writer's own sweep handles them).
   - **Kept**, among the candidates:
@@ -84,8 +84,8 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
   - One `info` line per deleted file (its name), one summary line with the counts.
   - *Option on "14 days":* A — today and the 13 previous local days (recommended, as above); B — 14 days counted after the 24-hour window.
   - *Validator note.* (a) Rule 1 keeps "the newest one". With a future-stamped stray file, the newest is that stray, and the real last backup is then protected only by the 24 h and 14-day tiers: with the schedule off and no manual backup for 15 days, the real last backup would go. Suggest: rule 1 keeps the newest one stamped at or before now; rule 2 still keeps future ones. (b) Candidates should also be regular files (`DirEntry::file_type`, which does not follow links, as `list_covers` and the temporary-file sweep do), and a name whose stamp does not parse as a real time is never a candidate. These two are written into the guardrails and AC5 below, since they only narrow what can be deleted.
-- **D5 — foreign backups.** *(Awaiting approval.)* #657 says a backup this instance did not write "escapes rotation until it has been restored". Story 19-8 (restore) does not exist yet. *Recommendation:* 19-7 never deletes a backup of another instance id, at all. Story 19-8 decides what "returned to normal handling" means after its restore (#657: deleted, or rotated). *Option:* none safer is possible before 19-8.
-- **D6 — the Health status line (UX-DR45).** *(Awaiting approval for the copy.)*
+- **D5 — foreign backups.** *(19-7 part approved in effect: whatever the answer, 19-7 never deletes them. The project lead asked for a suggestion on the after-restore part, which belongs to 19-8: never delete them automatically, show them as "another instance" on the Backups tab, the manual says to remove them by hand.)* #657 says a backup this instance did not write "escapes rotation until it has been restored". Story 19-8 (restore) does not exist yet. *Recommendation:* 19-7 never deletes a backup of another instance id, at all. Story 19-8 decides what "returned to normal handling" means after its restore (#657: deleted, or rotated). *Option:* none safer is possible before 19-8.
+- **D6 — the Health status line (UX-DR45).** *(Approved by the project lead, 2026-11-26.)*
   - A "Backups" block on the Health tab, after the watching panel. Built in a new `routes/admin_health_backup.rs`, rendered by `fragments/admin_health_backup.html`, included by the Health panel (19-5's pattern).
   - Times are in the instance time zone (`format_local_date_time`).
   - Lines (EN / FR; DE and IT follow them):
