@@ -165,7 +165,7 @@ Checked against the code: `templates/components/series_gap_grid.html`, `template
 | M3 | Medium | The accessible name "Add tome N to the wish list" does not start with the visible "Add to wish list" (WCAG 2.5.3). | Open: needs a copy decision from the project lead; left as is. |
 | L3, L5 | Low | — | Accepted by the reviewer; no change. |
 
-Gates after the fixes: `cargo clippy --all-targets -- -D warnings` clean; integration `series_gap_wishlist::` `expected_tomes_web::` `expected_tomes::` `locale_parity::` `every_test_file_is_declared` `templates_audit` `series` `wishlist` — 158 passed; lib `series_expected_tomes` `expected_tomes` `routes::series` `templates_audit` — 63 passed; `tsc --noEmit` and the waitForTimeout grep pass. The two series E2E specs are not re-run yet (stack lent to story 19-8).
+Gates after the fixes: `cargo clippy --all-targets -- -D warnings` clean; integration `series_gap_wishlist::` `expected_tomes_web::` `expected_tomes::` `locale_parity::` `every_test_file_is_declared` `templates_audit` `series` `wishlist` — 158 passed; lib `series_expected_tomes` `expected_tomes` `routes::series` `templates_audit` — 63 passed; `tsc --noEmit` and the waitForTimeout grep pass. The E2E re-run is recorded under Review pass 2.
 
 ## Review pass 2 (2026-11-26)
 
@@ -179,7 +179,7 @@ No Medium or higher finding.
 | L4 | Low | The wish list dedup runs before the position check. | Accepted: an existing entry for the same tome answers first; nothing is written either way. |
 | Nit | — | `settle_with_owned_title` logged "Expected tome settled on entry" when nothing was settled. | Fixed: "settled" only for `SettleResult::Settled`, "not settled" with the reason otherwise, nothing when no attempt applied. |
 
-Gates: `cargo clippy --all-targets -- -D warnings` clean; integration `series_gap_wishlist::` `expected_tomes_web::` `expected_tomes::` `locale_parity::` `every_test_file_is_declared` `templates_audit` `series` `wishlist` — 158 passed; `tsc --noEmit` and the waitForTimeout grep pass. The series E2E specs (with the two new cases) are not re-run yet (stack lent to story 19-8).
+Gates: `cargo clippy --all-targets -- -D warnings` clean; integration `series_gap_wishlist::` `expected_tomes_web::` `expected_tomes::` `locale_parity::` `every_test_file_is_declared` `templates_audit` `series` `wishlist` — 158 passed; `tsc --noEmit` and the waitForTimeout grep pass. E2E after both review passes (image rebuilt `--no-cache`, binary and served `mybibli.js` checked): the two series specs 8/8; after a fresh reset, the full suite `CI=true --workers=2` 506 passed, 2 skipped, no flaky test.
 
 ## Dev Agent Record
 
@@ -225,6 +225,7 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Change Log
 
+- 2026-11-26 — E2E green after review (two series specs 8/8; full suite 506 passed, 2 skipped).
 - 2026-11-26 — code review pass 2: clean (no Medium+); L1–L3 and the log nit fixed, L4 accepted; E2E re-run pending.
 - 2026-11-26 — code review pass 1: findings 1–5 fixed, M3 open (copy decision), L3/L5 accepted; E2E re-run pending.
 - 2026-11-26 — E2E green (505 passed, 2 skipped); status review.
