@@ -1,6 +1,6 @@
 # Story 19.9: Cover / database consistency (closes #658)
 
-Status: in-progress
+Status: review
 
 ## Story
 
@@ -113,7 +113,7 @@ Each D has a recommendation; one word ("A", "yes", "as proposed") is enough. EN 
 - [x] T1 — `services/cover_consistency.rs`: shapes, pure plan, DB read, repair (T2–T4) + unit tests (AC1, AC2).
 - [x] T2 — `routes/admin_covers.rs` + fragments + routes in `routes/mod.rs` + include in the Backups panel (D1, D2, D8).
 - [x] T3 — Locales ×4 (copy as approved); `touch src/lib.rs` before the build.
-- [ ] T4 — Tests AC3–AC6 (done); E2E spec (AC7) written, tsc / grep / vcode-literals clean — **not run yet** (E2E stack in use).
+- [x] T4 — Tests AC3–AC6; E2E spec (AC7), green alone and in the full suite.
 - [x] T5 — `CLAUDE.md`: a "Cover consistency" bullet (shapes, plan, guard, maintenance scope); the manual is story 19-11.
 
 ## Dev Notes
@@ -217,6 +217,9 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - D13: change request #744 opened (purge leaves cover files).
 - Gates: `cargo clippy --all-targets -D warnings` clean; `cargo test --lib` 2024 passed; integration `cover_consistency::` 5/5, plus `locale_parity::`, `backup_*`, `admin_trash*`, `every_test_file_is_declared` green; no query macro added (`.sqlx/` unchanged); E2E `tsc --noEmit`, `waitForTimeout` grep, `vcode-literals.sh` clean. **E2E not run** (pending the lead's go).
 
+- **E2E (2026-11-26):** image rebuilt with `--no-cache` (#735), stack reset; `admin-cover-check.spec.ts` alone (`--no-deps`) green, then after a reset the full suite `CI=true --workers=2`: 520 passed, 2 skipped, 0 flaky, 0 failed. Spec changes found on the way: a 240 s test timeout (a whole journey); the Trash row is found on the first page (newest deletion first, the spec runs alone) because the Trash name search answers 500 — bug #750, not fixed here; a second title with a kept cover, so that the wrong-database guard (orphans > used) does not refuse the repair on a near-empty stack.
+- **Note for production / the lead:** the first check on the NAS may show the "another database" line, since every purged title that had a cover left an orphan (#744): the guard has no override, so those orphans stay until #744 lands or enough covers are in use.
+
 ### File List
 
 - `src/services/cover_consistency.rs` (new), `src/services/mod.rs`
@@ -235,3 +238,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — dev-story: implemented (T1–T3, T5, tests AC1–AC6); E2E spec written, run pending. Status stays in-progress.
 - 2026-11-26 — code review pass 1: Lows fixed (see Review pass 1); two copy items wait for the project lead.
 - 2026-11-26 — main merged; approved copy for failed / stopped repairs and the wrong-database guard implemented.
+- 2026-11-26 — E2E green (spec alone + full suite, CI shape); status → review.

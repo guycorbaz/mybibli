@@ -80,28 +80,13 @@ async function deleteTitle(page: Page, id: string): Promise<void> {
 
 /**
  * Permanently delete title `id` from the Trash (type-to-confirm modal).
- * A direct navigation to `/admin/trash?…` drops the filters
- * (`admin_trash_panel` renders the default panel), so the Trash tab is
- * opened and searched through its own field (an HTMX panel swap on keyup:
- * `fill` alone fires none, hence the key press). The ISBN is this spec's
- * own, so the search alone narrows the list to its title.
+ * The Trash lists the newest deletion first, and this spec runs alone after
+ * every other test (`instance-cover-check`), so its title is on the first
+ * page. Neither a direct `/admin/trash?…` navigation (it drops the filters)
+ * nor the name search (#750: it answers 500) can narrow the list.
  */
 async function purgeTitle(page: Page, id: string, isbn: string): Promise<void> {
-  const panelSwap = (needle: string) =>
-    page.waitForResponse(
-      (r) =>
-        new URL(r.url()).pathname === "/admin/trash" &&
-        r.request().method() === "GET" &&
-        r.url().includes(needle) &&
-        r.ok(),
-    );
   await page.goto("/admin?tab=trash");
-  const search = page.locator("#search-trash");
-  await expectHtmxProcessed(search);
-  const searched = panelSwap(`search=${isbn}`);
-  await search.fill(isbn);
-  await search.press("End");
-  await searched;
   const button = page.locator(`button[hx-get^="/admin/trash/titles/${id}/permanent-delete"]`);
   await expect(button).toHaveCount(1, { timeout: 10000 });
   const row = page.locator("tbody tr").filter({ has: button });
@@ -130,8 +115,17 @@ async function checkCovers(page: Page) {
 
 test.describe("Story 19-9 — cover check and repair", () => {
   test("an orphan cover file is listed, repaired through the modal, and gone", async ({ page }) => {
+    // A whole journey (scan, metadata, upload, delete, purge, check, repair
+    // with one possible D11 retry): longer than the default 30 s.
+    test.setTimeout(240000);
     await page.context().clearCookies();
     await loginAs(page, "admin");
+
+    // A title whose cover stays: the library uses at least as many covers
+    // as there are orphans, or the check would refuse the repair as "this
+    // looks like another database" (review pass 1, approved).
+    const kept = await scanTitle(page, specIsbn("KC", 2));
+    await uploadCover(page, kept);
 
     const isbn = specIsbn("KC", 1);
     const id = await scanTitle(page, isbn);
@@ -170,9 +164,11 @@ test.describe("Story 19-9 — cover check and repair", () => {
     await expect(page.locator("#admin-covers-result")).toContainText(REPAIRED);
     await expect(page.locator("#admin-covers-result")).not.toContainText(own);
 
-    // A new check no longer lists it.
+    // A new check no longer lists it; the kept cover is still in use.
     result = await checkCovers(page);
     await expect(result).not.toContainText(REPAIRED);
     await expect(result).not.toContainText(own);
+    await page.goto(`/title/${kept}`);
+    await expect(page.locator(`img[src*="/covers/${kept}.jpg"]`).first()).toBeVisible();
   });
 });
