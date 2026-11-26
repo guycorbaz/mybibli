@@ -125,7 +125,9 @@ Pre-existing, left as is (outside the story):
 - The hand edit's owned rule compares a **count** (`total_below_owned`), so a total can still be lowered below an owned position (story 15-4 D5 kept it); and a total lowered while a title is in the Trash can leave that title above the total once restored (no tome involved, not #524). Not changed here.
 - `series_type` is parsed with `unwrap_or(SeriesType::Open)` (an unknown value saves an open series): unchanged.
 
-### Open questions (product decisions — not decided here)
+### Open questions (product decisions)
+
+**Approved by the project lead, 2026-11-26, as recommended: Q1 (a), Q2 (b) warning entry, Q3 (a) with a change request next to #732, Q4 (a).**
 
 - **Q1 — When the total rule runs.** D7 refuses "a series total below a live, unsettled expected tome". Series already in that state exist (rows written before this story, and every #524 case so far). (a) Check only when the submitted type or total differs from the stored one (the 15-4 rule, `touches_total`): a rename or a description edit of such a series still saves, and the tome stays listed under "Expected tomes to review". (b) Check on every save of a closed series: a rename is refused until the total is raised or the tome moved or deleted. No new copy either way.
   *Recommendation: (a)* — the refusal then always follows something the librarian just typed in the total or type field, and fixing the name of a series never depends on cleaning its tomes first.
