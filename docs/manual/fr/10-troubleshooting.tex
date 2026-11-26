@@ -163,8 +163,9 @@ admin précédent a été désactivé puis supprimé définitivement, la
 récupération demande un accès SQL direct :
 
 \begin{lstlisting}
-docker compose exec db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli \
-    -e "UPDATE users SET deleted_at=NULL, active=1 WHERE username='votre-admin';"
+docker compose exec db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+    "$MYSQL_DATABASE" -e "UPDATE users SET deleted_at=NULL, active=1
+    WHERE username=\"votre-admin\";"'
 \end{lstlisting}
 
 Ensuite connectez-vous normalement.
@@ -249,6 +250,71 @@ Récupération des couvertures perdues : ouvrez la page de détail de
 chaque titre concerné et cliquez sur \emph{Re-télécharger les
 métadonnées} pour repeupler depuis la chaîne de fournisseurs. Une
 action en masse est suivie dans l'issue~\#214.
+
+\section{Sauvegardes et restauration}\label{sec:troubleshoot-backups}
+
+\subsection*{Symptôme : « le dossier de sauvegarde \dots{} n'existe pas »}
+
+L'onglet Sauvegardes indique \emph{absent}, et l'onglet Santé affiche
+un avertissement. La ligne \texttt{./backups:\allowbreak /app/backups} manque dans
+les \texttt{volumes:} du service \texttt{mybibli}, ou
+\texttt{MYBIBLI\_BACKUP\_DIR} désigne un autre chemin. Ajoutez la ligne
+(section~\ref{sec:install-backups}), puis lancez
+\texttt{docker compose up -d}.
+
+\subsection*{Symptôme : « mybibli ne peut pas écrire dans \dots »}
+
+Le dossier est monté en lecture seule, ou c'est un partage réseau sur
+lequel le \texttt{root} du conteneur n'a pas de droits (« root
+squash »). Montez un dossier local, ou donnez à ce compte le droit
+d'écrire sur le partage.
+
+\subsection*{Symptôme : une sauvegarde ne peut pas être restaurée}
+
+Le refus dit pourquoi et que rien n'a été modifié ; la liste des raisons
+et de ce qu'il faut faire se trouve à la section~\ref{sec:backups-restore},
+\emph{Si la restauration est refusée}. Un fichier copié à la main manque
+le plus souvent de son fichier \texttt{.sha256}, ou n'est pas lisible
+par le conteneur.
+
+\subsection*{Symptôme : « Erreur serveur (504) » pendant une restauration}
+
+Un reverse proxy a coupé la requête au bout de son délai ; la
+restauration continue. Attendez deux minutes, rechargez, connectez-vous
+et lisez la ligne \emph{Dernière restauration} de l'onglet Santé
+(section~\ref{sec:backups-restore}, \emph{Derrière un reverse proxy}).
+
+\subsection*{Symptôme : la page Maintenance reste affichée et nomme une sauvegarde à restaurer à la main}
+
+mybibli n'a pu ni restaurer ni remettre la bibliothèque en état. Suivez
+la section~\ref{sec:restore-by-hand}, \emph{Restaurer à la main} --- en
+commençant par sa première étape : si
+\texttt{.restore-\allowbreak in-\allowbreak progress.json} a disparu, un redémarrage suffit.
+
+\subsection*{Symptôme : le conteneur redémarre sans fin après une restauration}
+
+Les journaux indiquent \emph{Refusing to start: a restore was cut
+short} : la remise en état automatique au démarrage a échoué elle
+aussi. Restaurez à la main la sauvegarde de sécurité qu'ils nomment
+(section~\ref{sec:restore-by-hand}).
+
+\subsection*{Symptôme : une restauration a été annulée au redémarrage suivant}
+
+Au démarrage, les journaux indiquent \emph{A restore was cut short; the
+library was put back from its safety backup}, alors que la restauration
+avait réussi. Le fichier \texttt{.restore-\allowbreak in-\allowbreak progress.json} était resté
+dans le dossier de sauvegarde (la ligne d'audit et la suppression du
+journal ont toutes deux échoué ; voir les journaux). Restaurez à nouveau la même
+sauvegarde depuis l'onglet Sauvegardes, puis vérifiez que le fichier a
+disparu, et supprimez-le à la main sinon.
+
+\subsection*{Symptôme : le contrôle des couvertures ne propose aucune réparation}
+
+Il indique que le dossier des couvertures semble non monté, ou que la
+bibliothèque semble être une autre base. Ne déplacez pas de fichiers :
+vérifiez le volume des couvertures et les réglages de base de données de
+l'installation, redémarrez, puis contrôlez à nouveau
+(section~\ref{sec:cover-check}).
 
 \section{Où signaler un bug}
 

@@ -157,8 +157,9 @@ admin was deactivated then permanently deleted, recovery requires
 direct SQL access:
 
 \begin{lstlisting}
-docker compose exec db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli \
-    -e "UPDATE users SET deleted_at=NULL, active=1 WHERE username='your-admin';"
+docker compose exec db sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+    "$MYSQL_DATABASE" -e "UPDATE users SET deleted_at=NULL, active=1
+    WHERE username=\"your-admin\";"'
 \end{lstlisting}
 
 Then log in normally.
@@ -239,6 +240,66 @@ covers are persisted in the \texttt{mybibli\_covers} volume.
 Recovery of lost covers: open each affected title's detail page and
 click \emph{Re-fetch metadata} to repopulate from the provider
 chain. A bulk action is tracked at issue~\#214.
+
+\section{Backups and restore}\label{sec:troubleshoot-backups}
+
+\subsection*{Symptom: ``the backups folder \dots{} does not exist''}
+
+The Backups tab says \emph{missing}, and the Health tab shows a warning.
+The \texttt{./backups:\allowbreak /app/backups} line is not in the
+\texttt{volumes:} of the \texttt{mybibli} service, or
+\texttt{MYBIBLI\_BACKUP\_DIR} names another path. Add the line
+(section~\ref{sec:install-backups}), then run
+\texttt{docker compose up -d}.
+
+\subsection*{Symptom: ``mybibli cannot write in \dots''}
+
+The folder is mounted read-only, or is a network share on which the
+container's \texttt{root} has no rights (``root squash''). Mount a local
+folder, or give that account write access on the share.
+
+\subsection*{Symptom: a backup cannot be restored}
+
+The refusal says why and that nothing was changed; the list of reasons
+and what to do is in section~\ref{sec:backups-restore}, \emph{If the
+restore is refused}. A file copied by hand most often lacks its
+\texttt{.sha256} file, or is not readable by the container.
+
+\subsection*{Symptom: ``Server error (504)'' during a restore}
+
+A reverse proxy cut the request after its timeout; the restore goes
+on. Wait two minutes, reload, log in and read the \emph{Last restore}
+line of the Health tab (section~\ref{sec:backups-restore}, \emph{Behind
+a reverse proxy}).
+
+\subsection*{Symptom: the Maintenance page stays, naming a backup to restore by hand}
+
+mybibli could neither restore nor put the library back. Follow
+section~\ref{sec:restore-by-hand}, \emph{Restoring by hand} --- starting
+with its first step: if \texttt{.restore-\allowbreak in-\allowbreak progress.json} is gone, a
+restart is enough.
+
+\subsection*{Symptom: the container restarts again and again after a restore}
+
+The log says \emph{Refusing to start: a restore was cut short}: the
+automatic rollback at start failed too. Restore the safety backup it
+names by hand (section~\ref{sec:restore-by-hand}).
+
+\subsection*{Symptom: a restore was undone at the next restart}
+
+The log at start says \emph{A restore was cut short; the library was put
+back from its safety backup}, although the restore had succeeded. The
+file \texttt{.restore-\allowbreak in-\allowbreak progress.json} had stayed in the backups folder
+(the audit row and the journal removal both failed; see the log).
+Restore the same backup again from the Backups tab, then check that the
+file is gone, and delete it by hand if it is not.
+
+\subsection*{Symptom: the cover check offers no repair}
+
+It says the covers folder looks unmounted, or the library looks like
+another database. Do not move files: check the covers volume and the
+database settings of the installation, restart, and check again
+(section~\ref{sec:cover-check}).
 
 \section{Where to file bugs}
 

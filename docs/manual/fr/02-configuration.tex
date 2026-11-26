@@ -36,7 +36,9 @@ configuration séparé. Le panneau a huit onglets, dont :
         (chapitre~\ref{ch:agents}).
   \item \textbf{Sauvegardes} — depuis la 1.29.0, écrire à la demande
         une sauvegarde de toute la bibliothèque
-        (section~\ref{sec:backups}).
+        (section~\ref{sec:backups}), en restaurer une
+        (section~\ref{sec:backups-restore}) et contrôler les couvertures
+        par rapport à la bibliothèque (section~\ref{sec:cover-check}).
 \end{itemize}
 
 Seul le rôle \texttt{Admin} voit le panneau ; les utilisateurs
@@ -124,6 +126,32 @@ suppression en ligne. Le glisser-déposer \emph{n'est pas} pris en
 charge (mybibli applique une CSP stricte sans JavaScript inline) ;
 les déplacements se font en éditant un nœud et en choisissant un
 nouveau parent dans un menu déroulant.
+
+Un emplacement qui en contient d'autres porte, devant son nom, un petit
+bouton qui replie ou déplie les emplacements qu'il contient (un lecteur
+d'écran l'annonce « Emplacements dans \dots », replié ou déplié). Votre
+navigateur se souvient de ceux que vous avez repliés. Tout s'atteint
+avec la touche \texttt{Tab}, ligne par ligne : ce bouton, le lien de
+l'emplacement, puis ses commandes d'ajout, de modification et de
+suppression ; \texttt{Entrée} ou la barre d'espace replie et déplie.
+Aucune touche fléchée n'est nécessaire. Quand vous supprimez le dernier
+emplacement contenu dans un autre, celui-ci redevient aussitôt un
+emplacement simple, sans recharger la page.
+
+\subsection*{Décrire un emplacement}
+\label{sec:location-description}
+\index{lieux de stockage!description}
+
+Depuis 1.29.0, un emplacement peut porter une \textbf{Description} :
+où le trouver, par exemple « bibliothèque de gauche, étagère du haut,
+derrière la porte ». Dans l'arbre, cliquez sur le crayon de
+l'emplacement (\emph{Modifier l'emplacement}) et remplissez le champ
+placé sous \emph{Emplacement parent} ; jusqu'à 500 caractères de texte
+simple, retours à la ligne conservés. Un champ vide la retire. La
+description s'affiche sur la page de l'emplacement, sous son code L et
+son type --- pas dans l'arbre, et elle n'entre pas dans la recherche.
+L'API HTTP la renvoie (chapitre~\ref{ch:api}). \textbf{Retour aux
+emplacements} ramène à l'arbre.
 
 \subsection*{Types de nœud de localisation}
 
@@ -444,6 +472,13 @@ les pages affichent les dates et où commence et finit une journée ---
 pour \emph{ajouté depuis}, les prêts en retard et les dates des
 estimations de valeur. Les dates enregistrées, l'API REST et les agents
 IA restent en UTC. Appliqué à la page suivante, sans redémarrage.
+
+\subsection*{Sauvegardes}
+
+Depuis 1.29.0, \textbf{Sauvegarde automatique} (à quel rythme mybibli
+cherche des changements et écrit une sauvegarde, ou \emph{Désactivée})
+et \textbf{Sauvegardes quotidiennes à garder}. Voir la
+section~\ref{sec:backups-schedule}.
 
 \subsection*{Langue}
 

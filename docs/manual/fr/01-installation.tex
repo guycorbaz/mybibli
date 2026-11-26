@@ -190,6 +190,38 @@ vider à tout moment sans affecter les données du catalogue. Voir
 chapitre~\ref{ch:operations-debugging} pour le suivi et le contrôle
 du niveau de journalisation.
 
+\subsection*{1d. Le dossier de sauvegarde}\label{sec:install-backups}
+\index{sauvegarde!dossier}
+
+Depuis 1.29.0, mybibli écrit ses propres sauvegardes
+(chapitre~\ref{ch:backup}) dans \texttt{/app/backups} à l'intérieur du
+conteneur, et \emph{ne crée jamais ce dossier} : le fichier compose le
+monte depuis l'hôte. Le \texttt{docker-compose.yml} livré contient la
+ligne, dans le bloc \texttt{volumes:} du service \texttt{mybibli} :
+
+\begin{lstlisting}
+      - ./backups:/app/backups
+\end{lstlisting}
+
+C'est un bind mount à dessein : les fichiers sont sur l'hôte, d'où vous
+les copiez ailleurs. Créez le dossier avant le premier démarrage et
+fermez-le aux autres comptes --- chaque sauvegarde contient les
+empreintes des mots de passe des utilisateurs et les clés des
+fournisseurs :
+
+\begin{lstlisting}
+mkdir -p backups && chmod 700 backups
+\end{lstlisting}
+
+mybibli tourne en \texttt{root} dans le conteneur : il peut donc y
+écrire, et les fichiers qu'il écrit appartiennent à \texttt{root}, avec
+le mode \texttt{0600}. Pour placer le dossier ailleurs sur l'hôte (un
+disque qui a de la place, un partage copié hors site), changez la partie
+gauche de la ligne, par exemple
+\texttt{/volume1/backup/mybibli:/app/backups}. Donnez à chaque instance
+de mybibli son propre dossier. Sur une installation existante, ajoutez
+la ligne puis lancez \texttt{docker compose up -d}.
+
 \subsection*{2. Éditer \texttt{.env}}
 
 Ouvrez \texttt{.env} dans votre éditeur. Chaque variable porte un
@@ -295,7 +327,11 @@ Modifiez \texttt{docker-compose.yml} et retirez la base embarquée :
         \textbf{conservez} \texttt{mybibli\_covers:}\index{couvertures!persistance}.
         Les images de couverture sont locales à l'application et doivent
         survivre aux mises à jour du conteneur, peu importe où réside
-        la base de données (issue~\#213).
+        la base de données (issue~\#213) ;
+  \item conservez la ligne \texttt{./backups:/app/backups} et créez le
+        dossier (étape~1d de la méthode~1,
+        section~\ref{sec:install-backups}) : les sauvegardes de mybibli
+        ne dépendent pas de l'endroit où réside la base.
 \end{itemize}
 
 \subsection*{3. Pointer \texttt{.env} vers la base externe}
@@ -376,6 +412,7 @@ se lit comme « positionnée » et bascule silencieusement un opt-out.
 \texttt{APP\_LANGUAGE}        & \texttt{en}     & Langue d'interface par défaut pour les visiteurs anonymes. v1.7.0 ajoute \texttt{de} + \texttt{it} à \texttt{en} / \texttt{fr}. \\
 \texttt{COVERS\_DIR}          & \texttt{./covers} & Chemin de stockage des images de couverture. \\
 \texttt{COVERS\_HOST\_PATH}   & \texttt{./covers-host} & Chemin hôte optionnel pour bind mount ; utilisé uniquement si vous décommentez la ligne bind-mount dans \texttt{docker-compose.yml}. \\
+\texttt{MYBIBLI\_BACKUP\_DIR} & \texttt{./backups} & v1.29.0+. Dossier, dans le conteneur, où mybibli écrit et lit ses sauvegardes (\texttt{/app/backups} dans l'image). Jamais créé par mybibli : montez-le (section~\ref{sec:install-backups}). \\
 \midrule
 \multicolumn{3}{l}{\emph{Durcissement}} \\
 \texttt{MYBIBLI\_COOKIE\_SECURE} & \texttt{false} & Mettre à \texttt{true} uniquement derrière HTTPS. \\

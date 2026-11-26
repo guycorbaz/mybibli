@@ -158,6 +158,18 @@ sans pagination ; les séries sont triées par nom. Depuis la 1.28.0,
 c'est aussi vrai pour \texttt{/series}, qui s'arrêtait auparavant aux
 25 premières séries.
 
+Un emplacement porte \texttt{id}, \texttt{name}, \texttt{label} (son
+code L), \texttt{node\_type}, \texttt{parent\_id} (\texttt{null} pour
+une racine) et, depuis la 1.29.0, \texttt{description} : le texte de son
+champ \emph{Description} (section~\ref{sec:location-description}), ou
+\texttt{null} s'il n'en a pas. Le texte est brut, tel que saisi (espaces
+de début et de fin retirés), retours à la ligne compris :
+
+\begin{lstlisting}
+{"id": 12, "name": "Bibliothèque A", "label": "L0012", "node_type": "shelf",
+ "parent_id": 3, "description": "Bibliothèque de gauche, étagère du haut"}
+\end{lstlisting}
+
 \subsection{GET /api/v1/dewey/\{prefix\}}
 
 Recherche par bucket. Passez un préfixe Dewey partiel (par ex.

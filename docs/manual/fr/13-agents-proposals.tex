@@ -849,7 +849,14 @@ acceptées, ou vous les saisissez vous-même.
   \item \textbf{Ajouter à la wish list} inscrit le tome sur votre
         wish list (section~\ref{sec:wishlist}) avec son titre, son
         ISBN et une note qui nomme la série et la position. Un double
-        clic ne crée pas de seconde entrée.
+        clic ne crée pas de seconde entrée. Sur une lacune qu'aucun
+        tome ne nomme encore, le même bouton enregistre le tome et
+        l'entrée de la wish list dans un seul formulaire
+        (section~\ref{sec:wishlist-gap}).
+  \item \textbf{Le nombre de volumes} d'une série fermée ne peut pas
+        descendre au-dessous d'un tome attendu manquant, ni à la main
+        ni par la proposition d'un agent
+        (section~\ref{sec:series-total}).
   \item \textbf{Quand vous cataloguez le livre} --- en scannant son
         ISBN, ou en créant le titre à la main avec cet ISBN ---,
         mybibli reconnaît le tome attendu, place le nouveau titre à
@@ -869,9 +876,11 @@ acceptées, ou vous les saisissez vous-même.
         ligne remplira, pour que vous puissiez juger. L'acceptation
         place le titre et résout les tomes.
   \item \textbf{Tomes attendus à revoir} --- un tome qui ne tient plus
-        dans une lacune (le nombre de volumes de la série a été
-        abaissé sous sa position, ou un titre occupe désormais sa
-        position) est listé sous la grille avec la raison. Changez sa
+        dans une lacune est listé sous la grille avec la raison : un
+        titre occupe désormais sa position (un titre restauré depuis la
+        corbeille, par exemple, section~\ref{sec:series-total}), ou il
+        se trouve au-delà du nombre de volumes (enregistré avant 1.29.0,
+        quand abaisser ce nombre était encore permis). Changez sa
         position ou supprimez-le.
 \end{itemize}
 
