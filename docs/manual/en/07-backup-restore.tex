@@ -509,13 +509,17 @@ and \emph{Symptom: every title shows the placeholder},
 section~\ref{sec:troubleshoot-covers-missing}), restart, and check
 again.
 
-\textbf{When the library looks like another database.} If the cover
-files that belong to no title outnumber the covers the library uses,
-the check offers no repair either and says: \emph{\dots{} This looks
-like a database that is not this folder's; mybibli will therefore
-delete nothing.} mybibli is then probably pointed at another, or an
-empty, database, and a repair would delete the covers of the real
-library. Check the database of the installation (\texttt{.env},
+\textbf{When the library looks like another database.} If at least
+one cover file that no title owns carries a number this database never
+gave to a title (a number above every title it ever created), the
+check offers no repair either and says: \emph{\dots{} cover files carry
+a number this database never gave to a title. This looks like a
+database that is not this folder's; mybibli will therefore delete
+nothing.} mybibli is then probably pointed at another, or an empty,
+database, and a repair would delete the covers of the real library.
+The files left by titles purged from the Trash do not trigger this:
+their numbers were given by this database, and they stay
+repairable. Check the database of the installation (\texttt{.env},
 section~\ref{sec:env-vars}), restart, and check again.
 
 There is no way around either guard: fix the installation, not the

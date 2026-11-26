@@ -579,14 +579,19 @@ de l'installation (section~\ref{sec:install-covers-bind} et
 section~\ref{sec:troubleshoot-couvertures-manquantes}), redémarrez, puis
 contrôlez à nouveau.
 
-\textbf{Quand la bibliothèque semble être une autre base.} Si les
-fichiers de couverture qui n'appartiennent à aucun titre sont plus
-nombreux que les couvertures utilisées par la bibliothèque, le contrôle
-ne propose pas non plus de réparation et indique : \emph{\dots{} Cela
-ressemble à une base de données qui n'est pas celle de ce dossier ;
-mybibli ne supprimera donc rien.} mybibli est alors sans doute branché
-sur une autre base, ou sur une base vide, et une réparation
-supprimerait les couvertures de la vraie bibliothèque. Vérifiez la base
+\textbf{Quand la bibliothèque semble être une autre base.} Si au moins
+un fichier de couverture qu'aucun titre ne possède porte un numéro que
+cette base de données n'a jamais attribué à un titre (un numéro
+supérieur à celui de tous les titres qu'elle a créés), le contrôle ne
+propose pas non plus de réparation et indique : \emph{\dots{} fichiers
+de couverture portent un numéro que cette base de données n'a jamais
+attribué à un titre. Cela ressemble à une base de données qui n'est pas
+celle de ce dossier ; mybibli ne supprimera donc rien.} mybibli est
+alors sans doute branché sur une autre base, ou sur une base vide, et
+une réparation supprimerait les couvertures de la vraie bibliothèque.
+Les fichiers laissés par des titres purgés de la corbeille ne
+déclenchent pas cette protection : leurs numéros ont été attribués par
+cette base, et ils restent réparables. Vérifiez la base
 de données de l'installation (\texttt{.env},
 section~\ref{sec:env-vars}), redémarrez, puis contrôlez à nouveau.
 
