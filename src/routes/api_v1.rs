@@ -211,6 +211,8 @@ pub struct ApiLocation {
     pub label: String,
     pub node_type: String,
     pub parent_id: Option<u64>,
+    /// Story 20-4 (#716) — plain text, `null` when unset.
+    pub description: Option<String>,
 }
 
 pub async fn list_locations(
@@ -227,6 +229,7 @@ pub async fn list_locations(
                 label: l.label,
                 node_type: l.node_type,
                 parent_id: l.parent_id,
+                description: l.description,
             })
             .collect(),
     ))

@@ -586,6 +586,10 @@ location:
   organizational_label: "Ubicazione organizzativa (non può contenere esemplari direttamente)"
   organizational_help: "Seleziona se l'ubicazione raggruppa solo sotto-ubicazioni (es. «Soggiorno» contiene «Libreria A» e «Libreria B» ma non contiene esemplari direttamente). Gli esemplari non possono essere assegnati a un'ubicazione organizzativa — il flusso di scansione-collocazione la rifiuta, e il modulo di modifica rifiuta di convertire una riga che ha ancora esemplari collegati."
   organizational_blocked_has_volumes: "Impossibile contrassegnare come organizzativa — %{count} esemplare(i) usano attualmente questa ubicazione. Ricollocali prima."
+  description_label: Descrizione
+  description_help: "Facoltativa. Dove trovarla, per esempio «libreria di sinistra, ripiano in alto, dietro la porta»."
+  description_too_long: "La descrizione può contenere al massimo %{max} caratteri."
+  back_to_tree: Torna alle ubicazioni
   bulk_audit_button: "Segna tutti gli esemplari per la verifica"
   empty_state: "Crea la tua prima ubicazione per iniziare a organizzare!"
   created: "%{name} creata (%{label})."

@@ -597,6 +597,10 @@ location:
   organizational_label: "Emplacement organisationnel (ne peut pas contenir de volumes directement)"
   organizational_help: "Cochez cette case si l'emplacement ne fait que regrouper d'autres emplacements (par ex. « Salon » contient « Bibliothèque A » et « Bibliothèque B » mais ne contient pas de volumes lui-même). Aucun volume ne peut être assigné à un emplacement organisationnel — le flux scan refuse, et l'édition d'emplacement rejette le basculement si la ligne a encore des volumes attachés."
   organizational_blocked_has_volumes: "Impossible de marquer organisationnel — %{count} volume(s) sont actuellement attachés à cet emplacement. Re-rangez-les d'abord."
+  description_label: Description
+  description_help: "Facultatif. Où le trouver, par exemple « bibliothèque de gauche, étagère du haut, derrière la porte »."
+  description_too_long: "La description doit compter au plus %{max} caractères."
+  back_to_tree: Retour aux emplacements
   # CR #237 — marquer tous les volumes d'une étagère « à contrôler ».
   bulk_audit_button: "Marquer tous les volumes à contrôler"
   empty_state: "Créez votre premier emplacement pour commencer à organiser !"

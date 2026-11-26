@@ -594,6 +594,10 @@ location:
   organizational_label: "Organisatorischer Standort (kann keine Exemplare direkt aufnehmen)"
   organizational_help: "Aktivieren, wenn der Standort nur Unterstandorte gruppiert (z. B. \"Wohnzimmer\" enthält \"Regal A\" und \"Regal B\", aber selbst keine Exemplare). Exemplare können einem organisatorischen Standort nicht zugewiesen werden — der Einsortier-Workflow weist ab, und das Bearbeitungsformular lehnt das Umstellen eines Standorts mit angehängten Exemplaren ab."
   organizational_blocked_has_volumes: "Kann nicht als organisatorisch markiert werden — %{count} Exemplar(e) verwenden diesen Standort aktuell. Bitte zuerst umsortieren."
+  description_label: Beschreibung
+  description_help: "Optional. Wo der Standort zu finden ist, zum Beispiel „linkes Bücherregal, oberstes Fach, hinter der Tür“."
+  description_too_long: "Die Beschreibung darf höchstens %{max} Zeichen lang sein."
+  back_to_tree: Zurück zu den Standorten
   # CR #237 — bulk-mark all volumes on a shelf "to check".
   bulk_audit_button: "Alle Exemplare zur Prüfung markieren"
   empty_state: "Erstellen Sie Ihren ersten Standort, um mit der Organisation zu beginnen!"
