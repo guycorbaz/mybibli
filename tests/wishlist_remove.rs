@@ -218,12 +218,12 @@ async fn a_librarian_sees_both_actions_with_their_named_labels(pool: DbPool) {
 
     for (page, html, copies) in [("list", &list, 2), ("detail", &detail, 1)] {
         assert_eq!(
-            html.matches("aria-label=\"Mark “WR Named” as bought\"").count(),
+            html.matches("aria-label=\"Bought: “WR Named”\"").count(),
             copies,
             "{page}: {html}"
         );
         assert_eq!(
-            html.matches("aria-label=\"Remove “WR Named” from the wish list\"").count(),
+            html.matches("aria-label=\"Remove: “WR Named”\"").count(),
             copies,
             "{page}: {html}"
         );

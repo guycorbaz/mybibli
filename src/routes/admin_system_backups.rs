@@ -220,7 +220,8 @@ pub async fn save_backups_settings(
     let saved = rust_i18n::t!(
         "success.system.backups_saved",
         locale = loc,
-        interval = interval_label(hours, loc)
+        interval = interval_label(hours, loc),
+        days = days
     )
     .to_string();
     let oob = |target: &str, content: String| OobUpdate {

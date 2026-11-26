@@ -35,8 +35,8 @@ wishlist:
   action_bought: "Acheté"
   action_remove: "Retirer"
   # Story 20-1 — accessible names of the two actions (they name the entry).
-  action_bought_named: "Marquer « %{title} » comme acheté"
-  action_remove_named: "Retirer « %{title} » de la wish list"
+  action_bought_named: "Acheté : « %{title} »"
+  action_remove_named: "Retirer : « %{title} »"
   back_to_list: "Retour à la wish list"
   delete_modal_title: "Marquer « %{title} » comme acheté ?"
   delete_modal_body: "L’entrée quitte la wish list. Elle ne pourra pas être restaurée ensuite."
@@ -1398,7 +1398,7 @@ success:
     proposals_saved: "Réglages des propositions enregistrés — appliqués à la prochaine proposition, sans redémarrage"
     purchase_thresholds_saved: "Seuils du prix d'achat enregistrés."
     time_zone_saved: "Fuseau horaire enregistré — appliqué à la page suivante, sans redémarrage"
-    backups_saved: "Sauvegarde automatique enregistrée : %{interval}."
+    backups_saved: "Sauvegarde automatique enregistrée : %{interval}. Sauvegardes quotidiennes à garder : %{days}."
     no_changes: "Aucune modification"
     provider_set: "Clé %{provider} enregistrée"
     provider_cleared: "Clé %{provider} effacée"
@@ -1493,7 +1493,7 @@ expected_tome:
   wishlist_owned: "« %{title} » est déjà dans votre catalogue : rien n'a été ajouté à la wish list. Son titre occupe cette position de la série."
   # Story 20-2 (FR184, #715) — a series gap sent to the wish list.
   gap_add_to_wishlist: "Ajouter à la wish list"
-  gap_add_to_wishlist_named: "Ajouter le tome %{position} à la wish list"
+  gap_add_to_wishlist_named: "Ajouter à la wish list : tome %{position}"
   form_title_wishlist: "Ajouter le tome %{position} à la wish list"
   wishlist_form_help: "mybibli enregistre aussi ce tome comme attendu dans la série : la case manquante affiche alors son titre."
   wishlist_title_prefill: "%{series}, tome %{position}"
