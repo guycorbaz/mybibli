@@ -34,9 +34,16 @@ wishlist:
   col_notes: "Notizen"
   action_bought: "Gekauft"
   action_remove: "Entfernen"
+  # Story 20-1 — accessible names of the two actions (they name the entry).
+  action_bought_named: "„%{title}“ als gekauft markieren"
+  action_remove_named: "„%{title}“ von der Wunschliste entfernen"
   back_to_list: "Zurück zur Wunschliste"
-  delete_modal_title: "%{title} als gekauft markieren?"
-  delete_modal_body: "Der Eintrag wird aus der Wunschliste entfernt. Die Aktion ist innerhalb von 30 Tagen über den Admin-Papierkorb umkehrbar."
+  delete_modal_title: "„%{title}“ als gekauft markieren?"
+  delete_modal_body: "Der Eintrag verlässt die Wunschliste. Er kann danach nicht wiederhergestellt werden."
+  # Story 20-1 (#714) — "Remove" without buying; a removed entry cannot be restored.
+  remove_modal_title: "„%{title}“ von der Wunschliste entfernen?"
+  remove_modal_body: "Der Eintrag verlässt die Wunschliste. Er kann nicht wiederhergestellt werden: Fügen Sie ihn erneut hinzu, wenn Sie es sich anders überlegen."
+  already_removed: "Dieser Eintrag steht nicht mehr auf der Wunschliste. Er wurde wahrscheinlich in einem anderen Tab oder von einer anderen Person entfernt. Laden Sie die Liste neu, um den aktuellen Stand zu sehen."
   print_title: "Meine Wunschliste"
   print_count_one: "%{count} Buch"
   print_count_other: "%{count} Bücher"
@@ -516,6 +523,9 @@ error:
     purchase_negligible_invalid: "Geben Sie einen Betrag von 0 bis 99999999.99 mit höchstens zwei Dezimalstellen ein."
     purchase_gap_invalid: "Geben Sie eine ganze Zahl zwischen %{min} und %{max} ein."
     time_zone_invalid: "Unbekannte Zeitzone — geben Sie einen IANA-Namen wie Europe/Zurich an."
+    # Story 19-7 (#657, D1) — ein Intervall außerhalb der Liste (veränderte Formulardaten).
+    backup_interval_invalid: "Wählen Sie eines der angebotenen Intervalle."
+    backup_retention_invalid: "Geben Sie eine ganze Zahl von 1 bis 365 ein."
     version_mismatch: "Die Einstellungen wurden durch einen anderen Administrator geändert — neu laden und erneut versuchen"
     provider_version_mismatch: "%{provider} wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
   code:
@@ -1008,6 +1018,18 @@ admin:
       addresses_other: "und %{count} weitere, nicht aufgeführt"
       above_marker: über dem üblichen Niveau
       footnote: "Seit dem letzten Start im Speicher gezählt; ein Neustart setzt sie zurück. Die Einzelheiten stehen in den Protokollen."
+    # Story 19-7 (#657, UX-DR45, D6) — Stand der Sicherungen.
+    backup:
+      heading: Sicherungen
+      last: "Letzte Sicherung: %{when} (%{file})"
+      last_none: "Letzte Sicherung: noch keine"
+      next: "Nächste Prüfung: gegen %{when}. Eine Sicherung wird nur geschrieben, wenn sich etwas geändert hat."
+      next_soon: "Nächste Prüfung: in höchstens einer Minute."
+      "off": "Die automatische Sicherung ist ausgeschaltet (Admin → System)."
+      last_check_unchanged: "Letzte Prüfung: %{when}; es hatte sich nichts geändert."
+      folder_missing: "Achtung: Der Sicherungsordner %{path} existiert nicht, daher wird keine Sicherung geschrieben. Binden Sie dort einen Ordner ein (siehe Handbuch, „Sicherungen“)."
+      folder_not_writable: "Achtung: mybibli kann nicht in den Sicherungsordner %{path} schreiben, daher wird keine Sicherung geschrieben. Geben Sie dem Benutzer des Containers Schreibrechte dafür (siehe Handbuch)."
+      failed: "Achtung: Die automatische Sicherung vom %{when} ist fehlgeschlagen, daher wurde nichts aufbewahrt. Die Protokolle nennen den Grund."
     maintenance_heading: Wartung
     bulk_cover_fetch:
       missing_covers_label: "Titel mit fehlendem Cover"
@@ -1154,6 +1176,17 @@ admin:
     time_zone_label: "Zeitzone"
     time_zone_help: "IANA-Zonenname (z. B. Europe/Zurich, Europe/Paris, America/New_York), in dem die Seiten Daten anzeigen und Tage abgrenzen (hinzugefügt seit, überfällige Ausleihen). Gespeicherte Daten, die API und KI-Agenten bleiben in UTC. Gilt ab der nächsten Seite, ohne Neustart. Standard: Europe/Zurich."
     btn_save_time_zone: "Zeitzone speichern"
+    # Story 19-7 (#657, D1) — Abschnitt Sicherungen (automatische Sicherung).
+    section_backups: "Sicherungen"
+    backup_interval_label: "Automatische Sicherung"
+    backup_interval_off: "Aus"
+    backup_interval_hourly: "Jede Stunde"
+    backup_interval_hours: "Alle %{n} Stunden"
+    backup_interval_daily: "Einmal täglich"
+    backup_interval_help: "mybibli prüft in diesem Abstand und schreibt nur dann eine Sicherung in den Sicherungsordner, wenn sich seit der letzten etwas geändert hat."
+    backup_retention_label: "Aufzubewahrende Tagessicherungen"
+    backup_retention_help: "mybibli bewahrt alle Sicherungen der letzten 24 Stunden auf, danach die letzte jedes der %{n} jüngsten Tage, an denen eine Sicherung geschrieben wurde."
+    btn_save_backups: "Automatische Sicherung speichern"
     # v1.7.9 fix #334 — Metadata-Chain + Provider-Health Zeitüberschreitungen.
     metadata_chain_timeout_label: "Zeitüberschreitung pro Metadaten-Anbieter (Sekunden)"
     metadata_chain_timeout_help: "Maximale Wartezeit für einen Anbieter, bevor die Kette zum nächsten übergeht. Standard 5. Erhöhen Sie den Wert, wenn DNS oder TLS langsam sind (ländliches Glasfasernetz, VPN, Satellit). Grenzen 1–60. Beim nächsten Scan wirksam — kein Neustart."
@@ -1311,6 +1344,7 @@ success:
     proposals_saved: "Vorschlagseinstellungen gespeichert — gilt für den nächsten Vorschlag, ohne Neustart"
     purchase_thresholds_saved: "Kaufpreis-Schwellenwerte gespeichert."
     time_zone_saved: "Zeitzone gespeichert — gilt ab der nächsten Seite, ohne Neustart"
+    backups_saved: "Automatische Sicherung gespeichert: %{interval}."
     no_changes: "Keine Änderungen"
     provider_set: "%{provider}-Schlüssel gespeichert"
     provider_cleared: "%{provider}-Schlüssel gelöscht"

@@ -35,6 +35,9 @@
     {# Story 19-5 (#708) — production watching (in-memory counters). #}
     {% include "fragments/admin_health_watch.html" %}
 
+    {# Story 19-7 (#657, UX-DR45) — backup status. #}
+    {% include "fragments/admin_health_backup.html" %}
+
     {# #489 — label high-water marks: highest V-code / L-code ever printed
        (soft-deleted rows included) and the next free number, so a fresh
        label sheet starts right after the occupied range. #}

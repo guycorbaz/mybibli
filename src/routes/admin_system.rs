@@ -146,6 +146,7 @@ pub(crate) struct AdminSystemPanel {
     pub section_logging: String,
     pub section_sessions: String,
     pub section_proposals: String,
+    pub section_backups: String,
     pub loans_form_html: String,
     pub providers_form_html: String,
     pub timeouts_form_html: String,
@@ -156,6 +157,7 @@ pub(crate) struct AdminSystemPanel {
     pub log_form_html: String,
     pub sessions_form_html: String,
     pub proposals_form_html: String,
+    pub backups_form_html: String,
 }
 
 #[derive(Template)]
@@ -348,7 +350,7 @@ pub(crate) async fn fetch_setting_rows(
 ) -> Result<HashMap<String, (String, i32)>, AppError> {
     let rows: Vec<(String, String, i32)> = sqlx::query_as(
         "SELECT setting_key, setting_value, version FROM settings \
-         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
+         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
     )
     .bind(KEY_OVERDUE_THRESHOLD)
     .bind(KEY_DEFAULT_LANGUAGE)
@@ -366,6 +368,8 @@ pub(crate) async fn fetch_setting_rows(
     .bind(crate::services::admin_system::KEY_TIME_ZONE)
     .bind(crate::services::volume_value_proposals::KEY_NEGLIGIBLE_AMOUNT)
     .bind(crate::services::volume_value_proposals::KEY_GAP_FACTOR)
+    .bind(crate::services::admin_system::KEY_BACKUP_INTERVAL_HOURS)
+    .bind(crate::services::admin_system::KEY_BACKUP_RETENTION_DAYS)
     .fetch_all(pool)
     .await?;
     let mut map = HashMap::new();
@@ -818,6 +822,8 @@ pub async fn render_panel_html(
     let proposals_form_html = crate::routes::admin_system_proposals::render_from_rows(
         csrf, loc, &rows,
     )?;
+    let backups_form_html =
+        crate::routes::admin_system_backups::render_from_rows(csrf, loc, &rows)?;
 
     AdminSystemPanel {
         panel_heading: rust_i18n::t!("admin.system.panel_heading", locale = loc).to_string(),
@@ -831,6 +837,7 @@ pub async fn render_panel_html(
         section_sessions: rust_i18n::t!("admin.system.section_sessions", locale = loc).to_string(),
         section_proposals: rust_i18n::t!("admin.system.section_proposals", locale = loc)
             .to_string(),
+        section_backups: rust_i18n::t!("admin.system.section_backups", locale = loc).to_string(),
         loans_form_html,
         providers_form_html,
         timeouts_form_html,
@@ -841,6 +848,7 @@ pub async fn render_panel_html(
         log_form_html,
         sessions_form_html,
         proposals_form_html,
+        backups_form_html,
     }
     .render()
     .map_err(|_| AppError::Internal("admin system panel render failed".to_string()))

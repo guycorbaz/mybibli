@@ -167,6 +167,8 @@ struct AdminHealthPanel {
     // Story 19-5 (#708) — "Production watching", rendered by its own
     // fragment (`admin_health_watch.html`).
     watch: crate::routes::admin_health_watch::WatchPanel,
+    // Story 19-7 (#657) — backup status (`admin_health_backup.html`).
+    backup: crate::routes::admin_health_backup::BackupHealthPanel,
     // #489 — label high-water marks: "V0142 (next: V0143)" per family,
     // or the "none yet" placeholder. Pre-formatted so the template only
     // prints two strings.
@@ -1507,6 +1509,7 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
         rust_i18n::t!("admin.health.bulk_cover_fetch.idle", locale = loc).to_string()
     };
 
+    let backup = crate::routes::admin_health_backup::current_backup_panel(state, &instance_id, loc).await;
     let panel = AdminHealthPanel {
         versions_heading: rust_i18n::t!("admin.health.versions_heading", locale = loc)
             .to_string(),
@@ -1533,6 +1536,7 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
             .to_string(),
         count_active_loans: counts.active_loans,
         watch: crate::routes::admin_health_watch::current_watch_panel(state.time_zone(), loc),
+        backup,
         labels_heading: rust_i18n::t!("admin.health.labels_heading", locale = loc).to_string(),
         labels_hint: rust_i18n::t!("admin.health.labels_hint", locale = loc).to_string(),
         last_vcode_label: rust_i18n::t!("admin.health.last_vcode", locale = loc).to_string(),

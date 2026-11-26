@@ -34,9 +34,16 @@ wishlist:
   col_notes: "Note"
   action_bought: "Acquistato"
   action_remove: "Rimuovi"
+  # Story 20-1 — accessible names of the two actions (they name the entry).
+  action_bought_named: "Segna «%{title}» come acquistato"
+  action_remove_named: "Rimuovi «%{title}» dalla lista dei desideri"
   back_to_list: "Torna alla lista dei desideri"
-  delete_modal_title: "Segnare %{title} come acquistato?"
-  delete_modal_body: "La voce viene rimossa dalla lista dei desideri. L'azione è reversibile entro 30 giorni dal pannello Cestino dell'amministrazione."
+  delete_modal_title: "Segnare «%{title}» come acquistato?"
+  delete_modal_body: "La voce lascia la lista dei desideri. Non potrà essere ripristinata in seguito."
+  # Story 20-1 (#714) — "Remove" without buying; a removed entry cannot be restored.
+  remove_modal_title: "Rimuovere «%{title}» dalla lista dei desideri?"
+  remove_modal_body: "La voce lascia la lista dei desideri. Non può essere ripristinata: aggiungila di nuovo se cambi idea."
+  already_removed: "Questa voce non è più nella lista dei desideri. Probabilmente è stata rimossa in un'altra scheda o da un altro bibliotecario. Ricarica la lista per vederla aggiornata."
   print_title: "La mia lista dei desideri"
   print_count_one: "%{count} libro"
   print_count_other: "%{count} libri"
@@ -510,6 +517,9 @@ error:
     purchase_negligible_invalid: "Inserisci un importo da 0 a 99999999.99, con al massimo due decimali."
     purchase_gap_invalid: "Inserisci un numero intero tra %{min} e %{max}."
     time_zone_invalid: "Fuso orario sconosciuto — indicare un nome IANA come Europe/Zurich."
+    # Story 19-7 (#657, D1) — un intervallo fuori dalla lista (modulo alterato).
+    backup_interval_invalid: "Scegli uno degli intervalli proposti."
+    backup_retention_invalid: "Inserisci un numero intero da 1 a 365."
     version_mismatch: "Le impostazioni sono state modificate da un altro amministratore — ricarica e riprova"
     provider_version_mismatch: "%{provider} è stato modificato da un altro amministratore — ricarica e riprova"
   code:
@@ -996,6 +1006,18 @@ admin:
       addresses_other: "e altri %{count} non elencati"
       above_marker: sopra il livello abituale
       footnote: "Contati in memoria dall'ultimo avvio; un riavvio li azzera. I dettagli sono nei log."
+    # Story 19-7 (#657, UX-DR45, D6) — stato dei backup.
+    backup:
+      heading: Backup
+      last: "Ultimo backup: %{when} (%{file})"
+      last_none: "Ultimo backup: ancora nessuno"
+      next: "Prossimo controllo: verso %{when}. Un backup viene scritto solo se qualcosa è cambiato."
+      next_soon: "Prossimo controllo: entro un minuto."
+      "off": "Il backup automatico è disattivato (Admin → Sistema)."
+      last_check_unchanged: "Ultimo controllo: %{when}; non era cambiato nulla."
+      folder_missing: "Attenzione: la cartella dei backup %{path} non esiste, quindi nessun backup viene scritto. Monta una cartella in quel punto (vedi il manuale, «Backup»)."
+      folder_not_writable: "Attenzione: mybibli non può scrivere nella cartella dei backup %{path}, quindi nessun backup viene scritto. Dai all'utente del container il permesso di scriverci (vedi il manuale)."
+      failed: "Attenzione: il backup automatico del %{when} non è riuscito, quindi non è stato conservato nulla. I log ne indicano il motivo."
     maintenance_heading: Manutenzione
     bulk_cover_fetch:
       missing_covers_label: "Titoli con copertina mancante"
@@ -1141,6 +1163,17 @@ admin:
     time_zone_label: "Fuso orario"
     time_zone_help: "Nome di zona IANA (ad es. Europe/Zurich, Europe/Paris, America/New_York) in cui le pagine mostrano le date e delimitano i giorni (aggiunto dal, prestiti in ritardo). Le date memorizzate, l'API e gli agenti IA restano in UTC. Applicato alla pagina successiva, senza riavvio. Predefinito: Europe/Zurich."
     btn_save_time_zone: "Salva il fuso orario"
+    # Story 19-7 (#657, D1) — sezione Backup (backup automatico).
+    section_backups: "Backup"
+    backup_interval_label: "Backup automatico"
+    backup_interval_off: "Disattivato"
+    backup_interval_hourly: "Ogni ora"
+    backup_interval_hours: "Ogni %{n} ore"
+    backup_interval_daily: "Una volta al giorno"
+    backup_interval_help: "mybibli controlla a questo intervallo e scrive un backup nella cartella dei backup solo se qualcosa è cambiato dall'ultimo."
+    backup_retention_label: "Backup giornalieri da conservare"
+    backup_retention_help: "mybibli conserva tutti i backup delle ultime 24 ore, poi l'ultimo di ciascuno dei %{n} giorni più recenti in cui è stato scritto un backup."
+    btn_save_backups: "Salva il backup automatico"
     # v1.7.9 fix #334 — timeout metadata-chain + provider-health.
     metadata_chain_timeout_label: "Timeout per fornitore di metadati (secondi)"
     metadata_chain_timeout_help: "Tempo massimo di attesa per un fornitore prima che la catena passi al successivo. Predefinito 5. Aumenta se DNS o TLS sono lenti (fibra rurale, VPN, satellite). Intervallo 1–60. Applicato alla prossima scansione — nessun riavvio."
@@ -1297,6 +1330,7 @@ success:
     proposals_saved: "Impostazioni delle proposte salvate — applicate alla prossima proposta, senza riavvio"
     purchase_thresholds_saved: "Soglie del prezzo d'acquisto salvate."
     time_zone_saved: "Fuso orario salvato — applicato alla pagina successiva, senza riavvio"
+    backups_saved: "Backup automatico salvato: %{interval}."
     no_changes: "Nessuna modifica"
     provider_set: "Chiave %{provider} salvata"
     provider_cleared: "Chiave %{provider} cancellata"
