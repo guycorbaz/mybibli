@@ -480,7 +480,11 @@ foot of \textbf{Admin → Backups}, finds both kinds of mismatch.
         back from a backup}. Click \textbf{Repair}.
   \item The answer gives the counts. Each item is checked again just
         before it is changed; one that changed since the check is left
-        alone and counted. Queued downloads go through the metadata
+        alone and counted. Two more lines may follow: files that could
+        not be deleted (the covers folder is not writable: give the
+        container's user write access to it, then check again), and a
+        repair stopped because a restore started (check again once the
+        restore is over). Queued downloads go through the metadata
         retry queue: about 20 titles every 5 minutes
         (section~\ref{sec:startup-repairs}). Every repair is recorded
         in the audit log.
@@ -505,16 +509,17 @@ and \emph{Symptom: every title shows the placeholder},
 section~\ref{sec:troubleshoot-covers-missing}), restart, and check
 again.
 
-% 19-9 review (b): the "another database" guard is waiting for the project
-% lead; adjust or remove this paragraph once story 19-9 merges.
-\textbf{When the library looks like another database.} Likewise,
-when most cover files of the folder belong to no title, the check
-offers no repair: that looks like mybibli pointed at another, or an
-empty, database, and repairing would delete the covers of the real
-library. Check the database settings of the installation
-(\texttt{.env}, section~\ref{sec:env-vars}) before anything else.
+\textbf{When the library looks like another database.} If the cover
+files that belong to no title outnumber the covers the library uses,
+the check offers no repair either and says: \emph{\dots{} This looks
+like a database that is not this folder's; mybibli will therefore
+delete nothing.} mybibli is then probably pointed at another, or an
+empty, database, and a repair would delete the covers of the real
+library. Check the database of the installation (\texttt{.env},
+section~\ref{sec:env-vars}), restart, and check again.
 
-In both cases, fix the installation, not the files. Move or delete
+There is no way around either guard: fix the installation, not the
+files. Move or delete
 cover files by hand only when you are sure which library they belong
 to --- a backup (section~\ref{sec:backups}) holds every cover file of
 its library.
@@ -564,11 +569,16 @@ tar czf backups/mybibli-files-$(date +%Y%m%d).tar.gz \
 
 For the default install (named Docker volume), back up the volume
 through Docker — the host path of a named volume varies by Docker
-version and is not stable, so don't try to \texttt{tar} it directly:
+version and is not stable, so don't try to \texttt{tar} it directly.
+Compose prefixes the volume with the project name, the name of the
+folder holding \texttt{docker-compose.yml} by default: in
+\texttt{/srv/mybibli} it is \texttt{mybibli\_mybibli\_covers}.
+\texttt{docker volume ls | grep mybibli\_covers} shows the real name; use
+it below.
 
 \begin{lstlisting}
 docker run --rm \
-    -v mybibli_covers:/source:ro \
+    -v mybibli_mybibli_covers:/source:ro \
     -v "$(pwd)/backups:/backup" \
     alpine \
     tar czf "/backup/mybibli-covers-$(date +%Y%m%d).tar.gz" -C /source .
@@ -630,12 +640,13 @@ tar xzf backups/mybibli-files-20260513.tar.gz
 \end{lstlisting}
 
 For the default named-volume install, restore through a throwaway
-container in the symmetric shape to the backup:
+container in the symmetric shape to the backup (same volume name as
+above):
 
 \begin{lstlisting}
 docker compose stop mybibli
 docker run --rm \
-    -v mybibli_covers:/target \
+    -v mybibli_mybibli_covers:/target \
     -v "$(pwd)/backups:/backup:ro" \
     alpine \
     sh -c "rm -rf /target/* && tar xzf /backup/mybibli-covers-20260513.tar.gz -C /target"

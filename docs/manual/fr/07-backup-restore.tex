@@ -546,7 +546,13 @@ Sauvegardes}, trouve les deux sortes d'écart.
         que d'une sauvegarde}. Cliquez sur \textbf{Réparer}.
   \item La réponse donne les nombres. Chaque élément est contrôlé à
         nouveau juste avant d'être modifié ; un élément qui a changé
-        depuis le contrôle est laissé tel quel et compté. Les
+        depuis le contrôle est laissé tel quel et compté. Deux autres
+        lignes peuvent suivre : des fichiers qui n'ont pas pu être
+        supprimés (le dossier des couvertures n'est pas accessible en
+        écriture : donnez au compte du conteneur le droit d'y écrire,
+        puis contrôlez à nouveau), et une réparation interrompue parce
+        qu'une restauration a commencé (contrôlez à nouveau une fois la
+        restauration terminée). Les
         téléchargements passent par la file de réessai des
         métadonnées : une vingtaine de titres toutes les 5 minutes
         (section~\ref{sec:startup-repairs}). Chaque réparation est
@@ -573,17 +579,19 @@ de l'installation (section~\ref{sec:install-covers-bind} et
 section~\ref{sec:troubleshoot-couvertures-manquantes}), redémarrez, puis
 contrôlez à nouveau.
 
-% 19-9 review (b): the "another database" guard is waiting for the project
-% lead; adjust or remove this paragraph once story 19-9 merges.
-\textbf{Quand la bibliothèque semble être une autre base.} De même,
-quand la plupart des fichiers de couverture du dossier n'appartiennent à
-aucun titre, le contrôle ne propose aucune réparation : cela ressemble à
-un mybibli branché sur une autre base, ou sur une base vide, et une
-réparation supprimerait les couvertures de la vraie bibliothèque.
-Vérifiez d'abord les réglages de base de données de l'installation
-(\texttt{.env}, section~\ref{sec:env-vars}).
+\textbf{Quand la bibliothèque semble être une autre base.} Si les
+fichiers de couverture qui n'appartiennent à aucun titre sont plus
+nombreux que les couvertures utilisées par la bibliothèque, le contrôle
+ne propose pas non plus de réparation et indique : \emph{\dots{} Cela
+ressemble à une base de données qui n'est pas celle de ce dossier ;
+mybibli ne supprimera donc rien.} mybibli est alors sans doute branché
+sur une autre base, ou sur une base vide, et une réparation
+supprimerait les couvertures de la vraie bibliothèque. Vérifiez la base
+de données de l'installation (\texttt{.env},
+section~\ref{sec:env-vars}), redémarrez, puis contrôlez à nouveau.
 
-Dans les deux cas, corrigez l'installation, pas les fichiers. Ne
+Aucune de ces deux protections ne se contourne : corrigez
+l'installation, pas les fichiers. Ne
 déplacez ou ne supprimez des fichiers de couverture à la main que si
 vous savez avec certitude à quelle bibliothèque ils appartiennent ---
 une sauvegarde (section~\ref{sec:backups}) contient tous les fichiers de
@@ -635,11 +643,15 @@ tar czf backups/mybibli-files-$(date +%Y%m%d).tar.gz \
 Pour l'install par défaut (volume Docker nommé), sauvegardez le
 volume via Docker — le chemin hôte d'un volume nommé varie selon la
 version de Docker et n'est pas stable, donc n'essayez pas de le
-\texttt{tar} directement :
+\texttt{tar} directement. Compose préfixe le volume du nom du projet,
+par défaut celui du dossier qui contient \texttt{docker-compose.yml} :
+dans \texttt{/srv/mybibli}, c'est \texttt{mybibli\_mybibli\_covers}.
+\texttt{docker volume ls | grep mybibli\_covers} donne le nom réel ;
+utilisez-le ci-dessous.
 
 \begin{lstlisting}
 docker run --rm \
-    -v mybibli_covers:/source:ro \
+    -v mybibli_mybibli_covers:/source:ro \
     -v "$(pwd)/backups:/backup" \
     alpine \
     tar czf "/backup/mybibli-covers-$(date +%Y%m%d).tar.gz" -C /source .
@@ -703,12 +715,13 @@ tar xzf backups/mybibli-files-20260513.tar.gz
 \end{lstlisting}
 
 Pour l'install par défaut (volume nommé), restaurez via un
-conteneur jetable symétrique à la sauvegarde :
+conteneur jetable symétrique à la sauvegarde (même nom de volume que
+plus haut) :
 
 \begin{lstlisting}
 docker compose stop mybibli
 docker run --rm \
-    -v mybibli_covers:/target \
+    -v mybibli_mybibli_covers:/target \
     -v "$(pwd)/backups:/backup:ro" \
     alpine \
     sh -c "rm -rf /target/* && tar xzf /backup/mybibli-covers-20260513.tar.gz -C /target"

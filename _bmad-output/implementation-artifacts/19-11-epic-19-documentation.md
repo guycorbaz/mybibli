@@ -131,6 +131,7 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 ### Change Log
 
 - 2026-11-26 — dev-story (with 20-7): manual EN/FR, CLAUDE.md Rule #19, PDFs rebuilt. Stays in-progress until 19-9 merges.
+- 2026-11-26 — follow-up (coordinator): the older "Backup procedure" / "Restore procedure" commands use the real Compose volume name (`mybibli_mybibli_covers`, how to find it with `docker volume ls | grep mybibli_covers`); the "another database" guard documented with its approved copy (orphan files outnumber the covers the library uses; no way around it), the two new repair lines (files not deleted: folder not writable; repair stopped by a restore), `% 19-9 review (b)` markers removed. PDFs rebuilt. A last comparison with the merged 19-9 copy is still due.
 
 - 2026-11-26 — validate-story: see Validation.
 - 2026-11-26 — create-story (with 20-7).
