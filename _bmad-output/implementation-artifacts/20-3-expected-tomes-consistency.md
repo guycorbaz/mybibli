@@ -1,6 +1,6 @@
 # Story 20.3: Expected tomes stay consistent with the series total and Trash restores (closes #524)
 
-Status: review
+Status: done
 
 <!-- Closes #524. Source: _bmad-output/planning-artifacts/epics.md, Epic 20, Story 20.3; decisions D7, D8, D11 (approved by the project lead, 2026-11-26). Developed after story 20-2 merges, on a branch rebased on it (shared src/routes/series.rs). -->
 
