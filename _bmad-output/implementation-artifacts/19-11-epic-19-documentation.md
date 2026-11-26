@@ -1,6 +1,6 @@
 # Story 19.11: Documentation (epic 19)
 
-Status: in-progress
+Status: done
 
 No GitHub issue of its own (collects the "for the manual" notes of #657, #658, #733, #740, #744). Covers FR178–FR182 (documentation) and retrospective v1.28.1 action A4. Epic 19; ships in v1.29.0 (with Epic 20). Sprint-status key: `19-11-epic-19-documentation`.
 
@@ -94,6 +94,16 @@ Notes for the project lead (no change made):
 - **N1 — the "looks like another database" guard** is the 19-9 review item (b), waiting for the lead; it is not in the branch. The manual documents it as briefed (fix the database the app points at; move files by hand only when sure) in a paragraph marked in the source (`% 19-9 review (b)`), to be removed or reworded if 19-9 ships without it or with other copy.
 - **N2 — restoring by hand loads into the live schema.** The procedure drops and recreates the database as MariaDB `root` (bundled stack), as the existing "Restore procedure" section does; the `mybibli` user cannot create a database.
 
+## Review (2026-11-26)
+
+Self-check after story 19-9 merged (`8eedb650`, main merged into this branch as `dd68623a`), against the merged `locales/en.yml` / `locales/fr.yml` and templates:
+- Every label and message quoted in chapters 1, 2, 7 and 10 (EN and FR) was looked up in the merged locales by script: all present word for word — Backups tab, list, notes, modal, refusals, maintenance and stuck copy, System → Backups labels, Health lines, the 504 line (`errors.server_error_retry`), and the merged `admin.covers.*` (heading, check, lists, notes, `unmounted`, `another_database`, repair modal, `repair.failed`, `repair.stopped`).
+- `templates/fragments/admin_covers_check.html`: no "Repair…" when the folder looks unmounted or the database looks like another one, as written; the cover-check section is included in the Backups panel; rows are "name · size · date" and capped at 50 (`LIST_LIMIT`), as written.
+- `services/cover_consistency.rs`: unmounted = more than half of the local covers missing; another database = an orphan numbered at or above the next title id (`never_given`), as written after the lead's change.
+- #744 still open: "the purge leaves their cover files behind" stays true.
+- #746: the saved line names both values ("Automatic backup saved: … Daily backups to keep: …"), as the manual says.
+No text change was needed by this check.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -135,3 +145,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 
 - 2026-11-26 — validate-story: see Validation.
 - 2026-11-26 — create-story (with 20-7).
+- 2026-11-26 — review: checked against the merged copy (19-9 merged); done.

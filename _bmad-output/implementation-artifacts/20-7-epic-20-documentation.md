@@ -1,6 +1,6 @@
 # Story 20.7: Documentation (epic 20)
 
-Status: in-progress
+Status: done
 
 No GitHub issue of its own (documents #714, #715, #716, #524, #700). Covers FR183–FR185 (documentation). Epic 20; ships in v1.29.0 (with Epic 19). Sprint-status key: `20-7-epic-20-documentation`.
 
@@ -75,6 +75,10 @@ Changed (no product decision needed):
 - **V5 — roles table.** Chapter 6 has no wish-list row and no backup rows: added "Manage the wish list" (Lib+), "Back up, restore, check covers" (Admin).
 - **V6 — CLAUDE.md.** No epic-20 note exists yet in Key Patterns: the "Expected tomes" bullet gets the two rules, and a one-line "Location tree" bullet is added.
 
+## Review (2026-11-26)
+
+Self-check against `main`'s locales after the merge (`dd68623a`): every label quoted in chapters 2, 3, 11 and 13 (EN and FR) — "Bought" / « Acheté », "Remove" / « Retirer », both modal titles, "Add to wish list" / « Ajouter à la wish list », "Add tome N to the wish list", the total refusal, the two restore lines, "Open the series", "Expected tomes to review", "Description", "Back to locations", "Edit location", "Parent location", "Locations inside …" — found word for word. #746 changed the accessible names (they now start with the visible label: "Remove: “…”", "Add to wish list: tome N"); the manual quotes visible labels only, plus the tree button's name "Locations inside …", unchanged. No text change was needed.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -112,3 +116,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 
 - 2026-11-26 — validate-story: see Validation.
 - 2026-11-26 — create-story (with 19-11).
+- 2026-11-26 — review: checked against the merged copy (19-9 merged); done.
