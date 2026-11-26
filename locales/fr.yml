@@ -634,7 +634,7 @@ location:
   volumes_count: "%{count} volumes"
   breadcrumb_label: Chemin de l'emplacement
   tree:
-    toggle: Afficher / masquer la sous-arborescence
+    toggle_named: "Emplacements dans %{name}"
     add_child_named: "Ajouter un emplacement dans %{name}"
     edit_named: "Modifier %{name}"
     delete_named: "Supprimer %{name}"
