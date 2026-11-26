@@ -682,7 +682,11 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
         await expect(page.locator(`#tree-toggle-${pid}`)).toHaveAttribute("aria-expanded", "false");
         await expect(page.locator(`#tree-children-${pid}`)).toBeHidden();
       }
-      const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+      // Scoped to the tree: the page-wide "no tree role" check above stays.
+      const results = await new AxeBuilder({ page })
+        .include("#locations-tree")
+        .withTags(WCAG_TAGS)
+        .analyze();
       expect(
         results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`),
         `axe on /locations (${state})`,

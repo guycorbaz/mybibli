@@ -190,6 +190,14 @@ Claude Opus 5.5 (dev-story, 2026-11-26)
 - `tests/e2e/specs/accessibility-full.spec.ts`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
+### Review pass 1
+
+No Medium+ finding (story clean). Low findings:
+- **L1 (fixed):** the tree's axe scan in `locations.spec.ts` is scoped with `.include("#locations-tree")`; the page-wide assertion "no `tree` / `treeitem` / `group` role" is kept.
+- **L2 (accepted):** a collapsed parent that becomes a leaf (last child deleted) stays listed in `localStorage["mybibli-locations-collapsed"]`. Harmless (the restore loop skips ids without a child list); a cleanup is possible later.
+- **L3 (deliberate):** `LocationModel::parent_id_any_state` was added to `src/models/location.rs` (listed as untouched by the story) to read the parent of a row already in the Trash (settled question 1).
+
 ### Change Log
 
 - 2026-11-26 — dev-story: nested list with disclosure buttons, parent updated after its last child's deletion (all three delete answers), unit + DB + E2E tests written; E2E run pending.
+- 2026-11-26 — code review pass 1: clean (no Medium+); L1 fixed, L2 accepted, L3 deliberate.
