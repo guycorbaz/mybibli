@@ -9,9 +9,12 @@
 //!   of another instance id (D5: never, in this story).
 //! - **Kept**: (1) the newest one stamped at or before now, whatever its
 //!   age; (2) every one stamped less than 24 hours before now, and any
-//!   stamped in the future (clock skew); (3) for each of the 14 most recent
-//!   local days (today and the 13 before, in the instance zone), the newest
-//!   one of that day.
+//!   stamped in the future (clock skew); (3) for each of the N most recent
+//!   local days **on which an own backup was written** (instance zone; N =
+//!   `backup_retention_days`, default 14), the newest one of that day.
+//!   D4 amended by the project lead (2026-11-26, review pass 1 Medium):
+//!   counting backup days, not calendar days, so a forward clock jump or a
+//!   long idle stretch never empties the daily history.
 //! - Every other candidate is deleted.
 //!
 //! [`rotate`] applies the plan under the backup guard (`try_lock`: a held
@@ -32,8 +35,6 @@ use crate::utils::local_time::local_date;
 
 /// Tier 2: every backup younger than this is kept.
 pub const HOURLY_WINDOW_HOURS: i64 = 24;
-/// Tier 3: the newest backup of each of this many local days is kept.
-pub const DAILY_DAYS: i64 = 14;
 
 /// The archives to delete, sorted by name (D4).
 pub fn plan<'a>(
@@ -41,6 +42,7 @@ pub fn plan<'a>(
     instance_id: &str,
     now: DateTime<Utc>,
     tz: Tz,
+    retention_days: u32,
 ) -> Vec<String> {
     let candidates: Vec<(&str, DateTime<Utc>)> = names
         .into_iter()
@@ -59,21 +61,24 @@ pub fn plan<'a>(
             keep.insert(name);
         }
     }
-    // 3. The newest of each of the 14 most recent local days.
-    let today = local_date(now.naive_utc(), tz);
-    let first_day = today - Duration::days(DAILY_DAYS - 1);
+    // 3. The newest of each of the N most recent local days on which an
+    //    own backup was written (stamps at or before now; the future ones
+    //    are kept by tier 2).
     let mut newest_of_day: BTreeMap<NaiveDate, (DateTime<Utc>, &str)> = BTreeMap::new();
     for (name, at) in candidates.iter().filter(|(_, at)| *at <= now) {
         let day = local_date(at.naive_utc(), tz);
-        if day < first_day || day > today {
-            continue;
-        }
         let entry = newest_of_day.entry(day).or_insert((*at, name));
         if *at > entry.0 {
             *entry = (*at, name);
         }
     }
-    keep.extend(newest_of_day.values().map(|(_, name)| *name));
+    keep.extend(
+        newest_of_day
+            .values()
+            .rev()
+            .take(retention_days as usize)
+            .map(|(_, name)| *name),
+    );
 
     let mut delete: Vec<String> = candidates
         .iter()
@@ -116,6 +121,7 @@ pub async fn rotate(
     instance_id: &str,
     now: DateTime<Utc>,
     tz: Tz,
+    retention_days: u32,
 ) -> RotationOutcome {
     let Ok(guard) = cfg.guard.clone().try_lock_owned() else {
         tracing::info!("Backup rotation skipped: a backup is running; the next pass does it");
@@ -125,7 +131,7 @@ pub async fn rotate(
     let instance_id = instance_id.to_string();
     tokio::task::spawn_blocking(move || {
         let _guard = guard;
-        rotate_blocking(&dir, &instance_id, now, tz)
+        rotate_blocking(&dir, &instance_id, now, tz, retention_days)
     })
     .await
     .unwrap_or_else(|e| {
@@ -134,7 +140,13 @@ pub async fn rotate(
     })
 }
 
-fn rotate_blocking(dir: &Path, instance_id: &str, now: DateTime<Utc>, tz: Tz) -> RotationOutcome {
+fn rotate_blocking(
+    dir: &Path,
+    instance_id: &str,
+    now: DateTime<Utc>,
+    tz: Tz,
+    retention_days: u32,
+) -> RotationOutcome {
     if folder_state(dir) != FolderState::Ready {
         return RotationOutcome::FolderUnusable;
     }
@@ -147,7 +159,7 @@ fn rotate_blocking(dir: &Path, instance_id: &str, now: DateTime<Utc>, tz: Tz) ->
     };
     let regular = |name: &str| entries.iter().any(|e| e.name == name && e.is_file);
     let files: Vec<&FolderEntry> = entries.iter().filter(|e| e.is_file).collect();
-    let to_delete = plan(files.iter().map(|e| e.name.as_str()), instance_id, now, tz);
+    let to_delete = plan(files.iter().map(|e| e.name.as_str()), instance_id, now, tz, retention_days);
     let candidates = files
         .iter()
         .filter(|e| listing::own_stamp(&e.name, instance_id).is_some())
@@ -221,7 +233,11 @@ mod tests {
     }
 
     fn run(names: &[String], now: DateTime<Utc>) -> Vec<String> {
-        plan(names.iter().map(String::as_str), ID, now, Zurich)
+        plan(names.iter().map(String::as_str), ID, now, Zurich, 14)
+    }
+
+    fn run_keeping(names: &[String], now: DateTime<Utc>, days: u32) -> Vec<String> {
+        plan(names.iter().map(String::as_str), ID, now, Zurich, days)
     }
 
     #[test]
@@ -255,7 +271,10 @@ mod tests {
         let now = utc(2026, 11, 26, 12, 0);
         let old = name(now - Duration::days(30));
         let older = name(now - Duration::days(31));
-        assert_eq!(run(&[old.clone(), older.clone()], now), vec![older]);
+        // One backup day kept: the newest one, 30 days old.
+        assert_eq!(run_keeping(&[old.clone(), older.clone()], now, 1), vec![older.clone()]);
+        // Two backup days within the 14 kept: both stay, however old.
+        assert!(run(&[old, older], now).is_empty());
     }
 
     #[test]
@@ -264,7 +283,49 @@ mod tests {
         let future = name(utc(2027, 1, 1, 0, 0));
         let last = name(now - Duration::days(30));
         let before = name(now - Duration::days(31));
-        assert_eq!(run(&[future, last, before.clone()], now), vec![before]);
+        assert_eq!(run_keeping(&[future, last, before.clone()], now, 1), vec![before]);
+    }
+
+    #[test]
+    fn a_forward_clock_jump_keeps_the_previous_backup_days() {
+        // Daily backups through 2026-03 (23:00 local), then the clock jumps
+        // forward: the next one is stamped weeks later.
+        let mut names: Vec<String> = (1..=31).map(|d| name(utc(2026, 3, d, 21, 0))).collect();
+        let jumped = name(utc(2026, 5, 10, 9, 0));
+        names.push(jumped.clone());
+        let now = utc(2026, 5, 10, 9, 30);
+        let delete = run(&names, now);
+        let kept: Vec<&String> = names.iter().filter(|n| !delete.contains(n)).collect();
+        // The jumped backup and the 13 backup days before it survive.
+        assert_eq!(kept.len(), 14, "{kept:#?}");
+        assert!(kept.contains(&&jumped));
+        for d in 19..=31 {
+            assert!(!delete.contains(&name(utc(2026, 3, d, 21, 0))), "March {d} kept");
+        }
+        assert!(delete.contains(&name(utc(2026, 3, 18, 21, 0))));
+        assert_eq!(delete.len(), 18);
+    }
+
+    #[test]
+    fn an_idle_library_keeps_its_sparse_backup_days() {
+        // One backup every ten days for a year: the 14 most recent survive,
+        // even though they span 130 days.
+        let now = utc(2026, 11, 26, 12, 0);
+        let names: Vec<String> = (0..37).map(|i| name(now - Duration::days(10 * i + 1))).collect();
+        let delete = run(&names, now);
+        assert_eq!(delete.len(), 37 - 14);
+        for i in 0..14 {
+            assert!(!delete.contains(&name(now - Duration::days(10 * i + 1))), "{i}");
+        }
+        // Several backups on one of those days: only its newest counts.
+        let mut busy = names.clone();
+        busy.push(name(now - Duration::days(11) - Duration::hours(2)));
+        let delete = run(&busy, now);
+        assert!(delete.contains(&name(now - Duration::days(11) - Duration::hours(2))));
+        assert_eq!(delete.len(), 37 - 14 + 1);
+        // The setting is read as given: 365 keeps them all, 1 keeps the newest.
+        assert!(run_keeping(&names, now, 365).is_empty());
+        assert_eq!(run_keeping(&names, now, 1).len(), 36);
     }
 
     #[test]

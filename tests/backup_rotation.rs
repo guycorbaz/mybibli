@@ -61,7 +61,9 @@ async fn old_own_backups_go_with_their_sidecars_and_nothing_else_moves() {
     touch(&d, "mybibli-0123456789abcdef-20261325T120000Z.tar.gz");
 
     let before = names_in(&d);
-    let outcome = rotate(&f.config(), ID, now(), Zurich).await;
+    // One backup day kept (D4 amended: backup days, not calendar days):
+    // today's backups stay, the three older days go.
+    let outcome = rotate(&f.config(), ID, now(), Zurich, 1).await;
     let RotationOutcome::Done(report) = outcome else {
         panic!("{outcome:?}");
     };
@@ -89,6 +91,23 @@ async fn old_own_backups_go_with_their_sidecars_and_nothing_else_moves() {
 }
 
 #[tokio::test]
+async fn the_older_backup_days_survive_within_the_retention() {
+    let f = Folders::new();
+    let d = f.backups();
+    let names: Vec<String> = (0..5).map(|i| backup(&d, ID, now() - Duration::days(30 * i + 2))).collect();
+    let RotationOutcome::Done(report) = rotate(&f.config(), ID, now(), Zurich, 14).await else {
+        panic!("rotation ran");
+    };
+    assert_eq!(report.deleted, 0, "five backup days, fourteen kept, however old");
+    let RotationOutcome::Done(report) = rotate(&f.config(), ID, now(), Zurich, 3).await else {
+        panic!("rotation ran");
+    };
+    assert_eq!(report.deleted, 2);
+    assert!(!d.join(&names[4]).exists() && !d.join(&names[3]).exists());
+    assert!(d.join(&names[2]).exists());
+}
+
+#[tokio::test]
 async fn a_held_guard_means_nothing_is_deleted() {
     let f = Folders::new();
     let d = f.backups();
@@ -97,10 +116,10 @@ async fn a_held_guard_means_nothing_is_deleted() {
     let cfg = f.config();
     let before = names_in(&d);
     let held = cfg.guard.clone().try_lock_owned().unwrap();
-    assert_eq!(rotate(&cfg, ID, now(), Zurich).await, RotationOutcome::Busy);
+    assert_eq!(rotate(&cfg, ID, now(), Zurich, 1).await, RotationOutcome::Busy);
     assert_eq!(names_in(&d), before);
     drop(held);
-    assert!(matches!(rotate(&cfg, ID, now(), Zurich).await, RotationOutcome::Done(_)));
+    assert!(matches!(rotate(&cfg, ID, now(), Zurich, 1).await, RotationOutcome::Done(_)));
     assert_eq!(names_in(&d).len(), 2);
 }
 
@@ -118,7 +137,7 @@ async fn a_read_only_folder_is_left_alone() {
         eprintln!("skipped: this user writes in a 0500 folder");
         return;
     }
-    let outcome = rotate(&f.config(), ID, now(), Zurich).await;
+    let outcome = rotate(&f.config(), ID, now(), Zurich, 1).await;
     std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o700)).unwrap();
     assert_eq!(outcome, RotationOutcome::FolderUnusable);
     assert_eq!(names_in(&d), before);
@@ -129,6 +148,6 @@ async fn a_missing_folder_is_left_alone_and_not_created() {
     let f = Folders::new();
     let mut cfg = f.config();
     cfg.dir = f.root.path().join("absent");
-    assert_eq!(rotate(&cfg, ID, now(), Zurich).await, RotationOutcome::FolderUnusable);
+    assert_eq!(rotate(&cfg, ID, now(), Zurich, 14).await, RotationOutcome::FolderUnusable);
     assert!(!cfg.dir.exists());
 }

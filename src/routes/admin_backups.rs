@@ -113,8 +113,14 @@ pub async fn admin_backups_run(
             );
             // Story 19-7 (D4): a manual backup is rotated like any other.
             if let Some((id, _)) = backup::listing::parse_backup_name(&written.file_name) {
-                backup::rotation::rotate(&state.backup, id, chrono::Utc::now(), state.time_zone())
-                    .await;
+                backup::rotation::rotate(
+                    &state.backup,
+                    id,
+                    chrono::Utc::now(),
+                    state.time_zone(),
+                    state.backup_retention_days(),
+                )
+                .await;
             }
             feedback_html("success", &success_message(&written, loc), "")
         }

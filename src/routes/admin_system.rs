@@ -350,7 +350,7 @@ pub(crate) async fn fetch_setting_rows(
 ) -> Result<HashMap<String, (String, i32)>, AppError> {
     let rows: Vec<(String, String, i32)> = sqlx::query_as(
         "SELECT setting_key, setting_value, version FROM settings \
-         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
+         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
     )
     .bind(KEY_OVERDUE_THRESHOLD)
     .bind(KEY_DEFAULT_LANGUAGE)
@@ -369,6 +369,7 @@ pub(crate) async fn fetch_setting_rows(
     .bind(crate::services::volume_value_proposals::KEY_NEGLIGIBLE_AMOUNT)
     .bind(crate::services::volume_value_proposals::KEY_GAP_FACTOR)
     .bind(crate::services::admin_system::KEY_BACKUP_INTERVAL_HOURS)
+    .bind(crate::services::admin_system::KEY_BACKUP_RETENTION_DAYS)
     .fetch_all(pool)
     .await?;
     let mut map = HashMap::new();

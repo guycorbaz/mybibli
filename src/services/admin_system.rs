@@ -37,6 +37,8 @@ pub const KEY_SHOW_VALUE_INDICATORS: &str = "show_value_indicators";
 pub const KEY_TIME_ZONE: &str = "time_zone";
 /// Story 19-7 (#657, D1) — the automatic backup interval (hours, 0 = off).
 pub const KEY_BACKUP_INTERVAL_HOURS: &str = "backup_interval_hours";
+/// Story 19-7 (D4 amended) — backup days the rotation keeps (1..=365).
+pub const KEY_BACKUP_RETENTION_DAYS: &str = "backup_retention_days";
 
 // v1.7.1 fix #308 — runtime log-level. CR #301 (v1.7.0) advertised
 // "flip log level from /admin > System without a redeploy", but the

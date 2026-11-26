@@ -518,6 +518,7 @@ error:
     time_zone_invalid: "Unbekannte Zeitzone — geben Sie einen IANA-Namen wie Europe/Zurich an."
     # Story 19-7 (#657, D1) — ein Intervall außerhalb der Liste (veränderte Formulardaten).
     backup_interval_invalid: "Wählen Sie eines der angebotenen Intervalle."
+    backup_retention_invalid: "Geben Sie eine ganze Zahl von 1 bis 365 ein."
     version_mismatch: "Die Einstellungen wurden durch einen anderen Administrator geändert — neu laden und erneut versuchen"
     provider_version_mismatch: "%{provider} wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
   code:
@@ -1171,7 +1172,9 @@ admin:
     backup_interval_hourly: "Jede Stunde"
     backup_interval_hours: "Alle %{n} Stunden"
     backup_interval_daily: "Einmal täglich"
-    backup_interval_help: "mybibli prüft in diesem Abstand und schreibt nur dann eine Sicherung in den Sicherungsordner, wenn sich seit der letzten etwas geändert hat. Jede Sicherung wird 24 Stunden aufbewahrt, danach die letzte jedes Tages 14 Tage lang."
+    backup_interval_help: "mybibli prüft in diesem Abstand und schreibt nur dann eine Sicherung in den Sicherungsordner, wenn sich seit der letzten etwas geändert hat."
+    backup_retention_label: "Aufzubewahrende Tagessicherungen"
+    backup_retention_help: "mybibli bewahrt alle Sicherungen der letzten 24 Stunden auf, danach die letzte jedes der %{n} jüngsten Tage, an denen eine Sicherung geschrieben wurde."
     btn_save_backups: "Automatische Sicherung speichern"
     # v1.7.9 fix #334 — Metadata-Chain + Provider-Health Zeitüberschreitungen.
     metadata_chain_timeout_label: "Zeitüberschreitung pro Metadaten-Anbieter (Sekunden)"

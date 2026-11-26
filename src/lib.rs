@@ -341,6 +341,15 @@ impl AppState {
             .unwrap_or_else(|poisoned| poisoned.into_inner().backup_interval_hours)
     }
 
+    /// Story 19-7 (D4 amended): backup days the rotation keeps. Read at
+    /// each rotation, so an Admin → System change applies to the next one.
+    pub fn backup_retention_days(&self) -> u32 {
+        self.settings
+            .read()
+            .map(|s| s.backup_retention_days)
+            .unwrap_or_else(|poisoned| poisoned.into_inner().backup_retention_days)
+    }
+
     /// Story 15-1 (#602): "now" in the instance zone, for day counts.
     pub fn local_clock(&self) -> crate::utils::local_time::LocalClock {
         crate::utils::local_time::LocalClock::now(self.time_zone())

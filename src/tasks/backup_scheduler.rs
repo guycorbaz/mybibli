@@ -249,7 +249,7 @@ pub async fn run_check(state: &AppState, now: DateTime<Utc>) -> CheckRun {
         None => instance_id_of(state).await,
     };
     if let Some(id) = instance_id {
-        rotation::rotate(cfg, &id, now, state.time_zone()).await;
+        rotation::rotate(cfg, &id, now, state.time_zone(), state.backup_retention_days()).await;
     }
     run
 }

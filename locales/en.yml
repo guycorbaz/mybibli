@@ -525,6 +525,7 @@ error:
     time_zone_invalid: "Unknown time zone — use an IANA name such as Europe/Zurich."
     # Story 19-7 (#657, D1) — a backup interval outside the list (tampered form).
     backup_interval_invalid: "Choose one of the listed intervals."
+    backup_retention_invalid: "Enter a whole number from 1 to 365."
     version_mismatch: "Settings were modified by another admin — reload and retry"
     provider_version_mismatch: "%{provider} was modified by another admin — reload and retry"
   code:
@@ -1187,7 +1188,9 @@ admin:
     backup_interval_hourly: "Every hour"
     backup_interval_hours: "Every %{n} hours"
     backup_interval_daily: "Once a day"
-    backup_interval_help: "mybibli checks at this interval and writes a backup into the backups folder only if something changed since the last one. Each backup is kept 24 hours, then the last one of each day is kept 14 days."
+    backup_interval_help: "mybibli checks at this interval and writes a backup into the backups folder only if something changed since the last one."
+    backup_retention_label: "Daily backups to keep"
+    backup_retention_help: "mybibli keeps every backup of the last 24 hours, then the last one of each of the %{n} most recent days on which a backup was written."
     btn_save_backups: "Save automatic backup"
     # v1.7.9 fix #334 — Metadata-chain + provider-health timeouts.
     metadata_chain_timeout_label: "Per-provider metadata timeout (seconds)"

@@ -217,6 +217,8 @@ async fn a_due_check_writes_then_rotates_and_is_not_due_again(pool: DbPool) {
     std::fs::write(f.backups().join(&old), b"old").unwrap();
     std::fs::write(f.backups().join(format!("{old}.sha256")), b"old").unwrap();
     let state = state_with(&pool, f.config());
+    // One backup day kept: the old day goes once today's backup exists.
+    state.settings.write().unwrap().backup_retention_days = 1;
 
     let CheckRun::Written(file) = run_check(&state, now).await else {
         panic!("a due check writes");
@@ -415,34 +417,56 @@ async fn the_health_tab_shows_the_last_backup_and_the_schedule(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn a_manual_backup_rotates_old_ones(pool: DbPool) {
+async fn a_manual_backup_rotates_old_ones_by_the_retention_setting(pool: DbPool) {
     let f = Folders::new();
     let id = instance_id(&pool).await;
     let old = backup_file_name(&id, Utc::now() - Duration::days(40));
     std::fs::write(f.backups().join(&old), b"old").unwrap();
-    let app = mybibli::routes::build_router_with_mcp(state_with(&pool, f.config()), mybibli::mcp::McpConfig::default());
+    let state = state_with(&pool, f.config());
+    let settings = state.settings.clone();
+    let app = mybibli::routes::build_router_with_mcp(state, mybibli::mcp::McpConfig::default());
     seed_admin(&pool, "sched_admin_rotate").await;
     let admin = Browser::login(&app, "sched_admin_rotate").await;
+    // The default keeps 14 backup days: the 40-day-old one is one of them.
+    let (status, _) = admin.post_form(&app, "/admin/backups", "").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(archives(&f).contains(&old), "kept within 14 backup days");
+    // Keeping one backup day: the next backup's rotation removes it.
+    settings.write().unwrap().backup_retention_days = 1;
     let (status, _) = admin.post_form(&app, "/admin/backups", "").await;
     assert_eq!(status, StatusCode::OK);
     let names = archives(&f);
-    assert_eq!(names.len(), 1, "{names:?}");
-    assert_ne!(names[0], old);
+    assert!(!names.contains(&old), "{names:?}");
+    assert_eq!(names.len(), 2, "today's two backups (the 24-hour tier): {names:?}");
 }
 
 // ─── AC1 / AC7 — the setting ─────────────────────────────────────
 
+async fn setting_row(pool: &DbPool, key: &str) -> (String, i32) {
+    sqlx::query_as("SELECT setting_value, version FROM settings WHERE setting_key = ?")
+        .bind(key)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
 async fn interval_row(pool: &DbPool) -> (String, i32) {
-    sqlx::query_as(
-        "SELECT setting_value, version FROM settings WHERE setting_key = 'backup_interval_hours'",
+    setting_row(pool, "backup_interval_hours").await
+}
+
+async fn retention_row(pool: &DbPool) -> (String, i32) {
+    setting_row(pool, "backup_retention_days").await
+}
+
+fn save_body(hours: &str, hv: i32, days: &str, dv: i32, csrf: &str) -> String {
+    format!(
+        "backup_interval_hours={hours}&backup_interval_version={hv}\
+         &backup_retention_days={days}&backup_retention_version={dv}&_csrf_token={csrf}"
     )
-    .fetch_one(pool)
-    .await
-    .unwrap()
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn the_admin_saves_a_listed_interval_twice_in_a_row(pool: DbPool) {
+async fn the_admin_saves_the_two_settings_twice_in_a_row(pool: DbPool) {
     let f = Folders::new();
     let state = state_with(&pool, f.config());
     let settings = state.settings.clone();
@@ -452,37 +476,53 @@ async fn the_admin_saves_a_listed_interval_twice_in_a_row(pool: DbPool) {
 
     let (status, page) = admin.get(&app, "/admin?tab=system").await;
     assert_eq!(status, StatusCode::OK);
+    let page = unescaped(page);
     assert!(page.contains("id=\"admin-system-backups-heading\""));
     assert!(page.contains("Sauvegarde automatique"));
     assert!(page.contains(r#"<option value="1" selected>Toutes les heures</option>"#), "{page}");
+    assert!(page.contains("Sauvegardes quotidiennes à garder"));
+    assert!(page.contains("la dernière de chacun des 14 derniers jours où une sauvegarde a été écrite"));
 
     let (_, v) = interval_row(&pool).await;
-    let body = format!("backup_interval_hours=6&backup_interval_version={v}&_csrf_token={}", admin.csrf);
+    let (_, r) = retention_row(&pool).await;
+    let body = save_body("6", v, "30", r, &admin.csrf);
     let res = admin.send(&app, "POST", "/admin/system/backups", &body, true).await;
     assert_eq!(res.status(), StatusCode::OK);
-    let html = body_string(res).await;
+    let html = unescaped(body_string(res).await);
     assert!(html.contains("Sauvegarde automatique enregistrée : Toutes les 6 heures."), "{html}");
     let (value, v2) = interval_row(&pool).await;
-    assert_eq!(value, "6");
+    let (days, r2) = retention_row(&pool).await;
+    assert_eq!((value.as_str(), days.as_str()), ("6", "30"));
     assert!(html.contains(&format!(r#"name="backup_interval_version" value="{v2}""#)), "the new version: {html}");
+    assert!(html.contains(&format!(r#"name="backup_retention_version" value="{r2}""#)));
+    assert!(html.contains("chacun des 30 derniers jours"), "the help names the new value");
     assert_eq!(settings.read().unwrap().backup_interval_hours, 6, "the cache is reloaded");
+    assert_eq!(settings.read().unwrap().backup_retention_days, 30);
 
-    // The panel renders the stored version (the key is whitelisted, #406),
-    // and a second save with it succeeds.
+    // The panel renders the stored versions (the keys are whitelisted,
+    // #406), and a second save with them succeeds.
     let (_, page) = admin.get(&app, "/admin?tab=system").await;
     assert!(page.contains(&format!(r#"name="backup_interval_version" value="{v2}""#)));
+    assert!(page.contains(&format!(r#"name="backup_retention_version" value="{r2}""#)));
     assert!(page.contains(r#"<option value="6" selected>"#));
-    let body = format!("backup_interval_hours=0&backup_interval_version={v2}&_csrf_token={}", admin.csrf);
-    let (status, html) = admin.post_form(&app, "/admin/system/backups", &body).await;
+    assert!(page.contains(r#"value="30""#));
+    let (status, html) = admin
+        .post_form(&app, "/admin/system/backups", &save_body("0", v2, "365", r2, &admin.csrf))
+        .await;
     assert_eq!(status, StatusCode::OK, "{html}");
     assert!(html.contains("Sauvegarde automatique enregistrée : Désactivée."));
     assert_eq!(settings.read().unwrap().backup_interval_hours, 0);
+    assert_eq!(settings.read().unwrap().backup_retention_days, 365);
 
-    // A stale version is the usual conflict; nothing stored.
-    let body = format!("backup_interval_hours=12&backup_interval_version={v2}&_csrf_token={}", admin.csrf);
-    let (status, _) = admin.post_form(&app, "/admin/system/backups", &body).await;
-    assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(interval_row(&pool).await.0, "0");
+    // A stale version (either one) is the usual conflict; nothing stored.
+    let (_, v3) = interval_row(&pool).await;
+    let (_, r3) = retention_row(&pool).await;
+    for body in [save_body("12", v2, "7", r3, &admin.csrf), save_body("12", v3, "7", r2, &admin.csrf)] {
+        let (status, _) = admin.post_form(&app, "/admin/system/backups", &body).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(interval_row(&pool).await, ("0".to_string(), v3), "both or neither");
+        assert_eq!(retention_row(&pool).await, ("365".to_string(), r3));
+    }
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -492,11 +532,9 @@ async fn a_value_outside_the_list_is_refused_next_to_the_field(pool: DbPool) {
     seed_admin(&pool, "sched_admin_refuse").await;
     let admin = Browser::login(&app, "sched_admin_refuse").await;
     let (_, v) = interval_row(&pool).await;
+    let (_, r) = retention_row(&pool).await;
     for value in ["5", "48", "-1", "abc", ""] {
-        let body = format!(
-            "backup_interval_hours={value}&backup_interval_version={v}&_csrf_token={}",
-            admin.csrf
-        );
+        let body = save_body(value, v, "14", r, &admin.csrf);
         let res = admin.send(&app, "POST", "/admin/system/backups", &body, true).await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST, "{value:?}");
         assert_eq!(res.headers()["hx-retarget"], "#backup-interval-error");
@@ -504,10 +542,31 @@ async fn a_value_outside_the_list_is_refused_next_to_the_field(pool: DbPool) {
         assert!(html.contains("Choisissez l'un des intervalles proposés."), "{html}");
     }
     assert_eq!(interval_row(&pool).await, ("1".to_string(), v), "nothing stored");
+    assert_eq!(retention_row(&pool).await, ("14".to_string(), r));
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn only_an_admin_saves_the_interval_and_sees_the_block(pool: DbPool) {
+async fn a_retention_outside_1_to_365_is_refused_next_to_the_field(pool: DbPool) {
+    let f = Folders::new();
+    let app = mybibli::routes::build_router_with_mcp(state_with(&pool, f.config()), mybibli::mcp::McpConfig::default());
+    seed_admin(&pool, "sched_admin_retention").await;
+    let admin = Browser::login(&app, "sched_admin_retention").await;
+    let (_, v) = interval_row(&pool).await;
+    let (_, r) = retention_row(&pool).await;
+    for value in ["0", "366", "-1", "abc", "", "1.5", "007"] {
+        let body = save_body("6", v, value, r, &admin.csrf);
+        let res = admin.send(&app, "POST", "/admin/system/backups", &body, true).await;
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST, "{value:?}");
+        assert_eq!(res.headers()["hx-retarget"], "#backup-retention-error");
+        let html = body_string(res).await;
+        assert!(html.contains("Indiquez un nombre entier entre 1 et 365."), "{html}");
+    }
+    assert_eq!(interval_row(&pool).await, ("1".to_string(), v), "nothing stored, the interval neither");
+    assert_eq!(retention_row(&pool).await, ("14".to_string(), r));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn only_an_admin_saves_the_settings_and_sees_the_block(pool: DbPool) {
     let f = Folders::new();
     let app = mybibli::routes::build_router_with_mcp(state_with(&pool, f.config()), mybibli::mcp::McpConfig::default());
     let res = get_anonymous(&app, "/admin?tab=health").await;
@@ -515,7 +574,7 @@ async fn only_an_admin_saves_the_interval_and_sees_the_block(pool: DbPool) {
 
     let anon = Browser::anonymous(&app).await;
     let (status, _) = anon
-        .post_form(&app, "/admin/system/backups", "backup_interval_hours=6&backup_interval_version=1&_csrf_token=x")
+        .post_form(&app, "/admin/system/backups", &save_body("6", 1, "14", 1, "x"))
         .await;
     assert_eq!(status, StatusCode::SEE_OTHER, "anonymous is sent to the login");
 
@@ -523,16 +582,18 @@ async fn only_an_admin_saves_the_interval_and_sees_the_block(pool: DbPool) {
     let lib = Browser::login(&app, "sched_lib").await;
     let (status, _) = lib.get(&app, "/admin?tab=health").await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    let body = format!("backup_interval_hours=6&backup_interval_version=1&_csrf_token={}", lib.csrf);
-    let (status, _) = lib.post_form(&app, "/admin/system/backups", &body).await;
+    let (status, _) = lib
+        .post_form(&app, "/admin/system/backups", &save_body("6", 1, "14", 1, &lib.csrf))
+        .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
     seed_admin(&pool, "sched_admin_csrf").await;
     let admin = Browser::login(&app, "sched_admin_csrf").await;
     let forged = Browser { cookie: admin.cookie.clone(), csrf: "not-the-token".to_string() };
     let (status, _) = forged
-        .post_form(&app, "/admin/system/backups", "backup_interval_hours=6&backup_interval_version=1&_csrf_token=x")
+        .post_form(&app, "/admin/system/backups", &save_body("6", 1, "30", 1, "x"))
         .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(interval_row(&pool).await.0, "1", "no refused request stored anything");
+    assert_eq!(retention_row(&pool).await.0, "14");
 }

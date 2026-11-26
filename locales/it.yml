@@ -512,6 +512,7 @@ error:
     time_zone_invalid: "Fuso orario sconosciuto — indicare un nome IANA come Europe/Zurich."
     # Story 19-7 (#657, D1) — un intervallo fuori dalla lista (modulo alterato).
     backup_interval_invalid: "Scegli uno degli intervalli proposti."
+    backup_retention_invalid: "Inserisci un numero intero da 1 a 365."
     version_mismatch: "Le impostazioni sono state modificate da un altro amministratore — ricarica e riprova"
     provider_version_mismatch: "%{provider} è stato modificato da un altro amministratore — ricarica e riprova"
   code:
@@ -1158,7 +1159,9 @@ admin:
     backup_interval_hourly: "Ogni ora"
     backup_interval_hours: "Ogni %{n} ore"
     backup_interval_daily: "Una volta al giorno"
-    backup_interval_help: "mybibli controlla a questo intervallo e scrive un backup nella cartella dei backup solo se qualcosa è cambiato dall'ultimo. Ogni backup è conservato 24 ore, poi l'ultimo di ogni giorno è conservato 14 giorni."
+    backup_interval_help: "mybibli controlla a questo intervallo e scrive un backup nella cartella dei backup solo se qualcosa è cambiato dall'ultimo."
+    backup_retention_label: "Backup giornalieri da conservare"
+    backup_retention_help: "mybibli conserva tutti i backup delle ultime 24 ore, poi l'ultimo di ciascuno dei %{n} giorni più recenti in cui è stato scritto un backup."
     btn_save_backups: "Salva il backup automatico"
     # v1.7.9 fix #334 — timeout metadata-chain + provider-health.
     metadata_chain_timeout_label: "Timeout per fornitore di metadati (secondi)"

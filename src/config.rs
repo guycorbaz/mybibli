@@ -326,6 +326,27 @@ pub const ALLOWED_BACKUP_INTERVALS: &[u32] = &[0, 1, 2, 3, 4, 6, 8, 12, 24];
 /// Story 19-7 (D1) — every hour.
 pub const DEFAULT_BACKUP_INTERVAL_HOURS: u32 = 1;
 
+/// Story 19-7 (D4 amended, 2026-11-26) — how many backup days the daily
+/// tier of the rotation keeps: the newest backup of each of the N most
+/// recent local days on which an own backup was written.
+pub const MIN_BACKUP_RETENTION_DAYS: u32 = 1;
+pub const MAX_BACKUP_RETENTION_DAYS: u32 = 365;
+pub const DEFAULT_BACKUP_RETENTION_DAYS: u32 = 14;
+
+/// Story 19-7 — a retention as stored or posted: decimal digits (no
+/// blanks, no sign, no leading zero) naming an integer in
+/// `MIN_BACKUP_RETENTION_DAYS..=MAX_BACKUP_RETENTION_DAYS`.
+pub fn parse_backup_retention_days(raw: &str) -> Option<u32> {
+    let digits_only = !raw.is_empty() && raw.len() <= 3 && raw.bytes().all(|b| b.is_ascii_digit());
+    if !digits_only || raw.starts_with('0') {
+        return None;
+    }
+    let days: u32 = raw.parse().ok()?;
+    (MIN_BACKUP_RETENTION_DAYS..=MAX_BACKUP_RETENTION_DAYS)
+        .contains(&days)
+        .then_some(days)
+}
+
 /// Story 19-7 (D1) — a backup interval as stored or posted: decimal digits
 /// naming one of [`ALLOWED_BACKUP_INTERVALS`], nothing else (no blanks, no
 /// sign, no leading zero).
@@ -449,6 +470,9 @@ pub struct AppSettings {
     /// [`ALLOWED_BACKUP_INTERVALS`]. Seeded to `1` by migration
     /// 20261126090000; read by `tasks::backup_scheduler` at each wake.
     pub backup_interval_hours: u32,
+    /// Backup days the rotation keeps (1..=365, default 14), seeded by
+    /// migration 20261126100000; read at each rotation.
+    pub backup_retention_days: u32,
 }
 
 impl Default for AppSettings {
@@ -487,6 +511,7 @@ impl Default for AppSettings {
             metadata_chain_provider_timeout_overrides: std::collections::HashMap::new(),
             time_zone: crate::utils::local_time::DEFAULT_TIME_ZONE,
             backup_interval_hours: DEFAULT_BACKUP_INTERVAL_HOURS,
+            backup_retention_days: DEFAULT_BACKUP_RETENTION_DAYS,
         }
     }
 }
@@ -745,6 +770,15 @@ impl AppSettings {
                         key = %key,
                         value = %value,
                         "backup_interval_hours is not one of the offered intervals, using default 1"
+                    ),
+                },
+                // Story 19-7: backup days the rotation keeps.
+                "backup_retention_days" => match parse_backup_retention_days(value) {
+                    Some(days) => settings.backup_retention_days = days,
+                    None => tracing::warn!(
+                        key = %key,
+                        value = %value,
+                        "backup_retention_days is not an integer from 1 to 365, using default 14"
                     ),
                 },
                 "log_level" => {
@@ -1083,6 +1117,34 @@ mod tests {
         }
     }
 
+    #[sqlx::test(migrations = "./migrations")]
+    async fn load_from_db_backup_retention_seeded_in_range_and_out(pool: DbPool) {
+        let settings = AppSettings::load_from_db(&pool).await.expect("load ok");
+        assert_eq!(settings.backup_retention_days, 14);
+        for (value, expected) in [("1", 1), ("365", 365), ("0", 14), ("366", 14), ("-1", 14), ("abc", 14), ("", 14), ("030", 14)] {
+            sqlx::query(
+                "UPDATE settings SET setting_value = ? WHERE setting_key = 'backup_retention_days'",
+            )
+            .bind(value)
+            .execute(&pool)
+            .await
+            .expect("update setting");
+            let settings = AppSettings::load_from_db(&pool).await.expect("load ok");
+            assert_eq!(settings.backup_retention_days, expected, "row {value:?}");
+        }
+    }
+
+    #[test]
+    fn only_a_whole_number_from_1_to_365_is_a_retention() {
+        assert_eq!(parse_backup_retention_days("1"), Some(1));
+        assert_eq!(parse_backup_retention_days("14"), Some(14));
+        assert_eq!(parse_backup_retention_days("365"), Some(365));
+        for raw in ["0", "366", "999", "1000", "-1", "+1", "01", "1.5", " 1", "1 ", "", "abc"] {
+            assert_eq!(parse_backup_retention_days(raw), None, "{raw:?}");
+        }
+        assert_eq!(AppSettings::default().backup_retention_days, 14);
+    }
+
     #[test]
     fn only_the_offered_backup_intervals_parse() {
         for hours in ALLOWED_BACKUP_INTERVALS {
@@ -1183,6 +1245,7 @@ mod tests {
             )]),
             time_zone: chrono_tz::America::New_York,
             backup_interval_hours: 6,
+            backup_retention_days: 30,
         };
         let cloned = settings.clone();
         assert_eq!(cloned.overdue_threshold_days, 60);
@@ -1199,6 +1262,7 @@ mod tests {
         assert_eq!(cloned.provider_health_probe_timeout_secs, 15);
         assert_eq!(cloned.time_zone, chrono_tz::America::New_York);
         assert_eq!(cloned.backup_interval_hours, 6);
+        assert_eq!(cloned.backup_retention_days, 30);
         assert_eq!(
             cloned
                 .metadata_chain_provider_timeout_overrides

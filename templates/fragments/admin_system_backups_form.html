@@ -1,8 +1,9 @@
-{# Admin → System → Backups form (story 19-7, #657, D1). One select and a
-   Save button. The form is never swapped (Rule #21): its target is the
-   field's slot (a refusal lands there, a save empties it), the hidden
-   version is refreshed out of band in its own slot. CSRF token is the
-   FIRST input (audit invariant). #}
+{# Admin → System → Backups form (story 19-7, #657, D1 and D4 amended).
+   The interval select and the retention number, one Save button. The form
+   is never swapped (Rule #21): its target is the slot of the refused field
+   (`HX-Retarget`), a save empties both slots and refreshes the hidden
+   versions and the retention help out of band. CSRF token is the FIRST
+   input (audit invariant). #}
 <form id="admin-system-backups-form"
       method="POST"
       action="/admin/system/backups"
@@ -12,6 +13,7 @@
       class="border border-stone-200 dark:border-stone-700 rounded-lg p-4 bg-stone-50 dark:bg-stone-900">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
     <div id="backup-interval-version-slot"><input type="hidden" name="backup_interval_version" value="{{ interval_version }}"></div>
+    <div id="backup-retention-version-slot"><input type="hidden" name="backup_retention_version" value="{{ retention_version }}"></div>
     <label for="backup-interval" class="block text-sm font-medium mb-1">{{ interval_label }}</label>
     <select id="backup-interval"
             name="backup_interval_hours"
@@ -22,6 +24,19 @@
     </select>
     <p id="backup-interval-help" class="text-xs text-stone-500 dark:text-stone-400 mt-1 max-w-3xl">{{ interval_help }}</p>
     <div id="backup-interval-error" data-field-slot aria-live="polite"></div>
+    <label for="backup-retention" class="block text-sm font-medium mt-4 mb-1">{{ retention_label }}</label>
+    <input type="number"
+           id="backup-retention"
+           name="backup_retention_days"
+           min="{{ retention_min }}"
+           max="{{ retention_max }}"
+           step="1"
+           required
+           value="{{ retention_value|e }}"
+           aria-describedby="backup-retention-help backup-retention-error"
+           class="w-32 px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800">
+    <div id="backup-retention-help-wrap"><p id="backup-retention-help" class="text-xs text-stone-500 dark:text-stone-400 mt-1 max-w-3xl">{{ retention_help }}</p></div>
+    <div id="backup-retention-error-wrap"><div id="backup-retention-error" data-field-slot aria-live="polite"></div></div>
     <div class="mt-3">
         <button type="submit"
                 id="admin-system-backups-submit"

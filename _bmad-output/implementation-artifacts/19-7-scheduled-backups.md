@@ -48,6 +48,12 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
     - Help: "mybibli checks at this interval and writes a backup into the backups folder only if something changed since the last one. Each backup is kept 24 hours, then the last one of each day is kept 14 days." / « mybibli vérifie à cet intervalle et n'écrit une sauvegarde dans le dossier de sauvegarde que si quelque chose a changé depuis la précédente. Chaque sauvegarde est gardée 24 heures, puis la dernière de chaque jour est gardée 14 jours. »
     - Saved: "Automatic backup saved: %{interval}." / « Sauvegarde automatique enregistrée : %{interval}. »
     - Refusal (a value not in the list, only by a tampered form): "Choose one of the listed intervals." / « Choisissez l'un des intervalles proposés. »
+  - **Extended by the project lead (2026-11-26, after review pass 1): the retention.** K/V `backup_retention_days`, integer 1..=365 (positive shape: decimal digits, no sign, no leading zero), default 14; `AppSettings::backup_retention_days`, `AppState::backup_retention_days()`, seed migration `20261126100000_settings_backup_retention.sql`, whitelisted in `fetch_setting_rows`; a stored value outside the range loads as 14 with a `warn`. A second field of the same "Backups" section, saved by the same form and button (one hidden version per setting, both saved in one transaction: both or neither; the form is still never swapped). Number input `min=1 max=365`, required. Copy (EN / FR; DE and IT follow):
+    - Label: "Daily backups to keep" / « Sauvegardes quotidiennes à garder »
+    - Help: "mybibli keeps every backup of the last 24 hours, then the last one of each of the %{n} most recent days on which a backup was written." / « mybibli garde toutes les sauvegardes des dernières 24 heures, puis la dernière de chacun des %{n} derniers jours où une sauvegarde a été écrite. » (%{n} = the current value, refreshed out of band after a save)
+    - Refusal: "Enter a whole number from 1 to 365." / « Indiquez un nombre entier entre 1 et 365. »
+    - The interval help loses its retention sentence: "mybibli checks at this interval and writes a backup into the backups folder only if something changed since the last one." / « mybibli vérifie à cet intervalle et n'écrit une sauvegarde dans le dossier de sauvegarde que si quelque chose a changé depuis la précédente. »
+    - Saved line: one entry, D1's ("Automatic backup saved: %{interval}."), whichever field changed — the section has one Save button and one answer.
 - **D2 — when a check runs.** *(Technical.)*
   - A task `tasks/backup_scheduler.rs` wakes every 60 s (`tokio::time::interval`, `MissedTickBehavior::Skip`: a clock jump never fires a burst; at most one check per wake). It reads the setting at each wake, so a change applies within a minute.
   - A check is due when the setting is not off and `now >= base + interval`, where `base` is the later of: the time of this process's last check, and the time stamped in the newest own backup name in the folder. With no base (fresh folder, first start), the check is due at once. A stamp later than now (clock skew, a clock that jumped back) is ignored for the base; otherwise one stray future-stamped file would stop the schedule until the clock reaches it. A name whose stamp does not parse as a real UTC time (`is_backup_name` checks digits only, e.g. month `13`) is ignored too.
@@ -77,13 +83,14 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
   - **Kept**, among the candidates:
     1. the newest one stamped at or before now, whatever its age (with the skip rule, a library untouched for three weeks must keep its last backup; adopted after validation: a stray file stamped in the future can never push the real last backup out);
     2. every one stamped less than 24 hours before now (and any stamped in the future: clock skew);
-    3. for each of the 14 most recent local days (today and the 13 before, in the instance time zone), the newest one of that day.
+    3. ~~for each of the 14 most recent local days (today and the 13 before, in the instance time zone), the newest one of that day.~~ **Amended by the project lead (2026-11-26, Medium of review pass 1):** for each of the N most recent local days **on which an own backup was written** (instance time zone; N = `backup_retention_days`, default 14), the newest one of that day. Counting backup days instead of calendar days means a forward clock jump (or a long idle stretch, with the skip rule) never deletes the daily history: the previous N−1 backup days survive.
   - **Deleted:** every other candidate. Its sidecar `<name>.sha256` is deleted after it; if the archive cannot be deleted, the sidecar stays. A sidecar of an own backup name whose archive is absent is deleted too (it checks nothing).
   - **Manual backups** have the same name shape and are rotated the same way. *Options:* A — rotated (recommended: a manual backup is a backup; it can be the last of its day); B — kept forever, which needs a different name shape and changes 19-6's D4.
   - **When:** after each scheduled check (written or unchanged), and after each successful manual backup. With the schedule off, only after manual backups. The rotation takes the guard with `try_lock`; if the guard is held, it is skipped (the next pass does it), so it never deletes a file that 19-8 is reading.
   - One `info` line per deleted file (its name), one summary line with the counts.
   - *Option on "14 days":* A — today and the 13 previous local days (recommended, as above); B — 14 days counted after the 24-hour window.
   - *Validator note.* (a) Rule 1 keeps "the newest one". With a future-stamped stray file, the newest is that stray, and the real last backup is then protected only by the 24 h and 14-day tiers: with the schedule off and no manual backup for 15 days, the real last backup would go. Suggest: rule 1 keeps the newest one stamped at or before now; rule 2 still keeps future ones. (b) Candidates should also be regular files (`DirEntry::file_type`, which does not follow links, as `list_covers` and the temporary-file sweep do), and a name whose stamp does not parse as a real time is never a candidate. These two are written into the guardrails and AC5 below, since they only narrow what can be deleted.
+  - The "14 days" option above is superseded by the amendment of tier 3 (backup days, configurable).
 - **D5 — foreign backups.** *(19-7 part approved in effect: whatever the answer, 19-7 never deletes them. The project lead asked for a suggestion on the after-restore part, which belongs to 19-8: never delete them automatically, show them as "another instance" on the Backups tab, the manual says to remove them by hand.)* #657 says a backup this instance did not write "escapes rotation until it has been restored". Story 19-8 (restore) does not exist yet. *Recommendation:* 19-7 never deletes a backup of another instance id, at all. Story 19-8 decides what "returned to normal handling" means after its restore (#657: deleted, or rotated). *Option:* none safer is possible before 19-8.
 - **D6 — the Health status line (UX-DR45).** *(Approved by the project lead, 2026-11-26.)*
   - A "Backups" block on the Health tab, after the watching panel. Built in a new `routes/admin_health_backup.rs`, rendered by `fragments/admin_health_backup.html`, included by the Health panel (19-5's pattern).
@@ -110,7 +117,7 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
 
 ## Acceptance Criteria
 
-1. **AC1 — the setting.** Admin → System shows the "Backups" section (D1) with the current value selected. Saving a listed value stores it, reloads the cache and answers D1's saved line. A value outside the list is refused next to the field, nothing is stored. A stale version answers the usual conflict. The key is in `fetch_setting_rows`; a value in the database outside the list loads as the default with a `warn`. Four locale files (`locale_parity::`).
+1. **AC1 — the setting.** Admin → System shows the "Backups" section (D1) with the current value selected. Saving a listed value stores it, reloads the cache and answers D1's saved line. A value outside the list is refused next to the field, nothing is stored. A stale version answers the usual conflict. The key is in `fetch_setting_rows`; a value in the database outside the list loads as the default with a `warn`. Four locale files (`locale_parity::`). *Extended (D1 retention):* the retention field shows the stored value; 1..=365 is saved with the interval in one transaction; 0, 366, −1, `abc`, empty (and a leading zero) are refused next to the field, nothing stored (the interval neither); a stale version of either setting is the usual conflict; an out-of-range stored value loads as 14 with a `warn`.
 2. **AC2 — the schedule.** With a usable folder and a due check, the task writes a backup, then rotates (D2). The check is due per D2's rule (unit test of the pure due-time function, including "no base" and a restart with a recent backup in the folder). A setting change applies at the next wake. With the setting off, no check runs. A check meeting `AlreadyRunning` is retried at the next wake, not one interval later. A future-stamped or unparsable name in the folder does not delay the check. Tests call the check function directly (e.g. `run_check(&state, now)`) and the pure due-time function with a given clock; no test waits for the warm-up or a wake.
 3. **AC3 — missing folder.** With the folder missing or not writable, a check writes nothing anywhere (the test lists the parent folder), creates nothing, and the task keeps running; one `warn` on the change of state. The Health tab shows D6's warning.
 4. **AC4 — skip when unchanged (D3).** Integration tests on a temporary folder:
@@ -130,6 +137,7 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
    - a name stamped in the future kept;
    - a foreign id, a temporary `.tmp-` name, a near-miss name (`mybibli-<id>-20261125T1200Z.tar.gz`, wrong case, other suffix), a sidecar name, and a name of the right shape whose stamp is not a real time (`20261325T120000Z`) never returned;
    - the 24-hour edge: a backup stamped exactly 24 h before now is no longer in the hourly tier;
+   - *(D4 amended)* the daily tier counts backup days: a forward clock jump keeps the previous N−1 backup days; an idle library keeps its N most recent sparse backup days however old; the retention value is read as given (1, 14, 365);
    - **DST days**: on 2026-03-29 and 2026-10-25, the newest backup of the local day is chosen by local date, not UTC date (e.g. `2026-10-25T22:30Z` is 23:30 CET on the 25th and `2026-10-25T23:30Z` is 00:30 on the 26th; `00:30Z` and `01:30Z` are both 02:30 local on the 25th).
 
    An integration test on a temporary folder: the archives returned are deleted with their sidecars, an orphan own sidecar is deleted, a foreign sidecar and a symbolic link or directory named like an own backup are untouched, every other file is untouched, a rotation meeting a held guard deletes nothing, and a rotation on a read-only folder deletes nothing and does not fail the check.
@@ -140,6 +148,8 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
    - the refusal: the spec changes an option's value to `5` in the page (`evaluate`), submits, and sees the refusal next to the field;
    - after a "Back up now" on the Backups tab, the Health tab shows a last backup stamped no earlier than the one the spec wrote (other specs may write backups: never assert it is exactly the spec's file).
 
+   - *(D1 retention)* a retention of 366 (the browser's own `min` / `max` removed in the page) is refused next to the field; the spec restores both settings in an `afterAll` on a fresh context.
+
    The epic smoke test is story 19-10, not here.
 9. **AC9 — gates.** clippy (`-D warnings`), unit and integration tests (`tests/backup_schedule.rs`, `tests/backup_rotation.rs`, declared in `tests/integration.rs`), `sqlx prepare --check` (run `cargo sqlx prepare` first if a typed `query!` macro was added), `locale_parity::`, `templates_audit`, tsc, the `waitForTimeout` grep gate, and the full E2E suite with `CI=true --workers=2` with no flaky test.
 
@@ -149,6 +159,7 @@ Decisions marked **awaiting approval** belong to the project lead. The others ar
 - [x] T2 — `routes/admin_system_backups.rs` + `fragments/admin_system_backups_form.html` + the section in `admin_system_panel.html` (pre-rendered `backups_form_html` field, like `time_zone_form_html`) + the route in `routes/mod.rs` (AC1, AC7).
 - [x] T3 — Writer stages (D3, D7): `Fingerprint` (dump SHA-256 + cover list), `BackupStatus` in `BackupConfig`, `write_backup_if_changed`, `write_backup` recording its fingerprint; `covers::list_covers` also returns size and modification time. Keep `mod.rs` focused; put the fingerprint in `backup/fingerprint.rs` if it grows.
 - [x] T4 — `services/backup/rotation.rs`: `plan` (pure) + `apply` (deletes under `try_lock`, sidecars, logs) (D4, D5, AC5).
+- [x] T10 — *(after review pass 1)* D4 amended (tier 3 over backup days) and the `backup_retention_days` setting: migration, `AppSettings`, accessor, whitelist, second field of the Backups form, locales ×4, rotation reads it at each pass; tests (unit, integration, E2E).
 - [x] T5 — `tasks/backup_scheduler.rs` (D2): warm-up, 60 s wake, due-time function (pure, unit-tested), check, rotation, state transitions and logs; spawned from `main.rs` next to the auto-purge scheduler. Call the rotation after a successful manual backup in `routes/admin_backups.rs`.
 - [x] T6 — Health block (D6): `routes/admin_health_backup.rs` + `fragments/admin_health_backup.html`, included by `admin_health_panel.html`, one field in `AdminHealthPanel` (`routes/admin.rs` stays under 2000 lines).
 - [x] T7 — Locales ×4 (D1, D6 copy as approved); `touch src/lib.rs` before the build.
@@ -227,6 +238,22 @@ Changed:
 - Guardrails: regular files only, focus (Rule #21), Health folder listing in `spawn_blocking`. Couplings: E2E timing, instance-wide setting, the sprint-status key differs from this file's name.
 - Validator notes added under D1, D3, D4 and D9; no decision changed.
 
+## Senior Developer Review (AI)
+
+### Review pass 1 (2026-11-26, two independent reviewers)
+
+- **Medium — a forward clock jump deletes the 14-day history** (tier 3 counted calendar days back from "now"; one backup stamped weeks ahead pushed every earlier day out of the window). **Decided by the project lead:** tier 3 counts the N most recent days on which a backup was written, N configurable (`backup_retention_days`, 1..=365, default 14). Fixed (D4 amended, D1 extended).
+- Low — the E2E restore of the setting ran in a `finally` on the test's own page (lost on a timeout). Fixed: `afterAll` on a fresh context, restoring both settings.
+- Low — `backUpNow` pressed up to the `toPass` timeout instead of retrying once. Fixed: at most two presses.
+- Low — a write refused for the folder while `access(W_OK)` allowed it (CIFS / NFS uid mapping) flipped the folder state every minute and left the check due (a full dump every minute). Fixed: recorded as a failed check, folder kept "not writable" until a backup succeeds.
+- Low — the instance id was read from the database at every wake, even with the schedule off, warning every minute during an outage. Fixed: read once and kept, not read while off, one `warn` per outage.
+- Low — `run`'s temporary sweep, name checks and cover listing ran on the async worker. Fixed: `spawn_blocking` (#729 L3 closed for those calls).
+- Low — the Health block kept "automatic backup failed" after a later successful backup, and showed "Next check" under a folder warning. Fixed.
+- Low — DE / IT wording ("vom", "aufbewahrt", "verso"). Fixed.
+- Low — the read-only-folder test skipped silently as root. Fixed: named `…_unless_run_as_root`, asserts more when not root.
+- Low — the single `warn` per folder-state change was not tested. Fixed: pure `folder_change` + a `tracing_test` log assertion.
+- Low — a hand-replaced archive with the same name and size is not detected by the skip rule. Documented (Dev Notes, D3 trade-off).
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -252,11 +279,13 @@ Claude Opus 5.5 (claude-opus-5-5), dev-story workflow, non-interactive.
 - T9: CLAUDE.md Backups bullet extended; `docs/auth-threat-model.md` § 5.13 extended. Locales ×4 (DE/IT translated; `locale_parity` green).
 - Gates: `cargo clippy --all-targets -- -D warnings` clean; `cargo test --lib` 1942 passed (1 ignored); `cargo test --test integration` 994 passed (22 in `backup_schedule::`, 4 in `backup_rotation::`); `cargo sqlx prepare --check` clean (no typed macro added); `tsc --noEmit` clean; `waitForTimeout` and V-code literal gates clean; full E2E suite green (502 passed, 2 skipped, no flaky).
 
-- **Code review pass 1 fixes (2026-11-26):** the E2E setting restore moved to an `afterAll` on a fresh context; `backUpNow` presses at most twice (one retry); a write refused for the folder although `access(W_OK)` allowed it is recorded as a failed check (next one an interval later) and keeps the folder "not writable" (`BackupStatus::write_refused`) until a backup succeeds — no info/warn pair or full dump every minute; the instance id is read once and kept, not read while the schedule is off, one `warn` per outage; `run`'s temporary sweep, name checks and cover listing run in `spawn_blocking` (closes #729 L3 for those calls; the dump's own writes to its scratch file stay on the worker, as in 19-6); a successful backup clears an earlier failed check; the Health block shows no "Next check" line while the folder is unusable; DE/IT wording; the read-only test is named `…_unless_run_as_root` and asserts more; the one-log-per-change rule is unit-tested through the pure `folder_change` and through the log lines themselves (`tracing_test`: three wakes on a missing folder, then two on a usable one → one `warn`, one `info`). The rotation rule is unchanged pending the lead's decision on the forward-clock-jump Medium.
+- **Code review pass 1 fixes (2026-11-26):** the E2E setting restore moved to an `afterAll` on a fresh context; `backUpNow` presses at most twice (one retry); a write refused for the folder although `access(W_OK)` allowed it is recorded as a failed check (next one an interval later) and keeps the folder "not writable" (`BackupStatus::write_refused`) until a backup succeeds — no info/warn pair or full dump every minute; the instance id is read once and kept, not read while the schedule is off, one `warn` per outage; `run`'s temporary sweep, name checks and cover listing run in `spawn_blocking` (closes #729 L3 for those calls; the dump's own writes to its scratch file stay on the worker, as in 19-6); a successful backup clears an earlier failed check; the Health block shows no "Next check" line while the folder is unusable; DE/IT wording; the read-only test is named `…_unless_run_as_root` and asserts more; the one-log-per-change rule is unit-tested through the pure `folder_change` and through the log lines themselves (`tracing_test`: three wakes on a missing folder, then two on a usable one → one `warn`, one `info`). The rotation rule was then amended by the lead's decision (see the next note).
+- **Retention, rotation over backup days (2026-11-26, after the lead's decision):** tier 3 of `rotation::plan` takes the newest backup of each of the `retention_days` most recent local days on which an own backup was written; `rotate` takes the value (`AppState::backup_retention_days()`, read at each pass by the scheduler and after a manual backup). Setting `backup_retention_days` as in D1's extension; the form saves both settings in one transaction (both or neither) and answers one saved line, D1's, whichever field changed (simplest consistent answer: one form, one button, one line). The help naming N is refreshed out of band after a save. The integration tests that expected a 30- or 40-day-old backup to be rotated out now set the retention to 1 (with 14 backup days kept, a lone old backup stays — the point of the amendment).
 
 ### File List
 
 - migrations/20261126090000_settings_backup_interval.sql (new)
+- migrations/20261126100000_settings_backup_retention.sql (new)
 - src/config.rs
 - src/lib.rs
 - src/main.rs
@@ -295,3 +324,5 @@ Claude Opus 5.5 (claude-opus-5-5), dev-story workflow, non-interactive.
 ### Change Log
 
 - 2026-11-26 — dev-story: schedule, skip rule, rotation, Health block, Admin → System setting (story 19-7).
+- 2026-11-26 — code review pass 1 fixes (Lows).
+- 2026-11-26 — D4 amended by the project lead: rotation over backup days, configurable retention (`backup_retention_days`).
