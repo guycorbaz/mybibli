@@ -66,6 +66,34 @@ What is missing (19-7, 19-8, 19-9 and the notes they left for this story):
 - `locales/en.yml`, `locales/fr.yml` (`admin.backups.*`, `admin.covers.*` on the 19-9 branch, `admin.health.backup.*`, `admin.system.backup_*`, `error.backup.*`, `error.restore.*`, `maintenance.*`).
 - `docker-compose.yml`, `.env.example`, `Dockerfile` (no `USER`: the container runs as root).
 
+## Validation (2026-11-26)
+
+Checked against `main` (`3ad5f343`) and `story/19-9-covers-consistency` (`d2e4d40f`): `locales/{en,fr}.yml`, `docker-compose.yml`, `docker-compose.dev.yml`, `.env.example`, `tests/e2e/docker-compose.test.yml`, `Dockerfile`, `src/routes/mod.rs`, `src/main.rs`, `src/middleware/maintenance.rs`, `src/tasks/backup_scheduler.rs`, `src/config.rs`, `src/services/backup/{mod,rotation}.rs`, `src/services/backup/restore/mod.rs`, the manual (`docs/manual/{en,fr}/01, 02, 07, 10, 12`), `website/roadmap.html`, `CLAUDE.md` Rule #19.
+
+Checked, found correct:
+- **V1 — mount (AC10).** `docker-compose.yml` carries `- ./backups:/app/backups` (with its comment), `.env.example` documents `MYBIBLI_BACKUP_DIR` (commented, default `/app/backups`), `docker-compose.dev.yml` mounts it, the E2E stack uses a tmpfs. Nothing to change there.
+- **V2 — labels quoted in the manual**, EN / FR, from the locales:
+  - Admin → Backups: "Back up now" / « Sauvegarder maintenant »; folder line "Folder: … — ready / missing / not writable" / « Dossier : … — prêt / absent / non accessible en écriture »; "Backups in the folder" / « Sauvegardes présentes dans le dossier »; columns "Date", "Origin", "Size", "Note" / « Date », « Origine », « Taille », « Remarque »; "Restore…" / « Restaurer… »; "This instance" / « Cette instance », "Another instance (%{id})" / « Autre instance (%{id}) »; notes "No checksum file" / « Pas de fichier de contrôle », "Not readable" / « Illisible », "Removed at the next rotation" / « Supprimée à la prochaine rotation ».
+  - Modal: "Restore this backup?" / « Restaurer cette sauvegarde ? »; "Cancel" / « Annuler »; "Restore this backup" / « Restaurer cette sauvegarde »; "Log in again" / « Se reconnecter ».
+  - Admin → System → Backups / Système → Sauvegardes: "Automatic backup" / « Sauvegarde automatique » (Off, Every hour, Every %{n} hours, Once a day / Désactivée, Toutes les heures, Toutes les %{n} heures, Une fois par jour), "Daily backups to keep" / « Sauvegardes quotidiennes à garder », "Save automatic backup" / « Enregistrer la sauvegarde automatique ». `ALLOWED_BACKUP_INTERVALS` = 0, 1, 2, 3, 4, 6, 8, 12, 24; default 1 h; retention 1..=365, default 14.
+  - Health tab / Santé: "Backups" block (`admin.health.backup.*`: "Last backup", "Next check: around …", "Automatic backup is off (Admin → System).", warnings starting "Warning:" / « Attention : », "Last restore: …" / « Dernière restauration : … »).
+  - Maintenance page: "Maintenance"; stuck copy names the manual section “Restoring by hand” / « Restaurer à la main » — the section titles must be exactly these.
+  - Cover check (19-9 branch, `admin.covers.*`): "Cover check" / « Contrôle des couvertures », "Check covers" / « Contrôler les couvertures », "Repair…" / « Réparer… », "Repair the covers?" / « Réparer les couvertures ? », "Repair" / « Réparer », the two list headings, the four notes, the unmounted sentence.
+- **V3 — scheduler.** `WARM_UP_SECS` = 600 (first check 10 minutes after start), a wake every 60 s; a check writes only when something changed since the last backup *this process* wrote (after a restart the first due check writes one).
+- **V4 — maintenance.** Every request gets 503 except `/health` and `/static/*` (`middleware/maintenance.rs::is_passthrough`); covers are refused too.
+- **V5 — boot recovery.** `main.rs` runs `restore::recover_at_boot` before the migrations; on failure it logs `error` and exits 1. With the compose `restart: unless-stopped`, that is a restart loop until the restore is done by hand — the manual says so.
+- **V6 — routes.** `/admin/backups`, `/admin/backups/restore/{name}`, `/admin/system/backups`; the restore name must have the backup shape.
+
+Changed (no product decision needed):
+- **V7 — who owns the files.** The image has no `USER` line: the container runs as root, so on the host the backups are owned by root with mode `0600` (`create_private`). The manual says to copy them with `sudo` (or as the NAS administrator), and that Docker creates a missing `./backups` itself (as root) when the mount line is present — "missing" on the Backups tab therefore means the mount line is absent (or `MYBIBLI_BACKUP_DIR` points elsewhere). AC2 made explicit.
+- **V8 — environment table.** `MYBIBLI_BACKUP_DIR` is missing from `sec:env-vars` (chapter 1, EN and FR) — exactly the A4 lesson; the row is added in this story (AC1).
+- **V9 — test database.** The 19-6 subsection ends with "Restoring a backup into the running library comes with a later version." — replaced (AC6).
+- **V10 — "Restoring by hand" begins with the journal.** #740 item 1: after a successful restore a panic may show the stuck copy although the journal is gone; following the copy would undo the restore. The section therefore starts with "is `.restore-in-progress.json` still in the folder?" (absent → restart only), then "restart once: mybibli tries the rollback itself", and only then the procedure.
+
+Notes for the project lead (no change made):
+- **N1 — the "looks like another database" guard** is the 19-9 review item (b), waiting for the lead; it is not in the branch. The manual documents it as briefed (fix the database the app points at; move files by hand only when sure) in a paragraph marked in the source (`% 19-9 review (b)`), to be removed or reworded if 19-9 ships without it or with other copy.
+- **N2 — restoring by hand loads into the live schema.** The procedure drops and recreates the database as MariaDB `root` (bundled stack), as the existing "Restore procedure" section does; the `mybibli` user cannot create a database.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -78,4 +106,5 @@ What is missing (19-7, 19-8, 19-9 and the notes they left for this story):
 
 ### Change Log
 
+- 2026-11-26 — validate-story: see Validation.
 - 2026-11-26 — create-story (with 20-7).

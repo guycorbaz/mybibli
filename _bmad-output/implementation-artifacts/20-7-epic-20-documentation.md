@@ -57,6 +57,24 @@ Where the sections live: the wish list and the series are in chapter 3 (`03-usag
 - `_bmad-output/implementation-artifacts/20-1-wishlist-remove.md` … `20-6-epic-20-smoke-test.md`.
 - `src/routes/api_v1.rs` (`ApiLocation`).
 
+## Validation (2026-11-26)
+
+Checked against `main` (`3ad5f343`): `locales/{en,fr}.yml`, `src/routes/api_v1.rs` (`ApiLocation`), `src/routes/mod.rs` (`/series/{id}/expected-tomes/new`, `/wishlist/{id}/delete-modal`), the manual (`docs/manual/{en,fr}/02, 03, 06, 11, 13`), `CLAUDE.md` Key Patterns.
+
+Checked, found correct:
+- **V1 — labels quoted**, EN / FR:
+  - Wish list: "Bought" / « Acheté », "Remove" / « Retirer »; modals "Mark “%{title}” as bought?" / « Marquer « %{title} » comme acheté ? » and "Remove “%{title}” from the wish list?" / « Retirer « %{title} » de la wish list ? »; bodies "… It cannot be restored afterwards." / « … Elle ne pourra pas être restaurée ensuite. » and "… It cannot be restored: add it again if you change your mind." / « … Elle ne peut pas être restaurée : ajoutez-la à nouveau si vous changez d’avis. »
+  - Gap: "Add to wish list" / « Ajouter à la wish list »; form heading "Add tome %{position} to the wish list" / « Ajouter le tome %{position} à la wish list »; pre-fill "%{series}, tome %{position}"; help "mybibli also records this tome as expected in the series, so the gap shows its title." / « mybibli enregistre aussi ce tome comme attendu dans la série : la case manquante affiche alors son titre. »; the gap button's accessible name is now "Add to wish list: tome %{position}" / « Ajouter à la wish list : tome %{position} » (commit `7b2d1afa`, not the epic's copy — the manual quotes the visible label only).
+  - Series: "Total must be at least %{position}: an expected tome is recorded at position %{position}." / « Le total doit être d’au moins %{position} : un tome attendu est enregistré à la position %{position}. »; restore lines `admin.trash.restore_tome_settled`, `restore_tome_to_review`, link "Open the series" / « Ouvrir la série »; section "Expected tomes to review" / « Tomes attendus à revoir ».
+  - Locations: "Description" (both), help "Optional. Where to find it, …" / « Facultatif. Où le trouver, … », "Description must be at most 500 characters." (`%{max}` = 500), "Back to locations" / « Retour aux emplacements », "Locations inside %{name}" / « Emplacements dans %{name} ».
+- **V2 — API.** `ApiLocation` = `id`, `name`, `label`, `node_type`, `parent_id`, `description` (`null` when unset).
+
+Changed (no product decision needed):
+- **V3 — where each part goes.** The epic AC puts all four topics in `03-usage.tex`, but storage locations are documented in chapter 2 (`sec:locations`) and expected tomes in chapter 13 (`sec:expected-tomes`). The location description and the tree's keyboard use go to chapter 2; the total rule and the restore go to chapter 3's "Series and tome numbers" (a short subsection) **and** correct chapter 13's bullets (its "Expected tomes to review" bullet still names the lowered total as a cause; its "Add to wish list" bullet covers only an existing tome). Chapter 3's wish list section takes Remove / Bought and the gap.
+- **V4 — a wrong sentence.** Chapter 3, "Marking a book as bought": "the entry soft-deletes. The action is reversible from the Admin Trash panel for 30 days." — false since 20-1 (D2); rewritten.
+- **V5 — roles table.** Chapter 6 has no wish-list row and no backup rows: added "Manage the wish list" (Lib+), "Back up, restore, check covers" (Admin).
+- **V6 — CLAUDE.md.** No epic-20 note exists yet in Key Patterns: the "Expected tomes" bullet gets the two rules, and a one-line "Location tree" bullet is added.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -69,4 +87,5 @@ Where the sections live: the wish list and the series are in chapter 3 (`03-usag
 
 ### Change Log
 
+- 2026-11-26 — validate-story: see Validation.
 - 2026-11-26 — create-story (with 19-11).
