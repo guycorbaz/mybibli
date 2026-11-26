@@ -90,6 +90,28 @@ async fn trash_filtered_by_users_table_returns_only_users(pool: MySqlPool) {
     assert!(entries.iter().any(|e| e.id == user_id));
 }
 
+// Regression #750: a name search answered 500 (the search query lacked
+// its `SELECT * FROM`), with or without an entity filter.
+#[sqlx::test(migrations = "./migrations")]
+async fn trash_search_by_name_finds_the_row(pool: MySqlPool) {
+    let user_id = create_test_user(&pool, "trash_user_750_search", "librarian").await;
+    soft_delete_user(&pool, user_id).await;
+    let _other = create_test_user(&pool, "trash_user_750_other", "librarian").await;
+    soft_delete_user(&pool, _other).await;
+
+    for filter in [None, Some("users")] {
+        let entries = TrashModel::list_trash(&pool, 1, filter, Some("750_search"))
+            .await
+            .expect("a name search succeeds");
+        assert_eq!(entries.len(), 1, "{filter:?}: {entries:?}");
+        assert_eq!(entries[0].id, user_id);
+        let count = TrashModel::trash_count(&pool, filter, Some("750_search"))
+            .await
+            .expect("a name search counts");
+        assert_eq!(count, 1, "{filter:?}");
+    }
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn permanent_delete_service_accepts_users_table(pool: MySqlPool) {
     let user_id = create_test_user(&pool, "trash_user_69_c", "librarian").await;
