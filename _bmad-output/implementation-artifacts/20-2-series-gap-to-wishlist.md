@@ -2,7 +2,7 @@
 
 Status: ready-for-dev
 
-<!-- Closes #715. Source: _bmad-output/planning-artifacts/epics.md, Epic 20, Story 20.2; decisions D4, D5, D6 (approved by the project lead, 2026-11-26). Open questions Q1–Q4 (see Validation) wait for the project lead before AC 5, AC 6 and AC 7 are coded. -->
+<!-- Closes #715. Source: _bmad-output/planning-artifacts/epics.md, Epic 20, Story 20.2; decisions D4, D5, D6 (approved by the project lead, 2026-11-26). Open questions Q1–Q4 (see Validation) approved by the project lead as recommended, 2026-11-26. -->
 
 ## Story
 
@@ -144,7 +144,9 @@ Checked against the code: `templates/components/series_gap_grid.html`, `template
 - **V13 — The title prefill names the pre-filled position.** If the librarian changes the position, the title still names the old one (editable, D6), while the note uses the submitted position. Accepted by D6; no change.
 - **V14 — sprint-status.** Only the `20-2-…` line and the header comment changed (Rule #16); the YAML `last_updated:` key has not been maintained since story 11-15 and is left alone. `epic-20` stays `backlog` (20.1 is the first story and is on another branch).
 
-### Open questions (product decisions — not decided here)
+### Open questions (product decisions)
+
+**Approved by the project lead, 2026-11-26: Q1 (a), Q2 (a), Q3 both modes, Q4 fallback — all as recommended.**
 
 - **Q1 — Where the "already on the wish list" answer shows (AC 5).** Not said by D4–D6 or the plan. Options: (a) re-render the form (200) with the info message `expected_tome.wishlist_already` and the "Open the wish list entry" link above the form, values kept; (b) redirect to the series page with the entry in `#series-feedback` (needs a second query value to tell "added" from "already"). *Recommendation: (a)* — nothing changed, the librarian may want to fix the title or ISBN, and no new URL parameter is needed.
 - **Q2 — The copy for an ISBN a live title already holds (AC 6).** The plan names "the existing 'already in your catalog' message", i.e. `expected_tome.wishlist_owned`; but its text says "Its title holds this position in the series", which is false here (the position is a gap). Options: (a) `error.isbn.already_used` ("“%{title}” already has this ISBN. Check the number, or open that title.") under the ISBN field, the title as a link — existing copy, a field refusal (stories 17-3 / 19-4; `middleware::htmx::field_refusal_with_link` is the HTMX variant, this full-page form renders the same text with `utils::message_with_link_html` + `LINK_PLACEHOLDER` in the field slot); (b) a new key. *Recommendation: (a).*
