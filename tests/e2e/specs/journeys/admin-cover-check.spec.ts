@@ -21,62 +21,18 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
-import { simulateScan } from "../../helpers/scanner";
-import { titleIdFromSkeleton } from "../../helpers/catalog";
+import {
+  deleteTitleFromPage,
+  scanTitleWithMetadata,
+  uploadCoverByHand,
+} from "../../helpers/catalog";
 import { expectHtmxProcessed } from "../../helpers/htmx";
 
-const UPLOAD_BTN = /Upload cover|Téléverser une couverture|Cover hochladen|Carica una copertina/i;
 const CHECK_BTN = /Check covers|Contrôler les couvertures|Cover prüfen|Controlla le copertine/i;
 const REPAIR_OPEN = /^(Repair…|Réparer…|Reparieren…|Ripara…)$/;
 const BUSY =
   /backup or a restore is already running|sauvegarde ou une restauration est déjà en cours|Sicherung oder eine Wiederherstellung|già in corso un backup o un ripristino/i;
 const REPAIRED = /Covers repaired|Couvertures réparées|Cover repariert|Copertine riparate/;
-
-/** A valid 1×1 RGBA PNG. */
-const PNG_1X1 = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-  "base64",
-);
-
-/** Scan `isbn` on /catalog; the new title's id once its metadata is in. */
-async function scanTitle(page: Page, isbn: string): Promise<string> {
-  await page.goto("/catalog");
-  await simulateScan(page, "#scan-field", isbn);
-  const id = await titleIdFromSkeleton(page);
-  // The mock answers "Test Title <isbn>": wait for it, so the Trash search
-  // below finds the title by its ISBN.
-  await expect(async () => {
-    await page.goto(`/title/${id}`);
-    await expect(page.locator("h1").filter({ hasText: isbn })).toHaveCount(1);
-  }).toPass({ timeout: 30000 });
-  return id;
-}
-
-async function uploadCover(page: Page, id: string): Promise<void> {
-  await page.goto(`/title/${id}`);
-  await page.getByRole("button", { name: UPLOAD_BTN }).click();
-  const fileInput = page.locator('#modal-slot input[type="file"]');
-  await expect(fileInput).toBeVisible();
-  await fileInput.setInputFiles({ name: "cover.png", mimeType: "image/png", buffer: PNG_1X1 });
-  const confirm = page.locator("#modal-slot [data-modal-confirm]");
-  await expectHtmxProcessed(confirm);
-  await confirm.click();
-  await expect(async () => {
-    await page.goto(`/title/${id}`);
-    await expect(page.locator(`img[src*="/covers/${id}.jpg"]`).first()).toBeVisible();
-  }).toPass({ timeout: 20000 });
-}
-
-async function deleteTitle(page: Page, id: string): Promise<void> {
-  await page.goto(`/title/${id}`);
-  await page.locator("#title-delete-button").click();
-  const dialog = page.locator("#modal-slot dialog[open]");
-  await expect(dialog).toBeVisible({ timeout: 10000 });
-  const confirm = dialog.locator("[data-modal-confirm]");
-  await expectHtmxProcessed(confirm);
-  await confirm.click();
-  await page.waitForURL((url) => url.pathname === "/", { timeout: 10000 });
-}
 
 /**
  * Permanently delete title `id` from the Trash (type-to-confirm modal).
@@ -124,13 +80,13 @@ test.describe("Story 19-9 — cover check and repair", () => {
     // A title whose cover stays: the repair must leave a used cover alone
     // (checked after it). The orphan below is a purged title's file, an id
     // the database handed out, so the wrong-database guard lets it through.
-    const kept = await scanTitle(page, specIsbn("KC", 2));
-    await uploadCover(page, kept);
+    const kept = await scanTitleWithMetadata(page, specIsbn("KC", 2));
+    await uploadCoverByHand(page, kept);
 
     const isbn = specIsbn("KC", 1);
-    const id = await scanTitle(page, isbn);
-    await uploadCover(page, id);
-    await deleteTitle(page, id);
+    const id = await scanTitleWithMetadata(page, isbn);
+    await uploadCoverByHand(page, id);
+    await deleteTitleFromPage(page, id);
     await purgeTitle(page, id, isbn);
 
     // The check lists the file the purge left behind (D13). Two tabs check:

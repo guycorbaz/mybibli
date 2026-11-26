@@ -9,6 +9,7 @@
  */
 import { Page, Locator, expect } from "@playwright/test";
 import { expectHtmxProcessed } from "./htmx";
+import { simulateScan } from "./scanner";
 
 /**
  * Select the first non-placeholder option of a `<select>` by its value rather
@@ -138,4 +139,68 @@ export async function trashVolumeFromTitlePage(page: Page, vcode: string): Promi
   await page.waitForLoadState("load");
   await expect(page.locator("#title-volumes")).toBeVisible();
   await expect(page.locator("#title-volumes")).not.toContainText(vcode);
+}
+
+/**
+ * Stories 19-9 / 19-10 (D5) — the "Upload cover" button of the title page
+ * (`cover.upload_button`, shown only while the title has no cover).
+ */
+const UPLOAD_COVER_BUTTON =
+  /Upload cover|Téléverser une couverture|Cover hochladen|Carica una copertina/i;
+
+/** A valid 1×1 RGBA PNG (the server re-encodes it to `<id>.jpg`). */
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+/**
+ * Stories 19-9 / 19-10 — scan `isbn` on /catalog; the new title's id once
+ * its metadata is in. The mock answers "Test Title <isbn>": the title page's
+ * `h1` naming the ISBN is the sign, so a later search by ISBN finds it.
+ */
+export async function scanTitleWithMetadata(page: Page, isbn: string): Promise<string> {
+  await page.goto("/catalog");
+  await simulateScan(page, "#scan-field", isbn);
+  const id = await titleIdFromSkeleton(page);
+  await expect(async () => {
+    await page.goto(`/title/${id}`);
+    await expect(page.locator("h1").filter({ hasText: isbn })).toHaveCount(1);
+  }).toPass({ timeout: 30000 });
+  return id;
+}
+
+/**
+ * Stories 19-9 / 19-10 — upload a 1×1 PNG as the cover of title `id`
+ * through "Upload cover" and its modal; returns once the title page shows
+ * `/covers/<id>.jpg`.
+ */
+export async function uploadCoverByHand(page: Page, id: string): Promise<void> {
+  await page.goto(`/title/${id}`);
+  await page.getByRole("button", { name: UPLOAD_COVER_BUTTON }).click();
+  const fileInput = page.locator('#modal-slot input[type="file"]');
+  await expect(fileInput).toBeVisible();
+  await fileInput.setInputFiles({ name: "cover.png", mimeType: "image/png", buffer: PNG_1X1 });
+  const confirm = page.locator("#modal-slot [data-modal-confirm]");
+  await expectHtmxProcessed(confirm);
+  await confirm.click();
+  await expect(async () => {
+    await page.goto(`/title/${id}`);
+    await expect(page.locator(`img[src*="/covers/${id}.jpg"]`).first()).toBeVisible();
+  }).toPass({ timeout: 20000 });
+}
+
+/**
+ * Stories 19-9 / 19-10 — delete title `id` (no volume) to the Trash from its
+ * page: `#title-delete-button`, the UX-DR8 modal, Confirm, landing on `/`.
+ */
+export async function deleteTitleFromPage(page: Page, id: string): Promise<void> {
+  await page.goto(`/title/${id}`);
+  await page.locator("#title-delete-button").click();
+  const dialog = page.locator("#modal-slot dialog[open]");
+  await expect(dialog).toBeVisible({ timeout: 10000 });
+  const confirm = dialog.locator("[data-modal-confirm]");
+  await expectHtmxProcessed(confirm);
+  await confirm.click();
+  await page.waitForURL((url) => url.pathname === "/", { timeout: 10000 });
 }
