@@ -2,12 +2,16 @@
    content of `#admin-covers-result`. Values are escaped by Askama. The
    "Repair…" form carries every listed item (not only the 50 shown); it
    opens the UX-DR8 modal in #modal-slot (no `hx-confirm=`), and is left
-   out when nothing can be repaired or the folder looks unmounted (D12). #}
+   out when nothing can be repaired, the folder looks unmounted (D12) or
+   the database looks like another one (its mirror, review pass 1). #}
 {% if !match_line.is_empty() %}
 <p id="admin-covers-match" class="text-sm">{{ match_line }}</p>
 {% else %}
 {% if !unmounted.is_empty() %}
 <p id="admin-covers-unmounted" class="text-sm font-medium text-amber-800 dark:text-amber-300">{{ unmounted }}</p>
+{% endif %}
+{% if !another_database.is_empty() %}
+<p id="admin-covers-another-database" class="text-sm font-medium text-amber-800 dark:text-amber-300">{{ another_database }}</p>
 {% endif %}
 {% if !orphan_rows.is_empty() %}
 <div id="admin-covers-orphans">

@@ -240,6 +240,25 @@ impl CoverPlan {
         self.local_total > 0 && self.local_missing.saturating_mul(2) > self.local_total
     }
 
+    /// Own cover files a title uses (its local address names its file).
+    pub fn used(&self) -> u64 {
+        self.local_total.saturating_sub(self.local_missing)
+    }
+
+    /// Review pass 1, approved 2026-11-26 — the mirror of D12: more orphan
+    /// files than covers the library uses looks like a database that is not
+    /// this folder's (the wrong one restored or configured). The check
+    /// offers no repair; the repair refuses again on its fresh plan. No
+    /// override (decided).
+    pub fn looks_like_another_database(&self) -> bool {
+        !self.orphans.is_empty() && self.orphans.len() as u64 > self.used()
+    }
+
+    /// D12 or its mirror: the repair is not offered, and refused.
+    pub fn repair_refused(&self) -> bool {
+        self.looks_unmounted() || self.looks_like_another_database()
+    }
+
     /// Nothing listed at all.
     pub fn is_match(&self) -> bool {
         self.orphans.is_empty() && self.missing.is_empty()
@@ -485,6 +504,9 @@ impl RepairItems {
 pub struct Confirmed {
     pub orphans: Vec<OrphanItem>,
     pub missing: Vec<(MissingItem, MissingAction)>,
+    /// Listed items (posted duplicates dropped) that the fresh plan no
+    /// longer holds as listed: changed since the check.
+    pub changed: u64,
 }
 
 impl Confirmed {
@@ -504,14 +526,14 @@ impl Confirmed {
 pub fn confirm(plan: &CoverPlan, listed: &RepairItems) -> Confirmed {
     let fresh_orphans: HashSet<OrphanItem> = plan.orphans.iter().map(OrphanItem::of).collect();
     let mut seen_o = HashSet::new();
-    let orphans = listed
+    let orphans: Vec<OrphanItem> = listed
         .orphans
         .iter()
         .filter(|o| fresh_orphans.contains(o) && seen_o.insert(o.id))
         .cloned()
         .collect();
     let mut seen_m = HashSet::new();
-    let missing = listed
+    let missing: Vec<(MissingItem, MissingAction)> = listed
         .missing
         .iter()
         .filter_map(|m| {
@@ -519,7 +541,11 @@ pub fn confirm(plan: &CoverPlan, listed: &RepairItems) -> Confirmed {
             (fresh.action.clears() && seen_m.insert(m.id)).then(|| (m.clone(), fresh.action))
         })
         .collect();
-    Confirmed { orphans, missing }
+    let listed_ids: HashSet<u64> = listed.orphans.iter().map(|o| o.id).collect();
+    let listed_missing: HashSet<u64> = listed.missing.iter().map(|m| m.id).collect();
+    let unique = (listed_ids.len() + listed_missing.len()) as u64;
+    let changed = unique.saturating_sub((orphans.len() + missing.len()) as u64);
+    Confirmed { orphans, missing, changed }
 }
 
 /// Who repairs (the audit row's author, #70).
@@ -536,8 +562,14 @@ pub struct RepairDone {
     pub deleted: u64,
     pub cleared: u64,
     pub queued: u64,
-    /// Listed items that had changed since the check (left alone).
+    /// Listed items really found changed since the check (left alone);
+    /// posted duplicates are dropped, not counted.
     pub skipped: u64,
+    /// Review pass 1 (approved copy): orphan files whose deletion failed.
+    pub failed: u64,
+    /// Review pass 1 (approved copy): items not handled because a restore
+    /// started (a write permit was refused).
+    pub not_handled: u64,
 }
 
 /// Why a repair did not run.
@@ -547,6 +579,8 @@ pub enum RepairError {
     Busy,
     /// D12, applied again on a fresh plan.
     Unmounted(CoverPlan),
+    /// The mirror of D12 on the fresh plan (review pass 1).
+    AnotherDatabase(CoverPlan),
     Check(CoverCheckError),
 }
 
@@ -658,17 +692,31 @@ pub async fn restore_address(pool: &DbPool, item: &MissingItem, queued: bool) ->
 }
 
 /// The changes, item by item (T4). Review pass 1 (L2): an error stops the
-/// loop and is returned with the counts reached so far.
+/// loop and is returned with the counts reached so far. Every item ends in
+/// exactly one count: deleted / cleared, skipped (found changed), failed
+/// (a deletion refused), or not handled (a restore started).
 async fn apply(pool: &DbPool, covers_dir: &Path, confirmed: &Confirmed, done: &mut RepairDone) -> Result<(), AppError> {
+    let total = (confirmed.orphans.len() + confirmed.missing.len()) as u64;
+    let mut handled: u64 = 0;
+    let stop = |done: &mut RepairDone, handled: u64| {
+        done.not_handled = total - handled;
+        tracing::info!(left = done.not_handled, "Cover repair stopped: a restore is starting");
+    };
     for chunk in confirmed.orphans.chunks(OWNED_CHUNK) {
+        if crate::services::maintenance::write_permit().is_none() {
+            stop(done, handled);
+            return Ok(());
+        }
         let ids: Vec<u64> = chunk.iter().map(|o| o.id).collect();
         let owned = owned_ids(pool, &ids).await?;
         for item in chunk {
             let Some(_permit) = crate::services::maintenance::write_permit() else {
-                tracing::info!("Cover repair stopped: a restore is starting");
+                stop(done, handled);
                 return Ok(());
             };
+            handled += 1;
             if owned.contains(&item.id) {
+                done.skipped += 1;
                 continue;
             }
             let path: PathBuf = covers_dir.join(format!("{}.jpg", item.id));
@@ -685,26 +733,29 @@ async fn apply(pool: &DbPool, covers_dir: &Path, confirmed: &Confirmed, done: &m
                     done.deleted += 1;
                     tracing::info!(file = %format!("{}.jpg", item.id), "Cover repair: orphan cover file deleted");
                 }
-                Ok(false) => {}
-                Err(e) => tracing::warn!(error = %e, id = item.id, "Cover repair: an orphan cover file could not be deleted"),
+                Ok(false) => done.skipped += 1,
+                Err(e) => {
+                    done.failed += 1;
+                    tracing::warn!(error = %e, id = item.id, "Cover repair: an orphan cover file could not be deleted");
+                }
             }
         }
     }
     for (item, action) in &confirmed.missing {
         let Some(_permit) = crate::services::maintenance::write_permit() else {
-            tracing::info!("Cover repair stopped: a restore is starting");
+            stop(done, handled);
             return Ok(());
         };
+        handled += 1;
         let path = covers_dir.join(format!("{}.jpg", item.id));
         let p = path.clone();
-        if !blocking(move || absent(&p)).await? {
-            continue;
-        }
-        if has_pending_cover_proposal(pool, item.id).await? {
+        if !blocking(move || absent(&p)).await? || has_pending_cover_proposal(pool, item.id).await? {
+            done.skipped += 1;
             continue;
         }
         let queue = action.queues();
         if !clear_address(pool, item, queue).await? {
+            done.skipped += 1;
             continue;
         }
         let p = path.clone();
@@ -714,6 +765,7 @@ async fn apply(pool: &DbPool, covers_dir: &Path, confirmed: &Confirmed, done: &m
                 tracing::error!(error = %e, id = item.id, url = %item.url, "Cover repair: a cleared address could not be put back");
                 return Err(e);
             }
+            done.skipped += 1;
             continue;
         }
         done.cleared += 1;
@@ -732,6 +784,8 @@ async fn audit(pool: &DbPool, actor: &Actor, done: &RepairDone, error: Option<&s
         "cleared": done.cleared,
         "queued": done.queued,
         "skipped": done.skipped,
+        "failed": done.failed,
+        "not_handled": done.not_handled,
         "user_username": actor.username,
         "user_role": actor.role,
     });
@@ -764,10 +818,12 @@ async fn repair_holding(
     if fresh.looks_unmounted() {
         return Err(RepairError::Unmounted(fresh));
     }
+    if fresh.looks_like_another_database() {
+        return Err(RepairError::AnotherDatabase(fresh));
+    }
     let confirmed = confirm(&fresh, listed);
-    let mut done = RepairDone::default();
+    let mut done = RepairDone { skipped: confirmed.changed, ..RepairDone::default() };
     let outcome = apply(pool, covers_dir, &confirmed, &mut done).await;
-    done.skipped = (listed.len() as u64).saturating_sub(done.deleted + done.cleared);
     let error = outcome.as_ref().err().map(|e| e.to_string());
     audit(pool, actor, &done, error.as_deref()).await;
     tracing::info!(
@@ -776,6 +832,8 @@ async fn repair_holding(
         cleared = done.cleared,
         queued = done.queued,
         skipped = done.skipped,
+        failed = done.failed,
+        not_handled = done.not_handled,
         error = error.as_deref().unwrap_or(""),
         "Cover repair done"
     );

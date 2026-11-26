@@ -77,6 +77,8 @@ pub struct CheckView {
     pub missing_more: String,
     pub left_alone: String,
     pub unmounted: String,
+    /// Review pass 1 (approved): the mirror of D12.
+    pub another_database: String,
     pub repair: Option<RepairOpen>,
     pub csrf_token: String,
 }
@@ -137,7 +139,12 @@ pub fn build_view(plan: &CoverPlan, path: &str, tz: Tz, csrf_token: &str, loc: &
     } else {
         String::new()
     };
-    let repair = (plan.has_repair() && !plan.looks_unmounted()).then(|| {
+    let another_database = if plan.looks_like_another_database() {
+        another_database_line(plan, loc)
+    } else {
+        String::new()
+    };
+    let repair = (plan.has_repair() && !plan.repair_refused()).then(|| {
         let items = RepairItems::of_plan(plan);
         RepairOpen {
             label: t("admin.covers.repair_open", loc),
@@ -166,9 +173,21 @@ pub fn build_view(plan: &CoverPlan, path: &str, tz: Tz, csrf_token: &str, loc: &
         missing_more: more(plan.missing.len(), loc),
         left_alone,
         unmounted,
+        another_database,
         repair,
         csrf_token: csrf_token.to_string(),
     }
+}
+
+/// The mirror of D12's line (review pass 1, approved copy).
+pub fn another_database_line(plan: &CoverPlan, loc: &str) -> String {
+    rust_i18n::t!(
+        "admin.covers.another_database",
+        locale = loc,
+        orphans = plan.orphans.len(),
+        used = plan.used()
+    )
+    .to_string()
 }
 
 fn unreadable(path: &str, loc: &str) -> String {
@@ -195,6 +214,9 @@ pub fn summary(plan: &CoverPlan, path: &str, tz: Tz, loc: &str) -> String {
     }
     if !view.unmounted.is_empty() {
         parts.push(view.unmounted);
+    }
+    if !view.another_database.is_empty() {
+        parts.push(view.another_database);
     }
     parts.join(" ")
 }
@@ -322,7 +344,7 @@ pub async fn repair_modal(
         Err(CoverCheckError::Failed(e)) => return Err(e),
     };
     let confirmed = cc::confirm(&plan, &parse_items(&fields));
-    if plan.looks_unmounted() || confirmed.items().is_empty() {
+    if plan.repair_refused() || confirmed.items().is_empty() {
         let mut html = render_plan(&plan, &path, state.time_zone(), &session.csrf_token, loc)?;
         html.push_str(&status_oob(&summary(&plan, &path, state.time_zone(), loc)));
         return Ok(refreshed_in_result(html));
@@ -342,8 +364,10 @@ pub async fn repair_modal(
     Ok(Html(html).into_response())
 }
 
-/// D8's success line (pure).
-pub fn done_text(done: &RepairDone, loc: &str) -> String {
+/// D8's success line, with the lines of what was left (pure). Review
+/// pass 1 (approved copy): failed deletions and a repair stopped by a
+/// restore have their own lines, never "changed since the check".
+pub fn done_text(done: &RepairDone, path: &str, loc: &str) -> String {
     let mut text = rust_i18n::t!(
         "admin.covers.repair.done",
         locale = loc,
@@ -352,11 +376,26 @@ pub fn done_text(done: &RepairDone, loc: &str) -> String {
         queued = done.queued
     )
     .to_string();
-    if done.skipped > 0 {
+    let mut more = |line: String| {
         text.push(' ');
-        text.push_str(&rust_i18n::t!("admin.covers.repair.skipped", locale = loc, skipped = done.skipped));
+        text.push_str(&line);
+    };
+    if done.skipped > 0 {
+        more(rust_i18n::t!("admin.covers.repair.skipped", locale = loc, skipped = done.skipped).to_string());
+    }
+    if done.failed > 0 {
+        more(rust_i18n::t!("admin.covers.repair.failed", locale = loc, failed = done.failed, path = path).to_string());
+    }
+    if done.not_handled > 0 {
+        more(rust_i18n::t!("admin.covers.repair.stopped", locale = loc, left = done.not_handled).to_string());
     }
     text
+}
+
+/// The feedback variant of a repair's answer: a warning when something
+/// was left undone.
+pub fn done_variant(done: &RepairDone) -> &'static str {
+    if done.failed > 0 || done.not_handled > 0 { "warning" } else { "success" }
 }
 
 /// `POST /admin/covers/repair` — the repair (D8, D10–D12).
@@ -388,13 +427,16 @@ pub async fn repair_covers(
                 .to_string(),
             ));
         }
+        Err(RepairError::AnotherDatabase(plan)) => {
+            return Err(AppError::Conflict(another_database_line(&plan, loc)));
+        }
         Err(RepairError::Check(CoverCheckError::Unreadable)) => {
             return Err(AppError::Conflict(unreadable(&path, loc)));
         }
         Err(RepairError::Check(CoverCheckError::Failed(e))) => return Err(e),
     };
-    let text = done_text(&done, loc);
-    let mut html = feedback_html("success", &text, "");
+    let text = done_text(&done, &path, loc);
+    let mut html = feedback_html(done_variant(&done), &text, "");
     html.push_str(&render_check(&state, &session, loc).await?);
     // The repair's own line is what the status line says (last OOB wins).
     html.push_str(&status_oob(&text));
@@ -480,7 +522,9 @@ mod tests {
 
     #[test]
     fn long_lists_stop_at_fifty_with_a_more_line() {
-        let p = plan(&files(100..=160), &[], &HashSet::new());
+        // Enough used covers that the orphans are not the majority.
+        let titles: Vec<TitleCover> = (1..=61).map(|i| title(i, Some(&format!("/covers/{i}.jpg")))).collect();
+        let p = plan(&files((1..=61).chain(100..=160)), &titles, &HashSet::new());
         let html = render(&p, "en");
         assert_eq!(html.matches(".jpg · ").count(), 50);
         assert!(html.contains("… and 11 more."), "{html}");
@@ -523,10 +567,48 @@ mod tests {
         let body = modal_body_html(3, 2, 1, "en");
         assert!(body.starts_with("<p"));
         assert!(body.contains("3 cover files that no title owns will be deleted. 2 titles lose the address of their missing cover; 1 of them are queued"), "{body}");
-        let done = RepairDone { deleted: 3, cleared: 2, queued: 1, skipped: 0 };
-        assert_eq!(done_text(&done, "en"), "Covers repaired: 3 files deleted, 2 cover addresses cleared, 1 downloads queued.");
+        let done = RepairDone { deleted: 3, cleared: 2, queued: 1, ..RepairDone::default() };
+        assert_eq!(done_text(&done, "/app/covers", "en"), "Covers repaired: 3 files deleted, 2 cover addresses cleared, 1 downloads queued.");
+        assert_eq!(done_variant(&done), "success");
         let done = RepairDone { skipped: 4, ..done };
-        assert!(done_text(&done, "fr").ends_with("4 éléments avaient changé depuis le contrôle et ont été laissés tels quels."));
+        assert!(done_text(&done, "/app/covers", "fr").ends_with("4 éléments avaient changé depuis le contrôle et ont été laissés tels quels."));
+    }
+
+    #[test]
+    fn failed_and_stopped_repairs_have_their_own_lines() {
+        let done = RepairDone { deleted: 1, failed: 2, not_handled: 5, ..RepairDone::default() };
+        let en = done_text(&done, "/app/covers", "en");
+        assert!(
+            en.contains("2 files could not be deleted: mybibli cannot write in the covers folder /app/covers. Give the container's user write access to that folder (see the manual), then check again."),
+            "{en}"
+        );
+        assert!(
+            en.ends_with("The repair stopped because a restore started; 5 items were not handled. Check again once the restore is over."),
+            "{en}"
+        );
+        assert!(!en.contains("changed since the check"), "{en}");
+        assert_eq!(done_variant(&done), "warning");
+        let fr = done_text(&done, "/app/covers", "fr");
+        assert!(fr.contains("2 fichiers n'ont pas pu être supprimés : mybibli ne peut pas écrire dans le dossier des couvertures /app/covers."), "{fr}");
+        assert!(fr.contains("La réparation s'est arrêtée parce qu'une restauration a commencé ; 5 éléments n'ont pas été traités."), "{fr}");
+    }
+
+    #[test]
+    fn more_orphans_than_used_covers_offers_no_repair() {
+        let p = plan(&files([1, 50, 51]), &[title(1, Some("/covers/1.jpg"))], &HashSet::new());
+        assert!(p.looks_like_another_database());
+        let html = render(&p, "en");
+        assert!(
+            html.contains("2 cover files belong to no title, more than the 1 covers the library uses. This looks like a database that is not this folder&#39;s; mybibli will therefore delete nothing.")
+                || html.contains("2 cover files belong to no title, more than the 1 covers the library uses. This looks like a database that is not this folder&#x27;s; mybibli will therefore delete nothing."),
+            "{html}"
+        );
+        assert!(!html.contains("admin-covers-repair"), "{html}");
+        assert!(summary(&p, "/app/covers", Zurich, "en").contains("This looks like a database"));
+        // As many orphans as used covers: repaired as usual.
+        let p = plan(&files([1, 2, 50, 51]), &[title(1, Some("/covers/1.jpg")), title(2, Some("/covers/2.jpg"))], &HashSet::new());
+        assert!(!p.looks_like_another_database());
+        assert!(render(&p, "en").contains("admin-covers-repair"));
     }
 
     #[test]

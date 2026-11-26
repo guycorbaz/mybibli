@@ -171,9 +171,10 @@ Notes for the lead (no change made):
 
 Two reviews (safety, acceptance). Items and outcomes:
 
-**Waiting for the project lead (new copy needed, not implemented):**
-- (a) A failed delete, or a repair stopped by a restore starting, is reported as "had changed since the check" (counted in `skipped`).
-- (b) A ratio guard against a mass deletion of orphans (the app pointed at the wrong database).
+**Approved by the project lead (2026-11-26) and done** (copy as approved, DE/IT translated in the neighbouring style):
+- (a) Failed deletes get their own count, `failed` (in `RepairDone` and the audit row), and the line `admin.covers.repair.failed` ("%{failed} files could not be deleted: mybibli cannot write in the covers folder %{path}. …"). A repair stopped because a write permit was refused (a restore started) counts `not_handled` and says `admin.covers.repair.stopped` ("The repair stopped because a restore started; %{left} items were not handled. …"). `skipped` ("changed since the check") now counts only items really found changed; posted duplicates are dropped, not counted. A failed or stopped repair answers as a warning. Tests: `a_deletion_refused_by_the_folder_is_counted_as_failed`, `a_repair_stopped_by_a_restore_counts_what_it_did_not_handle`, the duplicates posted in `the_check_changes_nothing_and_the_repair_follows_d4_to_d7`, unit test `failed_and_stopped_repairs_have_their_own_lines`.
+- (b) The mirror of D12, "looks like another database": when the orphan files outnumber the own cover files a title uses (`orphans > used`, orphans > 0; `CoverPlan::looks_like_another_database`), the check shows `admin.covers.another_database` instead of "Repair…", the modal is not opened, and the repair refuses it again on its fresh plan (409). No override (decided). Tests: `more_orphans_than_used_covers_is_refused_like_another_database`, unit test `more_orphans_than_used_covers_offers_no_repair`.
+- **Note for the 19-11 manual:** when the "another database" line appears, the database is very likely not the one this covers folder belongs to (a wrong database restored or configured): fix the installation's database, then check again; move or delete cover files by hand only when sure which library they belong to. CR #749 (covers stored in the database, later) would remove this class of mismatch.
 
 **Safety review**
 - L1 (rename race between the last file check and `remove_file`) — accepted, not fixed: the window is microseconds, and the app only renames onto `<id>.jpg` of an existing title, which the re-check just ruled out.
@@ -233,3 +234,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — validate-story: checked against the code; D12, D13, T7 added, AC1, AC4, AC7, D2, T2, T4 corrected (see Validation).
 - 2026-11-26 — dev-story: implemented (T1–T3, T5, tests AC1–AC6); E2E spec written, run pending. Status stays in-progress.
 - 2026-11-26 — code review pass 1: Lows fixed (see Review pass 1); two copy items wait for the project lead.
+- 2026-11-26 — main merged; approved copy for failed / stopped repairs and the wrong-database guard implemented.

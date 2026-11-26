@@ -234,8 +234,10 @@ async fn the_check_changes_nothing_and_the_repair_follows_d4_to_d7(pool: DbPool)
     assert!(modal.contains(r#"hx-post="/admin/covers/repair""#));
     assert!(!modal.contains(&format!("{pending}:/covers/")), "the pending one is not posted");
 
-    // The repair.
-    let (status, done) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &posted_items(&modal)).await;
+    // The repair. Review pass 1: posted twice over, the duplicates are
+    // dropped, never counted as changed.
+    let twice = format!("{0}&{0}", posted_items(&modal));
+    let (status, done) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &twice).await;
     assert_eq!(status, StatusCode::OK, "{done}");
     assert!(
         done.contains("Couvertures réparées : 1 fichiers supprimés, 4 adresses de couverture effacées, 1 téléchargements mis en file."),
@@ -267,6 +269,7 @@ async fn the_check_changes_nothing_and_the_repair_follows_d4_to_d7(pool: DbPool)
     assert_eq!(audit.len(), 1, "one audit row per repair");
     let d = &audit[0];
     assert_eq!((d["deleted"].as_u64(), d["cleared"].as_u64(), d["queued"].as_u64(), d["skipped"].as_u64()), (Some(1), Some(4), Some(1), Some(0)));
+    assert_eq!((d["failed"].as_u64(), d["not_handled"].as_u64()), (Some(0), Some(0)));
     assert_eq!(d["user_username"], "cc_admin");
     assert_eq!(d["user_role"], "admin");
 }
@@ -520,4 +523,109 @@ async fn an_error_midway_still_writes_the_audit_row_with_the_counts(pool: DbPool
     assert_eq!(audit[0]["deleted"].as_u64(), Some(1));
     assert!(audit[0]["error"].as_str().is_some_and(|e| !e.is_empty()), "{:?}", audit[0]);
     assert_eq!(audit[0]["user_username"], "cc_midway");
+}
+
+// ─── Review pass 1, approved copy ────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_deletion_refused_by_the_folder_is_counted_as_failed(pool: DbPool) {
+    use std::os::unix::fs::PermissionsExt;
+    let fx = fixture(&pool, "cc_failed").await;
+    let covers = fx.f.covers();
+    let [orphan, ..] = seed_library(&pool, &covers).await;
+    let (_, html) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    let items = posted_items(&html);
+    // Readable, not writable: the listing works, `remove_file` is refused.
+    std::fs::set_permissions(&covers, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let writable = std::fs::write(covers.join("probe"), b"x").is_ok();
+    let (status, done) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &items).await;
+    std::fs::set_permissions(&covers, std::fs::Permissions::from_mode(0o755)).unwrap();
+    if writable {
+        return; // root: permissions do not stop a write
+    }
+    assert_eq!(status, StatusCode::OK, "{done}");
+    assert!(done.contains("Couvertures réparées : 0 fichiers supprimés, 4 adresses de couverture effacées"), "{done}");
+    assert!(
+        done.contains(&format!(
+            "1 fichiers n&#x27;ont pas pu être supprimés : mybibli ne peut pas écrire dans le dossier des couvertures {}.",
+            covers.display()
+        )),
+        "{done}"
+    );
+    assert!(!done.contains("avaient changé depuis le contrôle"), "a failure is not a change: {done}");
+    assert!(covers.join(format!("{orphan}.jpg")).exists());
+    let audit = audit_rows(&pool).await;
+    assert_eq!((audit[0]["failed"].as_u64(), audit[0]["skipped"].as_u64()), (Some(1), Some(0)));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_repair_stopped_by_a_restore_counts_what_it_did_not_handle(pool: DbPool) {
+    let fx = fixture(&pool, "cc_stopped").await;
+    let covers = fx.f.covers();
+    let [orphan, live, ..] = seed_library(&pool, &covers).await;
+    let plan = cc::check(&pool, &covers).await.unwrap();
+    let items = cc::RepairItems::of_plan(&plan);
+    assert_eq!(items.len(), 5);
+    let admin_id: i64 = sqlx::query_scalar("SELECT CAST(id AS SIGNED) FROM users WHERE username = 'cc_stopped'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let actor = cc::Actor { user_id: admin_id as u64, username: "cc_stopped".into(), role: "admin".into() };
+    // The repair's scope is captured before a restore starts (and ends):
+    // every write permit is then refused.
+    let m = fx.state.backup.maintenance.clone();
+    let pool2 = pool.clone();
+    let backup = fx.state.backup.clone();
+    let run = mybibli::services::maintenance::scoped(&m, async move {
+        cc::repair(&pool2, &backup, items, actor).await
+    });
+    drop(m.begin(std::time::Duration::from_secs(1)).await.unwrap());
+    let done = run.await.unwrap();
+    assert_eq!(
+        (done.deleted, done.cleared, done.skipped, done.failed, done.not_handled),
+        (0, 0, 0, 0, 5)
+    );
+    assert!(covers.join(format!("{orphan}.jpg")).exists());
+    assert_eq!(cover_of(&pool, live).await, Some(format!("/covers/{live}.jpg?v=1")));
+    let audit = audit_rows(&pool).await;
+    assert_eq!(audit[0]["not_handled"].as_u64(), Some(5));
+    assert_eq!(
+        mybibli::routes::admin_covers::done_text(&done, "/app/covers", "en"),
+        "Covers repaired: 0 files deleted, 0 cover addresses cleared, 0 downloads queued. The repair stopped because a restore started; 5 items were not handled. Check again once the restore is over."
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn more_orphans_than_used_covers_is_refused_like_another_database(pool: DbPool) {
+    let fx = fixture(&pool, "cc_other_db").await;
+    let covers = fx.f.covers();
+    let used = title(&pool, "CC used", None, Some("/covers/{id}.jpg"), false, false).await;
+    write_cover(&covers, used);
+    for orphan in [900_101, 900_102] {
+        write_cover(&covers, orphan);
+    }
+    let (status, html) = fx.admin.post_form(&fx.app, "/admin/covers/check", "").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        html.contains("appartiennent à aucun titre, plus que les 1 couvertures utilisées par la bibliothèque."),
+        "{html}"
+    );
+    assert!(html.contains("aucun titre ne possède (2)"), "the list is shown: {html}");
+    assert!(!html.contains(r#"id="admin-covers-repair""#), "no repair offered: {html}");
+
+    let items = format!(
+        "orphan={}&orphan={}",
+        urlencode(&cc::OrphanItem::of(&cc::list_folder(&covers).unwrap().files[1]).encode()),
+        urlencode(&cc::OrphanItem::of(&cc::list_folder(&covers).unwrap().files[2]).encode()),
+    );
+    let (status, modal) = fx.admin.post_form(&fx.app, "/admin/covers/repair/confirm", &items).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!modal.contains("Réparer les couvertures ?"), "no modal: {modal}");
+    let (status, body) = fx.admin.post_form(&fx.app, "/admin/covers/repair", &items).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("mybibli ne supprimera donc rien"), "{body}");
+    for orphan in [900_101, 900_102] {
+        assert!(covers.join(format!("{orphan}.jpg")).exists(), "nothing deleted");
+    }
+    assert!(audit_rows(&pool).await.is_empty());
 }

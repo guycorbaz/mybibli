@@ -1004,6 +1004,7 @@ admin:
     note_no_code: "ni ISBN, ni ISSN, ni UPC : rien à télécharger"
     note_pending: "une proposition de couverture est en attente : acceptez-la pour installer une couverture"
     unmounted: "%{missing} des %{total} couvertures utilisées par la bibliothèque manquent dans %{path}. Cela ressemble à un dossier des couvertures non monté ; mybibli ne réparera donc rien. Vérifiez le volume des couvertures de l'installation (voir le manuel), puis contrôlez à nouveau."
+    another_database: "%{orphans} fichiers de couverture n'appartiennent à aucun titre, plus que les %{used} couvertures utilisées par la bibliothèque. Cela ressemble à une base de données qui n'est pas celle de ce dossier ; mybibli ne supprimera donc rien. Vérifiez la base de données de l'installation (voir le manuel), puis contrôlez à nouveau."
     repair_open: "Réparer…"
     repair:
       title: "Réparer les couvertures ?"
@@ -1012,6 +1013,8 @@ admin:
       confirm: "Réparer"
       done: "Couvertures réparées : %{deleted} fichiers supprimés, %{cleared} adresses de couverture effacées, %{queued} téléchargements mis en file."
       skipped: "%{skipped} éléments avaient changé depuis le contrôle et ont été laissés tels quels."
+      failed: "%{failed} fichiers n'ont pas pu être supprimés : mybibli ne peut pas écrire dans le dossier des couvertures %{path}. Donnez au compte du conteneur le droit d'y écrire (voir le manuel), puis contrôlez à nouveau."
+      stopped: "La réparation s'est arrêtée parce qu'une restauration a commencé ; %{left} éléments n'ont pas été traités. Contrôlez à nouveau une fois la restauration terminée."
   trash:
     badge_aria: "Corbeille, %{count} éléments"
     heading: "Corbeille (éléments supprimés)"

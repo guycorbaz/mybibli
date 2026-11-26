@@ -1007,6 +1007,7 @@ admin:
     note_no_code: "no ISBN, ISSN or UPC: nothing to download"
     note_pending: "a cover proposal is pending: accept it to install a cover"
     unmounted: "%{missing} of the %{total} covers the library uses are missing from %{path}. That looks like a covers folder that is not mounted, so mybibli will not repair anything. Check the covers volume of the installation (see the manual), then check again."
+    another_database: "%{orphans} cover files belong to no title, more than the %{used} covers the library uses. This looks like a database that is not this folder's; mybibli will therefore delete nothing. Check the installation's database (see the manual), then check again."
     repair_open: "Repair…"
     repair:
       title: "Repair the covers?"
@@ -1015,6 +1016,8 @@ admin:
       confirm: "Repair"
       done: "Covers repaired: %{deleted} files deleted, %{cleared} cover addresses cleared, %{queued} downloads queued."
       skipped: "%{skipped} items had changed since the check and were left alone."
+      failed: "%{failed} files could not be deleted: mybibli cannot write in the covers folder %{path}. Give the container's user write access to that folder (see the manual), then check again."
+      stopped: "The repair stopped because a restore started; %{left} items were not handled. Check again once the restore is over."
   trash:
     badge_aria: "Trash, %{count} items"
     heading: Trash bin (soft-deleted items)
