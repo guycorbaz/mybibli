@@ -34,9 +34,16 @@ wishlist:
   col_notes: "Notes"
   action_bought: "Acheté"
   action_remove: "Retirer"
+  # Story 20-1 — accessible names of the two actions (they name the entry).
+  action_bought_named: "Marquer « %{title} » comme acheté"
+  action_remove_named: "Retirer « %{title} » de la wish list"
   back_to_list: "Retour à la wish list"
-  delete_modal_title: "Marquer %{title} comme acheté ?"
-  delete_modal_body: "Cela retire l'entrée de la wish list. L'action est réversible depuis le panneau Corbeille de l'admin dans les 30 jours."
+  delete_modal_title: "Marquer « %{title} » comme acheté ?"
+  delete_modal_body: "L’entrée quitte la wish list. Elle ne pourra pas être restaurée ensuite."
+  # Story 20-1 (#714) — "Remove" without buying; a removed entry cannot be restored.
+  remove_modal_title: "Retirer « %{title} » de la wish list ?"
+  remove_modal_body: "L’entrée quitte la wish list. Elle ne peut pas être restaurée : ajoutez-la à nouveau si vous changez d’avis."
+  already_removed: "Cette entrée n’est plus dans la wish list. Elle a sans doute été retirée dans un autre onglet ou par un autre bibliothécaire. Rechargez la liste pour la voir à jour."
   print_title: "Ma wish list"
   print_count_one: "%{count} livre"
   print_count_other: "%{count} livres"
@@ -415,6 +422,18 @@ error:
     folder_not_writable: "Aucune sauvegarde n'a été écrite : mybibli ne peut pas écrire dans %{path}. Donnez au compte du conteneur le droit d'écrire dans ce dossier (voir le manuel), puis réessayez."
     already_running: "Une sauvegarde est déjà en cours d'écriture. Attendez qu'elle se termine ; elle s'affichera ici."
     failed: "La sauvegarde n'a pas pu être écrite ; rien n'a été conservé. Réessayez ; si l'échec se répète, les journaux en donnent la raison."
+  # Story 19-8 (#657, D5, D8, D9) — restore refusals.
+  restore:
+    damaged: "Cette sauvegarde ne peut pas être restaurée : son contenu ne correspond pas à sa somme de contrôle ; le fichier est endommagé ou incomplet. Rien n'a été modifié. Utilisez une autre sauvegarde, ou copiez celle-ci à nouveau depuis son origine."
+    no_sidecar: "Cette sauvegarde ne peut pas être restaurée : son fichier de contrôle %{file}.sha256 est absent ; mybibli ne peut pas la vérifier. Rien n'a été modifié. Copiez ce fichier à côté de la sauvegarde, puis réessayez."
+    newer: "Cette sauvegarde a été écrite par une version plus récente de mybibli (%{version}) et ne peut pas être restaurée par celle-ci (%{current}). Rien n'a été modifié. Mettez mybibli à jour en %{version} ou plus, puis réessayez."
+    not_readable: "mybibli ne peut pas lire %{file}. Rien n'a été modifié. Donnez au compte du conteneur le droit de lire ce fichier (voir le manuel, « Sauvegardes »), puis réessayez."
+    not_a_backup: "Ce fichier n'est pas une sauvegarde que cette version de mybibli peut restaurer. Rien n'a été modifié."
+    busy: "Une sauvegarde ou une restauration est déjà en cours. Rien n'a été modifié. Attendez une minute, puis réessayez."
+    bulk_running: "Une restauration ne peut pas démarrer pendant le téléchargement des couvertures ou des métadonnées de toute la bibliothèque. Rien n'a été modifié. Attendez la fin de ce traitement (onglet Santé), puis réessayez."
+    gone: "Cette sauvegarde n'est plus dans le dossier. Rien n'a été modifié."
+    drain_timed_out: "La restauration n'a pas démarré : d'autres requêtes étaient encore en cours après 30 secondes. Rien n'a été modifié. Réessayez dans un instant."
+    safety_failed: "Rien n'a été restauré : mybibli n'a pas pu écrire d'abord une sauvegarde de sécurité de la bibliothèque actuelle. %{reason}"
   # Story 15-2 (#614) — MCP skills validation and write errors.
   mcp_skills:
     name_required: "Le nom est obligatoire"
@@ -590,6 +609,10 @@ location:
   organizational_label: "Emplacement organisationnel (ne peut pas contenir de volumes directement)"
   organizational_help: "Cochez cette case si l'emplacement ne fait que regrouper d'autres emplacements (par ex. « Salon » contient « Bibliothèque A » et « Bibliothèque B » mais ne contient pas de volumes lui-même). Aucun volume ne peut être assigné à un emplacement organisationnel — le flux scan refuse, et l'édition d'emplacement rejette le basculement si la ligne a encore des volumes attachés."
   organizational_blocked_has_volumes: "Impossible de marquer organisationnel — %{count} volume(s) sont actuellement attachés à cet emplacement. Re-rangez-les d'abord."
+  description_label: Description
+  description_help: "Facultatif. Où le trouver, par exemple « bibliothèque de gauche, étagère du haut, derrière la porte »."
+  description_too_long: "La description doit compter au plus %{max} caractères."
+  back_to_tree: Retour aux emplacements
   # CR #237 — marquer tous les volumes d'une étagère « à contrôler ».
   bulk_audit_button: "Marquer tous les volumes à contrôler"
   empty_state: "Créez votre premier emplacement pour commencer à organiser !"
@@ -936,6 +959,34 @@ admin:
     folder_missing: "Dossier : %{path} — absent"
     folder_not_writable: "Dossier : %{path} — non accessible en écriture"
     written: "Sauvegarde écrite : %{file} (%{size}, %{titles} titres, %{covers} couvertures)."
+    # Story 19-8 (#657, D1-D7) — the list and the restore modal.
+    list:
+      heading: "Sauvegardes présentes dans le dossier"
+      col_date: "Date"
+      col_origin: "Origine"
+      col_size: "Taille"
+      col_note: "Remarque"
+      restore: "Restaurer…"
+      restore_aria: "Restaurer la sauvegarde du %{when}"
+      empty: "Aucune sauvegarde dans le dossier pour l'instant."
+      origin_own: "Cette instance"
+      origin_other: "Autre instance (%{id})"
+      note_no_sidecar: "Pas de fichier de contrôle"
+      note_not_readable: "Illisible"
+      note_rotation: "Supprimée à la prochaine rotation"
+    restore:
+      title: "Restaurer cette sauvegarde ?"
+      facts: "Sauvegarde du %{when} — %{origin} — mybibli %{version} — %{size}"
+      counts: "Elle contient %{titles} titres et %{covers} couvertures ; la bibliothèque en contient %{now_titles} et %{now_covers} actuellement."
+      consequences: "Toute la bibliothèque — titres, volumes, prêts, utilisateurs, réglages et couvertures — est remplacée par le contenu de cette sauvegarde. Tout ce qui a été saisi depuis disparaît de la bibliothèque, mais une sauvegarde de sécurité de l'état actuel est écrite d'abord. Pendant la restauration (une minute ou deux), mybibli ne répond à personne. Ensuite, tout le monde est déconnecté, vous compris."
+      foreign: "Cette sauvegarde vient d'une autre instance : ses comptes et mots de passe remplacent ceux de celle-ci. Connectez-vous ensuite avec un compte de la bibliothèque restaurée."
+      older: "Elle a été écrite par mybibli %{version} ; elle est mise à jour après la restauration."
+      cancel: "Annuler"
+      confirm: "Restaurer cette sauvegarde"
+      running: "Restauration en cours… Cela prend une minute ou deux ; gardez cette page ouverte."
+      success: "Sauvegarde %{file} restaurée (%{titles} titres, %{covers} couvertures). La sauvegarde de sécurité de l'état précédent est %{safety}. Tout le monde a été déconnecté."
+      rolled_back: "La restauration a échoué ; mybibli a remis la bibliothèque dans l'état où elle était juste avant, depuis la sauvegarde de sécurité %{safety}. Tout le monde a été déconnecté. Les journaux indiquent pourquoi la restauration a échoué."
+      login_again: "Se reconnecter"
   trash:
     badge_aria: "Corbeille, %{count} éléments"
     heading: "Corbeille (éléments supprimés)"
@@ -1031,6 +1082,8 @@ admin:
       folder_missing: "Attention : le dossier de sauvegarde %{path} n'existe pas ; aucune sauvegarde n'est écrite. Montez un dossier à cet endroit (voir le manuel, « Sauvegardes »)."
       folder_not_writable: "Attention : mybibli ne peut pas écrire dans le dossier de sauvegarde %{path} ; aucune sauvegarde n'est écrite. Donnez au compte du conteneur le droit d'y écrire (voir le manuel)."
       failed: "Attention : la sauvegarde automatique du %{when} a échoué ; rien n'a été conservé. Les journaux en donnent la raison."
+      last_restore: "Dernière restauration : %{when}, depuis %{file} (sauvegarde de sécurité : %{safety})."
+      last_restore_failed: "Dernière tentative de restauration : %{when}, depuis %{file} ; elle a échoué et la bibliothèque a été remise en état depuis %{safety}."
     maintenance_heading: Maintenance
     bulk_cover_fetch:
       missing_covers_label: "Titres sans couverture"
@@ -1748,3 +1801,8 @@ tome:
   save_position: "Enregistrer"
   omnibus_not_editable: "Une intégrale couvre plusieurs positions et ne peut pas être déplacée ici. Retirez-la de la série, puis réattribuez-la avec la nouvelle plage."
   manual_hint: "Ce titre contient un numéro de tome (%{label}). Le titre a été enregistré tel que saisi ; pour le garder propre, retirez le numéro du titre et indiquez-le comme position du titre dans sa série."
+# Story 19-8 (#657, D8, D10) — the maintenance answer while a restore runs.
+maintenance:
+  title: "Maintenance"
+  text: "mybibli restaure une sauvegarde. Cela prend une minute ou deux : rechargez cette page ensuite. Tout le monde devra se reconnecter."
+  stuck: "mybibli n'a pu ni restaurer une sauvegarde ni remettre la bibliothèque en état. Demandez à la personne qui a installé mybibli de restaurer à la main la sauvegarde %{safety} (voir le manuel, « Restaurer à la main »)."

@@ -67,7 +67,14 @@
         // fires; `close()` would wipe `slot.innerHTML` and destroy it.
         // Pass `skipSlotWipe` so cleanup runs on the OLD state without
         // touching the slot content (the new dialog stays put).
-        if (state) close({ skipFocusRestore: true, skipSlotWipe: true });
+        // Story 19-8 review (pass 1): a dialog that REPLACES another one
+        // (the restore's outcome line) inherits its trigger, so closing it
+        // later still gives the focus back somewhere (Rule #21).
+        var carriedTrigger = null;
+        if (state) {
+            carriedTrigger = state.triggerEl;
+            close({ skipFocusRestore: true, skipSlotWipe: true });
+        }
 
         // polish-1 AC3: promote declarative `<dialog open>` to a native
         // top-layer modal. The `:modal` pseudo is true ONLY when opened
@@ -102,7 +109,7 @@
         function onNativeClose() { if (state && state.dialog === dialog) close({ skipFocusRestore: false }); }
         dialog.addEventListener("close", onNativeClose, { once: true });
 
-        var triggerEl = document.querySelector('[data-modal-trigger][data-pressed="true"]');
+        var triggerEl = document.querySelector('[data-modal-trigger][data-pressed="true"]') || carriedTrigger;
         if (triggerEl) triggerEl.setAttribute("aria-expanded", "true");
         var restoredTabindexes = sweepBackgroundTabindex(dialog);
         var initialFocus = findInitialFocus(dialog);
@@ -113,6 +120,8 @@
         function onKeydown(evt) {
             if (evt.key === "Escape") {
                 evt.preventDefault();
+                // Story 19-8: a locked modal stays while its Confirm runs.
+                if (state && state.busy) return;
                 close();
                 return;
             }
@@ -135,6 +144,11 @@
         var mousedownTarget = null;
         function onMousedown(evt) { mousedownTarget = evt.target; }
         function onClick(evt) {
+            if (state && state.busy) {
+                var inCancel = evt.target && evt.target.closest && evt.target.closest("[data-modal-cancel]");
+                if (inCancel || evt.target === dialog) evt.preventDefault();
+                return;
+            }
             var cancelBtn = evt.target && evt.target.closest && evt.target.closest("[data-modal-cancel]");
             if (cancelBtn && dialog.contains(cancelBtn)) {
                 evt.preventDefault();
@@ -151,6 +165,11 @@
         }
 
         document.addEventListener("keydown", onKeydown, false);
+        // The native close request (Escape on a showModal() dialog) is
+        // refused too while a locked modal's Confirm runs.
+        dialog.addEventListener("cancel", function (evt) {
+            if (state && state.dialog === dialog && state.busy) evt.preventDefault();
+        }, false);
         dialog.addEventListener("mousedown", onMousedown, false);
         dialog.addEventListener("click", onClick, false);
 
@@ -294,7 +313,18 @@
             region.innerHTML = "";
             region.classList.add("hidden");
         }
+        // Story 19-8 review (pass 1): a modal carrying
+        // `[data-modal-lock-while-busy]` (the restore: the server decides,
+        // a closed dialog would hide its answer) keeps Cancel, Escape and
+        // the backdrop inert until the answer arrives.
+        if (state.dialog.querySelector("[data-modal-lock-while-busy]")) setBusy(true);
     }, false);
+
+    function setBusy(busy) {
+        if (!state) return;
+        state.busy = busy;
+        state.dialog.querySelectorAll("[data-modal-cancel]").forEach(function (b) { b.disabled = busy; });
+    }
 
     // polish-1 P1: track whether a recently in-flight HTMX request
     // originated from THIS slot's modal Confirm. Used by the modal-close
@@ -328,6 +358,7 @@
         // Path A: modal still open AND request originated from our Confirm.
         if (originatesFromConfirm(detail.elt)) {
             if (isFailed) {
+                setBusy(false);
                 // polish-1 AC4.c failed-Confirm path: inject the response body
                 // into data-modal-error. Retarget guard (defensive) — if
                 // HX-Retarget is set on the response, AC4.b middleware didn't

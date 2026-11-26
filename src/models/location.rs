@@ -17,6 +17,11 @@ pub struct LocationModel {
     /// organizational entries, and `update_location` rejects an
     /// organizational target server-side.
     pub is_organizational: bool,
+    /// Story 20-4 (#716) — optional plain-text "where to find it", at most
+    /// [`crate::services::locations::DESCRIPTION_MAX_CHARS`] characters.
+    /// Written only by the web edit form; shown on `/location/{id}` and
+    /// returned by `GET /api/v1/locations`.
+    pub description: Option<String>,
 }
 
 impl LocationModel {
@@ -56,7 +61,7 @@ impl LocationModel {
         tracing::debug!(id = id, "Looking up location by ID");
 
         let row = sqlx::query(
-            r#"SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational
+            r#"SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational, description
                FROM storage_locations
                WHERE id = ? AND deleted_at IS NULL"#,
         )
@@ -72,6 +77,7 @@ impl LocationModel {
                 node_type: r.try_get("node_type")?,
                 label: r.try_get("label")?,
                 is_organizational: r.try_get::<i8, _>("is_organizational").unwrap_or(0) != 0,
+                description: r.try_get::<Option<String>, _>("description")?,
             })),
             None => Ok(None),
         }
@@ -116,7 +122,7 @@ impl LocationModel {
 
         let row = sqlx::query(
             r#"SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label,
-                      is_organizational, (deleted_at IS NOT NULL) AS is_deleted
+                      is_organizational, description, (deleted_at IS NOT NULL) AS is_deleted
                FROM storage_locations
                WHERE label = ?"#,
         )
@@ -135,6 +141,7 @@ impl LocationModel {
                         node_type: r.try_get("node_type")?,
                         label: r.try_get("label")?,
                         is_organizational: r.try_get("is_organizational")?,
+                        description: r.try_get::<Option<String>, _>("description")?,
                     },
                     is_deleted != 0,
                 )))
@@ -150,7 +157,7 @@ impl LocationModel {
         tracing::debug!(label = %label, "Looking up location by label");
 
         let row = sqlx::query(
-            r#"SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational
+            r#"SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational, description
                FROM storage_locations
                WHERE label = ? AND deleted_at IS NULL"#,
         )
@@ -166,6 +173,7 @@ impl LocationModel {
                 node_type: r.try_get("node_type")?,
                 label: r.try_get("label")?,
                 is_organizational: r.try_get::<i8, _>("is_organizational").unwrap_or(0) != 0,
+                description: r.try_get::<Option<String>, _>("description")?,
             })),
             None => Ok(None),
         }
@@ -210,7 +218,7 @@ impl LocationModel {
     /// Load all non-deleted locations ordered for tree building.
     pub async fn find_all_tree(pool: &DbPool) -> Result<Vec<LocationModel>, AppError> {
         let rows = sqlx::query(
-            "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational \
+            "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational, description \
              FROM storage_locations WHERE deleted_at IS NULL \
              ORDER BY parent_id IS NOT NULL, parent_id, name",
         )
@@ -232,6 +240,7 @@ impl LocationModel {
                     .try_get::<i8, _>("is_organizational")
                     .unwrap_or(0)
                     != 0,
+                description: r.try_get::<Option<String>, _>("description").unwrap_or(None),
             })
             .collect())
     }
@@ -242,7 +251,7 @@ impl LocationModel {
         parent_id: u64,
     ) -> Result<Vec<LocationModel>, AppError> {
         let rows = sqlx::query(
-            "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational \
+            "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational, description \
              FROM storage_locations WHERE parent_id = ? AND deleted_at IS NULL \
              ORDER BY name",
         )
@@ -265,6 +274,7 @@ impl LocationModel {
                     .try_get::<i8, _>("is_organizational")
                     .unwrap_or(0)
                     != 0,
+                description: r.try_get::<Option<String>, _>("description").unwrap_or(None),
             })
             .collect())
     }
@@ -324,10 +334,11 @@ impl LocationModel {
         node_type: &str,
         parent_id: Option<u64>,
         is_organizational: bool,
+        description: Option<&str>,
     ) -> Result<LocationModel, AppError> {
         let result = sqlx::query(
             "UPDATE storage_locations SET name = ?, node_type = ?, parent_id = ?, \
-             is_organizational = ?, \
+             is_organizational = ?, description = ?, \
              version = version + 1, updated_at = NOW() \
              WHERE id = ? AND version = ? AND deleted_at IS NULL",
         )
@@ -335,6 +346,7 @@ impl LocationModel {
         .bind(node_type)
         .bind(parent_id)
         .bind(is_organizational)
+        .bind(description)
         .bind(id)
         .bind(version)
         .execute(pool)
@@ -480,6 +492,7 @@ mod tests {
             node_type: "room".to_string(),
             label: "L0001".to_string(),
             is_organizational: false,
+            description: None,
         };
         assert_eq!(loc.to_string(), "Salon (L0001)");
     }
@@ -497,6 +510,7 @@ mod tests {
             node_type: "shelf".to_string(),
             label: "L0001".to_string(),
             is_organizational: false,
+            description: None,
         };
         assert!(shelf.is_assignable(), "non-organizational = assignable");
 
@@ -507,6 +521,7 @@ mod tests {
             node_type: "room".to_string(),
             label: "L0002".to_string(),
             is_organizational: true,
+            description: None,
         };
         assert!(!container.is_assignable(), "organizational = NOT assignable");
     }

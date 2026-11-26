@@ -12,7 +12,7 @@ use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
 use crate::middleware::locale::Locale;
 use crate::models::location::LocationModel;
-use crate::services::locations::LocationService;
+use crate::services::locations::{DESCRIPTION_MAX_CHARS, DescriptionTooLong, LocationService};
 use crate::utils::base_context;
 
 use crate::models::PaginatedList;
@@ -38,6 +38,8 @@ pub struct LocationDetailTemplate {
     pub base: crate::utils::BaseContextFields,
     pub location: LocationModel,
     pub breadcrumb_segments: Vec<(u64, String)>,
+    /// Story 20-4 — the breadcrumb's `aria-label` (was hard-coded English).
+    pub breadcrumb_label: String,
     pub volumes: PaginatedList<VolumeWithTitle>,
     pub contents_title: String,
     pub empty_volumes: String,
@@ -78,6 +80,7 @@ pub async fn location_detail(
     let base = base_context(&session, loc, "location", &uri, state.page_settings());
     let template = LocationDetailTemplate {
         base,
+        breadcrumb_label: rust_i18n::t!("location.breadcrumb_label", locale = loc).to_string(),
         contents_title: rust_i18n::t!("location.contents_title", locale = loc).to_string(),
         empty_volumes: rust_i18n::t!("location.empty_volumes", locale = loc).to_string(),
         col_title: rust_i18n::t!("location.col_title", locale = loc).to_string(),
@@ -542,6 +545,9 @@ pub async fn create_location(
 pub struct LocationEditTemplate {
     pub base: crate::utils::BaseContextFields,
     pub edit_title: String,
+    /// The location as the form shows it: the stored row, or — after a
+    /// refusal — the row with the typed name, type, parent and
+    /// organizational flag (id and L-code stay the stored ones).
     pub location: LocationModel,
     pub version: i32,
     pub node_types: Vec<(u64, String)>,
@@ -554,6 +560,93 @@ pub struct LocationEditTemplate {
     // CR #280 — organizational checkbox copy.
     pub organizational_label: String,
     pub organizational_help: String,
+    // Story 20-4 (#716) — description field.
+    pub description_value: String,
+    pub description_error: Option<String>,
+    pub description_label: String,
+    pub description_help: String,
+    pub back_label: String,
+}
+
+/// Story 20-4 — what the edit form shows: the stored values, or the typed
+/// ones after a refusal, with an optional message under the description.
+struct EditFormState {
+    name: String,
+    node_type: String,
+    parent_id: Option<u64>,
+    is_organizational: bool,
+    description: String,
+    version: i32,
+    description_error: Option<String>,
+}
+
+impl EditFormState {
+    fn stored(location: &LocationModel, version: i32) -> Self {
+        Self {
+            name: location.name.clone(),
+            node_type: location.node_type.clone(),
+            parent_id: location.parent_id,
+            is_organizational: location.is_organizational,
+            description: location.description.clone().unwrap_or_default(),
+            version,
+            description_error: None,
+        }
+    }
+}
+
+/// Render the edit page — the GET and the refusal of a POST share it
+/// (story 20-4). `uri` is the page's GET address, so the layout's return
+/// links (language toggle, login `next`) never point at the POST route.
+async fn render_edit_page(
+    state: &AppState,
+    session: &Session,
+    loc: &'static str,
+    uri: &axum::http::Uri,
+    stored: LocationModel,
+    form: EditFormState,
+    status: axum::http::StatusCode,
+) -> Result<axum::response::Response, AppError> {
+    let pool = &state.pool;
+    let node_types = LocationModel::find_node_types(pool).await?;
+    let all_locations = LocationModel::find_all_tree(pool).await?;
+    let location = LocationModel {
+        name: form.name,
+        node_type: form.node_type,
+        parent_id: form.parent_id,
+        is_organizational: form.is_organizational,
+        ..stored
+    };
+
+    let base = base_context(session, loc, "locations", uri, state.page_settings());
+    let template = LocationEditTemplate {
+        base,
+        edit_title: rust_i18n::t!("location.edit", locale = loc).to_string(),
+        location,
+        version: form.version,
+        node_types,
+        all_locations,
+        name_label: rust_i18n::t!("location.name_label", locale = loc).to_string(),
+        type_label: rust_i18n::t!("location.type_label", locale = loc).to_string(),
+        parent_label: rust_i18n::t!("location.parent_label", locale = loc).to_string(),
+        submit_label: rust_i18n::t!("location.submit", locale = loc).to_string(),
+        none_label: rust_i18n::t!("location.none", locale = loc).to_string(),
+        organizational_label: rust_i18n::t!("location.organizational_label", locale = loc)
+            .to_string(),
+        organizational_help: rust_i18n::t!("location.organizational_help", locale = loc)
+            .to_string(),
+        description_value: form.description,
+        description_error: form.description_error,
+        description_label: rust_i18n::t!("location.description_label", locale = loc).to_string(),
+        description_help: rust_i18n::t!("location.description_help", locale = loc).to_string(),
+        back_label: rust_i18n::t!("location.back_to_tree", locale = loc).to_string(),
+    };
+    match template.render() {
+        Ok(html) => Ok((status, Html(html)).into_response()),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to render location edit template");
+            Err(AppError::TemplateRenderFailed { template: "locations" })
+        }
+    }
 }
 
 pub async fn edit_location_page(
@@ -573,34 +666,8 @@ pub async fn edit_location_page(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
     let version = LocationModel::get_version(pool, id).await?;
-    let node_types = LocationModel::find_node_types(pool).await?;
-    let all_locations = LocationModel::find_all_tree(pool).await?;
-
-    let base = base_context(&session, loc, "locations", &uri, state.page_settings());
-    let template = LocationEditTemplate {
-        base,
-        edit_title: rust_i18n::t!("location.edit", locale = loc).to_string(),
-        location,
-        version,
-        node_types,
-        all_locations,
-        name_label: rust_i18n::t!("location.name_label", locale = loc).to_string(),
-        type_label: rust_i18n::t!("location.type_label", locale = loc).to_string(),
-        parent_label: rust_i18n::t!("location.parent_label", locale = loc).to_string(),
-        submit_label: rust_i18n::t!("location.submit", locale = loc).to_string(),
-        none_label: rust_i18n::t!("location.none", locale = loc).to_string(),
-        organizational_label: rust_i18n::t!("location.organizational_label", locale = loc)
-            .to_string(),
-        organizational_help: rust_i18n::t!("location.organizational_help", locale = loc)
-            .to_string(),
-    };
-    match template.render() {
-        Ok(html) => Ok(Html(html).into_response()),
-        Err(e) => {
-            tracing::error!(error = %e, "Failed to render location edit template");
-            Err(AppError::TemplateRenderFailed { template: "locations" })
-        }
-    }
+    let form = EditFormState::stored(&location, version);
+    render_edit_page(&state, &session, loc, &uri, location, form, axum::http::StatusCode::OK).await
 }
 
 #[derive(Deserialize)]
@@ -615,6 +682,9 @@ pub struct UpdateLocationForm {
     pub parent_id: Option<u64>,
     #[serde(default)]
     pub is_organizational: Option<String>,
+    /// Story 20-4 (#716) — optional; absent from an older form = blank.
+    #[serde(default)]
+    pub description: String,
 }
 
 pub async fn update_location(
@@ -623,9 +693,52 @@ pub async fn update_location(
     State(state): State<AppState>,
     Path(id): Path<u64>,
     axum::Form(form): axum::Form<UpdateLocationForm>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<axum::response::Response, AppError> {
     // Story 7-1 decision 1a: Admin → Librarian.
     session.require_role(Role::Librarian, locale.0)?;
+    let loc = locale.0;
+
+    // Story 20-4 — a description over the limit is refused next to its
+    // field (422, typed values kept, nothing written). The service's other
+    // refusals keep their behaviour (issue #732).
+    let description = match LocationService::normalize_description(&form.description) {
+        Ok(description) => description,
+        Err(DescriptionTooLong) => {
+            let stored = LocationModel::find_by_id(&state.pool, id).await?.ok_or_else(|| {
+                AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
+            })?;
+            let page = format!("/locations/{id}/edit");
+            let uri: axum::http::Uri = page
+                .parse()
+                .map_err(|e| AppError::Internal(format!("location edit uri: {e}")))?;
+            let typed = EditFormState {
+                name: form.name,
+                node_type: form.node_type,
+                parent_id: form.parent_id,
+                is_organizational: form.is_organizational.is_some(),
+                description: form.description,
+                version: form.version,
+                description_error: Some(
+                    rust_i18n::t!(
+                        "location.description_too_long",
+                        locale = loc,
+                        max = DESCRIPTION_MAX_CHARS
+                    )
+                    .to_string(),
+                ),
+            };
+            return render_edit_page(
+                &state,
+                &session,
+                loc,
+                &uri,
+                stored,
+                typed,
+                axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            )
+            .await;
+        }
+    };
 
     LocationService::update_location(
         &state.pool,
@@ -635,6 +748,7 @@ pub async fn update_location(
         &form.node_type,
         form.parent_id,
         form.is_organizational.is_some(),
+        description.as_deref(),
     )
     .await?;
 
@@ -810,6 +924,7 @@ mod tests {
             node_type: node_type.to_string(),
             label: label.to_string(),
             is_organizational: false,
+            description: None,
         }
     }
 
@@ -863,6 +978,15 @@ mod tests {
         let form: UpdateLocationForm = serde_urlencoded::from_str(body).unwrap();
         assert_eq!(form.parent_id, Some(4));
         assert!(form.is_organizational.is_none());
+        // Story 20-4 — a form without the field reads as blank.
+        assert_eq!(form.description, "");
+    }
+
+    #[test]
+    fn update_location_form_parses_a_description() {
+        let body = "name=Tablette&node_type=shelf&version=2&parent_id=&description=Left+bookcase%0D%0Atop+shelf";
+        let form: UpdateLocationForm = serde_urlencoded::from_str(body).unwrap();
+        assert_eq!(form.description, "Left bookcase\r\ntop shelf");
     }
 
     #[test]
@@ -1124,12 +1248,12 @@ mod tests {
         assert_eq!(confirm.headers().get("hx-trigger-after-swap").unwrap(), "modal-close");
     }
 
-    #[test]
-    fn test_location_detail_template_renders() {
-        let template = LocationDetailTemplate {
+    fn detail_template(location: LocationModel) -> LocationDetailTemplate {
+        LocationDetailTemplate {
             base: crate::utils::test_base_context("anonymous", "location", crate::config::AppSettings::default().session_timeout_secs),
-            location: loc(1, None, "Salon", "room", "L0001"),
+            location,
             breadcrumb_segments: vec![(1, "Salon".to_string())],
+            breadcrumb_label: "Location path".to_string(),
             volumes: crate::models::PaginatedList::new(vec![], 1, 0, None, None, None),
             contents_title: "Shelf contents".to_string(),
             empty_volumes: "No volumes".to_string(),
@@ -1144,9 +1268,88 @@ mod tests {
             pagination_aria: "Pagination".to_string(),
             can_audit: false,
             bulk_audit_button_label: "Mark all volumes for audit".to_string(),
-        };
-        let rendered = template.render().unwrap();
+        }
+    }
+
+    #[test]
+    fn test_location_detail_template_renders() {
+        let rendered = detail_template(loc(1, None, "Salon", "room", "L0001")).render().unwrap();
         assert!(rendered.contains("Salon"));
         assert!(rendered.contains("No volumes"));
+        assert!(rendered.contains(r#"aria-label="Location path""#));
+        // Story 20-4 — no description, no element.
+        assert!(!rendered.contains("location-description"), "{rendered}");
+    }
+
+    /// Story 20-4 — the description is shown escaped, line breaks kept by
+    /// the `whitespace-pre-line` class, never as HTML.
+    #[test]
+    fn location_detail_shows_the_description_escaped() {
+        let mut location = loc(1, None, "Salon", "room", "L0001");
+        location.description = Some("Left <b>bookcase</b>\r\ntop shelf".to_string());
+        let rendered = detail_template(location).render().unwrap();
+        assert!(rendered.contains(r#"id="location-description""#), "{rendered}");
+        assert!(rendered.contains("whitespace-pre-line"));
+        assert!(rendered.contains("Left &#60;b&#62;bookcase&#60;/b&#62;\r\ntop shelf"), "{rendered}");
+        assert!(!rendered.contains("<b>bookcase"));
+    }
+
+    fn edit_template(description_value: &str, description_error: Option<&str>) -> String {
+        LocationEditTemplate {
+            base: crate::utils::test_base_context("librarian", "locations", crate::config::AppSettings::default().session_timeout_secs),
+            edit_title: "Edit location".to_string(),
+            location: loc(7, None, "Salon", "room", "L0007"),
+            version: 3,
+            node_types: vec![(1, "room".to_string())],
+            all_locations: vec![],
+            name_label: "Name".to_string(),
+            type_label: "Type".to_string(),
+            parent_label: "Parent".to_string(),
+            submit_label: "Save".to_string(),
+            none_label: "None".to_string(),
+            organizational_label: "Organizational".to_string(),
+            organizational_help: "Holds locations only".to_string(),
+            description_value: description_value.to_string(),
+            description_error: description_error.map(str::to_string),
+            description_label: "Description".to_string(),
+            description_help: "Optional. Where to find it.".to_string(),
+            back_label: "Back to locations".to_string(),
+        }
+        .render()
+        .unwrap()
+    }
+
+    /// Story 20-4 — normal state: the textarea carries the stored text and
+    /// points at the help line only; no error slot.
+    #[test]
+    fn location_edit_shows_the_description_field() {
+        let html = edit_template("Top <shelf>", None);
+        assert!(html.contains(r#"<label for="edit-description""#), "{html}");
+        assert!(html.contains(r#"aria-describedby="edit-description-help""#), "{html}");
+        assert!(html.contains(">Top &#60;shelf&#62;</textarea>"), "{html}");
+        assert!(html.contains(r#"id="edit-description-help""#));
+        assert!(!html.contains("edit-description-error"), "{html}");
+        assert!(!html.contains("aria-invalid"), "{html}");
+        assert!(html.contains("Back to locations"));
+        assert!(!html.contains("← Back\n"), "the hard-coded English link is gone");
+    }
+
+    /// Story 20-4 — refused state: the message sits under the textarea,
+    /// which is marked invalid and names both the help and the error.
+    #[test]
+    fn location_edit_shows_the_refusal_next_to_the_field() {
+        let typed = "x".repeat(501);
+        let html = edit_template(&typed, Some("Description must be at most 500 characters."));
+        assert!(html.contains(r#"aria-invalid="true""#), "{html}");
+        assert!(
+            html.contains(r#"aria-describedby="edit-description-help edit-description-error""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"<p id="edit-description-error""#), "{html}");
+        assert!(html.contains("Description must be at most 500 characters."));
+        assert!(html.contains(&format!(">{typed}</textarea>")));
+        let textarea = html.find(r#"id="edit-description""#).unwrap();
+        let error = html.find(r#"id="edit-description-error""#).unwrap();
+        assert!(textarea < error, "the error comes right after the field");
     }
 }

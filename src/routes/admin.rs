@@ -432,8 +432,12 @@ fn spawn_bulk_bnf_worker(
     // #419 — inter-title pacing, admin-configurable (was hardcoded
     // 500 ms). Snapshotted once per run; the next run picks up changes.
     let delay_ms = state.bulk_refetch_delay_ms();
+    // Story 19-8 (T7): the run captures the maintenance generation; a
+    // fetch's writes are dropped once a restore started since (a restore
+    // is refused while the run is in progress, R7).
+    let maintenance = state.backup.maintenance.clone();
 
-    tokio::spawn(async move {
+    tokio::spawn(crate::services::maintenance::scoped(&maintenance, async move {
         for title in titles {
             // Fix #311 — force_refresh=true: the whole point of these
             // bulk actions is "try the providers again". Without it the
@@ -515,7 +519,7 @@ fn spawn_bulk_bnf_worker(
             total = summary.total,
             "Bulk metadata task completed"
         );
-    });
+    }));
 }
 
 /// #389 Palier 1 — admin action: re-fetch metadata (force_refresh) for

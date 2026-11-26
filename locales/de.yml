@@ -34,9 +34,16 @@ wishlist:
   col_notes: "Notizen"
   action_bought: "Gekauft"
   action_remove: "Entfernen"
+  # Story 20-1 — accessible names of the two actions (they name the entry).
+  action_bought_named: "„%{title}“ als gekauft markieren"
+  action_remove_named: "„%{title}“ von der Wunschliste entfernen"
   back_to_list: "Zurück zur Wunschliste"
-  delete_modal_title: "%{title} als gekauft markieren?"
-  delete_modal_body: "Der Eintrag wird aus der Wunschliste entfernt. Die Aktion ist innerhalb von 30 Tagen über den Admin-Papierkorb umkehrbar."
+  delete_modal_title: "„%{title}“ als gekauft markieren?"
+  delete_modal_body: "Der Eintrag verlässt die Wunschliste. Er kann danach nicht wiederhergestellt werden."
+  # Story 20-1 (#714) — "Remove" without buying; a removed entry cannot be restored.
+  remove_modal_title: "„%{title}“ von der Wunschliste entfernen?"
+  remove_modal_body: "Der Eintrag verlässt die Wunschliste. Er kann nicht wiederhergestellt werden: Fügen Sie ihn erneut hinzu, wenn Sie es sich anders überlegen."
+  already_removed: "Dieser Eintrag steht nicht mehr auf der Wunschliste. Er wurde wahrscheinlich in einem anderen Tab oder von einer anderen Person entfernt. Laden Sie die Liste neu, um den aktuellen Stand zu sehen."
   print_title: "Meine Wunschliste"
   print_count_one: "%{count} Buch"
   print_count_other: "%{count} Bücher"
@@ -412,6 +419,18 @@ error:
     folder_not_writable: "Es wurde keine Sicherung geschrieben: mybibli kann nicht in %{path} schreiben. Geben Sie dem Benutzer des Containers Schreibrechte für diesen Ordner (siehe Handbuch) und versuchen Sie es dann erneut."
     already_running: "Es wird bereits eine Sicherung geschrieben. Warten Sie, bis sie fertig ist; sie wird hier angezeigt."
     failed: "Die Sicherung konnte nicht geschrieben werden, daher wurde nichts behalten. Versuchen Sie es erneut; wenn es weiterhin fehlschlägt, nennen die Protokolle den Grund."
+  # Story 19-8 (#657, D5, D8, D9) — restore refusals.
+  restore:
+    damaged: "Diese Sicherung kann nicht wiederhergestellt werden: Ihr Inhalt stimmt nicht mit ihrer Prüfsumme überein, die Datei ist also beschädigt oder unvollständig. Es wurde nichts geändert. Verwenden Sie eine andere Sicherung oder kopieren Sie diese erneut von ihrem Ursprungsort."
+    no_sidecar: "Diese Sicherung kann nicht wiederhergestellt werden: Ihre Prüfdatei %{file}.sha256 fehlt, daher kann mybibli sie nicht prüfen. Es wurde nichts geändert. Kopieren Sie diese Datei neben die Sicherung und versuchen Sie es dann erneut."
+    newer: "Diese Sicherung wurde von einer neueren mybibli-Version (%{version}) geschrieben und kann von dieser (%{current}) nicht wiederhergestellt werden. Es wurde nichts geändert. Aktualisieren Sie mybibli auf %{version} oder neuer und versuchen Sie es dann erneut."
+    not_readable: "mybibli kann %{file} nicht lesen. Es wurde nichts geändert. Geben Sie dem Benutzer des Containers Leserechte für diese Datei (siehe Handbuch, „Sicherungen“) und versuchen Sie es dann erneut."
+    not_a_backup: "Diese Datei ist keine Sicherung, die diese mybibli-Version wiederherstellen kann. Es wurde nichts geändert."
+    busy: "Es läuft bereits eine Sicherung oder eine Wiederherstellung. Es wurde nichts geändert. Warten Sie eine Minute und versuchen Sie es dann erneut."
+    bulk_running: "Eine Wiederherstellung kann nicht beginnen, während Cover oder Metadaten für die ganze Bibliothek heruntergeladen werden. Es wurde nichts geändert. Warten Sie, bis dieser Vorgang beendet ist (Reiter Status), und versuchen Sie es dann erneut."
+    gone: "Diese Sicherung ist nicht mehr im Ordner. Es wurde nichts geändert."
+    drain_timed_out: "Die Wiederherstellung hat nicht begonnen: Nach 30 Sekunden liefen noch andere Anfragen. Es wurde nichts geändert. Versuchen Sie es gleich noch einmal."
+    safety_failed: "Es wurde nichts wiederhergestellt: mybibli konnte nicht zuerst eine Sicherheitskopie der aktuellen Bibliothek schreiben. %{reason}"
   # Story 15-2 (#614) — MCP skills validation and write errors.
   mcp_skills:
     name_required: "Name ist erforderlich"
@@ -587,6 +606,10 @@ location:
   organizational_label: "Organisatorischer Standort (kann keine Exemplare direkt aufnehmen)"
   organizational_help: "Aktivieren, wenn der Standort nur Unterstandorte gruppiert (z. B. \"Wohnzimmer\" enthält \"Regal A\" und \"Regal B\", aber selbst keine Exemplare). Exemplare können einem organisatorischen Standort nicht zugewiesen werden — der Einsortier-Workflow weist ab, und das Bearbeitungsformular lehnt das Umstellen eines Standorts mit angehängten Exemplaren ab."
   organizational_blocked_has_volumes: "Kann nicht als organisatorisch markiert werden — %{count} Exemplar(e) verwenden diesen Standort aktuell. Bitte zuerst umsortieren."
+  description_label: Beschreibung
+  description_help: "Optional. Wo der Standort zu finden ist, zum Beispiel „linkes Bücherregal, oberstes Fach, hinter der Tür“."
+  description_too_long: "Die Beschreibung darf höchstens %{max} Zeichen lang sein."
+  back_to_tree: Zurück zu den Standorten
   # CR #237 — bulk-mark all volumes on a shelf "to check".
   bulk_audit_button: "Alle Exemplare zur Prüfung markieren"
   empty_state: "Erstellen Sie Ihren ersten Standort, um mit der Organisation zu beginnen!"
@@ -924,6 +947,34 @@ admin:
     folder_missing: "Ordner: %{path} — fehlt"
     folder_not_writable: "Ordner: %{path} — nicht beschreibbar"
     written: "Sicherung geschrieben: %{file} (%{size}, %{titles} Titel, %{covers} Cover)."
+    # Story 19-8 (#657, D1-D7) — the list and the restore modal.
+    list:
+      heading: "Sicherungen im Ordner"
+      col_date: "Datum"
+      col_origin: "Herkunft"
+      col_size: "Größe"
+      col_note: "Hinweis"
+      restore: "Wiederherstellen…"
+      restore_aria: "Die Sicherung vom %{when} wiederherstellen"
+      empty: "Noch keine Sicherung im Ordner."
+      origin_own: "Diese Instanz"
+      origin_other: "Andere Instanz (%{id})"
+      note_no_sidecar: "Keine Prüfdatei"
+      note_not_readable: "Nicht lesbar"
+      note_rotation: "Wird bei der nächsten Rotation gelöscht"
+    restore:
+      title: "Diese Sicherung wiederherstellen?"
+      facts: "Sicherung vom %{when} — %{origin} — mybibli %{version} — %{size}"
+      counts: "Sie enthält %{titles} Titel und %{covers} Cover; die Bibliothek enthält derzeit %{now_titles} Titel und %{now_covers} Cover."
+      consequences: "Die ganze Bibliothek — Titel, Exemplare, Ausleihen, Benutzer, Einstellungen und Cover — wird durch den Inhalt dieser Sicherung ersetzt. Alles, was seither erfasst wurde, verschwindet aus der Bibliothek, aber zuerst wird eine Sicherheitskopie des aktuellen Zustands geschrieben. Während der Wiederherstellung (ein bis zwei Minuten) antwortet mybibli niemandem. Danach sind alle abgemeldet, auch Sie."
+      foreign: "Diese Sicherung stammt von einer anderen Instanz: Ihre Konten und Passwörter ersetzen die dieser Instanz. Melden Sie sich danach mit einem Konto der wiederhergestellten Bibliothek an."
+      older: "Sie wurde von mybibli %{version} geschrieben; sie wird nach der Wiederherstellung auf den aktuellen Stand gebracht."
+      cancel: "Abbrechen"
+      confirm: "Diese Sicherung wiederherstellen"
+      running: "Wiederherstellung läuft… Das dauert ein bis zwei Minuten; lassen Sie diese Seite offen."
+      success: "Sicherung %{file} wiederhergestellt (%{titles} Titel, %{covers} Cover). Die Sicherheitskopie des vorherigen Zustands ist %{safety}. Alle wurden abgemeldet."
+      rolled_back: "Die Wiederherstellung ist fehlgeschlagen, daher hat mybibli die Bibliothek aus der Sicherheitskopie %{safety} in den Zustand von unmittelbar davor zurückversetzt. Alle wurden abgemeldet. Die Protokolle nennen den Grund des Fehlschlags."
+      login_again: "Erneut anmelden"
   trash:
     badge_aria: "Papierkorb, %{count} Einträge"
     heading: Papierkorb (gelöschte Einträge)
@@ -1019,6 +1070,8 @@ admin:
       folder_missing: "Achtung: Der Sicherungsordner %{path} existiert nicht, daher wird keine Sicherung geschrieben. Binden Sie dort einen Ordner ein (siehe Handbuch, „Sicherungen“)."
       folder_not_writable: "Achtung: mybibli kann nicht in den Sicherungsordner %{path} schreiben, daher wird keine Sicherung geschrieben. Geben Sie dem Benutzer des Containers Schreibrechte dafür (siehe Handbuch)."
       failed: "Achtung: Die automatische Sicherung vom %{when} ist fehlgeschlagen, daher wurde nichts aufbewahrt. Die Protokolle nennen den Grund."
+      last_restore: "Letzte Wiederherstellung: %{when}, aus %{file} (Sicherheitskopie: %{safety})."
+      last_restore_failed: "Letzter Wiederherstellungsversuch: %{when}, aus %{file}; er ist fehlgeschlagen und die Bibliothek wurde aus %{safety} zurückversetzt."
     maintenance_heading: Wartung
     bulk_cover_fetch:
       missing_covers_label: "Titel mit fehlendem Cover"
@@ -1736,3 +1789,8 @@ tome:
   save_position: "Speichern"
   omnibus_not_editable: "Ein Sammelband umfasst mehrere Positionen und kann hier nicht verschoben werden. Entfernen Sie ihn aus der Reihe und weisen Sie ihn dann mit dem neuen Bereich erneut zu."
   manual_hint: "Dieser Titel enthält eine Bandnummer (%{label}). Der Titel wurde wie eingegeben gespeichert; entfernen Sie die Nummer aus dem Titel und tragen Sie sie als Position des Titels in seiner Reihe ein."
+# Story 19-8 (#657, D8, D10) — the maintenance answer while a restore runs.
+maintenance:
+  title: "Wartung"
+  text: "mybibli stellt eine Sicherung wieder her. Das dauert ein bis zwei Minuten: Laden Sie diese Seite danach neu. Alle müssen sich erneut anmelden."
+  stuck: "mybibli konnte weder eine Sicherung wiederherstellen noch die Bibliothek zurückversetzen. Bitten Sie die Person, die mybibli installiert hat, die Sicherung %{safety} von Hand wiederherzustellen (siehe Handbuch, „Von Hand wiederherstellen“)."

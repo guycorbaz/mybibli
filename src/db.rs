@@ -6,6 +6,23 @@ use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
 /// Type alias for the database connection pool.
 pub type DbPool = MySqlPool;
 
+/// Story 19-8 (T3) — the one migrator of the binary: boot runs it, and a
+/// restore runs it after loading a backup (an older backup is brought up to
+/// date). Its versions also tell a restore which backup levels it knows.
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
+/// The newest migration this binary knows.
+pub fn newest_known_migration() -> Option<i64> {
+    MIGRATOR.iter().filter(|m| !m.migration_type.is_down_migration()).map(|m| m.version).max()
+}
+
+/// Whether `version` is a migration of this binary.
+pub fn is_known_migration(version: i64) -> bool {
+    MIGRATOR
+        .iter()
+        .any(|m| m.version == version && !m.migration_type.is_down_migration())
+}
+
 /// Story 17-6 review — a duplicate entry exactly (MySQL error 1062), not
 /// the whole 23000 class (foreign key, NOT NULL, CHECK…). Shared since
 /// story 19-3 (contributor names).
@@ -71,6 +88,14 @@ pub async fn create_pool(database_url: &str) -> Result<DbPool, sqlx::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_migrator_knows_its_newest_level() {
+        let newest = newest_known_migration().expect("migrations are embedded");
+        assert!(is_known_migration(newest));
+        assert!(!is_known_migration(newest + 1));
+        assert!(newest >= 20261126100000, "{newest}");
+    }
 
     #[tokio::test]
     async fn test_create_pool_with_invalid_url_returns_error() {

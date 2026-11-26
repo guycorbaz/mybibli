@@ -8,8 +8,11 @@
 //!   metadata as a confirmation step; HTMX)
 //! - `POST /wishlist` — final insert (both ISBN-confirmed and free-form here)
 //! - `GET  /wishlist/:id` — detail page
-//! - `GET  /wishlist/:id/delete-modal` — UX-DR8 "Mark as bought" confirmation
-//! - `DELETE /wishlist/:id` — soft-delete (Mark as bought + Remove + auto-link)
+//! - `GET  /wishlist/:id/delete-modal?action=bought|remove` — UX-DR8
+//!   confirmation, "Mark as bought" (default) or "Remove" (story 20-1)
+//! - `DELETE /wishlist/:id?action=bought|remove` — soft-delete; the action
+//!   names the audit row (`wishlist_bought` / `wishlist_removed`). The scan
+//!   banner (auto-link) opens the "bought" modal.
 //! - `GET  /wishlist/print` — print-friendly page (browser → PDF)
 //!
 //! v1 cover-handling decision: a wishlist row stores the REMOTE URL the
@@ -22,7 +25,7 @@
 
 use askama::Template;
 use axum::Extension;
-use axum::extract::{OriginalUri, Path, State};
+use axum::extract::{OriginalUri, Path, Query, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
@@ -41,7 +44,7 @@ use crate::utils::base_context;
 #[template(path = "pages/wishlist.html")]
 pub struct WishlistPageTemplate {
     pub base: crate::utils::BaseContextFields,
-    pub items: Vec<WishlistItem>,
+    pub items: Vec<WishlistRow>,
     /// Story 15-1 (#602) — the instance zone for the "Added" dates.
     pub time_zone: chrono_tz::Tz,
     pub can_edit: bool,
@@ -57,7 +60,25 @@ pub struct WishlistPageTemplate {
     pub label_col_added: String,
     pub label_col_actions: String,
     pub label_action_bought: String,
+    pub label_action_remove: String,
     pub label_placeholder_empty: String,
+}
+
+/// Story 20-1 — one list entry with the accessible names of its two
+/// actions (they name the entry's title, WCAG 2.5.3), built in the
+/// request locale.
+pub struct WishlistRow {
+    pub item: WishlistItem,
+    pub bought_label: String,
+    pub remove_label: String,
+}
+
+/// Story 20-1 — the accessible names of "Bought" and "Remove" for one entry.
+fn action_labels(title: &str, loc: &str) -> (String, String) {
+    (
+        rust_i18n::t!("wishlist.action_bought_named", locale = loc, title = title).to_string(),
+        rust_i18n::t!("wishlist.action_remove_named", locale = loc, title = title).to_string(),
+    )
 }
 
 pub async fn wishlist_page(
@@ -72,7 +93,18 @@ pub async fn wishlist_page(
     let pool = &state.pool;
     let loc = locale.0;
 
-    let items = WishlistItemModel::list_active(pool).await?;
+    let items = WishlistItemModel::list_active(pool)
+        .await?
+        .into_iter()
+        .map(|item| {
+            let (bought_label, remove_label) = action_labels(&item.title, loc);
+            WishlistRow {
+                item,
+                bought_label,
+                remove_label,
+            }
+        })
+        .collect();
 
     let base = base_context(&session, loc, "wishlist", &uri, state.page_settings());
     let template = WishlistPageTemplate {
@@ -92,6 +124,7 @@ pub async fn wishlist_page(
         label_col_added: rust_i18n::t!("wishlist.col_added", locale = loc).to_string(),
         label_col_actions: rust_i18n::t!("wishlist.col_actions", locale = loc).to_string(),
         label_action_bought: rust_i18n::t!("wishlist.action_bought", locale = loc).to_string(),
+        label_action_remove: rust_i18n::t!("wishlist.action_remove", locale = loc).to_string(),
         label_placeholder_empty: rust_i18n::t!("title_detail.field_unset", locale = loc).to_string(),
     };
     match template.render() {
@@ -386,6 +419,10 @@ pub struct WishlistDetailTemplate {
     pub label_added_at: String,
     pub label_back: String,
     pub label_action_bought: String,
+    pub label_action_remove: String,
+    /// Story 20-1 — accessible names of the two actions (name the title).
+    pub bought_label: String,
+    pub remove_label: String,
     pub label_placeholder_empty: String,
     pub label_no_cover: String,
 }
@@ -403,6 +440,7 @@ pub async fn wishlist_detail(
         AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
     })?;
 
+    let (bought_label, remove_label) = action_labels(&item.title, loc);
     let base = base_context(&session, loc, "wishlist", &uri, state.page_settings());
     let template = WishlistDetailTemplate {
         base,
@@ -417,6 +455,9 @@ pub async fn wishlist_detail(
         label_added_at: rust_i18n::t!("wishlist.col_added", locale = loc).to_string(),
         label_back: rust_i18n::t!("wishlist.back_to_list", locale = loc).to_string(),
         label_action_bought: rust_i18n::t!("wishlist.action_bought", locale = loc).to_string(),
+        label_action_remove: rust_i18n::t!("wishlist.action_remove", locale = loc).to_string(),
+        bought_label,
+        remove_label,
         label_placeholder_empty: rust_i18n::t!("title_detail.field_unset", locale = loc).to_string(),
         label_no_cover: rust_i18n::t!("cover.no_cover", locale = loc).to_string(),
     };
@@ -427,6 +468,81 @@ pub async fn wishlist_detail(
 }
 
 // ─── Delete modal (UX-DR8) ───────────────────────────────────────
+
+/// Story 20-1 (D1, D5) — what a wish list entry leaves the list for:
+/// bought (the default, the scan banner's) or removed without buying.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WishlistAction {
+    Bought,
+    Remove,
+}
+
+impl WishlistAction {
+    /// Positive shape (Rule #20): exactly `remove` is Remove; anything
+    /// else — absent, empty, another case, another word — is Bought.
+    pub fn from_query(value: Option<&str>) -> Self {
+        match value {
+            Some("remove") => WishlistAction::Remove,
+            _ => WishlistAction::Bought,
+        }
+    }
+
+    /// The `admin_audit.action` recorded on Confirm.
+    pub fn audit_action(self) -> &'static str {
+        match self {
+            WishlistAction::Bought => "wishlist_bought",
+            WishlistAction::Remove => "wishlist_removed",
+        }
+    }
+
+    /// The `?action=` value that selects this action.
+    pub fn query_value(self) -> &'static str {
+        match self {
+            WishlistAction::Bought => "bought",
+            WishlistAction::Remove => "remove",
+        }
+    }
+
+    /// The modal's title, body text and confirm label for `entry_title`.
+    pub fn modal_copy(self, entry_title: &str, loc: &str) -> (String, String, String) {
+        let (title_key, body_key, confirm_key) = match self {
+            WishlistAction::Bought => (
+                "wishlist.delete_modal_title",
+                "wishlist.delete_modal_body",
+                "wishlist.action_bought",
+            ),
+            WishlistAction::Remove => (
+                "wishlist.remove_modal_title",
+                "wishlist.remove_modal_body",
+                "wishlist.action_remove",
+            ),
+        };
+        (
+            rust_i18n::t!(title_key, locale = loc, title = entry_title).to_string(),
+            rust_i18n::t!(body_key, locale = loc).to_string(),
+            rust_i18n::t!(confirm_key, locale = loc).to_string(),
+        )
+    }
+}
+
+/// `?action=` of the modal and delete routes. Unknown fields (htmx 2
+/// appends `_csrf_token` to a DELETE URL) are ignored.
+#[derive(Deserialize)]
+pub struct WishlistActionQuery {
+    pub action: Option<String>,
+}
+
+impl WishlistActionQuery {
+    fn action(&self) -> WishlistAction {
+        WishlistAction::from_query(self.action.as_deref())
+    }
+}
+
+/// Story 20-1 (AC5, D7) — the entry is no longer live (removed in another
+/// tab or by another librarian).
+fn already_removed(loc: &str) -> AppError {
+    AppError::NotFound(rust_i18n::t!("wishlist.already_removed", locale = loc).to_string())
+}
 
 #[derive(Template)]
 #[template(path = "fragments/wishlist_delete_modal.html")]
@@ -445,6 +561,7 @@ pub async fn wishlist_delete_modal(
     Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
     Path(id): Path<u64>,
+    Query(query): Query<WishlistActionQuery>,
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Librarian, "/wishlist", locale.0)?;
     let pool = &state.pool;
@@ -454,24 +571,19 @@ pub async fn wishlist_delete_modal(
         return Ok(axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response());
     }
 
-    let item = WishlistItemModel::find_by_id(pool, id).await?.ok_or_else(|| {
-        AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
-    })?;
-    let title = rust_i18n::t!(
-        "wishlist.delete_modal_title",
-        locale = loc,
-        title = item.title.as_str()
-    )
-    .to_string();
-    let body_text = rust_i18n::t!("wishlist.delete_modal_body", locale = loc).to_string();
+    let item = WishlistItemModel::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| already_removed(loc))?;
+    let action = query.action();
+    let (title, body_text, confirm_label) = action.modal_copy(&item.title, loc);
     let body_html = format!("<p>{}</p>", crate::utils::html_escape(&body_text));
 
     let template = WishlistDeleteModalTemplate {
         title,
         body_html,
-        confirm_label: rust_i18n::t!("wishlist.action_bought", locale = loc).to_string(),
+        confirm_label,
         cancel_label: rust_i18n::t!("common.cancel", locale = loc).to_string(),
-        action_url: format!("/wishlist/{}", item.id),
+        action_url: format!("/wishlist/{}?action={}", item.id, action.query_value()),
         csrf_token: session.csrf_token.clone(),
     };
     match template.render() {
@@ -487,27 +599,30 @@ pub async fn wishlist_delete(
     session: Session,
     Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
+    Query(query): Query<WishlistActionQuery>,
 ) -> Result<Response, AppError> {
     session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
+    let action = query.action();
 
-    let item = WishlistItemModel::find_by_id(pool, id).await?.ok_or_else(|| {
-        AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
-    })?;
+    // Story 20-1 (AC5): gone, or soft-deleted between the read and the
+    // write (an item's version moves only through `soft_delete`) — both
+    // answer "already removed" and write nothing.
+    let item = WishlistItemModel::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| already_removed(loc))?;
     let n = WishlistItemModel::soft_delete(pool, item.id, item.version).await?;
     if n == 0 {
-        return Err(AppError::Conflict(
-            rust_i18n::t!("error.conflict", locale = loc).to_string(),
-        ));
+        return Err(already_removed(loc));
     }
 
-    // Audit trail entry (#242 AC).
+    // Audit trail entry (#242 AC; story 20-1: the action names the row).
     if let Some(user_id) = session.user_id {
         crate::models::admin_audit::AdminAuditModel::create(
             pool,
             user_id,
-            "wishlist_bought",
+            action.audit_action(),
             Some("wishlist_items"),
             Some(item.id),
             Some(serde_json::json!({"title": item.title, "isbn": item.isbn})),
@@ -517,7 +632,7 @@ pub async fn wishlist_delete(
     }
 
     // HX-Redirect drives a full-page navigation back to /wishlist with
-    // the bought item removed from the list. Consistent with the volume-
+    // the entry removed from the list (D3). Consistent with the volume-
     // delete redirect pattern (CR #209).
     Ok((
         axum::http::StatusCode::OK,
@@ -539,7 +654,8 @@ pub async fn wishlist_delete(
 /// feedback HTML without worrying about layout fallout.
 ///
 /// The banner carries a single action: open the UX-DR8 "Mark as bought"
-/// confirmation modal at `/wishlist/:id/delete-modal`. No silent
+/// confirmation modal at `/wishlist/:id/delete-modal` (no `?action=`: a
+/// scanned ISBN means the book is in hand, story 20-1 D1). No silent
 /// deletion — the user always confirms.
 pub async fn autolink_feedback_html(pool: &crate::db::DbPool, isbn: &str, loc: &str) -> String {
     let item = match WishlistItemModel::find_by_isbn(pool, isbn).await {
@@ -673,5 +789,87 @@ pub async fn wishlist_print(
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
         Err(_) => Err(AppError::Internal("wishlist print render".to_string())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LOCALES: [&str; 4] = ["en", "fr", "de", "it"];
+
+    #[test]
+    fn only_the_exact_word_remove_selects_remove() {
+        assert_eq!(WishlistAction::from_query(Some("remove")), WishlistAction::Remove);
+        for other in [None, Some(""), Some("bought"), Some("REMOVE"), Some("Remove"), Some(" remove"), Some("delete"), Some("x")] {
+            assert_eq!(WishlistAction::from_query(other), WishlistAction::Bought, "{other:?}");
+        }
+    }
+
+    #[test]
+    fn each_action_round_trips_through_its_query_value_and_names_its_audit_row() {
+        for action in [WishlistAction::Bought, WishlistAction::Remove] {
+            assert_eq!(WishlistAction::from_query(Some(action.query_value())), action);
+        }
+        assert_eq!(WishlistAction::Bought.audit_action(), "wishlist_bought");
+        assert_eq!(WishlistAction::Remove.audit_action(), "wishlist_removed");
+    }
+
+    #[test]
+    fn the_query_ignores_unknown_fields() {
+        let q: WishlistActionQuery =
+            serde_urlencoded::from_str("action=remove&_csrf_token=abc").unwrap();
+        assert_eq!(q.action(), WishlistAction::Remove);
+        let q: WishlistActionQuery = serde_urlencoded::from_str("_csrf_token=abc").unwrap();
+        assert_eq!(q.action(), WishlistAction::Bought);
+    }
+
+    #[test]
+    fn each_action_has_its_own_copy_naming_the_entry_in_every_locale() {
+        for loc in LOCALES {
+            let (b_title, b_body, b_confirm) = WishlistAction::Bought.modal_copy("Dune", loc);
+            let (r_title, r_body, r_confirm) = WishlistAction::Remove.modal_copy("Dune", loc);
+            assert!(b_title.contains("Dune") && r_title.contains("Dune"), "{loc}");
+            assert_ne!(b_title, r_title, "{loc}");
+            assert_ne!(b_body, r_body, "{loc}");
+            assert_eq!(b_confirm, rust_i18n::t!("wishlist.action_bought", locale = loc));
+            assert_eq!(r_confirm, rust_i18n::t!("wishlist.action_remove", locale = loc));
+            for text in [&b_title, &b_body, &r_title, &r_body] {
+                assert!(!text.contains("wishlist."), "{loc}: missing key {text}");
+                assert!(!text.contains("%{"), "{loc}: unfilled placeholder {text}");
+            }
+        }
+        let (title, body, confirm) = WishlistAction::Remove.modal_copy("Dune", "en");
+        assert_eq!(title, "Remove “Dune” from the wish list?");
+        assert!(body.contains("cannot be restored"), "{body}");
+        assert_eq!(confirm, "Remove");
+        let (title, _, confirm) = WishlistAction::Bought.modal_copy("Dune", "fr");
+        assert_eq!(title, "Marquer « Dune » comme acheté ?");
+        assert_eq!(confirm, "Acheté");
+    }
+
+    #[test]
+    fn no_modal_claims_a_trash_restore_in_any_locale() {
+        for (loc, trash) in [("en", "trash"), ("fr", "corbeille"), ("de", "papierkorb"), ("it", "cestino")] {
+            for action in [WishlistAction::Bought, WishlistAction::Remove] {
+                let (_, body, _) = action.modal_copy("Dune", loc);
+                let lower = body.to_lowercase();
+                assert!(!lower.contains(trash), "{loc} {action:?}: {body}");
+                assert!(!body.contains("30"), "{loc} {action:?}: {body}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_action_names_carry_the_title_and_the_visible_word() {
+        for loc in LOCALES {
+            let (bought, remove) = action_labels("Dune", loc);
+            assert!(bought.contains("Dune") && remove.contains("Dune"), "{loc}");
+            // WCAG 2.5.3 — the visible label is part of the accessible name.
+            let visible_bought = rust_i18n::t!("wishlist.action_bought", locale = loc).to_lowercase();
+            let visible_remove = rust_i18n::t!("wishlist.action_remove", locale = loc).to_lowercase();
+            assert!(bought.to_lowercase().contains(&visible_bought), "{loc}: {bought}");
+            assert!(remove.to_lowercase().contains(&visible_remove), "{loc}: {remove}");
+        }
     }
 }

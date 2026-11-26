@@ -1,0 +1,18 @@
+{# Story 19-8 (#657, D8, D10) — the page every direct navigation gets while
+   a restore runs. Standalone: no database read, no session, no script;
+   only the stylesheet (`/static/*` stays open during maintenance). #}
+<!DOCTYPE html>
+<html lang="{{ lang }}" class="h-full">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }} — mybibli</title>
+    <link rel="stylesheet" href="/static/css/output.css">
+</head>
+<body class="bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 min-h-full">
+    <main id="main-content" class="max-w-xl mx-auto px-4 py-12">
+        <h1 class="text-2xl font-semibold mb-4">{{ title }}</h1>
+        <p id="maintenance-text">{{ text }}</p>
+    </main>
+</body>
+</html>

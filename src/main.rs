@@ -18,7 +18,7 @@ use mybibli::metadata::tmdb::TmdbProvider;
 use mybibli::middleware::logging;
 use mybibli::middleware::setup_gate::SetupGateState;
 use mybibli::routes;
-use mybibli::services::{admin_health, auto_purge, seed_gate};
+use mybibli::services::{admin_health, auto_purge};
 use mybibli::tasks::{anonymous_session_purge, auto_purge_scheduler, provider_health};
 
 use tokio::net::TcpListener;
@@ -159,34 +159,64 @@ async fn main() {
         .await
         .expect("Failed to create database pool");
 
-    // Run migrations
-    sqlx::migrate!("./migrations")
+    // Story 19-8 (T10): the covers and backups folders are read before the
+    // migrations — a restore cut short is recovered from them first.
+    let covers_dir = std::path::PathBuf::from(
+        std::env::var("COVERS_DIR").unwrap_or_else(|_| "./covers".to_string()),
+    );
+    std::fs::create_dir_all(&covers_dir).expect("Failed to create covers directory");
+    tracing::info!(covers_dir = %covers_dir.display(), "Covers directory configured");
+    // Story 19-6 (#657, D1): the backups folder, read once. mybibli never
+    // creates it — the operator mounts it; a missing folder only makes
+    // "Back up now" refuse, with the reason.
+    let backup_dir = mybibli::services::backup::backup_dir_from_env(
+        std::env::var("MYBIBLI_BACKUP_DIR").ok(),
+    );
+    match mybibli::services::backup::folder_state(&backup_dir) {
+        mybibli::services::backup::FolderState::Ready => {
+            tracing::info!(backup_dir = %backup_dir.display(), "Backups folder configured")
+        }
+        state => tracing::warn!(
+            backup_dir = %backup_dir.display(),
+            ?state,
+            "Backups folder not usable; backups will be refused until it is mounted"
+        ),
+    }
+    let backup = mybibli::services::backup::BackupConfig::new(backup_dir, covers_dir.clone());
+
+    // Story 19-8 (#657, D10): a journal left by a restore cut short (process
+    // killed, container restarted, NAS reboot) means the database may be
+    // half loaded: put the library back from the safety backup it names,
+    // BEFORE the migrations. If that fails, refuse to serve a half-loaded
+    // database: exit non-zero with the reason in the log.
+    match mybibli::services::backup::restore::recover_at_boot(&pool, &backup).await {
+        Ok(None) => {}
+        Ok(Some(safety)) => tracing::warn!(
+            safety = %safety,
+            "A restore was cut short; the library was put back from its safety backup"
+        ),
+        Err(reason) => {
+            tracing::error!(reason = %reason, "Refusing to start: a restore was cut short");
+            eprintln!("[mybibli] {reason}");
+            drop(_log_guard);
+            std::process::exit(1);
+        }
+    }
+
+    // Run migrations (story 19-8 T3: the one migrator, shared with a restore)
+    db::MIGRATOR
         .run(&pool)
         .await
         .expect("Failed to run database migrations");
 
     tracing::info!("Database migrations completed");
 
-    // Issue #173 — production gate against the dev seed migrations.
-    // Soft-deletes any user whose hash still matches the documented seed
-    // hash unless MYBIBLI_SEED_DEV_USERS=1 opts back in (dev/E2E). Runs
-    // immediately after migrations so the setup wizard's
-    // `active_admin_count == 0` predicate sees the correct count on the
-    // very first request. Errors are logged and the binary continues —
-    // a failed gate leaves the seeded users in place, no worse than the
-    // pre-1.1.0 behaviour, and worth flagging in logs.
-    match seed_gate::apply(&pool).await {
-        Ok(removed) if removed > 0 => {
-            tracing::info!(
-                removed_count = removed,
-                "Seed gate removed {removed} seeded user(s) (issue #173)"
-            );
-        }
-        Ok(_) => {}
-        Err(e) => {
-            tracing::error!(error = %e, "Seed gate failed (continuing, see issue #173)");
-        }
-    }
+    // Story 19-8 (T4): the database steps after the migrations, shared with
+    // a restore — seed gate (#173), FK order validation (8-7), legacy env
+    // vars (8-5), stored ISBNs (17-3), ISBN-10 as UPC (13-3), HTML
+    // descriptions (13-4), default skills (17-6), instance id (19-6). Each
+    // is non-fatal and logged.
+    mybibli::services::startup::prepare_database(&pool).await;
 
     // CR #459 — MYBIBLI_RESET_ADMIN one-shot startup hatch. Read once,
     // after migrations + seed gate, before the HTTP listener binds. On a
@@ -239,16 +269,6 @@ async fn main() {
         std::process::exit(78); // EX_CONFIG — refuse to serve while the variable is set
     }
 
-    // Validate FK dependency order against schema. Story 8-7 P5: never panic
-    // here — schema evolution (adding/removing whitelisted tables) MUST NOT
-    // be a hard crash; surface a warning and let the app come up.
-    if let Err(e) = auto_purge::AutoPurgeService::validate_schema(&pool).await {
-        tracing::warn!(
-            error = %e,
-            "FK schema validation failed; continuing startup (auto-purge may skip mismatched tables)"
-        );
-    }
-
     // Story 8-7 P4: opt-out for fast-iteration dev/test loops where the
     // startup-purge cost is not worth paying on every restart.
     //
@@ -281,66 +301,6 @@ async fn main() {
                 tracing::error!("Startup auto-purge failed: {} (non-fatal, continuing)", e);
             }
         }
-    }
-
-    // Story 8-5: one-shot env-var migration. Copies legacy
-    // GOOGLE_BOOKS_API_KEY / OMDB_API_KEY / TMDB_API_KEY env vars into the
-    // matching `settings` rows when those rows are empty. Runs exactly once
-    // per boot, AFTER migrations and BEFORE the first settings load so the
-    // load picks up the migrated values. NOT inlined into load_from_db —
-    // that would re-run on every save and silently un-Clear admin actions.
-    if let Err(e) = mybibli::config::migrate_legacy_env_vars(&pool).await {
-        tracing::warn!(
-            error = ?e,
-            "Legacy env-var migration failed — continuing with current row values"
-        );
-    }
-
-    // Story 17-3 (#565): ISBNs stored as typed by the manual form before
-    // v1.27.0 (separators, `ISBN` prefix, ISBN-10) rewritten to their
-    // ISBN-13, once per database (`data_repairs` marker); colliding titles
-    // are left untouched and logged. Runs before the 13-3 conversion so its
-    // collision check sees canonical values. Non-fatal, retried next boot.
-    if let Err(e) = mybibli::services::isbn_repair::repair_stored_isbns_once(&pool).await {
-        tracing::error!(
-            error = %e,
-            "Stored ISBN: startup repair failed (non-fatal, continuing)"
-        );
-    }
-
-    // Story 13-3 (#584): titles catalogued before v1.21.0 with an ISBN-10
-    // carry it in `upc`. One-shot, idempotent data repair: convert them to
-    // their ISBN-13 now; each converted title is queued for the metadata
-    // retry task (story 13-2), which looks it up again in the background.
-    // Non-fatal — a failed repair must never stop the app from booting.
-    if let Err(e) = mybibli::services::title::convert_isbn10_upc_titles(&pool).await {
-        tracing::error!(
-            error = %e,
-            "ISBN-10 stored as UPC: startup conversion failed (non-fatal, continuing)"
-        );
-    }
-
-    // Story 13-4 (#578): descriptions stored before v1.23.0 may carry the
-    // providers' HTML. Data repair to plain text (hand-edited descriptions
-    // excepted), run once per database under a `data_repairs` marker: its
-    // result cannot be told apart from healthy text, so it must not re-run.
-    // Non-fatal, like the step above; a failed run is retried next boot.
-    if let Err(e) = mybibli::services::description_repair::repair_html_descriptions_once(&pool).await {
-        tracing::error!(
-            error = %e,
-            "HTML description: startup conversion failed (non-fatal, continuing)"
-        );
-    }
-
-    // Story 17-6 (#656): the MCP skills mybibli ships with, offered once
-    // per database (inactive; a name already taken or a default the admin
-    // deleted is never touched). Non-fatal; each failure is logged inside.
-    mybibli::services::default_skills::insert_defaults(&pool).await;
-
-    // Story 19-6 (#657, D4): the instance id that names this library's
-    // backups, created once per database. Non-fatal: a backup retries it.
-    if let Err(e) = mybibli::services::instance_id::ensure(&pool).await {
-        tracing::warn!(error = %e, "Instance id could not be created (non-fatal, continuing)");
     }
 
     // Load application settings from database
@@ -425,12 +385,6 @@ async fn main() {
 
     tracing::info!(count = registry.len(), "Metadata providers registered");
 
-    // Configure covers directory
-    let covers_dir = std::path::PathBuf::from(
-        std::env::var("COVERS_DIR").unwrap_or_else(|_| "./covers".to_string()),
-    );
-    std::fs::create_dir_all(&covers_dir).expect("Failed to create covers directory");
-    tracing::info!(covers_dir = %covers_dir.display(), "Covers directory configured");
     // Stories 11-9 / 11-14: staging area for agent-proposed covers,
     // inside the covers directory (same volume, never served — see
     // `services::cover_staging`). Fail-open: a failure only makes cover
@@ -447,24 +401,6 @@ async fn main() {
             "Cover staging directory could not be created; cover proposals will be unavailable"
         ),
     }
-
-    // Story 19-6 (#657, D1): the backups folder, read once. mybibli never
-    // creates it — the operator mounts it; a missing folder only makes
-    // "Back up now" refuse, with the reason.
-    let backup_dir = mybibli::services::backup::backup_dir_from_env(
-        std::env::var("MYBIBLI_BACKUP_DIR").ok(),
-    );
-    match mybibli::services::backup::folder_state(&backup_dir) {
-        mybibli::services::backup::FolderState::Ready => {
-            tracing::info!(backup_dir = %backup_dir.display(), "Backups folder configured")
-        }
-        state => tracing::warn!(
-            backup_dir = %backup_dir.display(),
-            ?state,
-            "Backups folder not usable; backups will be refused until it is mounted"
-        ),
-    }
-    let backup = mybibli::services::backup::BackupConfig::new(backup_dir, covers_dir.clone());
 
     // Admin → Health tab (story 8-1): provider-reachability map + MariaDB
     // version cache. Both start empty; the background ping task below
@@ -580,7 +516,7 @@ async fn main() {
     // Story 8-2: daily purge of anonymous session rows older than 7 days.
     // Bounded accumulation — unauthenticated visitors now get a DB row
     // on first hit so their CSRF token survives across requests.
-    anonymous_session_purge::spawn(state.pool.clone());
+    anonymous_session_purge::spawn(state.pool.clone(), state.backup.maintenance.clone());
 
     // Story 8-7: daily auto-purge of soft-deleted items older than 30 days.
     // Cadence is read from `AppSettings::auto_purge_interval_seconds`
@@ -589,6 +525,7 @@ async fn main() {
         state.pool.clone(),
         state.settings.clone(),
         state.covers_dir.clone(),
+        state.backup.maintenance.clone(),
     );
 
     // Story 19-7 (#657, D2): automatic backups. After a 10-minute warm-up,

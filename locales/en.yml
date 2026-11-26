@@ -34,9 +34,16 @@ wishlist:
   col_notes: "Notes"
   action_bought: "Bought"
   action_remove: "Remove"
+  # Story 20-1 — accessible names of the two actions (they name the entry).
+  action_bought_named: "Mark “%{title}” as bought"
+  action_remove_named: "Remove “%{title}” from the wish list"
   back_to_list: "Back to wish list"
-  delete_modal_title: "Mark %{title} as bought?"
-  delete_modal_body: "This removes the entry from the wish list. The action is reversible from the admin Trash panel within 30 days."
+  delete_modal_title: "Mark “%{title}” as bought?"
+  delete_modal_body: "The entry leaves the wish list. It cannot be restored afterwards."
+  # Story 20-1 (#714) — "Remove" without buying; a removed entry cannot be restored.
+  remove_modal_title: "Remove “%{title}” from the wish list?"
+  remove_modal_body: "The entry leaves the wish list. It cannot be restored: add it again if you change your mind."
+  already_removed: "This entry is no longer on the wish list. It was probably removed in another tab or by another librarian. Reload the list to see it as it is now."
   print_title: "My wish list"
   print_count_one: "%{count} book"
   print_count_other: "%{count} books"
@@ -416,6 +423,18 @@ error:
     folder_not_writable: "No backup was written: mybibli cannot write in %{path}. Give the container's user write access to that folder (see the manual), then try again."
     already_running: "A backup is already being written. Wait for it to finish; it will show here."
     failed: "The backup could not be written, so nothing was kept. Try again; if it keeps failing, the logs say why."
+  # Story 19-8 (#657, D5, D8, D9) — restore refusals.
+  restore:
+    damaged: "This backup cannot be restored: its content does not match its checksum, so the file is damaged or incomplete. Nothing was changed. Use another backup, or copy this one again from where it came from."
+    no_sidecar: "This backup cannot be restored: its checksum file %{file}.sha256 is missing, so mybibli cannot check it. Nothing was changed. Copy that file next to the backup, then try again."
+    newer: "This backup was written by a newer mybibli (%{version}) and cannot be restored by this one (%{current}). Nothing was changed. Update mybibli to %{version} or later, then try again."
+    not_readable: "mybibli cannot read %{file}. Nothing was changed. Give the container's user read access to that file (see the manual, “Backups”), then try again."
+    not_a_backup: "This file is not a backup this version of mybibli can restore. Nothing was changed."
+    busy: "A backup or a restore is already running. Nothing was changed. Wait a minute, then try again."
+    bulk_running: "A restore cannot start while covers or metadata are being downloaded for the whole library. Nothing was changed. Wait for that run to finish (Health tab), then try again."
+    gone: "This backup is no longer in the folder. Nothing was changed."
+    drain_timed_out: "The restore did not start: other requests were still running after 30 seconds. Nothing was changed. Try again in a moment."
+    safety_failed: "Nothing was restored: mybibli could not first write a safety backup of the current library. %{reason}"
   # Story 15-2 (#614) — MCP skills validation and write errors.
   mcp_skills:
     name_required: "Name is required"
@@ -594,6 +613,10 @@ location:
   organizational_label: "Organizational location (cannot hold volumes directly)"
   organizational_help: "Check this if the location only groups child locations (e.g. \"Living Room\" contains \"Bookshelf A\" and \"Bookshelf B\" but holds no volumes itself). Volumes cannot be assigned to an organizational location — the scan-to-shelve flow refuses, and the location-edit form rejects flipping a row that still has volumes attached."
   organizational_blocked_has_volumes: "Cannot mark organizational — %{count} volume(s) currently use this location. Re-shelve them first."
+  description_label: Description
+  description_help: "Optional. Where to find it, for example “left bookcase, top shelf, behind the door”."
+  description_too_long: "Description must be at most %{max} characters."
+  back_to_tree: Back to locations
   # CR #237 — bulk-mark all volumes on a shelf "to check".
   bulk_audit_button: "Mark all volumes for audit"
   empty_state: "Create your first location to start organizing!"
@@ -939,6 +962,34 @@ admin:
     folder_missing: "Folder: %{path} — missing"
     folder_not_writable: "Folder: %{path} — not writable"
     written: "Backup written: %{file} (%{size}, %{titles} titles, %{covers} covers)."
+    # Story 19-8 (#657, D1-D7) — the list and the restore modal.
+    list:
+      heading: "Backups in the folder"
+      col_date: "Date"
+      col_origin: "Origin"
+      col_size: "Size"
+      col_note: "Note"
+      restore: "Restore…"
+      restore_aria: "Restore the backup of %{when}"
+      empty: "No backup in the folder yet."
+      origin_own: "This instance"
+      origin_other: "Another instance (%{id})"
+      note_no_sidecar: "No checksum file"
+      note_not_readable: "Not readable"
+      note_rotation: "Removed at the next rotation"
+    restore:
+      title: "Restore this backup?"
+      facts: "Backup of %{when} — %{origin} — mybibli %{version} — %{size}"
+      counts: "It holds %{titles} titles and %{covers} covers; the library holds %{now_titles} titles and %{now_covers} covers now."
+      consequences: "The whole library — titles, volumes, loans, users, settings and covers — is replaced by the content of this backup. Everything entered since then is lost from the library, but a safety backup of the current state is written first. While the restore runs (a minute or two), mybibli answers nobody. Afterwards everyone is logged out, you included."
+      foreign: "This backup comes from another instance: its accounts and passwords replace those of this one. Log in afterwards with an account of the restored library."
+      older: "It was written by mybibli %{version}; it is brought up to date after the restore."
+      cancel: "Cancel"
+      confirm: "Restore this backup"
+      running: "Restoring… This takes a minute or two; keep this page open."
+      success: "Backup %{file} restored (%{titles} titles, %{covers} covers). The safety backup of the previous state is %{safety}. Everyone has been logged out."
+      rolled_back: "The restore failed, so mybibli put the library back as it was just before, from the safety backup %{safety}. Everyone has been logged out. The logs say why the restore failed."
+      login_again: "Log in again"
   trash:
     badge_aria: "Trash, %{count} items"
     heading: Trash bin (soft-deleted items)
@@ -1034,6 +1085,8 @@ admin:
       folder_missing: "Warning: the backups folder %{path} does not exist, so no backup is written. Mount a folder there (see the manual, “Backups”)."
       folder_not_writable: "Warning: mybibli cannot write in the backups folder %{path}, so no backup is written. Give the container's user write access to it (see the manual)."
       failed: "Warning: the automatic backup at %{when} failed, so nothing was kept. The logs say why."
+      last_restore: "Last restore: %{when}, from %{file} (safety backup: %{safety})."
+      last_restore_failed: "Last restore attempt: %{when}, from %{file}; it failed and the library was put back from %{safety}."
     maintenance_heading: Maintenance
     bulk_cover_fetch:
       missing_covers_label: "Titles with missing covers"
@@ -1752,3 +1805,8 @@ tome:
   save_position: "Save"
   omnibus_not_editable: "An omnibus covers several positions and cannot be moved here. Remove it from the series, then assign it again with the new range."
   manual_hint: "This title contains a volume number (%{label}). The title was saved as typed; to keep it clean, remove the number from the title and set it as the title's position in its series."
+# Story 19-8 (#657, D8, D10) — the maintenance answer while a restore runs.
+maintenance:
+  title: "Maintenance"
+  text: "mybibli is restoring a backup. This takes a minute or two: reload this page then. Everyone will need to log in again."
+  stuck: "mybibli could not restore a backup nor put the library back. Ask the person who installed mybibli to restore the backup %{safety} by hand (see the manual, “Restoring by hand”)."
