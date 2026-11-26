@@ -1,0 +1,129 @@
+# Story 20.2: Send a missing series position to the wish list
+
+Status: ready-for-dev
+
+<!-- Closes #715. Source: _bmad-output/planning-artifacts/epics.md, Epic 20, Story 20.2; decisions D4, D5, D6 (approved by the project lead, 2026-11-26). -->
+
+## Story
+
+As a librarian looking at a series,
+I want to add a missing position to the wish list from the series grid,
+so that I do not retype the series and the tome number on `/wishlist/new`.
+
+**Covers:** FR184, #715. **Branch:** `story/20-2-gap-to-wishlist`.
+
+## Decisions this story implements (approved, epics.md "Decisions")
+
+- **D4** — a gap sent to the wish list records an expected tome first, in one form and one transaction (tome + wish list entry).
+- **D5** — after saving, the librarian is back on the series page, with the success entry and its link in `#series-feedback`.
+- **D6** — the title is pre-filled "{series}, tome {position}", editable.
+
+## Acceptance Criteria
+
+1. **Given** a series page whose grid shows a plain gap (a missing position with no expected tome), as a Librarian or Admin, **then** the gap offers "Add to wish list" next to "Name this tome", with an accessible name that includes the position. Anonymous sees no action.
+2. **When** it is used, **then** the expected-tome form opens in "wish list" mode (`/series/{id}/expected-tomes/new?position=N&wishlist=1`): the position is pre-filled, the title is pre-filled with "{series}, tome N" (editable), the ISBN is optional, and a help line says the tome is also recorded as expected.
+3. **On save**, one transaction locks the series row by primary key (the existing lock order: series → tomes; no new `FOR UPDATE`, Rule #22), creates the expected tome (`ExpectedTomeService::create_in`) and the wish list entry (`WishlistItemModel::create_in`, notes = `wishlist_note(series, position)`), with the same dedup as the expected-tome path: ISBN, or title + note.
+4. **Then** the browser returns to the series page (`/series/{id}?wishlist_item={item_id}`); `#series-feedback` shows "… was added to your wish list" with a link to the entry (the id is checked server-side: a live item, else nothing is shown), and the gap now shows the expected tome.
+5. A position already on the wish list (same ISBN, or same title + note) creates nothing — neither entry nor tome — and answers with a link to the existing entry.
+6. An ISBN a live title already holds answers the existing "already in your catalog" message, and nothing is added.
+7. Every refusal is shown next to its field, with the values typed kept: blank title, invalid ISBN, a position held or out of range because the series changed meanwhile (`ExpectedTomeError::localized`).
+8. A series deleted meanwhile answers the "not found" page.
+9. The query parser accepts `wishlist=1` only (positive shape, Rule #20): any other value opens the plain form. The wish list dedup and its messages are shared by the two paths — the existing "Add to wishlist" button of an expected tome and the new combined form (DRY, Rule #1).
+10. After the redirect, focus is where the page puts it on load. No HTMX swap is involved, so Rule #21 does not apply.
+11. **Tests:** a DB integration test covers the combined create, both dedups, a failed wish list insert leaving no tome, and the lock scope (the combined create on series A does not wait on a tome write of series B); an E2E spec (`series-gap-wishlist.spec.ts`) adds a gap from a series it created, checks the feedback link, the named gap and the entry on `/wishlist`, the existing-entry answer, and the blank-title refusal next to the field.
+
+## Proposed copy (taken from the epic plan, approved with the epic — D11)
+
+Copy below is the plan's proposed copy (EN / FR), approved with the epic. DE and IT are translated in this story and reviewed like the others. Keys go in the `expected_tome:` block of `locales/{en,fr,de,it}.yml` only (coupling rule: each story its own block).
+
+| Key | EN | FR |
+|---|---|---|
+| `expected_tome.gap_add_to_wishlist` | Add to wish list | Ajouter à la wish list |
+| `expected_tome.gap_add_to_wishlist_named` (aria-label) | Add tome %{position} to the wish list | Ajouter le tome %{position} à la wish list |
+| `expected_tome.form_title_wishlist` | Add tome %{position} to the wish list | Ajouter le tome %{position} à la wish list |
+| `expected_tome.wishlist_form_help` | mybibli also records this tome as expected in the series, so the gap shows its title. | mybibli enregistre aussi ce tome comme attendu dans la série : la case manquante affiche alors son titre. |
+| `expected_tome.wishlist_title_prefill` | %{series}, tome %{position} | %{series}, tome %{position} |
+| `expected_tome.wishlist_save` | Add to wish list | Ajouter à la wish list |
+
+Reused unchanged: `expected_tome.wishlist_added`, `wishlist_already`, `wishlist_open`, `wishlist_owned`, `wishlist_note`, `expected_tome.error.*` (the title, position and ISBN refusals of `ExpectedTomeError`). French says "wish list" (house term, epics.md).
+
+## Tasks / Subtasks
+
+- [ ] **Model** — `src/models/wishlist.rs` (AC 3, 5)
+  - [ ] `WishlistItemModel::create_in(conn: &mut MySqlConnection, draft) -> Result<u64, AppError>`; `create(pool, …)` delegates to it (acquire a connection) so there is one INSERT.
+  - [ ] `find_by_isbn_in` / `find_without_isbn_in` on a connection; the pool variants delegate. Keep `deleted_at IS NULL` on every read.
+  - [ ] Do not touch `list_active`, `find_by_id`, `soft_delete`, `count_active` (story 20.1 works there in parallel).
+- [ ] **Shared dedup** — `src/routes/series_expected_tomes.rs` (AC 5, 9)
+  - [ ] Split `wish_tome` so the lookup "existing item for (isbn | title + note)" and the two feedback builders (added / already, with the "Open the wish list entry" link) are one function used by both paths.
+- [ ] **Grid** — `templates/components/series_gap_grid.html` (AC 1)
+  - [ ] In the plain-gap branch (no `pos.expected`), Librarian/Admin only, next to `data-name-gap`: `<a href="/series/{{ series.id }}/expected-tomes/new?position={{ pos.position }}&amp;wishlist=1" data-gap-wishlist="{{ pos.position }}" aria-label="…named…">`.
+  - [ ] The named aria-label takes the position: give `ExpectedTomeLabels` (`src/routes/series.rs`) the request locale and a method `gap_wishlist_named(&self, position: i32) -> String`, called from the template (Askama calls methods on fields).
+- [ ] **Form, GET** — `new_form` (AC 2, 9)
+  - [ ] `NewTomeQuery` gains `wishlist: Option<String>`; `wishlist_mode = query.wishlist.as_deref() == Some("1")`.
+  - [ ] Wish list mode: heading `form_title_wishlist` (position), title pre-filled with `wishlist_title_prefill` (series name, position) when the position is valid, help line, save label `wishlist_save`, hidden `<input name="wishlist" value="1">`.
+- [ ] **Form, POST** — `create` (AC 3–8)
+  - [ ] `TomeForm` gains `wishlist: Option<String>` (same positive shape).
+  - [ ] Plain mode: unchanged.
+  - [ ] Wish list mode: one transaction — create the tome (`ExpectedTomeService::create_in`, origin `Manual`, which locks the series row first), dedup, `WishlistItemModel::create_in` with `notes = wishlist_note(&series.name, position, loc)`, commit; `audit_wishlist_add` after the commit (best effort, as today); `tracing::info!` with series, tome and item ids; redirect to `/series/{id}?wishlist_item={item_id}`.
+  - [ ] Dedup hit: roll back, nothing written, answer with the existing entry's link.
+  - [ ] Owned ISBN (a live title carries it): nothing written, the "already in your catalog" answer.
+  - [ ] Refusals: `refused()` re-renders the form in wish list mode (the hidden field and the `?wishlist=1` page URI kept), typed values kept, status 422.
+- [ ] **Series page** — `series_detail_page` + `templates/pages/series_detail.html` (AC 4)
+  - [ ] `SeriesDetailQuery` gains `wishlist_item: Option<String>`; parse a positive `u64` only; `WishlistItemModel::find_by_id` (live) → `expected_tome.wishlist_added` + link `/wishlist/{id}` via `crate::utils::feedback_html_with_link`, rendered inside `#series-feedback`; anything else renders nothing.
+- [ ] **Locales** — the six keys above in `en`, `fr`, `de`, `it`; `touch src/lib.rs` before building; `cargo test --test integration locale_parity::`.
+- [ ] **Tests** (see Testing)
+
+## Dev Notes
+
+### What exists (read before coding)
+
+- `src/routes/series_expected_tomes.rs` (556 lines): `new_form`, `create`, `update`, `refused` (re-renders the form, 422, typed values kept, page URI rebuilt as a GET address), `delete_modal`, `delete`, `add_to_wishlist` → `wish_tome` (story 11-11, D-11-11-4: dedup by ISBN, else by title + note; answers into `#series-feedback`), `wishlist_note`.
+- `src/services/expected_tomes.rs`: `ExpectedTomeService::create_in(conn, series_id, input, origin)` validates title and ISBN, **locks the series row** (`ExpectedTomeModel::lock_series_in`, `FOR UPDATE` by PK), runs `check_slot` (range, holder, position taken, duplicate ISBN in the series), inserts, then `settle_with_owned_title` — which **attaches a live title carrying the ISBN to the series and settles the tome** (attach = true). `ExpectedTomeError::localized(loc)` gives the librarian-facing copy.
+- `src/models/wishlist.rs`: `create`, `find_by_id`, `find_by_isbn`, `find_without_isbn`, `list_active`, `count_active`, `soft_delete` — all on `&DbPool`. No connection variant yet.
+- `src/routes/wishlist.rs::audit_wishlist_add(pool, session, item_id, title)` — the `wishlist_add` audit row, shared already.
+- `templates/components/series_gap_grid.html`: plain gap branch at the `{% else %}` of `pos.expected` with the `data-name-gap` link; Librarian/Admin gated by `base.role`.
+- `templates/pages/series_detail.html`: `<div id="series-feedback" class="mt-4" aria-live="polite"></div>`, empty today.
+- `templates/pages/expected_tome_form.html`: full-page POST form, CSRF first child, one error box `#expected-tome-error` above the form.
+
+### Guardrails
+
+- **Lock scope (Rule #22):** no new `FOR UPDATE`. The series lock is the one `create_in` takes; wish list reads are plain reads on the same transaction.
+- **Positive shapes (Rule #20):** `wishlist=1` only; `wishlist_item` a positive integer only.
+- **CSP:** no inline script/style; the link is a plain `<a>`; `feedback_html_with_link` escapes the title (existing test `wishlist_feedback_escapes_the_title`).
+- **i18n:** every string through `t!()`; keys in all four locales.
+- **Errors:** `AppError` only; a database error propagates (logged, generic message).
+- **File size (Rule #12):** `series_expected_tomes.rs` stays well under 2000 lines.
+- **No formatter:** never run `cargo fmt` (it reformats the whole repository); write in the neighbouring style.
+- **Heavy commands:** prefix with `flock -w 10800 /tmp/station-heavy.lock mem-guard …` (full `cargo test`, `cargo clippy --all-targets`, the first build of the worktree, `./scripts/e2e-reset.sh`, the Playwright suite).
+
+### Couplings (Rule #24)
+
+- 20.1 (in development in parallel) changes `src/routes/wishlist.rs` list / detail / delete-modal code and `WishlistItemModel` delete paths. 20.2 only adds connection variants in `models/wishlist.rs`. 20.1's E2E data must not match 20.2's dedup.
+- 20.3 rebases on 20.2: it touches `update_series` / `edit_series_form` in `src/routes/series.rs`; 20.2 touches `series_detail_page`, `SeriesDetailQuery` and `ExpectedTomeLabels` only.
+- Locale keys only in the `expected_tome:` block.
+- `sprint-status.yaml`: this story's line plus `last_updated` only (Rule #16).
+
+### Testing
+
+- **Unit** (in `series_expected_tomes.rs`): the title prefill in each locale (series name and position present, no raw key); the query parser accepts `wishlist=1` only (`"1"` → mode, `"true"`, `"0"`, `""`, absent → plain).
+- **DB integration** (`tests/series_gap_wishlist.rs`, declared in `tests/integration.rs`, using `crate::common`): the combined create writes one tome and one item (notes = the note); dedup by ISBN and by title + note writes nothing; a failure of the wish list insert leaves no tome; lock scope: the combined create on series A does not wait on a tome write of series B (Rule #22).
+- **E2E** (`tests/e2e/specs/journeys/series-gap-wishlist.spec.ts`, own `specIsbn` id): from a closed series created by the spec, add a gap to the wish list; check the series feedback and its link, the gap now named, the entry on `/wishlist`; the existing-entry answer; the blank-title refusal next to the title field. `loginAs`, no `waitForTimeout`, assert only on own rows (Rule #23), `npx tsc --noEmit`, truth gate `CI=true npx playwright test --workers=2`.
+
+### References
+
+- `_bmad-output/planning-artifacts/epics.md` — Epic 20, D4–D6, Story 20.2, couplings.
+- Epic plan (copy table "20.2 Gap to the wish list").
+- `CLAUDE.md` — "Expected tomes" Key Pattern ("Add to wish list" dedups on ISBN, or title + note without ISBN); Rules #3, #20, #21, #22, #23, #24.
+- `docs/error-message-style.md`.
+
+## Dev Agent Record
+
+### Agent Model Used
+
+### Debug Log References
+
+### Completion Notes List
+
+- Ultimate context engine analysis completed - comprehensive developer guide created.
+
+### File List
