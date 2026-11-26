@@ -181,9 +181,10 @@ secret.
 \texttt{database.sql} is a standard dump: the \texttt{mariadb} client
 loads it into an empty database, for a test copy or to look at real
 data (for example to try a data-rewriting change on the whole catalogue
-before it ships, Rule~\#20 of the project):
+before it ships, Rule~\#20 of the project). Run \texttt{sudo -v} on its
+own first, so that \texttt{sudo} does not ask for your password in the
+middle of a pipe, then the rest:
 \begin{lstlisting}
-sudo -v
 sudo tar -xzf backups/mybibli-<id>-<date>.tar.gz database.sql
 mariadb -u root -p -e "CREATE DATABASE mybibli_copy"
 sudo cat database.sql | mariadb -u root -p mybibli_copy
@@ -416,17 +417,16 @@ This section is for that person.
         Docker restarts it again and again). Restore the safety backup
         by hand, from the folder holding \texttt{docker-compose.yml}
         (bundled database; the root password is
-        \texttt{MYSQL\_ROOT\_PASSWORD} of \texttt{.env}). The first two
-        lines stop mybibli and clear an old extract; the rest is one
-        chain: each step runs only if the previous one succeeded, so a
+        \texttt{MYSQL\_ROOT\_PASSWORD} of \texttt{.env}). It is one
+        command --- read it whole, then paste it at once: each step runs
+        only if the previous one succeeded, so a
         failed check (no \texttt{OK} from \texttt{sha256sum}, no
         \texttt{database.sql}) stops the chain before anything is
         dropped, and the progress file stays. The covers are put back
         only after the database loaded, and mybibli starts last:
 \begin{lstlisting}
-docker compose stop mybibli
-sudo rm -f backups/database.sql
-sudo sh -c 'cd backups && sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256 \
+docker compose stop mybibli && sudo rm -f backups/database.sql \
+&& sudo sh -c 'cd backups && sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256 \
     && tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql' \
 && sudo test -s backups/database.sql \
 && docker compose exec -T db \
@@ -436,15 +436,15 @@ sudo sh -c 'cd backups && sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256 \
 && sudo cat backups/database.sql | docker compose exec -T db \
     sh -c 'exec mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' \
 && docker compose run --rm --no-deps --entrypoint sh mybibli -c \
-    'mkdir /tmp/x && tar -xzf /app/backups/mybibli-<id>-<stamp>.tar.gz \
+    'mkdir -p /tmp/x/covers && tar -xzf /app/backups/mybibli-<id>-<stamp>.tar.gz \
      -C /tmp/x && cp -a /tmp/x/covers/. /app/covers/' \
 && sudo rm backups/database.sql backups/.restore-in-progress.json \
 && docker compose start mybibli
 \end{lstlisting}
         The \texttt{run} step uses the mybibli image with its own
         volumes, so it finds the covers wherever they are mounted. If
-        the chain stops, read the last message, fix the cause and run it
-        again from the \texttt{sudo rm -f} line. With an external
+        the chain stops, read the last message, fix the cause and run the
+        whole command again. With an external
         database, run the two \texttt{mariadb} steps against that server
         instead.
   \item Log in again (no session survives), check the library, then run

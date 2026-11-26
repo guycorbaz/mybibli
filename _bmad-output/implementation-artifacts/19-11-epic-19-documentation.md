@@ -118,6 +118,8 @@ Three Medium and seven Low findings, all fixed (EN and FR):
 - **Pass 3, M** — "Restoring by hand" is one chain: `sudo rm -f backups/database.sql`, then checksum + extraction `&&` non-empty dump `&&` drop `&&` load `&&` covers `&&` removal of the extract and of `.restore-in-progress.json` `&&` `docker compose start mybibli`; a failed check stops the chain before anything destructive and the progress file stays; re-run from the `rm -f` line.
 - **Pass 3, lows** — `sudo sh -c 'gzip backups/mybibli-*.sql'` (the glob is expanded as root); the bind-mount covers tar names an explicit placeholder `/path/to/covers` the reader replaces.
 
+- **Pass 4** — no Medium+. Lows fixed: the covers step makes `/tmp/x/covers` (`mkdir -p`) so a backup with no covers does not stop the chain at `cp`; the chain starts with `docker compose stop mybibli && sudo rm -f backups/database.sql && …` (one command, read whole, pasted at once; re-run whole); the test-database recipe says to run `sudo -v` on its own first.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -163,3 +165,4 @@ Claude Opus 5.5 (dev-story, 2026-11-26).
 - 2026-11-26 — independent review: M1–M3 and L1–L7 fixed, PDFs rebuilt.
 - 2026-11-26 — review pass 2: gated drop, sudo; PDFs rebuilt.
 - 2026-11-26 — review pass 3: restore by hand as one chain; PDFs rebuilt.
+- 2026-11-27 — review pass 4: no Medium+; two lows fixed; PDFs rebuilt.
