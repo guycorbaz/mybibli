@@ -47,7 +47,7 @@ test.describe("Location description (story 20-4)", () => {
     const field = page.locator("#edit-description");
     await expect(field).toHaveValue("");
     await expect(page.locator("#edit-description-help")).toContainText(
-      /Where to find it|Où le trouver|Wo er zu finden ist|Dove trovarla/,
+      /Where to find it|Où le trouver|Wo der Standort zu finden ist|Dove trovarla/,
     );
     await checkAccessibility(page);
     await field.fill("Left bookcase, top shelf\nBehind the door");
