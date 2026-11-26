@@ -35,11 +35,13 @@ can always pull them again from Docker Hub.
 \section{Backups}
 \label{sec:backups}
 
-Since 1.29.0 mybibli writes a backup of its own, on request, from
-\textbf{Admin → Backups}.\index{backup!Backups tab} One file holds the
-whole database and every cover, so the library can be recovered, or
-loaded elsewhere, without restoring all of MariaDB. The procedures of
-the next sections stay valid; this one is simpler.
+Since 1.29.0 mybibli writes a backup of its own, on request from
+\textbf{Admin → Backups}\index{backup!Backups tab} or on a schedule,
+and restores one from the same tab (section~\ref{sec:backups-restore}).
+One file holds the whole database and every cover, so the library can
+be recovered, or loaded elsewhere, without restoring all of MariaDB.
+The procedures at the end of this chapter (from
+\emph{Backup procedure} on) stay valid; this one is simpler.
 
 \subsection*{Mounting the backups folder}
 
@@ -54,10 +56,24 @@ shipped with 1.29.0 has the line; on an older file, add it under the
       - ./backups:/app/backups
 \end{lstlisting}
 
+A new install follows step~1d of chapter~\ref{ch:installation}
+(section~\ref{sec:install-backups}). With the line in place, Docker
+creates the host folder \texttt{backups/} next to
+\texttt{docker-compose.yml} at the first start if it does not exist.
+
 The tab shows the folder and its state: \emph{ready}, \emph{missing}
-(no mount) or \emph{not writable} (give the container's user write
-access to the host folder). Until the folder is ready, a backup is
-refused with that reason and nothing is written anywhere.
+(no mount: the line is absent, or \texttt{MYBIBLI\_BACKUP\_DIR} names
+another path) or \emph{not writable} (give the container's user write
+access to the host folder; a network share mounted read-only gives
+this state too). Until the folder is ready, a backup is refused with
+that reason and nothing is written anywhere. The Health tab shows the
+same warning, starting with ``Warning:''.
+
+\textbf{One folder per instance.} Give every mybibli instance its own
+backups folder. A test instance must never write into the folder of
+the production library: two instances sharing a folder would remove
+each other's temporary files, and, if they share an instance id (a
+copy loaded elsewhere keeps it), rotate each other's backups.
 
 \subsection*{Writing a backup}
 
@@ -70,6 +86,60 @@ backup is written at a time; a second click meanwhile is refused.
 The catalogue keeps working during the backup: the database is read
 from a consistent snapshot, without locking anything. A failed backup
 leaves nothing behind; the log says why.
+
+\subsection*{Automatic backups and rotation}
+\label{sec:backups-schedule}
+\index{backup!automatic}\index{backup!rotation}
+
+The schedule is set in \textbf{Admin → System}, section
+\textbf{Backups}:
+
+\begin{itemize}
+  \item \textbf{Automatic backup} --- \emph{Off}, \emph{Every hour}
+        (the default), \emph{Every 2 hours}, \dots, \emph{Every 12
+        hours} or \emph{Once a day}. mybibli checks at this interval
+        and writes a backup only if something changed since the last
+        one: a quiet library does not fill the folder.
+  \item \textbf{Daily backups to keep} --- a whole number from 1 to
+        365, default 14 (see the rotation below).
+\end{itemize}
+
+Click \textbf{Save automatic backup}; the saved line names both values.
+The first check runs ten minutes after mybibli starts. ``Nothing
+changed'' is measured against the last backup this run of mybibli
+wrote, scheduled or by hand: after a restart, the first check always
+writes one.
+
+\textbf{Rotation.} After each check and after each backup written with
+\textbf{Back up now}, mybibli removes the backups it no longer needs.
+It keeps:
+\begin{itemize}
+  \item every backup of the last 24 hours;
+  \item the newest backup, however old;
+  \item the last backup of each of the most recent days \emph{on which
+        a backup was written}, as many days as \textbf{Daily backups to
+        keep} says (days counted in the library's time zone).
+\end{itemize}
+Counting days on which a backup was written, not calendar days, means
+a library left untouched for a month still has its last 14 daily
+backups. Each \texttt{.sha256} file goes with its backup. The rotation
+removes only this instance's backups (their name carries this
+instance's id); \textbf{a backup of another instance is never deleted}, nor is any other file of the
+folder. Lowering \textbf{Daily backups to keep} removes the older
+daily backups at the next rotation, within the hour with the default
+schedule.
+
+\textbf{Room needed.} Each backup is about the size of the covers
+folder plus a compressed copy of the database. With the defaults,
+count up to 24 hourly backups plus 14 daily ones in the busiest case;
+far fewer on days without changes.
+
+\textbf{On the Health tab}, the \textbf{Backups} block shows the last
+backup (read from the folder), the next check, ``Automatic backup is
+off (Admin → System).'' when it is, whether the last check found
+nothing to back up, a failed automatic backup, the last restore, and
+the folder warnings. The \emph{Production watching} section of the
+same tab is described in section~\ref{sec:health-watch}.
 
 \subsection*{What the file holds}
 
@@ -96,26 +166,358 @@ everyone signs in again. mybibli writes it with mode
 \texttt{0600} (readable by its owner only); keep the host folder, and
 every copy you make of it, just as private.
 
-\subsection*{Loading the dump into another MariaDB}
+\textbf{Who owns the files.} The shipped image runs as
+\texttt{root}: on the host, the backups belong to \texttt{root} and
+only \texttt{root} can read them. Copy them with \texttt{sudo} (or as
+the NAS administrator), keep the folder itself closed to other
+accounts (\texttt{sudo chmod 700 backups}), do not publish it as a
+network share for everyone, and encrypt a copy kept off-site (a USB
+drive, a cloud bucket). The \texttt{.sha256} files hold nothing
+secret.
+
+\subsection*{Loading a backup into a test database}
+\label{sec:backups-test-db}
 
 \texttt{database.sql} is a standard dump: the \texttt{mariadb} client
 loads it into an empty database, for a test copy or to look at real
 data (for example to try a data-rewriting change on the whole catalogue
-before it ships):
+before it ships, Rule~\#20 of the project):
 \begin{lstlisting}
 tar -xzf mybibli-<id>-<date>.tar.gz database.sql
 mariadb -u root -p -e "CREATE DATABASE mybibli_copy"
 mariadb -u root -p mybibli_copy < database.sql
 \end{lstlisting}
-The copy is at the migration level of the backup. Restoring a backup
-into the running library comes with a later version.
+The copy is at the migration level of the backup; a mybibli started on
+it brings it up to date. Such a test instance gets its own backups
+folder (never the production one, see \emph{One folder per instance}
+above). The provider keys of the System tab come with the dump: clear
+them on the test instance if it should not use them.
 
 \subsection*{A cover written during the backup}
 
 Covers are copied after the database. A cover downloaded in the
 seconds between the two may be in the file without its title, or
-missing for a title that names it. The cover consistency tool reports
-and repairs both cases.
+missing for a title that names it. The cover check
+(section~\ref{sec:cover-check}) reports and repairs both cases.
+
+\section{Restoring a backup}
+\label{sec:backups-restore}
+\index{backup!restore}\index{restore}
+
+A restore puts the whole library --- titles, volumes, loans, users,
+settings and covers --- back as it was when a backup was written. It
+is done by an Admin from \textbf{Admin → Backups}, from a backup that
+is \emph{in the backups folder}: mybibli neither uploads nor downloads
+backups.
+
+\subsection*{Step by step}
+
+\begin{enumerate}
+  \item Open \textbf{Admin → Backups}. Under \textbf{Back up now}, the
+        list \textbf{Backups in the folder} shows every backup there,
+        newest first: \textbf{Date} (the library's time zone),
+        \textbf{Origin} (\emph{This instance} or \emph{Another instance
+        (\dots)} with its id), \textbf{Size} and a \textbf{Note}:
+        \begin{itemize}
+          \item \emph{No checksum file} --- the \texttt{.sha256} file is
+                missing; the restore will be refused until you copy it
+                next to the backup;
+          \item \emph{Not readable} --- the container cannot read the
+                file (see \emph{Who owns the files} above);
+          \item \emph{Removed at the next rotation} --- an old backup of
+                this instance that the rotation will delete (see
+                \emph{A backup copied in by hand} below).
+        \end{itemize}
+  \item Click \textbf{Restore…} on the row. mybibli reads the whole file
+        first and checks it (its checksum, each member, its version).
+        A file that fails a check opens no window: the reason appears
+        in the tab, under \textbf{Back up now}, always ending with
+        ``Nothing was changed.''
+  \item The window \textbf{Restore this backup?} states the facts ---
+        date, origin, mybibli version, size, the number of titles and
+        covers in the backup and in the library now --- and what
+        follows: the whole library is replaced, everything entered
+        since that backup is lost from the library, a safety backup of
+        the current state is written first, mybibli answers nobody for
+        a minute or two, and everyone is logged out afterwards. A
+        backup from another instance, or from an older version, adds
+        one line each (below).
+  \item Click \textbf{Restore this backup}. The button reads
+        ``Restoring… This takes a minute or two; keep this page open.''
+        Meanwhile every other page answers with a \emph{Maintenance}
+        page (``mybibli is restoring a backup\dots''); covers are not
+        served either.
+  \item At the end the window says \emph{Backup \dots{} restored (\dots{}
+        titles, \dots{} covers). The safety backup of the previous state
+        is \dots. Everyone has been logged out.} Click \textbf{Log in
+        again} and log in --- with an account of the \emph{restored}
+        library.
+  \item Check the result: a few titles, the Health tab (\emph{Last
+        restore: \dots, from \dots{} (safety backup: \dots).}), and the
+        backups folder: the file \texttt{.restore-\allowbreak in-\allowbreak progress.json}
+        must be gone (see \emph{After the restore} below).
+\end{enumerate}
+
+\textbf{The safety backup} is an ordinary backup of this instance,
+written just before the library is replaced and named in the final
+message. Restoring it undoes the restore. It is rotated like any other
+backup (kept at least 24 hours).
+
+\textbf{An older backup} (written by an earlier mybibli) is restored,
+then brought up to date by the migrations, as at an upgrade. \textbf{A
+newer one} is refused: update mybibli to that version first.
+
+\subsection*{If the restore is refused}
+
+Every refusal changes nothing. The usual ones:
+\begin{itemize}
+  \item \emph{its content does not match its checksum} --- the file is
+        damaged or was copied incompletely: copy it again from where it
+        came from, or take another backup;
+  \item \emph{its checksum file \dots.sha256 is missing} --- copy the
+        \texttt{.sha256} file next to the backup;
+  \item \emph{written by a newer mybibli} --- update mybibli first;
+  \item \emph{mybibli cannot read \dots} --- give the container's user
+        read access to the file;
+  \item \emph{not a backup this version of mybibli can restore} --- the
+        file has the name of a backup but not its content;
+  \item \emph{A backup or a restore is already running} --- wait a
+        minute (a scheduled backup may be running);
+  \item \emph{while covers or metadata are being downloaded for the
+        whole library} --- wait for the run shown on the Health tab;
+  \item \emph{other requests were still running after 30 seconds} ---
+        try again in a moment;
+  \item \emph{could not first write a safety backup} --- the folder is
+        full or not writable; the reason follows.
+\end{itemize}
+
+If the restore itself fails after it began (a statement of the backup
+that does not load, for instance), mybibli puts the library back from
+the safety backup and says so: \emph{The restore failed, so mybibli put
+the library back as it was just before\dots} The log says why.
+
+\subsection*{Behind a reverse proxy}
+
+The page that sends the restore waits for its end, a minute or two on a
+large library. A reverse proxy (Traefik, nginx, Synology's) that cuts
+requests after 60 seconds shows \emph{Server error (504) --- please try
+again.} in the window while \emph{the restore goes on}. Do not try
+again: wait two minutes, reload the page (the \emph{Maintenance} page shows until the
+end), log in, and read the \emph{Last restore} line of the Health tab.
+To avoid the scare, raise the proxy's read timeout for mybibli to five
+minutes.
+
+\subsection*{After the restore}
+
+\begin{itemize}
+  \item Everyone logs in again; the accounts and passwords are those of
+        the restored library.
+  \item The settings (time zone, provider keys, backup schedule, session
+        timeout, log level\dots) are those of the backup. The instance
+        id stays this instance's.
+  \item The covers folder holds exactly the backup's covers.
+  \item A backup taken before the setup wizard was finished holds no
+        active Admin: the wizard opens again, or use the
+        \texttt{MYBIBLI\_RESET\_ADMIN} hatch
+        (section~\ref{sec:reset-admin-password}).
+  \item \textbf{Look at the backups folder once.} During a restore
+        mybibli keeps a file \texttt{.restore-\allowbreak in-\allowbreak progress.json} there
+        and removes it at the end. If it is still there after a
+        restore that succeeded (two failures in a row, both in the log
+        at \texttt{error} level), the next start of mybibli would take
+        it for an interrupted restore and put the library back from the
+        safety backup, undoing your restore. Once you have checked the
+        restored library, delete that file by hand:
+\begin{lstlisting}
+sudo rm backups/.restore-in-progress.json
+\end{lstlisting}
+\end{itemize}
+
+\subsection*{A backup copied in by hand}
+
+To restore a backup kept elsewhere, copy the \texttt{.tar.gz} file
+\emph{and} its \texttt{.sha256} into the backups folder; it shows in
+the list at the next opening of the tab. An old backup of this
+instance --- older than the rotation keeps --- shows \emph{Removed at
+the next rotation}: the next scheduled check deletes it (within the
+hour by default). Either restore it right away, or first set
+\textbf{Automatic backup} to \emph{Off} (Admin → System), restore, and
+set it back afterwards. Once the restore has started, the file is no
+longer needed.
+
+\subsection*{A backup from another instance}
+
+A backup whose name carries another instance id is listed as
+\emph{Another instance (\dots)}. Restoring it is allowed; the window
+adds that its accounts and passwords replace those of this instance,
+so you log in afterwards with an account of the restored library. This
+instance keeps its own id: its next backups carry it.
+
+mybibli never deletes another instance's backup, before or after a
+restore, and the rotation does not count it. \textbf{Delete it by hand
+once you no longer need it}, with its \texttt{.sha256}.
+
+\subsection*{Moving the library to another NAS}
+\label{sec:backups-move}
+
+\begin{enumerate}
+  \item On the new NAS, install mybibli --- the same version as the old
+        one, or a newer one --- with its backups folder
+        (chapter~\ref{ch:installation}), and go through the setup
+        wizard with a temporary Admin account.
+  \item On the old NAS, click \textbf{Back up now} (or take the newest
+        backup), and copy the \texttt{.tar.gz} file and its
+        \texttt{.sha256} into the new NAS's backups folder --- with
+        \texttt{sudo}, keeping them private.
+  \item On the new NAS, restore it from \textbf{Admin → Backups}. It is
+        listed as \emph{Another instance}: the library, its accounts
+        and its settings replace the temporary ones.
+  \item Log in with an account of the old library; check the Health
+        tab and a few titles; delete the copied backup by hand once you
+        are satisfied.
+\end{enumerate}
+Covers come with the backup: nothing else needs copying, except the
+\texttt{.env} file if you want the same passwords for the database
+(it is not in the backup).
+
+\section{Restoring by hand}
+\label{sec:restore-by-hand}
+\index{restore!by hand}
+
+In the rare case where mybibli could neither restore a backup nor put
+the library back, the \emph{Maintenance} page reads: \emph{mybibli
+could not restore a backup nor put the library back. Ask the person who
+installed mybibli to restore the backup \dots{} by hand}, naming a
+safety backup. The same reason is in the log at \texttt{error} level.
+This section is for that person.
+
+\begin{enumerate}
+  \item \textbf{Look for the journal.} If the backups folder no longer
+        holds \texttt{.restore-\allowbreak in-\allowbreak progress.json}, the restore had in
+        fact finished: restart mybibli
+        (\texttt{docker compose restart mybibli}) and check the library.
+        Do not restore anything by hand --- that would undo the
+        restore.
+  \item \textbf{Restart once.} If the journal is there, restart
+        mybibli: at start, before anything else, it reads the journal
+        and puts the library back from the safety backup it names. If
+        that works, the log says \emph{A restore was cut short; the
+        library was put back from its safety backup} and mybibli
+        starts normally.
+  \item \textbf{If it still fails,} mybibli refuses to start (the log
+        says \emph{Refusing to start: a restore was cut short}, and
+        Docker restarts it again and again). Restore the safety backup
+        by hand, from the folder holding \texttt{docker-compose.yml}
+        (bundled database; the root password is
+        \texttt{MYSQL\_ROOT\_PASSWORD} of \texttt{.env}):
+\begin{lstlisting}
+docker compose stop mybibli
+cd backups
+sudo sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256
+sudo tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql
+cd ..
+docker compose exec -T db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+    -e "DROP DATABASE mybibli; CREATE DATABASE mybibli CHARACTER SET utf8mb4;"
+sudo cat backups/database.sql | docker compose exec -T db \
+    mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli
+docker compose run --rm --no-deps --entrypoint sh mybibli -c \
+    'mkdir /tmp/x && tar -xzf /app/backups/mybibli-<id>-<stamp>.tar.gz \
+     -C /tmp/x && cp -a /tmp/x/covers/. /app/covers/'
+sudo rm backups/database.sql backups/.restore-in-progress.json
+docker compose start mybibli
+\end{lstlisting}
+        The \texttt{run} line uses the mybibli image with its own
+        volumes, so it finds the covers wherever they are mounted. With
+        an external database, run the two \texttt{mariadb} commands
+        against that server instead.
+  \item Log in again (no session survives), check the library, then run
+        the cover check (section~\ref{sec:cover-check}): it lists the
+        cover files that the restored library no longer uses, and
+        removes them.
+\end{enumerate}
+
+Restore this way only a backup of this instance --- the safety backup
+named by the message is one. A backup of another instance carries its
+id in the database; restore it from the Backups tab, which keeps this
+instance's id.
+
+\section{Cover check}
+\label{sec:cover-check}
+\index{covers!check}\index{cover check}
+
+The covers folder and the database can drift apart: a database
+restored on its own (from a NAS backup of MariaDB, without the covers),
+a volume mounted by mistake, or titles purged from the Trash --- the
+purge leaves their cover files behind. The \textbf{Cover check}, at the
+foot of \textbf{Admin → Backups}, finds both kinds of mismatch.
+
+\begin{enumerate}
+  \item Click \textbf{Check covers}. The check changes nothing. It
+        lists:
+        \begin{itemize}
+          \item \textbf{Cover files that no title owns} --- a file
+                \texttt{<number>.jpg} at the root of the covers folder
+                whose number is no title's, neither live nor in the
+                Trash (name, size, date);
+          \item \textbf{Titles whose cover file is missing} --- titles
+                that point to a cover file of their own that is not
+                there, each linked to its page, with a note when it is
+                handled differently: \emph{in the Trash} (the address is
+                cleared, nothing downloaded), \emph{set by hand: upload
+                it again}, \emph{no ISBN, ISSN or UPC: nothing to
+                download}, \emph{a cover proposal is pending: accept it
+                to install a cover} (left alone).
+        \end{itemize}
+        Each list shows its first 50 rows. Everything else in the folder
+        --- the \texttt{.staging} folder of proposed covers, temporary
+        files, any other name --- is never touched, only counted
+        (\emph{Left alone: \dots}). When nothing is wrong: \emph{Covers and
+        library match: \dots{} cover files checked, nothing to repair.}
+  \item Click \textbf{Repair…}. The window \textbf{Repair the covers?}
+        says how many files will be deleted, how many titles lose the
+        address of their missing cover and how many of those are queued
+        for a new download, and that \emph{a deleted file can only come
+        back from a backup}. Click \textbf{Repair}.
+  \item The answer gives the counts. Each item is checked again just
+        before it is changed; one that changed since the check is left
+        alone and counted. Queued downloads go through the metadata
+        retry queue: about 20 titles every 5 minutes
+        (section~\ref{sec:startup-repairs}). Every repair is recorded
+        in the audit log.
+\end{enumerate}
+
+The repair is refused while a backup or a restore is running (\emph{A
+backup or a restore is already running\dots}): try again a minute
+later.
+
+\textbf{The first check on an existing library} usually lists many
+files that no title owns: the covers of every title purged from the
+Trash since the library began. That is expected; repairing removes
+them.
+
+\textbf{When the folder looks unmounted.} If more than half of the
+covers the library uses are missing, the check shows its lists but
+offers no repair and says: \emph{\dots{} That looks like a covers
+folder that is not mounted, so mybibli will not repair anything.} A
+repair then would clear the cover address of most titles. Check the
+covers volume of the installation (section~\ref{sec:install-covers-bind}
+and \emph{Symptom: every title shows the placeholder},
+section~\ref{sec:troubleshoot-covers-missing}), restart, and check
+again.
+
+% 19-9 review (b): the "another database" guard is waiting for the project
+% lead; adjust or remove this paragraph once story 19-9 merges.
+\textbf{When the library looks like another database.} Likewise,
+when most cover files of the folder belong to no title, the check
+offers no repair: that looks like mybibli pointed at another, or an
+empty, database, and repairing would delete the covers of the real
+library. Check the database settings of the installation
+(\texttt{.env}, section~\ref{sec:env-vars}) before anything else.
+
+In both cases, fix the installation, not the files. Move or delete
+cover files by hand only when you are sure which library they belong
+to --- a backup (section~\ref{sec:backups}) holds every cover file of
+its library.
 
 \section{Backup procedure}
 

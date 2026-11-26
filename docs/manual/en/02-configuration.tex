@@ -30,7 +30,9 @@ configuration file. The panel has eight tabs, among them:
         authenticates with (chapter~\ref{ch:api}), and the
         \emph{propose} keys of AI agents (chapter~\ref{ch:agents}).
   \item \textbf{Backups} — since 1.29.0, write a backup of the whole
-        library on request (section~\ref{sec:backups}).
+        library on request (section~\ref{sec:backups}), restore one
+        (section~\ref{sec:backups-restore}) and check the covers
+        against the library (section~\ref{sec:cover-check}).
 \end{itemize}
 
 Only the \texttt{Admin} role sees the panel; \texttt{Librarian} and
@@ -111,6 +113,30 @@ inline create / rename / move / delete affordances. Drag-and-drop is
 \emph{not} supported (mybibli ships with a CSP-strict no-JS policy);
 moves are done by editing a node and picking a new parent from a
 dropdown.
+
+A location that holds others has a small button before its name that
+folds or unfolds the locations inside it (a screen reader announces it
+as ``Locations inside \dots'', collapsed or expanded). Your browser
+remembers which ones you folded. Everything is reached with the
+\texttt{Tab} key, row by row: that button, the location's link, then
+its add, edit and delete controls; \texttt{Enter} or the space bar
+folds and unfolds. No arrow keys are needed. When you delete the last
+location inside another, that one becomes a plain location at once,
+without reloading the page.
+
+\subsection*{Describing a location}
+\label{sec:location-description}
+\index{storage locations!description}
+
+Since 1.29.0 a location can carry a \textbf{Description}: where to find
+it, for example ``left bookcase, top shelf, behind the door''. In the
+tree, click the pencil of the location (\emph{Edit location}) and fill
+the field under \emph{Parent location}; up to 500 characters of plain
+text, line breaks kept. An
+empty field removes it. The description shows on the location's own
+page, under its L-code and type --- not in the tree, and it is not
+searched. The HTTP API returns it (chapter~\ref{ch:api}). \textbf{Back
+to locations} returns to the tree.
 
 \subsection*{Location node types}
 
@@ -404,6 +430,12 @@ as \texttt{Europe/Zurich}, the default, \texttt{Europe/Paris} or
 day starts and ends --- for \emph{added since}, overdue loans and the
 dates of value estimates. Stored dates, the REST API and AI agents stay
 in UTC. Applied to the next page, no restart.
+
+\subsection*{Backups}
+
+Since 1.29.0, \textbf{Automatic backup} (how often mybibli checks for
+changes and writes a backup, or \emph{Off}) and \textbf{Daily backups
+to keep}. See section~\ref{sec:backups-schedule}.
 
 \subsection*{Language}
 

@@ -39,12 +39,14 @@ pouvez toujours les re-tirer depuis Docker Hub.
 \section{Sauvegardes}
 \label{sec:backups}
 
-Depuis 1.29.0, mybibli écrit lui-même une sauvegarde, à la demande,
-depuis \textbf{Admin → Sauvegardes}.\index{sauvegarde!onglet Sauvegardes}
-Un seul fichier contient toute la base et toutes les couvertures : la
-bibliothèque peut être récupérée, ou chargée ailleurs, sans restaurer
-tout MariaDB. Les procédures des sections suivantes restent valables ;
-celle-ci est plus simple.
+Depuis 1.29.0, mybibli écrit lui-même une sauvegarde, à la demande
+depuis \textbf{Admin → Sauvegardes}\index{sauvegarde!onglet Sauvegardes}
+ou selon un calendrier, et en restaure une depuis le même onglet
+(section~\ref{sec:backups-restore}). Un seul fichier contient toute la
+base et toutes les couvertures : la bibliothèque peut être récupérée,
+ou chargée ailleurs, sans restaurer tout MariaDB. Les procédures de la
+fin de ce chapitre (à partir de \emph{Procédure de sauvegarde}) restent
+valables ; celle-ci est plus simple.
 
 \subsection*{Monter le dossier de sauvegarde}
 
@@ -60,11 +62,28 @@ service \texttt{mybibli} puis redémarrez :
       - ./backups:/app/backups
 \end{lstlisting}
 
+Une nouvelle installation suit l'étape~1d du
+chapitre~\ref{ch:installation} (section~\ref{sec:install-backups}). La
+ligne en place, Docker crée lui-même le dossier \texttt{backups/} de
+l'hôte, à côté de \texttt{docker-compose.yml}, au premier démarrage
+s'il n'existe pas.
+
 L'onglet montre le dossier et son état : \emph{prêt}, \emph{absent}
-(pas de montage) ou \emph{non accessible en écriture} (donnez au compte
-du conteneur le droit d'écrire dans le dossier de l'hôte). Tant que le
-dossier n'est pas prêt, une sauvegarde est refusée avec cette raison et
-rien n'est écrit nulle part.
+(pas de montage : la ligne manque, ou \texttt{MYBIBLI\_BACKUP\_DIR}
+désigne un autre chemin) ou \emph{non accessible en écriture} (donnez
+au compte du conteneur le droit d'écrire dans le dossier de l'hôte ; un
+partage réseau monté en lecture seule donne aussi cet état). Tant que
+le dossier n'est pas prêt, une sauvegarde est refusée avec cette raison
+et rien n'est écrit nulle part. L'onglet Santé affiche le même
+avertissement, qui commence par « Attention : ».
+
+\textbf{Un dossier par instance.} Donnez à chaque instance de mybibli
+son propre dossier de sauvegarde. Une instance de test ne doit jamais
+écrire dans le dossier de la bibliothèque en production : deux
+instances qui partagent un dossier effacent mutuellement leurs fichiers
+temporaires et, si elles partagent aussi un identifiant d'instance (une
+copie chargée ailleurs le conserve), font tourner chacune les
+sauvegardes de l'autre.
 
 \subsection*{Écrire une sauvegarde}
 
@@ -78,6 +97,67 @@ temps est refusé. Le catalogue reste utilisable pendant la sauvegarde :
 la base est lue dans un instantané cohérent, sans rien verrouiller. Une
 sauvegarde qui échoue ne laisse rien derrière elle ; les journaux
 disent pourquoi.
+
+\subsection*{Sauvegardes automatiques et rotation}
+\label{sec:backups-schedule}
+\index{sauvegarde!automatique}\index{sauvegarde!rotation}
+
+Le calendrier se règle dans \textbf{Admin → Système}, section
+\textbf{Sauvegardes} :
+
+\begin{itemize}
+  \item \textbf{Sauvegarde automatique} --- \emph{Désactivée},
+        \emph{Toutes les heures} (par défaut), \emph{Toutes les 2
+        heures}, \dots, \emph{Toutes les 12 heures} ou \emph{Une fois
+        par jour}. mybibli vérifie à cet intervalle et n'écrit une
+        sauvegarde que si quelque chose a changé depuis la précédente :
+        une bibliothèque au repos ne remplit pas le dossier.
+  \item \textbf{Sauvegardes quotidiennes à garder} --- un nombre entier
+        de 1 à 365, 14 par défaut (voir la rotation ci-dessous).
+\end{itemize}
+
+Cliquez sur \textbf{Enregistrer la sauvegarde automatique} ; la ligne
+de confirmation reprend les deux valeurs. La première vérification a
+lieu dix minutes après le démarrage de mybibli. « Rien n'a changé »
+se mesure par rapport à la dernière sauvegarde écrite par mybibli
+depuis son démarrage, automatique ou à la main : après un redémarrage,
+la première vérification en écrit toujours une.
+
+\textbf{Rotation.} Après chaque vérification et après chaque sauvegarde
+écrite avec \textbf{Sauvegarder maintenant}, mybibli supprime les
+sauvegardes dont il n'a plus besoin. Il garde :
+\begin{itemize}
+  \item toutes les sauvegardes des dernières 24 heures ;
+  \item la plus récente, quel que soit son âge ;
+  \item la dernière sauvegarde de chacun des derniers jours \emph{où une
+        sauvegarde a été écrite}, autant de jours que l'indique
+        \textbf{Sauvegardes quotidiennes à garder} (jours comptés dans
+        le fuseau horaire de la bibliothèque).
+\end{itemize}
+Compter les jours où une sauvegarde a été écrite, et non les jours du
+calendrier, garantit qu'une bibliothèque laissée de côté pendant un mois
+conserve ses 14 dernières sauvegardes quotidiennes. Chaque fichier
+\texttt{.sha256} suit sa sauvegarde. La rotation ne supprime que les
+sauvegardes de cette instance (leur nom porte l'identifiant de cette
+instance) ; \textbf{une sauvegarde d'une autre instance n'est jamais
+supprimée}, ni
+aucun autre fichier du dossier. Baisser \textbf{Sauvegardes quotidiennes
+à garder} supprime les sauvegardes quotidiennes les plus anciennes à la
+rotation suivante, dans l'heure avec le calendrier par défaut.
+
+\textbf{Place nécessaire.} Chaque sauvegarde pèse à peu près la taille du
+dossier des couvertures plus une copie compressée de la base. Avec les
+réglages par défaut, comptez au pire 24 sauvegardes horaires et 14
+quotidiennes ; bien moins les jours sans changement.
+
+\textbf{Dans l'onglet Santé}, le bloc \textbf{Sauvegardes} montre la
+dernière sauvegarde (lue dans le dossier), la prochaine vérification,
+« La sauvegarde automatique est désactivée (Admin → Système). » le cas
+échéant, si la dernière vérification n'a rien trouvé à sauvegarder, une
+sauvegarde automatique en échec, la dernière restauration et les
+avertissements sur le dossier. La section \emph{Surveillance de la
+production} du même onglet est décrite à la
+section~\ref{sec:health-watch}.
 
 \subsection*{Ce que contient le fichier}
 
@@ -108,27 +188,406 @@ l'écrit avec le mode \texttt{0600} (lisible par son seul propriétaire)
 ; gardez le dossier de l'hôte, et chaque copie que vous en faites,
 tout aussi privés.
 
-\subsection*{Charger la base dans un autre MariaDB}
+\textbf{À qui appartiennent les fichiers.} L'image livrée tourne en
+\texttt{root} : sur l'hôte, les sauvegardes appartiennent à
+\texttt{root}, et seul \texttt{root} peut les lire. Copiez-les avec
+\texttt{sudo} (ou en administrateur du NAS), fermez le dossier lui-même
+aux autres comptes (\texttt{sudo chmod 700 backups}), ne le publiez pas
+comme partage réseau ouvert à tous, et chiffrez la copie gardée hors
+site (disque USB, stockage en ligne). Les fichiers \texttt{.sha256} ne
+contiennent rien de secret.
+
+\subsection*{Charger une sauvegarde dans une base de test}
+\label{sec:backups-test-db}
 
 \texttt{database.sql} est un dump standard : le client \texttt{mariadb}
 le charge dans une base vide, pour une copie de test ou pour travailler
 sur des données réelles (par exemple essayer une modification qui
-réécrit des données sur tout le catalogue avant de la livrer) :
+réécrit des données sur tout le catalogue avant de la livrer, règle~\#20
+du projet) :
 \begin{lstlisting}
 tar -xzf mybibli-<id>-<date>.tar.gz database.sql
 mariadb -u root -p -e "CREATE DATABASE mybibli_copie"
 mariadb -u root -p mybibli_copie < database.sql
 \end{lstlisting}
-La copie est au niveau de migration de la sauvegarde. La restauration
-d'une sauvegarde dans la bibliothèque en service viendra avec une
-version ultérieure.
+La copie est au niveau de migration de la sauvegarde ; un mybibli
+démarré dessus la met à jour. Une telle instance de test reçoit son
+propre dossier de sauvegarde (jamais celui de la production, voir
+\emph{Un dossier par instance} plus haut). Les clés des fournisseurs de
+l'onglet Système viennent avec le dump : effacez-les sur l'instance de
+test si elle ne doit pas s'en servir.
 
 \subsection*{Une couverture écrite pendant la sauvegarde}
 
 Les couvertures sont copiées après la base. Une couverture téléchargée
 dans les secondes qui séparent les deux peut se trouver dans le fichier
-sans son titre, ou manquer pour un titre qui la cite. L'outil de
-cohérence des couvertures signale et répare les deux cas.
+sans son titre, ou manquer pour un titre qui la cite. Le contrôle des
+couvertures (section~\ref{sec:cover-check}) signale et répare les deux
+cas.
+
+\section{Restaurer une sauvegarde}
+\label{sec:backups-restore}
+\index{sauvegarde!restauration}\index{restauration}
+
+Une restauration remet toute la bibliothèque --- titres, volumes, prêts,
+utilisateurs, réglages et couvertures --- dans l'état où elle était
+lorsqu'une sauvegarde a été écrite. Elle se fait par un Admin depuis
+\textbf{Admin → Sauvegardes}, à partir d'une sauvegarde présente
+\emph{dans le dossier de sauvegarde} : mybibli ne téléverse ni ne
+télécharge de sauvegarde.
+
+\subsection*{Pas à pas}
+
+\begin{enumerate}
+  \item Ouvrez \textbf{Admin → Sauvegardes}. Sous \textbf{Sauvegarder
+        maintenant}, la liste \textbf{Sauvegardes présentes dans le
+        dossier} montre chaque sauvegarde, la plus récente en premier :
+        \textbf{Date} (fuseau horaire de la bibliothèque),
+        \textbf{Origine} (\emph{Cette instance} ou \emph{Autre instance
+        (\dots)} avec son identifiant), \textbf{Taille} et une
+        \textbf{Remarque} :
+        \begin{itemize}
+          \item \emph{Pas de fichier de contrôle} --- le fichier
+                \texttt{.sha256} manque ; la restauration sera refusée
+                tant que vous ne l'aurez pas copié à côté de la
+                sauvegarde ;
+          \item \emph{Illisible} --- le conteneur ne peut pas lire le
+                fichier (voir \emph{À qui appartiennent les fichiers}
+                plus haut) ;
+          \item \emph{Supprimée à la prochaine rotation} --- une
+                ancienne sauvegarde de cette instance que la rotation
+                va effacer (voir \emph{Une sauvegarde copiée à la main}
+                ci-dessous).
+        \end{itemize}
+  \item Cliquez sur \textbf{Restaurer…} sur la ligne. mybibli lit
+        d'abord tout le fichier et le contrôle (sa somme de contrôle,
+        chacun de ses éléments, sa version). Un fichier qui échoue à un
+        contrôle n'ouvre aucune fenêtre : la raison s'affiche dans
+        l'onglet, sous \textbf{Sauvegarder maintenant}, et se termine
+        toujours par « Rien n'a été modifié. »
+  \item La fenêtre \textbf{Restaurer cette sauvegarde ?} donne les faits
+        --- date, origine, version de mybibli, taille, nombre de titres
+        et de couvertures dans la sauvegarde et dans la bibliothèque
+        actuelle --- et ce qui va suivre : toute la bibliothèque est
+        remplacée, tout ce qui a été saisi depuis cette sauvegarde
+        disparaît de la bibliothèque, une sauvegarde de sécurité de
+        l'état actuel est écrite d'abord, mybibli ne répond à personne
+        pendant une minute ou deux, et tout le monde est déconnecté
+        ensuite. Une sauvegarde d'une autre instance, ou d'une version
+        plus ancienne, ajoute chacune une ligne (voir plus bas).
+  \item Cliquez sur \textbf{Restaurer cette sauvegarde}. Le bouton
+        indique « Restauration en cours… Cela prend une minute ou deux ;
+        gardez cette page ouverte. » Pendant ce temps, toutes les autres
+        pages répondent par une page \emph{Maintenance} (« mybibli
+        restaure une sauvegarde\dots ») ; les couvertures ne sont pas
+        servies non plus.
+  \item À la fin, la fenêtre indique \emph{Sauvegarde \dots{} restaurée
+        (\dots{} titres, \dots{} couvertures). La sauvegarde de sécurité
+        de l'état précédent est \dots. Tout le monde a été déconnecté.}
+        Cliquez sur \textbf{Se reconnecter} et connectez-vous --- avec
+        un compte de la bibliothèque \emph{restaurée}.
+  \item Vérifiez le résultat : quelques titres, l'onglet Santé
+        (\emph{Dernière restauration : \dots, depuis \dots{} (sauvegarde
+        de sécurité : \dots).}) et le dossier de sauvegarde : le fichier
+        \texttt{.restore-\allowbreak in-\allowbreak progress.json} doit avoir disparu (voir
+        \emph{Après la restauration} ci-dessous).
+\end{enumerate}
+
+\textbf{La sauvegarde de sécurité} est une sauvegarde ordinaire de cette
+instance, écrite juste avant que la bibliothèque soit remplacée et
+nommée dans le message final. La restaurer annule la restauration. Elle
+suit la rotation comme les autres (gardée au moins 24 heures).
+
+\textbf{Une sauvegarde plus ancienne} (écrite par une version antérieure
+de mybibli) est restaurée, puis mise à jour par les migrations, comme
+lors d'une mise à jour. \textbf{Une sauvegarde plus récente} est
+refusée : mettez d'abord mybibli à jour dans cette version.
+
+\subsection*{Si la restauration est refusée}
+
+Un refus ne modifie rien. Les plus courants :
+\begin{itemize}
+  \item \emph{son contenu ne correspond pas à sa somme de contrôle} ---
+        le fichier est endommagé ou a été copié en partie : copiez-le à
+        nouveau depuis son origine, ou prenez une autre sauvegarde ;
+  \item \emph{son fichier de contrôle \dots.sha256 est absent} ---
+        copiez le fichier \texttt{.sha256} à côté de la sauvegarde ;
+  \item \emph{écrite par une version plus récente de mybibli} ---
+        mettez d'abord mybibli à jour ;
+  \item \emph{mybibli ne peut pas lire \dots} --- donnez au compte du
+        conteneur le droit de lire le fichier ;
+  \item \emph{n'est pas une sauvegarde que cette version de mybibli
+        peut restaurer} --- le fichier porte le nom d'une sauvegarde,
+        mais n'en a pas le contenu ;
+  \item \emph{Une sauvegarde ou une restauration est déjà en cours} ---
+        attendez une minute (une sauvegarde automatique peut être en
+        cours) ;
+  \item \emph{pendant le téléchargement des couvertures ou des
+        métadonnées de toute la bibliothèque} --- attendez la fin du
+        traitement affiché dans l'onglet Santé ;
+  \item \emph{d'autres requêtes étaient encore en cours après 30
+        secondes} --- réessayez dans un instant ;
+  \item \emph{n'a pas pu écrire d'abord une sauvegarde de sécurité} ---
+        le dossier est plein ou non accessible en écriture ; la raison
+        suit.
+\end{itemize}
+
+Si la restauration elle-même échoue après avoir commencé (une
+instruction de la sauvegarde qui ne se charge pas, par exemple), mybibli
+remet la bibliothèque en état depuis la sauvegarde de sécurité et le
+dit : \emph{La restauration a échoué ; mybibli a remis la bibliothèque
+dans l'état où elle était juste avant\dots} Les journaux disent
+pourquoi.
+
+\subsection*{Derrière un reverse proxy}
+
+La page qui lance la restauration attend sa fin, une minute ou deux sur
+une grande bibliothèque. Un reverse proxy (Traefik, nginx, celui de
+Synology) qui coupe les requêtes au bout de 60 secondes affiche
+\emph{Erreur serveur (504) --- veuillez réessayer.} dans la fenêtre alors
+que \emph{la restauration continue}. Ne réessayez pas : attendez deux
+minutes, rechargez la page
+(la page \emph{Maintenance} s'affiche jusqu'à la fin), connectez-vous et
+lisez la ligne \emph{Dernière restauration} de l'onglet Santé. Pour
+éviter cette frayeur, portez le délai de lecture du proxy à cinq
+minutes pour mybibli.
+
+\subsection*{Après la restauration}
+
+\begin{itemize}
+  \item Tout le monde se reconnecte ; les comptes et les mots de passe
+        sont ceux de la bibliothèque restaurée.
+  \item Les réglages (fuseau horaire, clés des fournisseurs, calendrier
+        des sauvegardes, délai de session, niveau de journalisation\dots)
+        sont ceux de la sauvegarde. L'identifiant d'instance reste celui
+        de cette instance.
+  \item Le dossier des couvertures contient exactement les couvertures
+        de la sauvegarde.
+  \item Une sauvegarde prise avant la fin de l'assistant de première
+        utilisation ne contient aucun Admin actif : l'assistant s'ouvre
+        à nouveau, ou utilisez la trappe \texttt{MYBIBLI\_RESET\_ADMIN}
+        (section~\ref{sec:reset-admin-password}).
+  \item \textbf{Jetez un œil au dossier de sauvegarde.} Pendant une
+        restauration, mybibli y garde un fichier
+        \texttt{.restore-\allowbreak in-\allowbreak progress.json} et le supprime à la fin. S'il
+        est encore là après une restauration réussie (deux échecs
+        successifs, tous deux dans les journaux au niveau
+        \texttt{error}), le prochain démarrage de mybibli le prendrait
+        pour une restauration interrompue et remettrait la bibliothèque
+        en état depuis la sauvegarde de sécurité, ce qui annulerait
+        votre restauration. Une fois la bibliothèque restaurée vérifiée,
+        supprimez ce fichier à la main :
+\begin{lstlisting}
+sudo rm backups/.restore-in-progress.json
+\end{lstlisting}
+\end{itemize}
+
+\subsection*{Une sauvegarde copiée à la main}
+
+Pour restaurer une sauvegarde gardée ailleurs, copiez le fichier
+\texttt{.tar.gz} \emph{et} son \texttt{.sha256} dans le dossier de
+sauvegarde ; il apparaît dans la liste à la prochaine ouverture de
+l'onglet. Une ancienne sauvegarde de cette instance --- plus ancienne que
+ce que garde la rotation --- porte la remarque \emph{Supprimée à la
+prochaine rotation} : la prochaine vérification automatique l'efface
+(dans l'heure par défaut). Restaurez-la tout de suite, ou mettez d'abord
+\textbf{Sauvegarde automatique} sur \emph{Désactivée} (Admin → Système),
+restaurez, puis rétablissez le réglage. Une fois la restauration
+commencée, le fichier n'est plus nécessaire.
+
+\subsection*{Une sauvegarde d'une autre instance}
+
+Une sauvegarde dont le nom porte un autre identifiant d'instance est
+listée comme \emph{Autre instance (\dots)}. La restaurer est permis ; la
+fenêtre précise que ses comptes et mots de passe remplacent ceux de
+cette instance : vous vous connectez ensuite avec un compte de la
+bibliothèque restaurée. Cette instance garde son propre identifiant :
+ses sauvegardes suivantes le portent.
+
+mybibli ne supprime jamais la sauvegarde d'une autre instance, ni avant
+ni après une restauration, et la rotation n'en tient pas compte.
+\textbf{Supprimez-la à la main quand vous n'en avez plus besoin}, avec
+son \texttt{.sha256}.
+
+\subsection*{Déplacer la bibliothèque vers un autre NAS}
+\label{sec:backups-move}
+
+\begin{enumerate}
+  \item Sur le nouveau NAS, installez mybibli --- la même version que
+        sur l'ancien, ou une plus récente --- avec son dossier de
+        sauvegarde (chapitre~\ref{ch:installation}), et passez
+        l'assistant de première utilisation avec un compte Admin
+        provisoire.
+  \item Sur l'ancien NAS, cliquez sur \textbf{Sauvegarder maintenant}
+        (ou prenez la sauvegarde la plus récente) et copiez le fichier
+        \texttt{.tar.gz} et son \texttt{.sha256} dans le dossier de
+        sauvegarde du nouveau NAS --- avec \texttt{sudo}, en les gardant
+        privés.
+  \item Sur le nouveau NAS, restaurez-la depuis \textbf{Admin →
+        Sauvegardes}. Elle est listée comme \emph{Autre instance} : la
+        bibliothèque, ses comptes et ses réglages remplacent les
+        provisoires.
+  \item Connectez-vous avec un compte de l'ancienne bibliothèque,
+        puis vérifiez l'onglet Santé et quelques titres. Une fois
+        satisfait, supprimez à la main la sauvegarde copiée.
+\end{enumerate}
+Les couvertures viennent avec la sauvegarde : rien d'autre n'est à
+copier, sauf le fichier \texttt{.env} si vous voulez les mêmes mots de
+passe pour la base (il n'est pas dans la sauvegarde).
+
+\section{Restaurer à la main}
+\label{sec:restore-by-hand}
+\index{restauration!à la main}
+
+Dans le cas rare où mybibli n'a pu ni restaurer une sauvegarde ni
+remettre la bibliothèque en état, la page \emph{Maintenance} indique :
+\emph{mybibli n'a pu ni restaurer une sauvegarde ni remettre la
+bibliothèque en état. Demandez à la personne qui a installé mybibli de
+restaurer à la main la sauvegarde \dots}, en nommant une sauvegarde de
+sécurité. La même raison figure dans les journaux au niveau
+\texttt{error}. Cette section s'adresse à cette personne.
+
+\begin{enumerate}
+  \item \textbf{Cherchez le journal.} Si le fichier
+        \texttt{.restore-\allowbreak in-\allowbreak progress.json}
+        n'est plus dans le dossier de sauvegarde, la restauration
+        s'était en fait terminée : redémarrez mybibli
+        (\texttt{docker compose restart mybibli}) et vérifiez la
+        bibliothèque. Ne restaurez rien à la main --- cela annulerait la
+        restauration.
+  \item \textbf{Redémarrez une fois.} Si le journal est là, redémarrez
+        mybibli : au démarrage, avant toute autre chose, il lit le
+        journal et remet la bibliothèque en état depuis la sauvegarde de
+        sécurité qu'il nomme. Si cela réussit, les journaux indiquent
+        \emph{A restore was cut short; the library was put back from its
+        safety backup} et mybibli démarre normalement.
+  \item \textbf{Si cela échoue encore,} mybibli refuse de démarrer (les
+        journaux indiquent \emph{Refusing to start: a restore was cut
+        short}, et Docker le relance sans fin). Restaurez la sauvegarde
+        de sécurité à la main, depuis le dossier qui contient
+        \texttt{docker-compose.yml} (base embarquée ; le mot de passe
+        root est \texttt{MYSQL\_ROOT\_PASSWORD} dans \texttt{.env}) :
+\begin{lstlisting}
+docker compose stop mybibli
+cd backups
+sudo sha256sum -c mybibli-<id>-<stamp>.tar.gz.sha256
+sudo tar -xzf mybibli-<id>-<stamp>.tar.gz database.sql
+cd ..
+docker compose exec -T db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+    -e "DROP DATABASE mybibli; CREATE DATABASE mybibli CHARACTER SET utf8mb4;"
+sudo cat backups/database.sql | docker compose exec -T db \
+    mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli
+docker compose run --rm --no-deps --entrypoint sh mybibli -c \
+    'mkdir /tmp/x && tar -xzf /app/backups/mybibli-<id>-<stamp>.tar.gz \
+     -C /tmp/x && cp -a /tmp/x/covers/. /app/covers/'
+sudo rm backups/database.sql backups/.restore-in-progress.json
+docker compose start mybibli
+\end{lstlisting}
+        La ligne \texttt{run} utilise l'image de mybibli avec ses propres
+        volumes : elle trouve les couvertures où qu'elles soient montées.
+        Avec une base externe, lancez les deux commandes
+        \texttt{mariadb} sur ce serveur.
+  \item Reconnectez-vous (aucune session ne survit), vérifiez la
+        bibliothèque, puis lancez le contrôle des couvertures
+        (section~\ref{sec:cover-check}) : il liste les fichiers de
+        couverture dont la bibliothèque restaurée ne se sert plus, et
+        les supprime.
+\end{enumerate}
+
+Ne restaurez de cette façon qu'une sauvegarde de cette instance --- la
+sauvegarde de sécurité nommée par le message en est une. Une sauvegarde
+d'une autre instance porte son identifiant dans la base ; restaurez-la
+depuis l'onglet Sauvegardes, qui conserve l'identifiant de cette
+instance.
+
+\section{Contrôle des couvertures}
+\label{sec:cover-check}
+\index{couvertures!contrôle}\index{contrôle des couvertures}
+
+Le dossier des couvertures et la base peuvent diverger : une base
+restaurée seule (depuis une sauvegarde MariaDB du NAS, sans les
+couvertures), un volume monté par erreur, ou des titres purgés de la
+corbeille --- la purge laisse leurs fichiers de couverture derrière
+elle. Le \textbf{Contrôle des couvertures}, au bas d'\textbf{Admin →
+Sauvegardes}, trouve les deux sortes d'écart.
+
+\begin{enumerate}
+  \item Cliquez sur \textbf{Contrôler les couvertures}. Le contrôle ne
+        modifie rien. Il liste :
+        \begin{itemize}
+          \item \textbf{Fichiers de couverture qu'aucun titre ne
+                possède} --- un fichier \texttt{<numéro>.jpg} à la
+                racine du dossier des couvertures dont le numéro n'est
+                celui d'aucun titre, ni actif ni dans la corbeille (nom,
+                taille, date) ;
+          \item \textbf{Titres dont le fichier de couverture manque} ---
+                les titres qui désignent un fichier de couverture à eux
+                absent du dossier, chacun lié à sa page, avec une
+                remarque quand il est traité autrement : \emph{dans la
+                corbeille} (l'adresse est effacée, rien n'est
+                téléchargé), \emph{choisie à la main : téléversez-la à
+                nouveau}, \emph{ni ISBN, ni ISSN, ni UPC : rien à
+                télécharger}, \emph{une proposition de couverture est en
+                attente : acceptez-la pour installer une couverture}
+                (laissé tel quel).
+        \end{itemize}
+        Chaque liste montre ses 50 premières lignes. Tout le reste du
+        dossier --- le dossier \texttt{.staging} des couvertures
+        proposées, les fichiers temporaires, tout autre nom --- n'est
+        jamais touché, seulement compté (\emph{Laissés tels quels :
+        \dots}). Quand tout va bien : \emph{Les couvertures et la
+        bibliothèque concordent : \dots{} fichiers de couverture
+        contrôlés, rien à réparer.}
+  \item Cliquez sur \textbf{Réparer…}. La fenêtre \textbf{Réparer les
+        couvertures ?} indique combien de fichiers seront supprimés,
+        combien de titres perdent l'adresse de leur couverture manquante
+        et combien d'entre eux sont mis en file pour un nouveau
+        téléchargement, et qu'\emph{un fichier supprimé ne peut revenir
+        que d'une sauvegarde}. Cliquez sur \textbf{Réparer}.
+  \item La réponse donne les nombres. Chaque élément est contrôlé à
+        nouveau juste avant d'être modifié ; un élément qui a changé
+        depuis le contrôle est laissé tel quel et compté. Les
+        téléchargements passent par la file de réessai des
+        métadonnées : une vingtaine de titres toutes les 5 minutes
+        (section~\ref{sec:startup-repairs}). Chaque réparation est
+        inscrite au journal d'audit.
+\end{enumerate}
+
+La réparation est refusée pendant une sauvegarde ou une restauration
+(\emph{Une sauvegarde ou une restauration est déjà en cours\dots}) :
+réessayez une minute plus tard.
+
+\textbf{Le premier contrôle d'une bibliothèque existante} liste en
+général beaucoup de fichiers qu'aucun titre ne possède : les couvertures
+de tous les titres purgés de la corbeille depuis les débuts de la
+bibliothèque. C'est attendu ; la réparation les supprime.
+
+\textbf{Quand le dossier semble non monté.} Si plus de la moitié des
+couvertures utilisées par la bibliothèque manquent, le contrôle affiche
+ses listes mais ne propose aucune réparation et indique : \emph{\dots{}
+Cela ressemble à un dossier des couvertures non monté ; mybibli ne
+réparera donc rien.} Une réparation effacerait alors l'adresse de
+couverture de la plupart des titres. Vérifiez le volume des couvertures
+de l'installation (section~\ref{sec:install-covers-bind} et
+\emph{Symptôme : chaque titre affiche le placeholder},
+section~\ref{sec:troubleshoot-couvertures-manquantes}), redémarrez, puis
+contrôlez à nouveau.
+
+% 19-9 review (b): the "another database" guard is waiting for the project
+% lead; adjust or remove this paragraph once story 19-9 merges.
+\textbf{Quand la bibliothèque semble être une autre base.} De même,
+quand la plupart des fichiers de couverture du dossier n'appartiennent à
+aucun titre, le contrôle ne propose aucune réparation : cela ressemble à
+un mybibli branché sur une autre base, ou sur une base vide, et une
+réparation supprimerait les couvertures de la vraie bibliothèque.
+Vérifiez d'abord les réglages de base de données de l'installation
+(\texttt{.env}, section~\ref{sec:env-vars}).
+
+Dans les deux cas, corrigez l'installation, pas les fichiers. Ne
+déplacez ou ne supprimez des fichiers de couverture à la main que si
+vous savez avec certitude à quelle bibliothèque ils appartiennent ---
+une sauvegarde (section~\ref{sec:backups}) contient tous les fichiers de
+couverture de sa bibliothèque.
 
 \section{Procédure de sauvegarde}
 

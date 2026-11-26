@@ -628,6 +628,29 @@ pas de nettoyage en lot. Un agent IA peut proposer les corrections ---
 le titre par une proposition de métadonnées, la position par une
 proposition de série (chapitre~\ref{ch:agents}).
 
+\subsection*{Le nombre de volumes et les tomes attendus}
+\label{sec:series-total}
+
+Le nombre de volumes d'une série \emph{fermée} se règle dans son
+formulaire de modification. Depuis 1.29.0, il ne peut pas descendre
+au-dessous d'un tome attendu (section~\ref{sec:expected-tomes}) encore
+manquant : \emph{Le total doit être d’au moins 5 : un tome attendu est
+enregistré à la position 5.} Il en va de même quand une série ouverte
+est fermée. Supprimez d'abord le tome attendu, ou changez sa position.
+Un tome que vous possédez déjà ne bloque jamais la modification ; le
+nombre de volumes ne peut toujours pas être inférieur au nombre de
+titres possédés dans la série. Chaque refus du formulaire s'affiche
+désormais à côté de son champ, les valeurs saisies conservées.
+
+\textbf{Un titre restauré depuis la corbeille} reprend ses positions,
+même là où un tome attendu a été enregistré pendant qu'il était dans la
+corbeille. Si ce tome porte l'ISBN du titre, il compte désormais comme
+possédé, et la restauration l'indique (\emph{Le tome attendu à la
+position 3 de « Thorgal » compte désormais comme possédé.}). Sinon, une
+ligne nomme la position et la série, avec \textbf{Ouvrir la série} : le
+tome y est listé sous \emph{Tomes attendus à revoir} --- modifiez sa
+position ou supprimez-le.
+
 \section{Prêts}\label{sec:loans}
 
 \subsection*{Prêter un volume}
@@ -770,8 +793,9 @@ La \emph{wish list}\index{wish list} est une liste séparée des
 livres que vous aimeriez acheter, distincte du catalogue possédé.
 Elle vit sous \texttt{/wishlist}\index{wishlist@/wishlist} (entrée
 \textbf{Wish list} de la barre latérale) et est disponible pour les Bibliothécaires
-et les Admins. Un tome manquant d'une série s'y ajoute d'un clic
-depuis la page de la série (section~\ref{sec:expected-tomes}).
+et les Admins. Un tome manquant d'une série s'y ajoute depuis la page
+de la série (\emph{Envoyer un tome manquant dans la wish list},
+ci-dessous).
 
 \subsection{Ajouter une entrée}
 
@@ -809,13 +833,44 @@ en PDF} du navigateur (Fichier \string→ Imprimer \string→
 Enregistrer en PDF, ou Ctrl/Cmd-P) pour générer un PDF à
 emporter à la librairie.
 
-\subsection{Marquer un livre comme acheté}
+\subsection{Envoyer un tome manquant dans la wish list}
+\label{sec:wishlist-gap}
 
-Quand vous achetez un livre, ouvrez son entrée wish list (ou
-tapez \emph{Acheté} directement depuis la ligne de la liste),
-confirmez dans la modale, et l'entrée est mise en
-soft-delete. L'action est réversible depuis le panneau Corbeille
-de l'admin pendant 30 jours.
+Sur la page d'une série, chaque case manquante de la grille --- une
+position pour laquelle vous ne possédez aucun titre --- porte
+\textbf{Ajouter à la wish list} (Bibliothécaires et Admins). Le bouton
+ouvre le formulaire \emph{Ajouter le tome 3 à la wish list}, le titre
+déjà rempli en « Thorgal, tome 3 » --- changez-le si vous connaissez le
+vrai titre, et ajoutez l'ISBN si vous l'avez. Cliquez sur
+\textbf{Ajouter à la wish list} : mybibli enregistre le tome comme
+\emph{tome attendu} de la série, si bien que la case affiche désormais
+son titre, et le place dans la wish list avec une note nommant la série
+et la position. Vous revenez sur la page de la série, avec un lien vers
+la nouvelle entrée. Rien n'est écrit si l'ISBN figure déjà dans votre
+catalogue, ou si le même livre est déjà dans la wish list (un lien y
+mène). Pour un tome que la série nomme déjà, le bouton placé sous le
+tome l'ajoute directement (section~\ref{sec:expected-tomes}).
+
+\subsection{Acheté, ou retiré}
+
+Chaque entrée --- dans la liste, sur la carte mobile et sur sa propre
+page --- porte deux boutons :
+
+\begin{itemize}
+  \item \textbf{Acheté} --- vous avez acheté le livre. La fenêtre
+        \emph{Marquer « \dots » comme acheté ?} demande confirmation.
+  \item \textbf{Retirer} --- vous n'en voulez plus, sans l'avoir
+        acheté. La fenêtre \emph{Retirer « \dots » de la wish list ?}
+        demande confirmation.
+\end{itemize}
+
+Dans les deux cas, l'entrée quitte la wish list, et la liste s'affiche
+à nouveau. \textbf{Ni l'un ni l'autre ne s'annule} : les entrées de la
+wish list ne vont pas dans la corbeille ; ajoutez à nouveau le livre si
+vous changez d'avis. Le journal d'audit garde trace de l'action choisie.
+Si un autre bibliothécaire, ou un autre onglet, a retiré l'entrée
+d'abord, la fenêtre le signale et rien ne change. Retirer une entrée ne
+touche pas un tome attendu du même livre.
 
 \subsection{Auto-détection au scan catalogue}
 

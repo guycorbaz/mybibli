@@ -150,6 +150,18 @@ Each returns every live row in one JSON array, unpaginated; series
 are ordered by name. Since 1.28.0 this holds for
 \texttt{/series} too: it used to stop at the first 25 series.
 
+A location carries \texttt{id}, \texttt{name}, \texttt{label} (its
+L-code), \texttt{node\_type}, \texttt{parent\_id} (\texttt{null} for a
+root) and, since 1.29.0, \texttt{description}: the text of its
+\emph{Description} field (section~\ref{sec:location-description}), or
+\texttt{null} when it has none. The text is plain, as typed, line
+breaks included:
+
+\begin{lstlisting}
+{"id": 12, "name": "Bookshelf A", "label": "L0012", "node_type": "shelf",
+ "parent_id": 3, "description": "Left bookcase, top shelf"}
+\end{lstlisting}
+
 \subsection{GET /api/v1/dewey/\{prefix\}}
 
 Bucket lookup. Pass a partial Dewey prefix (e.g.

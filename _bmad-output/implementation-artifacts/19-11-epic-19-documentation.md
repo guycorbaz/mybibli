@@ -1,6 +1,6 @@
 # Story 19.11: Documentation (epic 19)
 
-Status: ready-for-dev
+Status: in-progress
 
 No GitHub issue of its own (collects the "for the manual" notes of #657, #658, #733, #740, #744). Covers FR178–FR182 (documentation) and retrospective v1.28.1 action A4. Epic 19; ships in v1.29.0 (with Epic 20). Sprint-status key: `19-11-epic-19-documentation`.
 
@@ -44,12 +44,12 @@ What is missing (19-7, 19-8, 19-9 and the notes they left for this story):
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Chapter 1 EN/FR: backups-folder step in Method 1, a pointer from Method 2, `MYBIBLI_BACKUP_DIR` row (AC1, AC2).
-- [ ] T2 — Chapter 7 EN/FR: schedule and rotation; restore step by step; a backup from elsewhere (another NAS, a hand copy, foreign backups); restoring by hand; cover check; loading into a test database updated; the "cover written during the backup" pointer (AC3–AC7, AC9).
-- [ ] T3 — Chapter 10 EN/FR: "Backups and restore" section (AC8).
-- [ ] T4 — Check `docker-compose.yml`, `.env.example` (AC10).
-- [ ] T5 — `CLAUDE.md` Rule #19 (AC11).
-- [ ] T6 — Build the PDFs once with 20-7 (AC13), read the log.
+- [x] T1 — Chapter 1 EN/FR: backups-folder step in Method 1, a pointer from Method 2, `MYBIBLI_BACKUP_DIR` row (AC1, AC2).
+- [x] T2 — Chapter 7 EN/FR: schedule and rotation; restore step by step; a backup from elsewhere (another NAS, a hand copy, foreign backups); restoring by hand; cover check; loading into a test database updated; the "cover written during the backup" pointer (AC3–AC7, AC9).
+- [x] T3 — Chapter 10 EN/FR: "Backups and restore" section (AC8).
+- [x] T4 — Check `docker-compose.yml`, `.env.example` (AC10).
+- [x] T5 — `CLAUDE.md` Rule #19 (AC11).
+- [x] T6 — Build the PDFs once with 20-7 (AC13), read the log.
 
 ## Dev Notes
 
@@ -98,13 +98,39 @@ Notes for the project lead (no change made):
 
 ### Agent Model Used
 
+Claude Opus 5.5 (dev-story, 2026-11-26).
+
 ### Debug Log References
+
+- Build logs: `docs/manual/{en,fr}/main.log` (not committed). No undefined reference. Overfull boxes on changed lines: two left, EN ch. 10 (1.6 pt) and FR ch. 10 (5.4 pt), both on the `./backups:/app/backups` path; overfull boxes attributed to changed lines with a small script over `git diff -U0 main`.
 
 ### Completion Notes List
 
+- **Stays in-progress:** story 19-9 is not merged. Its section (chapter 7, "Cover check" / « Contrôle des couvertures », `sec:cover-check`) and the chapter 10 symptom were written from `story/19-9-covers-consistency` (`d2e4d40f`). After the merge: compare the labels with the merged `admin.covers.*` copy, and settle the paragraph "When the library looks like another database" / « Quand la bibliothèque semble être une autre base » (marked `% 19-9 review (b)` in both sources) — it documents a guard the branch does not have yet (review item (b), waiting for the lead); remove or reword it to match what ships.
+- Chapter 1: step "1d. The backups folder" / « 1d. Le dossier de sauvegarde » (`sec:install-backups`): the compose line, `mkdir -p backups && chmod 700 backups`, root ownership, `0600`, another host path, one folder per instance, existing installs; Method 2 keeps the line; `MYBIBLI_BACKUP_DIR` row in `sec:env-vars`.
+- Chapter 7 (`sec:backups` extended): one folder per instance; "Automatic backups and rotation" (`sec:backups-schedule`); "Who owns the files"; "Loading a backup into a test database" (`sec:backups-test-db`, the "later version" sentence removed); new sections "Restoring a backup" (`sec:backups-restore`: step by step, refusals, rollback, reverse proxy 504 with the real copy "Server error (504) — please try again." / « Erreur serveur (504) — veuillez réessayer. », after the restore and the leftover journal, a backup copied in by hand, another instance, moving to another NAS `sec:backups-move`), "Restoring by hand" / « Restaurer à la main » (`sec:restore-by-hand`), "Cover check" / « Contrôle des couvertures » (`sec:cover-check`).
+- Chapter 2: Backups tab item (restore, cover check), System → "Backups" subsection pointing to the schedule.
+- Chapter 10: section "Backups and restore" / « Sauvegardes et restauration » (`sec:troubleshoot-backups`), eight symptoms.
+- Chapter 6: row "Back up, restore a backup, check covers" (Admin).
+- `CLAUDE.md` Rule #19: two checklist items (manual env-var table, roadmap "current release" sentence).
+- `docker-compose.yml` / `.env.example`: already carry the mount (V1), unchanged.
+- "Restoring by hand" puts the covers back with `docker compose run --rm --no-deps --entrypoint sh mybibli -c …` (the app image with its own volumes) rather than the `alpine` + `-v mybibli_covers:` pattern of the older sections: a compose named volume is really `<project>_mybibli_covers`, so `-v mybibli_covers:` would mount a new empty volume unless the project is named so. The older "Backup procedure" / "Restore procedure" sections still use that pattern — **not changed here** (outside this story), noted for the lead.
+- Health-tab watching panel: already in chapter 2 (`sec:health-watch`, 19-5); chapter 7 refers to it.
+
 ### File List
 
+- `docs/manual/en/01-installation.tex`, `docs/manual/fr/01-installation.tex`
+- `docs/manual/en/02-configuration.tex`, `docs/manual/fr/02-configuration.tex`
+- `docs/manual/en/06-roles-permissions.tex`, `docs/manual/fr/06-roles-permissions.tex`
+- `docs/manual/en/07-backup-restore.tex`, `docs/manual/fr/07-backup-restore.tex`
+- `docs/manual/en/10-troubleshooting.tex`, `docs/manual/fr/10-troubleshooting.tex`
+- `docs/manual/mybibli-manual-en.pdf`, `docs/manual/mybibli-manual-fr.pdf` (rebuilt, with 20-7)
+- `CLAUDE.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`, this story file
+
 ### Change Log
+
+- 2026-11-26 — dev-story (with 20-7): manual EN/FR, CLAUDE.md Rule #19, PDFs rebuilt. Stays in-progress until 19-9 merges.
 
 - 2026-11-26 — validate-story: see Validation.
 - 2026-11-26 — create-story (with 20-7).

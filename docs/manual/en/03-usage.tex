@@ -577,6 +577,27 @@ cleanup. An AI agent can propose the corrections --- the title through
 a metadata proposal, the position through a series proposal
 (chapter~\ref{ch:agents}).
 
+\subsection*{The number of volumes and expected tomes}
+\label{sec:series-total}
+
+The number of volumes of a \emph{closed} series is set on its edit
+form. Since 1.29.0 it cannot go below an expected tome
+(section~\ref{sec:expected-tomes}) still missing: \emph{Total must be
+at least 5: an expected tome is recorded at position 5.} The same
+holds when an open series is closed. Delete the expected tome, or move
+it, first. A tome you own already never blocks the change; the number
+of volumes still cannot be lower than the number of titles you own in
+the series. Every refusal of the form now shows next to its field, the
+values you typed kept.
+
+\textbf{A title restored from the Trash} takes its positions back, even
+where an expected tome was recorded while it was in the Trash. If that
+tome carries the title's ISBN, it now counts as owned, and the restore
+says so (\emph{The expected tome at position 3 of ``Thorgal'' now counts
+as owned.}). Otherwise a line names the position and the series, with
+\textbf{Open the series}: the tome is listed under \emph{Expected tomes
+to review} there --- edit its position or delete it.
+
 \section{Loans}\label{sec:loans}
 
 \subsection*{Lending a volume}
@@ -715,8 +736,8 @@ The \emph{wish list}\index{wish list} is a separate list of books
 you'd like to buy, kept distinct from the owned catalog. It lives
 under \texttt{/wishlist}\index{wishlist@/wishlist} (the \textbf{Wish list} entry
 of the sidebar) and is available to Librarians and Admins.
-A missing tome of a series can be sent to it in one click from the
-series page (section~\ref{sec:expected-tomes}).
+A missing tome of a series can be sent to it from the series page
+(\emph{Sending a missing tome to the wish list}, below).
 
 \subsection{Adding an entry}
 
@@ -751,12 +772,42 @@ print-friendly page; use the browser's \emph{Print to PDF}
 (File \string→ Print \string→ Save as PDF, or Ctrl/Cmd-P) to
 generate a PDF you can take to the bookstore.
 
-\subsection{Marking a book as bought}
+\subsection{Sending a missing tome to the wish list}
+\label{sec:wishlist-gap}
 
-When you buy a book, open its wish list entry (or tap \emph{Bought}
-directly from the list row), confirm in the modal, and the entry
-soft-deletes. The action is reversible from the Admin Trash panel
-for 30 days.
+On the page of a series, each gap of the grid --- a position you own
+no title for --- carries \textbf{Add to wish list} (Librarians and
+Admins). It opens the form \emph{Add tome 3 to the wish list}, the
+title already filled in as ``Thorgal, tome 3'' --- change it if you
+know the real title, and add the ISBN if you have it. Click
+\textbf{Add to wish list}: mybibli records the tome as an
+\emph{expected tome} of the series, so the gap now shows its title, and
+puts it on the wish list with a note naming the series and the
+position. You are back on the series page, with a link to the new
+entry. Nothing is written if the ISBN is already in your catalogue, or
+if the same book is already on the wish list (a link leads to it).
+For a tome the series already names, the button under the tome adds it
+directly (section~\ref{sec:expected-tomes}).
+
+\subsection{Bought, or removed}
+
+Each entry --- on the list, on the mobile card and on its own page ---
+has two buttons:
+
+\begin{itemize}
+  \item \textbf{Bought} --- you bought the book. The window \emph{Mark
+        ``\dots'' as bought?} asks for confirmation.
+  \item \textbf{Remove} --- you no longer want it, without having
+        bought it. The window \emph{Remove ``\dots'' from the wish
+        list?} asks for confirmation.
+\end{itemize}
+
+Either way the entry leaves the wish list, and the list is shown again.
+\textbf{Neither can be undone}: wish list entries do not go to the
+Trash; add the book again if you change your mind. The audit log
+records which of the two it was. If another librarian, or another tab,
+removed the entry first, the window says so and nothing changes.
+Removing an entry does not touch an expected tome of the same book.
 
 \subsection{Auto-detect on catalog scan}
 

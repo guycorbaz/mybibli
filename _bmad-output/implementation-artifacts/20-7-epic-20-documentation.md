@@ -1,6 +1,6 @@
 # Story 20.7: Documentation (epic 20)
 
-Status: ready-for-dev
+Status: in-progress
 
 No GitHub issue of its own (documents #714, #715, #716, #524, #700). Covers FR183–FR185 (documentation). Epic 20; ships in v1.29.0 (with Epic 19). Sprint-status key: `20-7-epic-20-documentation`.
 
@@ -38,13 +38,13 @@ Where the sections live: the wish list and the series are in chapter 3 (`03-usag
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Chapter 3 EN/FR: wish list (Remove / Bought, a gap sent to the wish list); series (the total rule, the restore) (AC1, AC2).
-- [ ] T2 — Chapter 13 EN/FR: `sec:expected-tomes` bullets corrected (gap → wish list, "to review" reasons) (AC1, AC2).
-- [ ] T3 — Chapter 2 EN/FR: location description, disclosure tree (AC3).
-- [ ] T4 — Chapter 11 EN/FR: `/api/v1/locations` fields (AC4).
-- [ ] T5 — Chapter 6 EN/FR: rows for the new actions (AC5).
-- [ ] T6 — `CLAUDE.md` Key Patterns (AC6).
-- [ ] T7 — PDFs with 19-11 (AC8).
+- [x] T1 — Chapter 3 EN/FR: wish list (Remove / Bought, a gap sent to the wish list); series (the total rule, the restore) (AC1, AC2).
+- [x] T2 — Chapter 13 EN/FR: `sec:expected-tomes` bullets corrected (gap → wish list, "to review" reasons) (AC1, AC2).
+- [x] T3 — Chapter 2 EN/FR: location description, disclosure tree (AC3).
+- [x] T4 — Chapter 11 EN/FR: `/api/v1/locations` fields (AC4).
+- [x] T5 — Chapter 6 EN/FR: rows for the new actions (AC5).
+- [x] T6 — `CLAUDE.md` Key Patterns (AC6).
+- [x] T7 — PDFs with 19-11 (AC8).
 
 ## Dev Notes
 
@@ -79,13 +79,36 @@ Changed (no product decision needed):
 
 ### Agent Model Used
 
+Claude Opus 5.5 (dev-story, 2026-11-26).
+
 ### Debug Log References
+
+- Build logs: `docs/manual/{en,fr}/main.log` (not committed).
 
 ### Completion Notes List
 
+- **Stays in-progress** with 19-11 (one PR): the 19-9 part of 19-11 may need a touch-up after 19-9 merges, and the PDFs would then be rebuilt again for both.
+- Chapter 3: wish list intro; new "Sending a missing tome to the wish list" / « Envoyer un tome manquant dans la wish list » (`sec:wishlist-gap`); "Marking a book as bought" replaced by "Bought, or removed" / « Acheté, ou retiré » (the false Trash sentence gone); "Series and tome numbers" gains "The number of volumes and expected tomes" / « Le nombre de volumes et les tomes attendus » (`sec:series-total`: the total rule with the real refusal copy, the other refusals next to their fields, the Trash-restore settlement and "Open the series").
+- Chapter 13 (`sec:expected-tomes`): the gap button and the total rule bullets; "Expected tomes to review" reasons corrected.
+- Chapter 2 (`sec:locations`): the tree's disclosure buttons and keyboard use; "Describing a location" / « Décrire un emplacement » (`sec:location-description`).
+- Chapter 11: the location fields of `GET /api/v1/locations`, `description` included, with an example.
+- Chapter 6: row "Manage the wish list (add, mark bought, remove)" (Lib+).
+- `CLAUDE.md` Key Patterns: the "Expected tomes" bullet gains the 20-2 gap send, the 20-3 total rule and restore settlement; new "Location tree" bullet (disclosure list, no ARIA tree, description).
+
 ### File List
 
+- `docs/manual/en/02-configuration.tex`, `docs/manual/fr/02-configuration.tex`
+- `docs/manual/en/03-usage.tex`, `docs/manual/fr/03-usage.tex`
+- `docs/manual/en/06-roles-permissions.tex`, `docs/manual/fr/06-roles-permissions.tex`
+- `docs/manual/en/11-api-integrations.tex`, `docs/manual/fr/11-api-integrations.tex`
+- `docs/manual/en/13-agents-proposals.tex`, `docs/manual/fr/13-agents-proposals.tex`
+- `docs/manual/mybibli-manual-en.pdf`, `docs/manual/mybibli-manual-fr.pdf` (rebuilt, with 19-11)
+- `CLAUDE.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`, this story file
+
 ### Change Log
+
+- 2026-11-26 — dev-story (with 19-11): manual EN/FR, CLAUDE.md Key Patterns, PDFs rebuilt.
 
 - 2026-11-26 — validate-story: see Validation.
 - 2026-11-26 — create-story (with 19-11).

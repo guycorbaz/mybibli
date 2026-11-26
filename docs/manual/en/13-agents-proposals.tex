@@ -774,7 +774,12 @@ yourself.
   \item \textbf{Add to wish list} puts the tome on your wish list
         (section~\ref{sec:wishlist}) with its title, its ISBN, and a
         note naming the series and the position. Clicking twice does
-        not create a second entry.
+        not create a second entry. On a gap no tome names yet, the
+        same button records the tome and the wish list entry in one
+        form (section~\ref{sec:wishlist-gap}).
+  \item \textbf{The number of volumes} of a closed series cannot be
+        set below a missing expected tome, by hand or by an agent's
+        proposal (section~\ref{sec:series-total}).
   \item \textbf{When you catalog the book} --- scan its ISBN, or
         create the title by hand with that ISBN --- mybibli recognises
         the expected tome, places the new title at that position of
@@ -793,9 +798,11 @@ yourself.
         review screen names each tome a line will fill, so you can
         judge. Accepting places the title and settles the tomes.
   \item \textbf{Expected tomes to review} --- a tome that no longer
-        fits a gap (the series' number of volumes was lowered below
-        its position, or a title now holds its position) is listed
-        under the grid with the reason. Change its position or delete
+        fits a gap is listed under the grid with the reason: a title
+        now holds its position (a title restored from the Trash, for
+        instance, section~\ref{sec:series-total}), or it lies beyond
+        the number of volumes (recorded before 1.29.0, when lowering
+        the number was still allowed). Change its position or delete
         it.
 \end{itemize}
 

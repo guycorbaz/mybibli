@@ -168,6 +168,36 @@ The logs volume is forensic-only — you can wipe it at any time
 without affecting catalog data. See chapter~\ref{ch:operations-debugging}
 for log-tailing and log-level controls.
 
+\subsection*{1d. The backups folder}\label{sec:install-backups}
+\index{backup!folder}
+
+Since 1.29.0 mybibli writes its own backups (chapter~\ref{ch:backup})
+into \texttt{/app/backups} inside the container, and \emph{never
+creates that folder}: the compose file mounts it from the host. The
+shipped \texttt{docker-compose.yml} has the line, in the
+\texttt{volumes:} block of the \texttt{mybibli} service:
+
+\begin{lstlisting}
+      - ./backups:/app/backups
+\end{lstlisting}
+
+It is a bind mount on purpose: the files sit on the host, where you
+copy them elsewhere. Create the folder before the first start and close
+it to other accounts --- each backup holds the password hashes of the
+users and the provider keys:
+
+\begin{lstlisting}
+mkdir -p backups && chmod 700 backups
+\end{lstlisting}
+
+mybibli runs as \texttt{root} in the container, so it can write there
+and the files it writes belong to \texttt{root}, mode \texttt{0600}.
+To put the folder elsewhere on the host (a disk with room, a share
+copied off-site), change the left part of the line, e.g.\
+\texttt{/volume1/backup/mybibli:/app/backups}. Give each mybibli
+instance its own folder. On an existing install, add the line and run
+\texttt{docker compose up -d}.
+
 \subsection*{2. Edit \texttt{.env}}
 
 Open \texttt{.env} in your editor. Every variable carries an
@@ -270,6 +300,9 @@ Edit \texttt{docker-compose.yml} and remove the bundled database:
         \texttt{mybibli\_covers:}\index{covers!persistence}. Cover
         images are local to the app and must survive container
         upgrades regardless of where the database lives (issue~\#213).
+  \item keep the \texttt{./backups:/app/backups} line and create the
+        folder (step~1d of Method~1, section~\ref{sec:install-backups}):
+        mybibli's own backups do not depend on where the database lives.
 \end{itemize}
 
 \subsection*{3. Point \texttt{.env} at the external database}
@@ -348,6 +381,7 @@ and silently flips an opt-out.
 \texttt{APP\_LANGUAGE}        & \texttt{en}     & Default UI language for anonymous visitors. v1.7.0 adds \texttt{de} + \texttt{it} to \texttt{en} / \texttt{fr}. \\
 \texttt{COVERS\_DIR}          & \texttt{./covers} & Filesystem path for cover-image storage. \\
 \texttt{COVERS\_HOST\_PATH}   & \texttt{./covers-host} & Optional bind-mount host path; used only when you uncomment the bind-mount line in \texttt{docker-compose.yml}. \\
+\texttt{MYBIBLI\_BACKUP\_DIR} & \texttt{./backups} & v1.29.0+. Folder, inside the container, where mybibli writes and reads its backups (\texttt{/app/backups} in the image). Never created by mybibli: mount it (section~\ref{sec:install-backups}). \\
 \midrule
 \multicolumn{3}{l}{\emph{Hardening}} \\
 \texttt{MYBIBLI\_COOKIE\_SECURE} & \texttt{false} & Set to \texttt{true} only behind HTTPS. \\
