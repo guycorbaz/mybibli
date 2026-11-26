@@ -6,7 +6,9 @@
 {# Story 11-11 (FR147) — add / edit an expected tome. Full-page form
    (D-11-11-3); a refusal re-renders this page with `error`. CSP-clean.
    Story 20-2: refusals under their field (`*_error_html`, escaped by the
-   handler); `wishlist_mode` sends a gap to the wish list (D4). #}
+   handler), the first invalid field `autofocus`ed (a full-page load, not a
+   swap); `wishlist_mode` sends a gap to the wish list (D4);
+   `data-submit-once` (mybibli.js) stops a double submit. #}
 <div class="max-w-2xl mx-auto px-4 py-8">
     <div class="mb-4">
         <a href="/series/{{ series_id }}" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">&larr; {{ label_back }}</a>
@@ -30,7 +32,7 @@
     </div>
     {% endif %}
 
-    <form method="POST" action="{% if let Some(tid) = tome_id %}/series/{{ series_id }}/expected-tomes/{{ tid }}{% else %}/series/{{ series_id }}/expected-tomes{% endif %}" class="space-y-4">
+    <form method="POST" action="{% if let Some(tid) = tome_id %}/series/{{ series_id }}/expected-tomes/{{ tid }}{% else %}/series/{{ series_id }}/expected-tomes{% endif %}" class="space-y-4" data-submit-once>
         <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
         {% if tome_id.is_some() %}
         <input type="hidden" name="version" value="{{ version }}">
@@ -43,7 +45,7 @@
             <label for="expected-tome-position" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_position }} *</label>
             <input type="number" id="expected-tome-position" name="position" required min="1"
                    value="{{ position_value }}"
-                   {% if position_error_html.is_some() %}aria-invalid="true" aria-describedby="expected-tome-position-error"{% endif %}
+                   {% if position_error_html.is_some() %}aria-invalid="true" aria-describedby="expected-tome-position-error" autofocus{% endif %}
                    class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
             {% if let Some(message) = position_error_html %}
             <p id="expected-tome-position-error" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ message|safe }}</p>
@@ -54,7 +56,7 @@
             <label for="expected-tome-title" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_title }} *</label>
             <input type="text" id="expected-tome-title" name="title" required maxlength="500"
                    value="{{ title_value }}"
-                   {% if title_error_html.is_some() %}aria-invalid="true" aria-describedby="expected-tome-title-error"{% endif %}
+                   {% if title_error_html.is_some() %}aria-invalid="true" aria-describedby="expected-tome-title-error"{% if position_error_html.is_none() %} autofocus{% endif %}{% endif %}
                    class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
             {% if let Some(message) = title_error_html %}
             <p id="expected-tome-title-error" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ message|safe }}</p>
@@ -65,7 +67,7 @@
             <label for="expected-tome-isbn" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_isbn }}</label>
             <input type="text" id="expected-tome-isbn" name="isbn" maxlength="40" inputmode="numeric" autocomplete="off"
                    aria-describedby="expected-tome-isbn-help{% if isbn_error_html.is_some() %} expected-tome-isbn-error{% endif %}"
-                   {% if isbn_error_html.is_some() %}aria-invalid="true"{% endif %}
+                   {% if isbn_error_html.is_some() %}aria-invalid="true"{% if position_error_html.is_none() && title_error_html.is_none() %} autofocus{% endif %}{% endif %}
                    value="{{ isbn_value }}"
                    class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
             <p id="expected-tome-isbn-help" class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ isbn_help }}</p>

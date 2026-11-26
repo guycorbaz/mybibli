@@ -153,6 +153,20 @@ Checked against the code: `templates/components/series_gap_grid.html`, `template
 - **Q3 — Field-level errors in the plain form too.** The template is shared; moving the messages under their fields in both modes changes the plain "New / Edit expected tome" form (and two Rust asserts and one E2E assert on `#expected-tome-error`). *Recommendation: both modes* — one template, Rule #3 applies to the plain form as well; `#expected-tome-error` stays for the messages with no field (version conflict, settled).
 - **Q4 — Heading when the position is not a valid number on re-render.** `form_title_wishlist` needs a position. *Recommendation:* fall back to the existing `wishlist.add_to_wishlist` ("Add to wish list") as heading; no new copy.
 
+## Review pass 1 (2026-11-26)
+
+| # | Severity | Finding | Outcome |
+|---|---|---|---|
+| 1 | Medium | `?wishlist_item=` built the success entry for anyone: an anonymous visitor could read wish list titles by id. | Fixed: shown to Librarian+ only, and only when the entry's note is this series' wish list note (`is_series_wishlist_note`: exactly `wishlist_note(series, N, loc)` for a digit run N and one of the four languages, positive shape). Tests: `the_success_entry_is_for_a_librarian_and_this_series_only` (anonymous → empty, another series' entry → empty), unit `only_this_series_wishlist_note_matches`. |
+| 2 | Medium | Field refusals after the full-page re-render were not announced. | Fixed: `autofocus` on the first `aria-invalid` input (position → title → ISBN). Tests: `the_first_invalid_field_only_takes_the_focus` (one `autofocus`, on the refused field, both modes; none before a refusal); E2E refusal case asserts the title is focused. |
+| 3 | Low | `create_in` still attached an owned title (`attach = true`); "nothing attached" rested on the earlier read. | Fixed: `ExpectedTomeService::create_unattached_in` (shared `create_with(…, attach)`), used by `create_wished`. Test: `an_unattached_create_never_attaches_an_owned_title` (with the attaching variant as control). |
+| 4 | Low | A double click on Save showed "already on your wish list". | Fixed: `data-submit-once` on the form; `mybibli.js::initSubmitOnce` blocks a second submit and disables the submit buttons, re-enabled on `pageshow` from the back/forward cache. No new copy. Tests: `the_form_is_sent_once` (hook present); E2E saves with a double click and expects the success entry. |
+| 5 | Low | `tests/expected_tomes_web.rs` no longer asserted the escaped apostrophe. | Fixed: asserts `L&#x27;ISBN doit être` again. |
+| M3 | Medium | The accessible name "Add tome N to the wish list" does not start with the visible "Add to wish list" (WCAG 2.5.3). | Open: needs a copy decision from the project lead; left as is. |
+| L3, L5 | Low | — | Accepted by the reviewer; no change. |
+
+Gates after the fixes: `cargo clippy --all-targets -- -D warnings` clean; integration `series_gap_wishlist::` `expected_tomes_web::` `expected_tomes::` `locale_parity::` `every_test_file_is_declared` `templates_audit` `series` `wishlist` — 158 passed; lib `series_expected_tomes` `expected_tomes` `routes::series` `templates_audit` — 63 passed; `tsc --noEmit` and the waitForTimeout grep pass. The two series E2E specs are not re-run yet (stack lent to story 19-8).
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -192,9 +206,11 @@ Claude Opus 5.5 (claude-opus-5-5)
 - `tests/expected_tomes_web.rs`
 - `tests/e2e/specs/journeys/series-gap-wishlist.spec.ts` (new)
 - `tests/e2e/specs/journeys/series-expected-tomes.spec.ts`
+- `static/js/mybibli.js`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ### Change Log
 
+- 2026-11-26 — code review pass 1: findings 1–5 fixed, M3 open (copy decision), L3/L5 accepted; E2E re-run pending.
 - 2026-11-26 — E2E green (505 passed, 2 skipped); status review.
 - 2026-11-26 — dev-story: gap → wish list form (tome + entry in one transaction), shared wish list dedup, field-level refusals in the expected-tome form, success entry on the series page. E2E pending.

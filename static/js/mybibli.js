@@ -536,8 +536,40 @@
         });
     }
 
+    // Story 20-2 (review pass 1) — a full-page POST form marked
+    // `data-submit-once` is sent once: its submit buttons are disabled on
+    // the first submit, so a double click cannot post twice. Re-enabled
+    // when the page comes back from the back/forward cache. CSP-clean.
+    function initSubmitOnce() {
+        document.addEventListener("submit", function (e) {
+            var form = e.target;
+            if (!form || !form.matches || !form.matches("form[data-submit-once]")) return;
+            if (form.getAttribute("data-submitting") === "true") {
+                e.preventDefault();
+                return;
+            }
+            form.setAttribute("data-submitting", "true");
+            // After this event: the submission keeps its submitter.
+            setTimeout(function () {
+                form.querySelectorAll("button[type='submit']").forEach(function (b) {
+                    b.disabled = true;
+                });
+            }, 0);
+        });
+        window.addEventListener("pageshow", function (e) {
+            if (!e.persisted) return;
+            document.querySelectorAll("form[data-submit-once]").forEach(function (form) {
+                form.removeAttribute("data-submitting");
+                form.querySelectorAll("button[type='submit']").forEach(function (b) {
+                    b.disabled = false;
+                });
+            });
+        });
+    }
+
     function init() {
         initKeyboardShortcuts();
+        initSubmitOnce();
         initFeedbackAutoDismiss();
         initFormEscapeHandler();
         initAudioFeedback();

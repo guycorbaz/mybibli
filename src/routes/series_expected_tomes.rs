@@ -477,7 +477,8 @@ async fn create_wished(
         title: &title,
         isbn: isbn.as_deref(),
     };
-    let tome_id = match ExpectedTomeService::create_in(&mut tx, series.id, &input, ExpectedTomeOrigin::Manual).await {
+    // Review pass 1 (L): never attach a title here, whatever was read above.
+    let tome_id = match ExpectedTomeService::create_unattached_in(&mut tx, series.id, &input, ExpectedTomeOrigin::Manual).await {
         Ok(id) => id,
         Err(e) => {
             tx.rollback().await?;
@@ -659,6 +660,20 @@ pub fn wishlist_note(series_name: &str, position: i32, loc: &str) -> String {
     .to_string()
 }
 
+/// The interface languages a wish list note may have been written in.
+const NOTE_LOCALES: [&str; 4] = ["en", "fr", "de", "it"];
+
+/// Story 20-2 (review pass 1) — whether `note` is the wish list note of
+/// this series (positive shape: exactly `wishlist_note(series, N, loc)`
+/// for one of the note's digit runs N and one interface language), i.e.
+/// the entry was sent to the wish list from this series (pure).
+pub fn is_series_wishlist_note(note: &str, series_name: &str) -> bool {
+    note.split(|c: char| !c.is_ascii_digit())
+        .filter(|run| !run.is_empty() && run.len() <= 9)
+        .filter_map(|run| run.parse::<i32>().ok())
+        .any(|n| NOTE_LOCALES.iter().any(|loc| wishlist_note(series_name, n, loc) == note))
+}
+
 /// `POST /series/{id}/expected-tomes/{tome_id}/wishlist` — HTMX fragment
 /// for `#series-feedback`: the new item, or the existing one when the
 /// tome is already on the wishlist (D-11-11-4). Refusals and errors are
@@ -795,6 +810,19 @@ mod tests {
             assert!(note.contains('7'), "{loc}: {note}");
             assert!(!note.contains("expected_tome."), "{loc}: {note}");
         }
+    }
+
+    #[test]
+    fn only_this_series_wishlist_note_matches() {
+        for loc in NOTE_LOCALES {
+            let note = wishlist_note("Astérix 2000", 7, loc);
+            assert!(is_series_wishlist_note(&note, "Astérix 2000"), "{loc}: {note}");
+            assert!(!is_series_wishlist_note(&note, "Astérix"), "{loc}: another series");
+        }
+        assert!(!is_series_wishlist_note("Astérix 2000, tome 7", "Astérix 2000"));
+        assert!(!is_series_wishlist_note("", "Astérix"));
+        let edited = format!("{} — signed copy", wishlist_note("Astérix", 7, "en"));
+        assert!(!is_series_wishlist_note(&edited, "Astérix"));
     }
 
     #[test]

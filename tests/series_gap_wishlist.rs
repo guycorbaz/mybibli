@@ -22,6 +22,7 @@ use common::mcp::{add_title, soft_delete};
 use common::web::{Browser, body_string};
 use mybibli::db::DbPool;
 use mybibli::models::expected_tome::{ExpectedTomeModel, ExpectedTomeOrigin};
+use mybibli::routes::series_expected_tomes::wishlist_note;
 use mybibli::services::expected_tomes::{ExpectedTomeInput, ExpectedTomeService};
 
 // ─── Fixtures ────────────────────────────────────────────────────
@@ -432,4 +433,133 @@ async fn a_send_on_one_series_does_not_wait_on_a_tome_write_of_another(pool: DbP
     tx_b.rollback().await.unwrap();
     assert_eq!(live_tomes(&pool, a).await.len(), 1);
     assert_eq!(wishlist_rows(&pool).await.len(), 1);
+}
+
+// ─── Review pass 1 ───────────────────────────────────────────────
+
+/// The `<input …>` tag carrying `id="<id>"`.
+fn input_tag<'a>(html: &'a str, id: &str) -> &'a str {
+    let at = html.find(&format!("id=\"{id}\"")).unwrap();
+    let open = html[..at].rfind("<input").unwrap();
+    let close = at + html[at..].find('>').unwrap();
+    &html[open..=close]
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_success_entry_is_for_a_librarian_and_this_series_only(pool: DbPool) {
+    let s = add_series(&pool, "Thorgal", "closed", Some(3)).await;
+    let other = add_series(&pool, "Yoko Tsuno", "closed", Some(3)).await;
+    let (app, browser) = librarian(&pool).await;
+    let mut ids = Vec::new();
+    for (series, name) in [(s, "Thorgal"), (other, "Yoko Tsuno")] {
+        let id: u64 = sqlx::query("INSERT INTO wishlist_items (title, notes) VALUES (?, ?)")
+            .bind(format!("{name}, tome 2"))
+            .bind(wishlist_note(name, 2, "fr"))
+            .execute(&pool)
+            .await
+            .unwrap()
+            .last_insert_id();
+        ids.push((series, id));
+    }
+    let (mine, theirs) = (ids[0].1, ids[1].1);
+    let empty = "<div id=\"series-feedback\" class=\"mt-4\" aria-live=\"polite\"></div>";
+
+    // A librarian, an entry of this series: shown.
+    let (_, html) = browser.get(&app, &format!("/series/{s}?wishlist_item={mine}")).await;
+    assert!(slot(&html, "series-feedback").contains(&format!("href=\"/wishlist/{mine}\"")));
+
+    // An entry of another series: nothing.
+    let (_, html) = browser.get(&app, &format!("/series/{s}?wishlist_item={theirs}")).await;
+    assert!(html.contains(empty), "another series' entry: {html}");
+
+    // Anonymous, even with this series' entry: nothing.
+    let res = common::web::get_anonymous(&app, &format!("/series/{s}?wishlist_item={mine}")).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let html = body_string(res).await;
+    assert!(html.contains(empty), "anonymous: {html}");
+    assert!(!html.contains("Thorgal, tome 2"), "no wish list title leaked");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_first_invalid_field_only_takes_the_focus(pool: DbPool) {
+    let s = add_series(&pool, "S", "closed", Some(3)).await;
+    let (app, browser) = librarian(&pool).await;
+
+    let (_, html) = browser
+        .get(&app, &format!("/series/{s}/expected-tomes/new?position=2&wishlist=1"))
+        .await;
+    assert!(!html.contains("autofocus"), "nothing focused before a refusal");
+
+    for (position, title, code, field) in [
+        ("2", " ", "", "expected-tome-title"),
+        ("9", "Loin", "", "expected-tome-position"),
+        ("2", "Mauvais", "12345", "expected-tome-isbn"),
+    ] {
+        for mode in ["1", ""] {
+            let res = post(&app, &browser, s, &body(&browser.csrf, position, title, code, mode)).await;
+            assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
+            let html = body_string(res).await;
+            assert_eq!(html.matches("autofocus").count(), 1, "{field} ({mode}): {html}");
+            let tag = input_tag(&html, field);
+            assert!(tag.contains("autofocus") && tag.contains("aria-invalid=\"true\""), "{tag}");
+        }
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_form_is_sent_once(pool: DbPool) {
+    let s = add_series(&pool, "S", "closed", Some(3)).await;
+    let (app, browser) = librarian(&pool).await;
+    let (_, html) = browser
+        .get(&app, &format!("/series/{s}/expected-tomes/new?position=2&wishlist=1"))
+        .await;
+    assert!(html.contains("data-submit-once"), "{html}");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_unattached_create_never_attaches_an_owned_title(pool: DbPool) {
+    let s = add_series(&pool, "S", "closed", Some(3)).await;
+    let code = isbn(53);
+    add_title(&pool, "Possédé", "bd", "Roman", Some(&code)).await;
+
+    let mut tx = pool.begin().await.unwrap();
+    let id = ExpectedTomeService::create_unattached_in(
+        &mut tx,
+        s,
+        &ExpectedTomeInput {
+            position: 2,
+            title: "Possédé",
+            isbn: Some(&code),
+        },
+        ExpectedTomeOrigin::Manual,
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(title_series_rows(&pool, s).await, 0, "nothing attached");
+    let settled: Option<u64> =
+        sqlx::query_scalar("SELECT settled_title_id FROM series_expected_tomes WHERE id = ?")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(settled, None, "not settled either");
+
+    // The attaching variant, on another series, does attach (control).
+    let other = add_series(&pool, "T", "closed", Some(3)).await;
+    let mut tx = pool.begin().await.unwrap();
+    ExpectedTomeService::create_in(
+        &mut tx,
+        other,
+        &ExpectedTomeInput {
+            position: 2,
+            title: "Possédé",
+            isbn: Some(&code),
+        },
+        ExpectedTomeOrigin::Manual,
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(title_series_rows(&pool, other).await, 1);
 }

@@ -311,15 +311,22 @@ pub async fn series_detail_page(
     let sort_dir = crate::services::series::SortDir::from_param(params.dir.as_deref());
     crate::services::series::sort_positions(&mut positions, sort_key, sort_dir);
 
-    // Story 20-2 (AC 4): the entry a gap was just sent to, if still live.
-    let series_feedback_html = match parse_wishlist_item(params.wishlist_item.as_deref()) {
-        Some(item_id) => crate::models::wishlist::WishlistItemModel::find_by_id(pool, item_id)
-            .await?
-            .map(|item| {
-                crate::routes::series_expected_tomes::wish_added_html(&item.title, item.id, loc)
-            }),
-        None => None,
+    // Story 20-2 (AC 4): the entry a gap was just sent to, if still live —
+    // shown to a Librarian+ only, and only for an entry sent from this
+    // series (review pass 1: no wish list title read through the URL).
+    let wished = match parse_wishlist_item(params.wishlist_item.as_deref()) {
+        Some(item_id) if session.role >= Role::Librarian => {
+            crate::models::wishlist::WishlistItemModel::find_by_id(pool, item_id).await?
+        }
+        _ => None,
     };
+    let series_feedback_html = wished
+        .filter(|item| {
+            item.notes.as_deref().is_some_and(|note| {
+                crate::routes::series_expected_tomes::is_series_wishlist_note(note, &series.name)
+            })
+        })
+        .map(|item| crate::routes::series_expected_tomes::wish_added_html(&item.title, item.id, loc));
 
     let base = crate::utils::base_context(&session, loc, "series", &uri, state.page_settings());
     let template = SeriesDetailTemplate {

@@ -49,7 +49,9 @@ test.describe("Series gap to the wish list (story 20-2)", () => {
     await expect(page.locator("#expected-tome-title")).toHaveValue(prefill);
     await expect(page.locator("#expected-tome-wishlist-help")).toBeVisible();
     await checkAccessibility(page);
-    await page.locator("#expected-tome-save").click();
+    // A double click posts once (review pass 1): the success entry, never
+    // the "already on your wish list" answer of a second post.
+    await page.locator("#expected-tome-save").dblclick();
 
     // Back on the series page: the success entry, its link, the named gap.
     await page.waitForURL(
@@ -119,6 +121,8 @@ test.describe("Series gap to the wish list (story 20-2)", () => {
       /title is required|le titre est obligatoire/i,
     );
     await expect(title).toHaveAttribute("aria-invalid", "true");
+    // The refused field takes the focus on the re-rendered page.
+    await expect(title).toBeFocused();
     await expect(page.locator("#expected-tome-position")).toHaveValue("3");
     await expect(page.locator("#expected-tome-wishlist-help")).toBeVisible();
 

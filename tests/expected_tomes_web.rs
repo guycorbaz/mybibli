@@ -264,7 +264,7 @@ async fn a_refusal_re_renders_the_form_with_the_localized_message(pool: DbPool) 
             "2",
             "Mauvais ISBN",
             "12345",
-            "ISBN doit être un ISBN-13",
+            "L&#x27;ISBN doit être un ISBN-13",
             "isbn",
         ),
         ("abc", "Pas un nombre", "", "comprise entre 1 et 5", "position"),

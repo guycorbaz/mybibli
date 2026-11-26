@@ -484,6 +484,30 @@ impl ExpectedTomeService {
         input: &ExpectedTomeInput<'_>,
         origin: ExpectedTomeOrigin,
     ) -> Result<u64, ExpectedTomeError> {
+        Self::create_with(conn, series_id, input, origin, true).await
+    }
+
+    /// Story 20-2 (review pass 1) — [`Self::create_in`] that never
+    /// attaches a title to the series: a live title carrying the ISBN
+    /// settles the tome only when it already holds the position. The gap →
+    /// wish list form refuses an owned ISBN first; this keeps "nothing
+    /// attached" true even if a title gains the ISBN meanwhile.
+    pub async fn create_unattached_in(
+        conn: &mut MySqlConnection,
+        series_id: u64,
+        input: &ExpectedTomeInput<'_>,
+        origin: ExpectedTomeOrigin,
+    ) -> Result<u64, ExpectedTomeError> {
+        Self::create_with(conn, series_id, input, origin, false).await
+    }
+
+    async fn create_with(
+        conn: &mut MySqlConnection,
+        series_id: u64,
+        input: &ExpectedTomeInput<'_>,
+        origin: ExpectedTomeOrigin,
+        attach: bool,
+    ) -> Result<u64, ExpectedTomeError> {
         let title = validate_title(input.title)?;
         let isbn = normalize_isbn(input.isbn)?;
         let series = ExpectedTomeModel::lock_series_in(conn, series_id)
@@ -498,7 +522,7 @@ impl ExpectedTomeService {
         let id = ExpectedTomeModel::insert_in(conn, series_id, &values, origin)
             .await
             .map_err(|e| map_unique_violation(e, input.position, isbn.as_deref()))?;
-        Self::settle_with_owned_title(conn, id, &series, input.position, isbn.as_deref(), true)
+        Self::settle_with_owned_title(conn, id, &series, input.position, isbn.as_deref(), attach)
             .await?;
         Ok(id)
     }
