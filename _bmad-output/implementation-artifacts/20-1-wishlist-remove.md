@@ -1,6 +1,6 @@
 # Story 20.1: Remove an entry from the wish list (closes #714)
 
-Status: in-progress
+Status: review
 
 ## Story
 
@@ -80,9 +80,9 @@ What exists (read on `main` at `a608f56`):
 - [x] T4 — Templates: list row + card + entry page get the "Remove" button and both `aria-label`s (D6). The labels depend on the title: build them in Rust — e.g. a `WishlistRow { item, bought_label, remove_label }` view for the list (`items: Vec<WishlistRow>`), two `String` fields on `WishlistDetailTemplate` — never `t!()` in the template. Update the module doc's surface map and the modal fragment's header comment (no "Mark as bought" only) (AC1).
 - [x] T5 — Locales ×4, `wishlist:` block only (D4, D8 if approved); `touch src/lib.rs && cargo build`; `cargo test --test integration locale_parity::` (AC4).
 - [x] T6 — Unit tests, `tests/wishlist_remove.rs` (+ `mod wishlist_remove;` in `tests/integration.rs`, alphabetical), E2E `wishlist-remove.spec.ts` (AC9).
-- [ ] T7 — Gates (AC10); commit per workflow step (Rule #10).
+- [x] T7 — Gates (AC10); commit per workflow step (Rule #10).
   - [x] `cargo clippy --all-targets -- -D warnings`, `cargo test --lib` (templates audit included), `cargo test --test integration -- wishlist_remove:: locale_parity::`, `npx tsc --noEmit`, `waitForTimeout` grep, `vcode-literals.sh`
-  - [ ] E2E run pending: `wishlist-remove.spec.ts` + `wishlist.spec.ts` under `CI=true npx playwright test --workers=2` (stack in use by story 19-7 at dev time)
+  - [x] E2E: full suite under `CI=true npx playwright test --workers=2` on a fresh stack — 502 passed, 2 skipped, 0 failed, no retry
 
 ## Dev Notes
 
@@ -136,7 +136,7 @@ Claude Opus 5.5 (claude-opus-5-5)
 - `cargo test --lib` (with the test DB): 1919 passed, 0 failed, 1 ignored — includes the 6 new `routes::wishlist::tests` and `templates_audit`.
 - `cargo test --test integration -- wishlist_remove:: locale_parity:: every_test_file_is_declared`: 13 passed (9 `wishlist_remove`, 3 `locale_parity`, the declaration check).
 - `tests/e2e`: `npx tsc --noEmit` OK; `waitForTimeout` grep gate OK; `vcode-literals.sh` OK.
-- **E2E run pending:** the local E2E stack (port 18080) was in use by story 19-7; `wishlist-remove.spec.ts` and `wishlist.spec.ts` must still pass under `CI=true npx playwright test --workers=2` before review.
+- E2E, first full run (`CI=true`, 2 workers): 484 passed, 1 failed, 2 skipped, 17 did not run — the new spec's axe check on `/wishlist` flagged the existing "✓ Bought" text button (`text-emerald-600` on stone-50, contrast 3.49 < 4.5; unchanged by this story, first checked by axe here). Fixed to `text-emerald-700` (list row and mobile card; dark variant unchanged); the new red "Remove" passed. Rerun of `wishlist-remove.spec.ts` + `wishlist.spec.ts`: 4 passed; then a fresh stack and the full suite: 502 passed, 2 skipped, 0 failed, no retry.
 - No query macro added or changed: `.sqlx/` untouched (the new test file uses dynamic `sqlx::query_as`).
 
 ### Completion Notes List
@@ -146,6 +146,7 @@ Claude Opus 5.5 (claude-opus-5-5)
 - `wishlist_delete`: `None` or 0 rows → `NotFound(wishlist.already_removed)`, nothing written; audit row named by the action; `HX-Redirect: /wishlist` unchanged.
 - List rows / mobile cards (`WishlistRow { item, bought_label, remove_label }`) and the entry page show "✓ Bought" + "Remove" (D6-A, red text / bordered red secondary, dark variants as noted in the validation), both with named `aria-label`s built in Rust; buttons open `?action=bought` / `?action=remove`. Scan banner unchanged (no parameter → bought).
 - Locales ×4: `action_bought_named`, `action_remove_named`, `remove_modal_title`, `remove_modal_body`, `already_removed` added; `delete_modal_title` quoted (D8-A); `delete_modal_body` no longer claims a Trash restore (D2/D4).
+- The "Bought" text button on the list is now `text-emerald-700` (was `-600`) for WCAG AA contrast, required by the AC9 axe check.
 - Deviation: none from D1–D8. The stale-version (0-row) case is tested through the model, as the validation notes.
 
 ### File List
