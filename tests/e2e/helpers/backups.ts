@@ -42,3 +42,17 @@ export async function backUpNow(page: Page): Promise<string> {
   await expect(answer).not.toContainText(ALREADY_RUNNING);
   return (await answer.textContent()) ?? "";
 }
+
+/**
+ * Story 19-8 copy, shared by the restore spec and the epic 19 smoke (19-10):
+ * a backup file name, the row's "Restore…" button, the modal title, the
+ * "this instance" origin and the end of the success line (EN | FR | DE | IT).
+ */
+export const FILE_NAME = /mybibli-[0-9a-f]{16}-\d{8}T\d{6}Z\.tar\.gz/;
+export const RESTORE_BUTTON =
+  /Restore the backup of|Restaurer la sauvegarde du|Die Sicherung vom .* wiederherstellen|Ripristina il backup del/i;
+export const MODAL_TITLE =
+  /Restore this backup\?|Restaurer cette sauvegarde \?|Diese Sicherung wiederherstellen\?|Ripristinare questo backup\?/i;
+export const THIS_INSTANCE = /This instance|Cette instance|Diese Instanz|Questa istanza/i;
+export const EVERYONE_LOGGED_OUT =
+  /Everyone has been logged out|Tout le monde a été déconnecté|Alle wurden abgemeldet|Tutti sono stati disconnessi/i;

@@ -11,7 +11,15 @@ const RESTORE_SPEC = /journeys\/admin-backup-restore\.spec\.ts/;
  * test, alone, and before the restore.
  */
 const COVER_CHECK_SPEC = /journeys\/admin-cover-check\.spec\.ts/;
-const INSTANCE_WIDE_SPECS = [SETTINGS_SPEC, SESSION_TIMEOUT_SPEC, COVER_CHECK_SPEC, RESTORE_SPEC];
+/** Story 19-10 — the epic 19 smoke restores a backup too: after the restore spec. */
+const EPIC19_SMOKE_SPEC = /journeys\/epic19-smoke\.spec\.ts/;
+const INSTANCE_WIDE_SPECS = [
+  SETTINGS_SPEC,
+  SESSION_TIMEOUT_SPEC,
+  COVER_CHECK_SPEC,
+  RESTORE_SPEC,
+  EPIC19_SMOKE_SPEC,
+];
 
 export default defineConfig({
   testDir: "./specs",
@@ -60,8 +68,8 @@ export default defineConfig({
     // clears every missing cover address of the instance, so it would
     // disturb the rows of parallel specs (Rule #23): after every other
     // test, alone. Before the restore, which stays last of all: the restore
-    // logs everyone out and replaces the database and the covers folder,
-    // and it is the project story 19-10's epic smoke joins.
+    // logs everyone out and replaces the database and the covers folder
+    // (as the epic 19 smoke after it).
     {
       name: "instance-cover-check",
       use: { browserName: "chromium" },
@@ -71,13 +79,25 @@ export default defineConfig({
     // Story 19-8 (AC9) — a restore replaces the whole database and logs
     // everyone out: after every other test, alone. It restores a backup
     // it wrote itself moments before, so the stack stays usable afterwards
-    // (the library it found, the seeded users). Story 19-10's epic smoke
-    // joins this project.
+    // (the library it found, the seeded users). The epic 19 smoke runs in
+    // its own project after it.
     {
       name: "instance-restore",
       use: { browserName: "chromium" },
       testMatch: RESTORE_SPEC,
       dependencies: ["instance-cover-check"],
+    },
+    // Story 19-10 (D1) — the epic 19 smoke restores a backup as well, so it
+    // cannot share `instance-restore`: with `fullyParallel` the two files
+    // would run at once on two workers, each restore logging the other out
+    // and replacing its database. Its own project, last of all — after the
+    // cover check too, whose repair would otherwise act on a database the
+    // smoke has just replaced. Alone: `--no-deps`.
+    {
+      name: "instance-epic19-smoke",
+      use: { browserName: "chromium" },
+      testMatch: EPIC19_SMOKE_SPEC,
+      dependencies: ["instance-restore"],
     },
   ],
 });
