@@ -609,7 +609,7 @@ location:
   volumes_count: "%{count} esemplari"
   breadcrumb_label: Percorso ubicazione
   tree:
-    toggle: Espandi/comprimi sotto-albero
+    toggle_named: "Ubicazioni in %{name}"
     add_child_named: "Aggiungi un'ubicazione in %{name}"
     edit_named: "Modifica %{name}"
     delete_named: "Elimina %{name}"

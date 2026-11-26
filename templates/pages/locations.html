@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="max-w-5xl mx-auto px-4 lg:px-8 py-6 flex flex-col gap-4">
-    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ tree_title }}</h1>
+    <h1 id="locations-heading" class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ tree_title }}</h1>
 
     {% if tree_html.is_empty() %}
     <div class="text-center py-12 text-stone-500 dark:text-stone-400">
@@ -12,9 +12,11 @@
         <p class="text-lg">{{ empty_state }}</p>
     </div>
     {% else %}
-    <div role="tree" aria-label="{{ tree_title }}" class="space-y-1">
+    {# Story 20-5 (#700): a nested list with disclosure buttons, no ARIA tree.
+       `role="list"` keeps list semantics under `list-style: none` (VoiceOver). #}
+    <ul id="locations-tree" role="list" aria-labelledby="locations-heading" class="space-y-1">
         {{ tree_html|safe }}
-    </div>
+    </ul>
     {% endif %}
 
     {% if base.role == "librarian" || base.role == "admin" %}

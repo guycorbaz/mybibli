@@ -625,7 +625,7 @@ location:
   volumes_count: "%{count} volumes"
   breadcrumb_label: Location path
   tree:
-    toggle: Toggle subtree
+    toggle_named: "Locations inside %{name}"
     add_child_named: "Add a location under %{name}"
     edit_named: "Edit %{name}"
     delete_named: "Delete %{name}"

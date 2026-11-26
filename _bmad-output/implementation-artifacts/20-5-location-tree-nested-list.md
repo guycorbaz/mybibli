@@ -1,6 +1,6 @@
 # Story 20.5: The location tree says what it does (closes the visible part of #700)
 
-Status: ready-for-dev
+Status: in-progress
 
 ## Story
 
@@ -40,42 +40,42 @@ From `_bmad-output/planning-artifacts/epics.md` → Story 20.5 (verbatim intent,
 
 ## Tasks / Subtasks
 
-- [ ] **T0 — Rebase on 20-4 first** (AC all). Story 20-4 (location description) is finished on `story/20-4-location-description`, not yet merged. Start this story only after it merges, from `main` (Rule #14), or rebase onto it before any code. 20-4 touched `LocationEditTemplate`, `LocationDetailTemplate`, the create/update handlers, `LocationModel` (new `description` field), `location_edit.html`, `location_detail.html`, a migration and `location-description.spec.ts`. 20-5 must not touch those; after the rebase, the test helper `loc()` in `locations.rs`'s test module already builds `description` (20-4 added it) — reuse it.
-- [ ] **T1 — Markup of the tree** (AC 1, 2, 5) in `src/routes/locations.rs::render_node_at_depth`:
-  - [ ] Row element `<div role="treeitem" id="tree-node-{id}" class="{indent_class}" data-tree-node-id="{id}">` → `<li id="tree-node-{id}" class="{indent_class}" data-tree-node-id="{id}">`. Keep `id`, `data-tree-node-id`, the indent class and the inner row `<div class="flex … group">` (the Tailwind `group` **class** stays: it drives `group-hover` / `group-focus-within` on the row controls, #695).
-  - [ ] Children container `<div class="tree-children" role="group" id="tree-children-{id}">` → `<ul class="tree-children" id="tree-children-{id}">` (close with `</ul>`); the node closes with `</li>`.
-  - [ ] Disclosure button: add `id="tree-toggle-{id}"` and `aria-controls="tree-children-{id}"`; aria-label from `location.tree.toggle_named` with the **raw** name through `t!()`, then the whole label escaped once (the pattern of `add_child_named` l. 276–281). Keep `class="tree-toggle …"`, `aria-expanded="true"`, the `aria-hidden` ▼ icon span. `data-tree-target` may stay or be dropped in favour of `aria-controls` (see T3) — one source, not both read.
-  - [ ] Icon span inside the link: add `id="tree-icon-{id}"` (target of the parent OOB, T4).
-  - [ ] Focus fallback (l. 289–292): keep `#tree-node-{parent} > div > a[href="/location/{parent}"]` valid by keeping the `li > div > a` structure — then the selector and its unit test `child_delete_falls_back_to_the_parent_link` stay unchanged. If the structure changes, change both.
-  - [ ] Update the comments that describe the ARIA tree (l. 333–345, 386–387) and the `TREE_ROW_CONTROLS_CLASS` doc where it mentions the tree role.
-- [ ] **T2 — Page container** (AC 1) in `templates/pages/locations.html`: `<h1 id="locations-heading" …>`; replace `<div role="tree" aria-label="{{ tree_title }}" class="space-y-1">` with `<ul id="locations-tree" role="list" aria-labelledby="locations-heading" class="space-y-1">`. Empty-state branch unchanged.
-- [ ] **T3 — JS** (AC 2, 3) `static/js/locations-tree-toggle.js`: read the target from `aria-controls` (keep a fallback on `data-tree-target` only if it is kept in the markup); update the header comment (`<ul class="tree-children">`, no tree role). No key handling (native button). Persisted-state restore selector moves to `.tree-toggle[aria-controls="tree-children-<id>"]` if `data-tree-target` is dropped.
-- [ ] **T4 — Parent update after the last child's deletion** (AC 4, 5) in `src/routes/locations.rs`:
-  - [ ] `delete_location` handler: read the location first (`LocationModel::find_by_id`; `None` → the existing `already_gone_response(id, loc, AlreadyGoneAt::Confirm)`), keep its `parent_id`; call `LocationService::delete_location` as today; on success, if `parent_id` is `Some(p)` and `p` has no live child left (`LocationModel::find_children(pool, p)` empty, or a `COUNT(*) … deleted_at IS NULL`), add the parent OOB. A failure of that read after a successful delete must not turn the answer into an error: log `warn` and answer without the parent OOB (the delete happened; a reload fixes the row).
-  - [ ] `delete_success_response(id, emptied_parent: Option<u64>, message)` (signature change; split-out helper `parent_emptied_oob(parent_id) -> String`). The OOB elements (htmx 2, top level of the answer):
+- [x] **T0 — Rebase on 20-4 first** (AC all). Story 20-4 (location description) is finished on `story/20-4-location-description`, not yet merged. Start this story only after it merges, from `main` (Rule #14), or rebase onto it before any code. 20-4 touched `LocationEditTemplate`, `LocationDetailTemplate`, the create/update handlers, `LocationModel` (new `description` field), `location_edit.html`, `location_detail.html`, a migration and `location-description.spec.ts`. 20-5 must not touch those; after the rebase, the test helper `loc()` in `locations.rs`'s test module already builds `description` (20-4 added it) — reuse it.
+- [x] **T1 — Markup of the tree** (AC 1, 2, 5) in `src/routes/locations.rs::render_node_at_depth`:
+  - [x] Row element `<div role="treeitem" id="tree-node-{id}" class="{indent_class}" data-tree-node-id="{id}">` → `<li id="tree-node-{id}" class="{indent_class}" data-tree-node-id="{id}">`. Keep `id`, `data-tree-node-id`, the indent class and the inner row `<div class="flex … group">` (the Tailwind `group` **class** stays: it drives `group-hover` / `group-focus-within` on the row controls, #695).
+  - [x] Children container `<div class="tree-children" role="group" id="tree-children-{id}">` → `<ul class="tree-children" id="tree-children-{id}">` (close with `</ul>`); the node closes with `</li>`.
+  - [x] Disclosure button: add `id="tree-toggle-{id}"` and `aria-controls="tree-children-{id}"`; aria-label from `location.tree.toggle_named` with the **raw** name through `t!()`, then the whole label escaped once (the pattern of `add_child_named` l. 276–281). Keep `class="tree-toggle …"`, `aria-expanded="true"`, the `aria-hidden` ▼ icon span. `data-tree-target` may stay or be dropped in favour of `aria-controls` (see T3) — one source, not both read.
+  - [x] Icon span inside the link: add `id="tree-icon-{id}"` (target of the parent OOB, T4).
+  - [x] Focus fallback (l. 289–292): keep `#tree-node-{parent} > div > a[href="/location/{parent}"]` valid by keeping the `li > div > a` structure — then the selector and its unit test `child_delete_falls_back_to_the_parent_link` stay unchanged. If the structure changes, change both.
+  - [x] Update the comments that describe the ARIA tree (l. 333–345, 386–387) and the `TREE_ROW_CONTROLS_CLASS` doc where it mentions the tree role.
+- [x] **T2 — Page container** (AC 1) in `templates/pages/locations.html`: `<h1 id="locations-heading" …>`; replace `<div role="tree" aria-label="{{ tree_title }}" class="space-y-1">` with `<ul id="locations-tree" role="list" aria-labelledby="locations-heading" class="space-y-1">`. Empty-state branch unchanged.
+- [x] **T3 — JS** (AC 2, 3) `static/js/locations-tree-toggle.js`: read the target from `aria-controls` (keep a fallback on `data-tree-target` only if it is kept in the markup); update the header comment (`<ul class="tree-children">`, no tree role). No key handling (native button). Persisted-state restore selector moves to `.tree-toggle[aria-controls="tree-children-<id>"]` if `data-tree-target` is dropped.
+- [x] **T4 — Parent update after the last child's deletion** (AC 4, 5) in `src/routes/locations.rs`:
+  - [x] `delete_location` handler: read the location first (`LocationModel::find_by_id`; `None` → the existing `already_gone_response(id, loc, AlreadyGoneAt::Confirm)`), keep its `parent_id`; call `LocationService::delete_location` as today; on success, if `parent_id` is `Some(p)` and `p` has no live child left (`LocationModel::find_children(pool, p)` empty, or a `COUNT(*) … deleted_at IS NULL`), add the parent OOB. A failure of that read after a successful delete must not turn the answer into an error: log `warn` and answer without the parent OOB (the delete happened; a reload fixes the row).
+  - [x] `delete_success_response(id, emptied_parent: Option<u64>, message)` (signature change; split-out helper `parent_emptied_oob(parent_id) -> String`). The OOB elements (htmx 2, top level of the answer):
     - `<ul id="tree-children-{p}" hx-swap-oob="delete"></ul>` — the now-empty child list;
     - `<span id="tree-toggle-{p}" class="w-6" aria-hidden="true" hx-swap-oob="outerHTML"></span>` — the disclosure button becomes the leaf spacer (same classes as the leaf spacer in `render_node_at_depth`; share one const so they cannot drift);
     - `<span id="tree-icon-{p}" class="text-stone-500 dark:text-stone-400" aria-hidden="true" hx-swap-oob="outerHTML">📍</span>` — the leaf icon (same classes as the rendered icon span; share them).
     Emit the child's `row_removal_oob` first, then these three (if the list went first, the row OOB would only miss its target).
     Prefer these three targeted OOBs over re-rendering the parent `<li>`: a full re-render needs the depth (indent class), the recursive volume count, node types, next L-code, rights and CSRF token, and would wipe an open inline "add child" form.
-  - [ ] `row_removal_oob(id)` stays `<div id="tree-node-{id}" hx-swap-oob="delete"></div>` (the tag of a `delete` OOB is irrelevant) — `tests/location_delete_modal.rs` and the unit tests assert that exact string; no churn needed.
-  - [ ] The OOB elements must be in the answer **before** `modal-close` runs: they are (same response, `HX-Trigger-After-Swap`); the focus fallback then finds the parent's link, which the targeted OOBs do not replace.
-- [ ] **T5 — Locales** (D11) `locales/{en,fr,de,it}.yml`, `location.tree:` block only: add `toggle_named`, remove `toggle`. Run `cargo test --test integration locale_parity::` and `touch src/lib.rs` before building.
-- [ ] **T6 — Unit tests** (AC 7) in `src/routes/locations.rs` `mod tests` (render helpers `render_salon` / `render_salon_in`, `loc()`):
-  - [ ] Rewrite `render_tree_html_emits_toggle_and_children_container_for_parents` for the new markup: a parent has `<button … id="tree-toggle-1" … aria-controls="tree-children-1" … aria-expanded="true"` and the output contains `id="tree-children-1"` (the id `aria-controls` names exists); a leaf (id 2) has no `tree-toggle-2`, no `tree-children-2`.
-  - [ ] New: `render_tree_html` output (and the rendered `/locations` template, via `LocationsTemplate::render` with a non-empty `tree_html` and `base: crate::utils::test_base_context("admin", "locations", …)` as `test_location_detail_template_renders` does) contains no `role="tree"`, `role="treeitem"`, `role="group"`. Match the **attribute** `role="group"`, not the word `group` (the row's Tailwind `group` class stays).
-  - [ ] New: every `<li` opened is closed; children lists are `<ul class="tree-children"` inside the parent `<li>` (a 3-level fixture: root → child → grandchild).
-  - [ ] New: the toggle's name is `Locations inside Salon` in `en`, `Emplacements dans Salon` in `fr`, and a name with `<b>"` is escaped once (pattern of `control_labels_are_localized_and_escaped`).
-  - [ ] Update `delete_success_answer_removes_the_row_and_closes_the_modal` for the new signature; new: with `Some(1)` the body carries the three parent OOBs (`tree-children-1` delete, `tree-toggle-1` and `tree-icon-1` outerHTML); with `None` it carries none of them.
-- [ ] **T7 — DB integration tests** (AC 4) in `tests/location_delete_modal.rs` (already a module of `tests/integration.rs`): deleting the only child of a parent → the answer carries the parent OOBs for that parent id; deleting one of two children → no parent OOB; deleting a root → no parent OOB. Existing assertions stay green.
-- [ ] **T8 — E2E** (AC 3, 4, 5, 6, 7) in `tests/e2e/specs/journeys/locations.spec.ts`:
-  - [ ] Replace every `[role="treeitem"]` (16 places) with row selectors that cannot match ancestors: `li[data-tree-node-id] > div` filtered by text for a row, `#tree-node-{id}` when the id is known (read it from the row's edit link `href`). Note: `filter({ hasText })` on an `<li>` also matches every **ancestor** `<li>` (it contains the child's text) and `.first()` then returns the outermost one — the old `'[role="treeitem"]'.filter({ hasText: "LO-698-Child" }).first()` (l. 225) actually selected the parent. Use the row `div` or the id.
-  - [ ] New test — keyboard and disclosure: create a parent + child (unique names, L-codes from the free `L5705`–`L5715` range of this spec's bucket 5; `createLocation` / `createChildLocation` from `helpers/locations.ts`); focus the parent's disclosure button; Tab → the parent link → add → edit → delete (admin); back on the button, Enter → `aria-expanded="false"`, `#tree-children-{id}` hidden; Space → `aria-expanded="true"`, visible. Assert the button's accessible name `Locations inside <name>`.
-  - [ ] New test — collapse persists: collapse a parent, `page.reload()`, the button reads `aria-expanded="false"` and the child list is hidden.
-  - [ ] New test — last child deleted without a reload: parent + one child; set a marker (`await page.evaluate(() => (window as any).__noReload = true)`); delete the child through the modal; assert the parent row has no `.tree-toggle`, `#tree-children-{pid}` has count 0, the parent's link shows 📍; focus is on the parent's link (Rule #21); the marker is still set (no reload). Then a second parent with two children: delete one → the toggle and the list remain, the other child still listed.
-  - [ ] New test — axe on `/locations` with nested rows: parent + child + grandchild created by the spec, axe with `["wcag2a", "wcag2aa", "wcag22aa"]` (as `accessibility-full.spec.ts`), once expanded, once with the parent collapsed. Assert `[role="tree"], [role="treeitem"], [role="group"]` count 0 on the page.
-  - [ ] Assert only on the spec's own rows (Rule #23); no `waitForTimeout`; `expectHtmxProcessed` is not needed for these full-page forms.
-- [ ] **T9 — `tests/e2e/specs/accessibility-full.spec.ts`** (AC 7): the 3 `[role="treeitem"]` uses (l. 159, 216 and the comments l. 94, 144) become `li[data-tree-node-id]` (the "populated" guard and the seed lookup). The seed lookup by text keeps `.first()` — it seeds a root only.
+  - [x] `row_removal_oob(id)` stays `<div id="tree-node-{id}" hx-swap-oob="delete"></div>` (the tag of a `delete` OOB is irrelevant) — `tests/location_delete_modal.rs` and the unit tests assert that exact string; no churn needed.
+  - [x] The OOB elements must be in the answer **before** `modal-close` runs: they are (same response, `HX-Trigger-After-Swap`); the focus fallback then finds the parent's link, which the targeted OOBs do not replace.
+- [x] **T5 — Locales** (D11) `locales/{en,fr,de,it}.yml`, `location.tree:` block only: add `toggle_named`, remove `toggle`. Run `cargo test --test integration locale_parity::` and `touch src/lib.rs` before building.
+- [x] **T6 — Unit tests** (AC 7) in `src/routes/locations.rs` `mod tests` (render helpers `render_salon` / `render_salon_in`, `loc()`):
+  - [x] Rewrite `render_tree_html_emits_toggle_and_children_container_for_parents` for the new markup: a parent has `<button … id="tree-toggle-1" … aria-controls="tree-children-1" … aria-expanded="true"` and the output contains `id="tree-children-1"` (the id `aria-controls` names exists); a leaf (id 2) has no `tree-toggle-2`, no `tree-children-2`.
+  - [x] New: `render_tree_html` output (and the rendered `/locations` template, via `LocationsTemplate::render` with a non-empty `tree_html` and `base: crate::utils::test_base_context("admin", "locations", …)` as `test_location_detail_template_renders` does) contains no `role="tree"`, `role="treeitem"`, `role="group"`. Match the **attribute** `role="group"`, not the word `group` (the row's Tailwind `group` class stays).
+  - [x] New: every `<li` opened is closed; children lists are `<ul class="tree-children"` inside the parent `<li>` (a 3-level fixture: root → child → grandchild).
+  - [x] New: the toggle's name is `Locations inside Salon` in `en`, `Emplacements dans Salon` in `fr`, and a name with `<b>"` is escaped once (pattern of `control_labels_are_localized_and_escaped`).
+  - [x] Update `delete_success_answer_removes_the_row_and_closes_the_modal` for the new signature; new: with `Some(1)` the body carries the three parent OOBs (`tree-children-1` delete, `tree-toggle-1` and `tree-icon-1` outerHTML); with `None` it carries none of them.
+- [x] **T7 — DB integration tests** (AC 4) in `tests/location_delete_modal.rs` (already a module of `tests/integration.rs`): deleting the only child of a parent → the answer carries the parent OOBs for that parent id; deleting one of two children → no parent OOB; deleting a root → no parent OOB. Existing assertions stay green.
+- [x] **T8 — E2E** (AC 3, 4, 5, 6, 7) in `tests/e2e/specs/journeys/locations.spec.ts`:
+  - [x] Replace every `[role="treeitem"]` (16 places) with row selectors that cannot match ancestors: `li[data-tree-node-id] > div` filtered by text for a row, `#tree-node-{id}` when the id is known (read it from the row's edit link `href`). Note: `filter({ hasText })` on an `<li>` also matches every **ancestor** `<li>` (it contains the child's text) and `.first()` then returns the outermost one — the old `'[role="treeitem"]'.filter({ hasText: "LO-698-Child" }).first()` (l. 225) actually selected the parent. Use the row `div` or the id.
+  - [x] New test — keyboard and disclosure: create a parent + child (unique names, L-codes from the free `L5705`–`L5715` range of this spec's bucket 5; `createLocation` / `createChildLocation` from `helpers/locations.ts`); focus the parent's disclosure button; Tab → the parent link → add → edit → delete (admin); back on the button, Enter → `aria-expanded="false"`, `#tree-children-{id}` hidden; Space → `aria-expanded="true"`, visible. Assert the button's accessible name `Locations inside <name>`.
+  - [x] New test — collapse persists: collapse a parent, `page.reload()`, the button reads `aria-expanded="false"` and the child list is hidden.
+  - [x] New test — last child deleted without a reload: parent + one child; set a marker (`await page.evaluate(() => (window as any).__noReload = true)`); delete the child through the modal; assert the parent row has no `.tree-toggle`, `#tree-children-{pid}` has count 0, the parent's link shows 📍; focus is on the parent's link (Rule #21); the marker is still set (no reload). Then a second parent with two children: delete one → the toggle and the list remain, the other child still listed.
+  - [x] New test — axe on `/locations` with nested rows: parent + child + grandchild created by the spec, axe with `["wcag2a", "wcag2aa", "wcag22aa"]` (as `accessibility-full.spec.ts`), once expanded, once with the parent collapsed. Assert `[role="tree"], [role="treeitem"], [role="group"]` count 0 on the page.
+  - [x] Assert only on the spec's own rows (Rule #23); no `waitForTimeout`; `expectHtmxProcessed` is not needed for these full-page forms.
+- [x] **T9 — `tests/e2e/specs/accessibility-full.spec.ts`** (AC 7): the 3 `[role="treeitem"]` uses (l. 159, 216 and the comments l. 94, 144) become `li[data-tree-node-id]` (the "populated" guard and the seed lookup). The seed lookup by text keeps `.first()` — it seeds a root only.
 - [ ] **T10 — Gates.** `cargo check`, `cargo clippy -- -D warnings`, `cargo test` for `routes::locations` + `--test integration location_delete_modal:: locale_parity::`, `templates_audit`; `cd tests/e2e && npx tsc --noEmit`; the `waitForTimeout` grep; E2E on the reset stack with `CI=true npx playwright test --workers=2` (Rule #13 point 4: the specs create locations on the shared DB). Heavy commands under `flock -w 10800 /tmp/station-heavy.lock mem-guard …`.
 
 ## Dev Notes
@@ -158,10 +158,38 @@ DE / IT wording of `location.tree.toggle_named` (`Standorte in %{name}`, `Ubicaz
 
 ### Agent Model Used
 
+Claude Opus 5.5 (dev-story, 2026-11-26)
+
 ### Debug Log References
+
+- `cargo clippy --all-targets -- -D warnings`: clean.
+- `cargo test --lib`: 1970 passed (templates_audit included).
+- `cargo test --test integration -- location_delete_modal:: locale_parity:: templates_audit every_test_file_is_declared location`: 32 passed.
+- `tests/e2e`: `npx tsc --noEmit` clean; `waitForTimeout` grep empty; `vcode-literals.sh` clean.
+- E2E not run yet (shared stack in use): T10 stays open until `CI=true npx playwright test --workers=2` on the reset stack.
 
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
+- T1–T3: rows are `li#tree-node-{id}` (row `div` kept, so the 19-1 focus fallback `#tree-node-{p} > div > a[…]` is unchanged), child lists `ul.tree-children[role=list]#tree-children-{id}`, page root `ul#locations-tree[role=list][aria-labelledby=locations-heading]`. Disclosure button `#tree-toggle-{id}` with `aria-controls`; `data-tree-target` dropped, the JS reads `aria-controls` only. Icon span `#tree-icon-{id}`. Spacer / icon classes and icons shared through consts (`TREE_LEAF_SPACER_CLASS`, `TREE_ICON_CLASS`, `TREE_ICON_LEAF`).
+- T4: `emptied_parent(pool, id)` runs after the delete (success) **and** in both "already deleted" answers (settled question 1). It reads the parent in any state through a new `LocationModel::parent_id_any_state` (the deleted row is in the Trash, `find_by_id` cannot see it), then `find_children` (live only). Read failures log `warn` and answer without the parent OOB. OOB order: row removal, then `tree-children` delete, `tree-toggle` → spacer, `tree-icon` → 📍 (`tree_removal_oob`).
+- Deviation from T4's wording: the handler does not call `find_by_id` before the delete — the parent is read after it, from the row in any state, one helper for the three paths. `src/models/location.rs` gets that one read (the story listed the file as not touched; needed for settled question 1).
+- T5: `location.tree.toggle_named` added (EN/FR approved, DE/IT proposed as in D11), `location.tree.toggle` removed in all four files.
+- T8: the four new tests use L5705–L5716 (L5716, one more than the story's range, is free: no other literal in bucket 5 above L5704 except dewey-code's L5801).
+- Questions 2 and 3 untouched as settled ("{n} vol" → #737; last root deleted keeps today's behaviour).
 
 ### File List
+
+- `src/routes/locations.rs`
+- `src/models/location.rs`
+- `templates/pages/locations.html`
+- `static/js/locations-tree-toggle.js`
+- `locales/en.yml`, `locales/fr.yml`, `locales/de.yml`, `locales/it.yml`
+- `tests/location_delete_modal.rs`
+- `tests/e2e/specs/journeys/locations.spec.ts`
+- `tests/e2e/specs/accessibility-full.spec.ts`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+### Change Log
+
+- 2026-11-26 — dev-story: nested list with disclosure buttons, parent updated after its last child's deletion (all three delete answers), unit + DB + E2E tests written; E2E run pending.
