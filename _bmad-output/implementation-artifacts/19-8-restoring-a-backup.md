@@ -1,6 +1,6 @@
 # Story 19.8: Restoring a backup (#657, part 3)
 
-Status: ready-for-dev
+Status: in-progress
 
 ## Story
 
@@ -131,15 +131,15 @@ Practice A3: every user-visible behaviour and copy below that the lead has not a
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `MIGRATOR` static (T3) and `services::startup::prepare_database` extracted from `main.rs` (T4); boot unchanged in behaviour.
-- [ ] T2 — `services/backup/restore/verify.rs` (D5) + unit tests.
-- [ ] T3 — writer entry holding the guard (T2) + `BackupStatus::forget`.
-- [ ] T4 — `restore/load.rs` (T5: drop all, splitter, execute, instance id, migrations) + `restore/covers.rs` (D11) + `restore/mod.rs` (sequence, journal D10, rollback, audit D13).
-- [ ] T5 — `services/maintenance.rs` + `middleware/maintenance.rs` (D8, T6) wired outermost after CSP in `routes::build_router`; `templates/pages/maintenance.html`; generation checks in the writers without a request (T7); boot journal check before `MIGRATOR.run` in `main.rs`.
-- [ ] T6 — `routes/admin_backups_restore.rs` + list fragment (D1–D4) included in `admin_backups_panel.html` + modal fragment (D6, D7) + routes in `routes/mod.rs`; Health line (D13) in `routes/admin_health_backup.rs`.
-- [ ] T7 — Locales ×4 (copy as approved); `touch src/lib.rs` before the build.
-- [ ] T8 — Tests AC1–AC8 (+ `tests/common/backup.rs` helpers: rebuild an archive with a changed manifest / member and a fresh sidecar); E2E spec + Playwright project (AC9).
-- [ ] T9 — `CLAUDE.md` Backups bullet (restore, maintenance layer, journal, guard held, `MIGRATOR`, `prepare_database`); `docs/auth-threat-model.md` § 5.13 (restore: Admin + CSRF, positive name shape, member shape checked before extraction, foreign accounts replace local ones, sessions emptied, the journal file). The manual is story 19-11 (step-by-step restore, "Restoring by hand", copying a backup in and D4's advice).
+- [x] T1 — `MIGRATOR` static (T3) and `services::startup::prepare_database` extracted from `main.rs` (T4); boot unchanged in behaviour.
+- [x] T2 — `services/backup/restore/verify.rs` (D5) + unit tests.
+- [x] T3 — writer entry holding the guard (T2) + `BackupStatus::forget`.
+- [x] T4 — `restore/load.rs` (T5: drop all, splitter, execute, instance id, migrations) + `restore/covers.rs` (D11) + `restore/mod.rs` (sequence, journal D10, rollback, audit D13).
+- [x] T5 — `services/maintenance.rs` + `middleware/maintenance.rs` (D8, T6) wired outermost after CSP in `routes::build_router`; `templates/pages/maintenance.html`; generation checks in the writers without a request (T7); boot journal check before `MIGRATOR.run` in `main.rs`.
+- [x] T6 — `routes/admin_backups_restore.rs` + list fragment (D1–D4) included in `admin_backups_panel.html` + modal fragment (D6, D7) + routes in `routes/mod.rs`; Health line (D13) in `routes/admin_health_backup.rs`.
+- [x] T7 — Locales ×4 (copy as approved); `touch src/lib.rs` before the build.
+- [x] T8 — Tests AC1–AC8 (+ `tests/common/backup.rs` helpers: rebuild an archive with a changed manifest / member and a fresh sidecar); E2E spec + Playwright project (AC9).
+- [x] T9 — `CLAUDE.md` Backups bullet (restore, maintenance layer, journal, guard held, `MIGRATOR`, `prepare_database`); `docs/auth-threat-model.md` § 5.13 (restore: Admin + CSRF, positive name shape, member shape checked before extraction, foreign accounts replace local ones, sessions emptied, the journal file). The manual is story 19-11 (step-by-step restore, "Restoring by hand", copying a backup in and D4's advice).
 
 ## Dev Notes
 
@@ -209,13 +209,38 @@ Notes for the lead (no change made):
 
 ### Agent Model Used
 
+Claude Opus 5.5 (dev-story, 2026-11-26).
+
 ### Debug Log References
+
+- Gates run locally: `cargo clippy --all-targets -- -D warnings` (clean), `cargo test --lib` (1976 passed, 1 ignored), `cargo test --test integration` full (1011 passed: `backup_restore::` 9, `backup_restore_maintenance::` 4, `locale_parity::`, `every_test_file_is_declared`), `cargo sqlx prepare --check --workspace -- --all-targets` (unchanged: only dynamic queries added), `npx tsc --noEmit`, the `waitForTimeout` grep, `vcode-literals.sh`.
+- **Not run: the E2E suite** (stack busy). `admin-backup-restore.spec.ts` is written and typechecked; status stays in-progress until `CI=true npx playwright test --workers=2` is green.
 
 ### Completion Notes List
 
+- T1–T12 implemented as written. `services::startup::prepare_database` takes the boot steps after the migrations; boot order changed slightly: the `MYBIBLI_RESET_ADMIN` hatch and the startup purge now run after all of them (both were between them before; no behaviour depends on it).
+- T6: `Maintenance` holds its drain timeout (`DRAIN_TIMEOUT` 30 s by default, `with_drain` for tests). Requests are admitted with `try_read` after checking the flag, and the flag is read again once admitted.
+- T7 (choice left to the dev): no process-wide static (parallel integration tests share the process). The per-scan fetches get the handle through `spawn_fetch(&maintenance, …)`; the fetch, the bulk run and the retry tick run inside `maintenance::scoped` (a tokio task-local carrying the handle and the generation), and each write section asks `maintenance::write_permit()`, which also holds the gate's read guard while it writes (a restore drains it). The auto-purge and anonymous-session purge skip their run while active and hold the gate while they run. The provider chain's own cache write (code-keyed) is not gated: one landing mid-load would at worst make the load fail → rollback.
+- The success / rollback dialog needs no change to `modal.js`: htmx re-dispatches `afterRequest` on `#modal-slot` once the form is detached, so `modal.js` does not close; its slot observer opens the new dialog, whose "Log in again" link carries `data-modal-default-focus`.
+- Restore checks: verify runs before `instance_id::ensure`, so a refused restore writes nothing at all.
+- R4 test skips itself when the file stays readable after `chmod 000` (root).
+- E2E (AC9): project `instance-restore`, after `instance-session-timeout`; the spec restores the backup it wrote moments before, so the stack stays usable (the library it found plus its title back, seeded users kept by `MYBIBLI_SEED_DEV_USERS=1`).
+
 ### File List
+
+- `src/db.rs` (MIGRATOR), `src/main.rs`, `src/services/mod.rs`, `src/services/startup.rs` (new), `src/services/maintenance.rs` (new)
+- `src/services/backup/mod.rs`, `src/services/backup/status.rs`, `src/services/backup/restore/{mod,verify,load,covers}.rs` (new)
+- `src/middleware/mod.rs`, `src/middleware/maintenance.rs` (new), `src/middleware/locale.rs`
+- `src/routes/mod.rs`, `src/routes/admin_backups.rs`, `src/routes/admin_backups_restore.rs` (new), `src/routes/admin_health_backup.rs`, `src/routes/admin.rs`, `src/routes/catalog.rs`
+- `src/models/admin_audit.rs`, `src/tasks/{metadata_fetch,metadata_retry,auto_purge_scheduler,anonymous_session_purge}.rs`
+- `templates/fragments/admin_backups_panel.html`, `templates/fragments/admin_backups_list.html` (new), `templates/fragments/admin_backups_restore_modal.html` (new), `templates/fragments/admin_backups_restore_done.html` (new), `templates/pages/maintenance.html` (new)
+- `locales/{en,fr,de,it}.yml`
+- `tests/integration.rs`, `tests/common/backup.rs`, `tests/backup_round_trip.rs`, `tests/backup_restore.rs` (new), `tests/backup_restore_maintenance.rs` (new)
+- `tests/e2e/playwright.config.ts`, `tests/e2e/specs/journeys/admin-backup-restore.spec.ts` (new)
+- `CLAUDE.md`, `docs/auth-threat-model.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ### Change Log
 
 - 2026-11-26 — create-story: story 19-8 written, decisions D1–D13 for the project lead.
 - 2026-11-26 — validate-story: checked against the code; T9–T12 added, D5 and T6–T7 corrected (see Validation).
+- 2026-11-26 — dev-story: implemented; unit, integration and static gates green; E2E written, not yet run (status in-progress).

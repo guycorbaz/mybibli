@@ -27,7 +27,14 @@ use crate::services::cover_staging;
 ///   - Story 11-14 (NFR48): each tick also purges the cover staging area
 ///     of `covers_dir` ([`cover_staging::purge`]) — staged covers no
 ///     pending proposal needs.
-pub fn spawn(pool: DbPool, settings: Arc<RwLock<AppSettings>>, covers_dir: PathBuf) {
+///   - Story 19-8 (T7): a tick is skipped while a restore runs; a purge in
+///     progress holds the maintenance gate, so a restore waits for it.
+pub fn spawn(
+    pool: DbPool,
+    settings: Arc<RwLock<AppSettings>>,
+    covers_dir: PathBuf,
+    maintenance: Arc<crate::services::maintenance::Maintenance>,
+) {
     tokio::spawn(async move {
         // Wait 1 minute before first run to avoid competing with startup purge.
         tokio::time::sleep(Duration::from_secs(60)).await;
@@ -40,6 +47,10 @@ pub fn spawn(pool: DbPool, settings: Arc<RwLock<AppSettings>>, covers_dir: PathB
 
         loop {
             interval.tick().await;
+            let Some(admission) = maintenance.enter() else {
+                tracing::info!("Auto-purge skipped: a restore is running; the next tick does it");
+                continue;
+            };
 
             match AutoPurgeService::run_purge(&pool).await {
                 Ok(stats) => {
@@ -65,6 +76,7 @@ pub fn spawn(pool: DbPool, settings: Arc<RwLock<AppSettings>>, covers_dir: PathB
                 }
             }
             purge_cover_staging(&pool, &covers_dir).await;
+            drop(admission);
 
             // Pick up live settings changes for next cycle. `interval()` does
             // not expose a setter, so we just re-create it when the value

@@ -40,6 +40,9 @@ const RETENTION_DAYS: u64 = 7;
 /// default (24h initial delay). See migration 20260526075700.
 const KEY_LAST_PURGE_AT: &str = "last_anonymous_session_purge_at";
 
+/// Story 19-8 (T7): how long a run skipped for a restore waits.
+const RESTORE_RETRY_SECS: u64 = 3600;
+
 /// Spawn the daily purge task. Swallows all errors — maintenance must
 /// never crash the app. Call from `main.rs` once per process.
 ///
@@ -50,7 +53,10 @@ const KEY_LAST_PURGE_AT: &str = "last_anonymous_session_purge_at";
 /// re-arming a fresh 24 h sleep that resets on every restart. If
 /// the row is missing or empty (fresh install), the spec default
 /// 24 h sleep is preserved.
-pub fn spawn(pool: DbPool) {
+///
+/// Story 19-8 (T7): a run is skipped while a restore runs (retried an
+/// hour later); a purge in progress holds the maintenance gate.
+pub fn spawn(pool: DbPool, maintenance: std::sync::Arc<crate::services::maintenance::Maintenance>) {
     tokio::spawn(async move {
         let initial_delay = compute_initial_delay(&pool).await;
         tracing::info!(
@@ -59,8 +65,14 @@ pub fn spawn(pool: DbPool) {
         );
         tokio::time::sleep(initial_delay).await;
         loop {
+            let Some(admission) = maintenance.enter() else {
+                tracing::info!("anonymous session purge: skipped, a restore is running");
+                tokio::time::sleep(Duration::from_secs(RESTORE_RETRY_SECS)).await;
+                continue;
+            };
             purge_once(&pool).await;
             record_purge_at(&pool, Utc::now()).await;
+            drop(admission);
             tokio::time::sleep(Duration::from_secs(PURGE_INTERVAL_SECS)).await;
         }
     });

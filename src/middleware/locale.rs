@@ -110,7 +110,7 @@ fn parse_lang_query(query: &str) -> Option<String> {
 /// Return a closure that extracts the value of a named cookie from a `Cookie`
 /// header value. Handles multiple semicolon-separated pairs, trims whitespace,
 /// and ignores empty values. Returns `None` if the cookie is absent.
-fn extract_named_cookie_value(name: &'static str) -> impl Fn(&str) -> Option<String> {
+pub(crate) fn extract_named_cookie_value(name: &'static str) -> impl Fn(&str) -> Option<String> {
     move |header: &str| {
         let prefix = format!("{name}=");
         for part in header.split(';') {

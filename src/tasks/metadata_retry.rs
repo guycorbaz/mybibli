@@ -238,6 +238,11 @@ enum RowResult {
 /// turn. Callable on its own (tests); [`spawn`] calls it on a timer.
 pub async fn tick(state: &AppState) -> Result<TickStats, AppError> {
     let mut stats = TickStats::default();
+    // Story 19-8 (T7): nothing runs while a restore does.
+    if state.backup.maintenance.is_active() {
+        tracing::debug!("Metadata retry tick skipped: a restore is running");
+        return Ok(stats);
+    }
     // A bulk refetch / backfill run already loads the providers.
     if bulk_run_in_progress(state) {
         tracing::debug!("Metadata retry tick skipped: a bulk metadata run is in progress");
@@ -263,6 +268,12 @@ pub async fn tick(state: &AppState) -> Result<TickStats, AppError> {
     };
 
     for row in due {
+        // Story 19-8 (T7): a restore started since the tick began: stop,
+        // the restored database has its own queue.
+        if crate::services::maintenance::write_permit().is_none() {
+            tracing::info!("Metadata retry batch stopped: a restore ran or is running");
+            break;
+        }
         // A bulk run started meanwhile: stop here, the rest stays due.
         if bulk_run_in_progress(state) {
             tracing::debug!("Metadata retry batch stopped: a bulk metadata run started");
@@ -372,6 +383,10 @@ async fn retry_row(
         true,
     )
     .await;
+    // Story 19-8 (T7): held while the queue row is written.
+    let Some(_permit) = crate::services::maintenance::write_permit() else {
+        return Ok(RowResult::Skipped);
+    };
 
     Ok(match verdict(outcome, row.attempts) {
         RetryVerdict::Done => {
@@ -460,7 +475,8 @@ pub fn spawn(state: AppState) {
         timer.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
             timer.tick().await;
-            match tick(&state).await {
+            // Story 19-8 (T7): the tick captures the maintenance generation.
+            match crate::services::maintenance::scoped(&state.backup.maintenance, tick(&state)).await {
                 Ok(stats) if stats != TickStats::default() => tracing::info!(
                     retried = stats.retried,
                     skipped = stats.skipped,

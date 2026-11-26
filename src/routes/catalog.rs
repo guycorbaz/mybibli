@@ -485,6 +485,7 @@ pub async fn handle_scan(
                             .unwrap_or(crate::models::media_type::CodeType::Isbn);
 
                         crate::tasks::metadata_fetch::spawn_fetch(
+                            &state.backup.maintenance,
                             "catalog_isbn_scan",
                             title.id,
                             crate::tasks::metadata_fetch::fetch_metadata_chain(
@@ -1046,6 +1047,7 @@ pub async fn handle_scan(
                             .unwrap_or(30);
                         let per_provider_timeouts = state.metadata_chain_provider_timeouts();
                         crate::tasks::metadata_fetch::spawn_fetch(
+                            &state.backup.maintenance,
                             "catalog_issn_scan",
                             title.id,
                             crate::tasks::metadata_fetch::fetch_metadata_chain(
@@ -1136,6 +1138,7 @@ pub async fn handle_scan(
                                 let per_provider_timeouts =
                                     state.metadata_chain_provider_timeouts();
                                 crate::tasks::metadata_fetch::spawn_fetch(
+                                    &state.backup.maintenance,
                                     "catalog_upc_session_pref",
                                     title.id,
                                     crate::tasks::metadata_fetch::fetch_metadata_chain(
@@ -1358,6 +1361,7 @@ pub async fn handle_scan_with_type(
                     .unwrap_or(30);
                 let per_provider_timeouts = state.metadata_chain_provider_timeouts();
                 crate::tasks::metadata_fetch::spawn_fetch(
+                    &state.backup.maintenance,
                     "catalog_upc_post_media_select",
                     title.id,
                     crate::tasks::metadata_fetch::fetch_metadata_chain(

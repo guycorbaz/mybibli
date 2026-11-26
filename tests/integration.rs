@@ -26,6 +26,8 @@ mod api_v1_series;
 mod audit_list_non_empty;
 mod auth_service;
 mod backup_rotation;
+mod backup_restore;
+mod backup_restore_maintenance;
 mod backup_round_trip;
 mod backup_schedule;
 mod backup_write;

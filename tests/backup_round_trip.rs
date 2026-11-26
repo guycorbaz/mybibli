@@ -16,7 +16,7 @@ use common::backup::{Folders, assert_members_match, manifest_of, read_members};
 use futures::FutureExt;
 use mybibli::db::DbPool;
 use mybibli::services::backup::write_backup;
-use sqlx::{MySqlPool, Row};
+use sqlx::MySqlPool;
 
 /// Rows of every kind, every table non-empty.
 const SEED: &str = r#"
@@ -79,33 +79,10 @@ INSERT INTO cover_uploads (token, api_key_id, staged_file, media_type, original_
 const TRICKY: &str = "Line 1\nLine 2\r\n\\ 'single' \"double\" \0 nul \x1a ctrl-z \t tab — ✓ 𝄞 😀";
 
 async fn table_names(pool: &MySqlPool, schema: &str) -> BTreeSet<String> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT CAST(TABLE_NAME AS CHAR) FROM information_schema.TABLES \
-         WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'",
-    )
-    .bind(schema)
-    .fetch_all(pool)
-    .await
-    .unwrap();
-    rows.into_iter().map(|(n,)| n).collect()
+    common::backup::table_names(pool, Some(schema)).await
 }
 
-async fn checksum(pool: &MySqlPool, schema: &str, table: &str) -> (u64, i64) {
-    let row = sqlx::query(&format!("CHECKSUM TABLE `{schema}`.`{table}`"))
-        .fetch_one(pool)
-        .await
-        .unwrap();
-    let sum = row
-        .try_get::<Option<u64>, _>(1)
-        .or_else(|_| row.try_get::<Option<i64>, _>(1).map(|v| v.map(|x| x as u64)))
-        .unwrap()
-        .unwrap_or_else(|| panic!("no checksum for {schema}.{table}"));
-    let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM `{schema}`.`{table}`"))
-        .fetch_one(pool)
-        .await
-        .unwrap();
-    (sum, count)
-}
+use common::backup::checksum;
 
 /// `DATABASE_URL` with its database replaced.
 fn url_for(schema: &str) -> String {

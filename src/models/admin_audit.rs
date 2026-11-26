@@ -104,6 +104,28 @@ impl AdminAuditModel {
         })
     }
 
+    /// Story 19-8 (D13) — the newest row of `action`: its time and details.
+    /// `details` is a JSON column (read through `CAST … AS CHAR`); a row
+    /// whose details are not JSON reads as `Value::Null`.
+    pub async fn newest_of_action(
+        pool: &DbPool,
+        action: &str,
+    ) -> Result<Option<(NaiveDateTime, serde_json::Value)>, AppError> {
+        let row: Option<(NaiveDateTime, Option<String>)> = sqlx::query_as(
+            "SELECT CAST(timestamp AS DATETIME), CAST(details AS CHAR) FROM admin_audit \
+             WHERE action = ? ORDER BY id DESC LIMIT 1",
+        )
+        .bind(action)
+        .fetch_optional(pool)
+        .await?;
+        Ok(row.map(|(at, details)| {
+            let details = details
+                .and_then(|d| serde_json::from_str(&d).ok())
+                .unwrap_or(serde_json::Value::Null);
+            (at, details)
+        }))
+    }
+
     // Fix #72 — `AdminAuditModel::list` was added during story 8-7
     // (Story 8-7 DF2) but no acceptance criterion / production caller
     // ever required it. The audit list is purely append-only forensics
