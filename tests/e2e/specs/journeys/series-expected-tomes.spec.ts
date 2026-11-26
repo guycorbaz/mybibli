@@ -139,7 +139,8 @@ test.describe("Expected tomes on the series page (story 11-11)", () => {
     await page.locator("#expected-tome-title").fill(`Mauvais ${RUN}`);
     await page.locator("#expected-tome-isbn").fill("12345");
     await page.locator('main button[type="submit"]').last().click();
-    await expect(page.locator("#expected-tome-error")).toContainText(
+    // Story 20-2 (Q3): the refusal sits under its field.
+    await expect(page.locator("#expected-tome-isbn-error")).toContainText(
       /valid ISBN-13 or ISBN-10|ISBN-13 ou ISBN-10 valide/i,
     );
     await expect(page.locator("#expected-tome-title")).toHaveValue(

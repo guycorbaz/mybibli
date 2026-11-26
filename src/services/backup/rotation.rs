@@ -123,6 +123,12 @@ pub async fn rotate(
     tz: Tz,
     retention_days: u32,
 ) -> RotationOutcome {
+    // Story 19-8 review (pass 1): nothing is deleted while a restore runs
+    // (or stays stuck): the safety backup must survive until the next boot.
+    if cfg.maintenance.is_active() {
+        tracing::info!("Backup rotation skipped: a restore is running");
+        return RotationOutcome::Busy;
+    }
     let Ok(guard) = cfg.guard.clone().try_lock_owned() else {
         tracing::info!("Backup rotation skipped: a backup is running; the next pass does it");
         return RotationOutcome::Busy;
@@ -159,7 +165,21 @@ fn rotate_blocking(
     };
     let regular = |name: &str| entries.iter().any(|e| e.name == name && e.is_file);
     let files: Vec<&FolderEntry> = entries.iter().filter(|e| e.is_file).collect();
-    let to_delete = plan(files.iter().map(|e| e.name.as_str()), instance_id, now, tz, retention_days);
+    // Story 19-8 review (pass 1): the files a restore journal names (the
+    // backup being restored, the safety backup the next boot puts back)
+    // are never deleted; an unreadable journal stops the pass.
+    let protected: Vec<String> = match super::restore::read_journal(dir) {
+        Ok(Some(j)) => vec![j.backup, j.safety],
+        Ok(None) => Vec::new(),
+        Err(e) => {
+            tracing::warn!(error = %e, "Backup rotation skipped: a restore journal is present but unreadable");
+            return RotationOutcome::Failed;
+        }
+    };
+    let to_delete: Vec<String> = plan(files.iter().map(|e| e.name.as_str()), instance_id, now, tz, retention_days)
+        .into_iter()
+        .filter(|n| !protected.contains(n))
+        .collect();
     let candidates = files
         .iter()
         .filter(|e| listing::own_stamp(&e.name, instance_id).is_some())
@@ -380,6 +400,56 @@ mod tests {
         let k = name(utc(2026, 3, 29, 22, 30)); // 00:30 CEST on the 30th
         let delete = run(&[h.clone(), i.clone(), j.clone(), k.clone()], now);
         assert_eq!(delete, vec![i], "the 29th keeps j, its newest");
+    }
+
+    #[test]
+    fn the_files_a_restore_journal_names_are_never_rotated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path();
+        let now = Utc.with_ymd_and_hms(2026, 11, 26, 12, 0, 0).unwrap();
+        let old = Utc.with_ymd_and_hms(2026, 10, 1, 12, 0, 0).unwrap();
+        let older = Utc.with_ymd_and_hms(2026, 10, 1, 11, 0, 0).unwrap();
+        for n in [name(now), name(old), name(older)] {
+            std::fs::write(d.join(&n), b"x").unwrap();
+        }
+        super::super::restore::write_journal(
+            d,
+            &super::super::restore::Journal {
+                restore_id: String::new(),
+                backup: name(older),
+                safety: name(old),
+                instance_id: ID.into(),
+                started_at: String::new(),
+            },
+        )
+        .unwrap();
+        // Retention one day: both old ones would go without the journal.
+        let outcome = rotate_blocking(d, ID, now, Zurich, 1);
+        assert!(matches!(outcome, RotationOutcome::Done(_)), "{outcome:?}");
+        assert!(d.join(name(old)).exists(), "the safety backup survives");
+        assert!(d.join(name(older)).exists(), "the backup being restored survives");
+        std::fs::write(d.join(super::super::restore::JOURNAL_NAME), b"{bad").unwrap();
+        assert_eq!(rotate_blocking(d, ID, now, Zurich, 1), RotationOutcome::Failed);
+        std::fs::remove_file(d.join(super::super::restore::JOURNAL_NAME)).unwrap();
+        rotate_blocking(d, ID, now, Zurich, 1);
+        assert!(!d.join(name(old)).exists() && !d.join(name(older)).exists(), "rotated once the journal is gone");
+    }
+
+    #[tokio::test]
+    async fn no_rotation_runs_while_a_restore_does() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = BackupConfig::new(tmp.path().to_path_buf(), tmp.path().join("covers"));
+        let old = name(Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap());
+        let new = name(Utc.with_ymd_and_hms(2026, 11, 26, 0, 0, 0).unwrap());
+        std::fs::write(tmp.path().join(&old), b"x").unwrap();
+        std::fs::write(tmp.path().join(&new), b"x").unwrap();
+        let on = cfg.maintenance.begin(std::time::Duration::from_secs(1)).await.unwrap();
+        let now = Utc.with_ymd_and_hms(2026, 11, 26, 12, 0, 0).unwrap();
+        assert_eq!(rotate(&cfg, ID, now, Zurich, 1).await, RotationOutcome::Busy);
+        assert!(tmp.path().join(&old).exists());
+        drop(on);
+        assert!(matches!(rotate(&cfg, ID, now, Zurich, 1).await, RotationOutcome::Done(_)));
+        assert!(!tmp.path().join(&old).exists());
     }
 
     #[test]

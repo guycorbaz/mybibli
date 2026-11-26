@@ -22,13 +22,13 @@ use mybibli::services::expected_tomes::{ExpectedTomeInput, ExpectedTomeService};
 // ─── Fixtures ────────────────────────────────────────────────────
 
 /// A valid ISBN-13 `978` + `n` (9 digits) + check digit.
-fn isbn(n: u32) -> String {
+pub(crate) fn isbn(n: u32) -> String {
     let body = format!("978{n:09}");
     let check = mybibli::utils::ean13_check_digit(&format!("{body}0")).unwrap();
     format!("{body}{check}")
 }
 
-async fn add_series(pool: &DbPool, name: &str, series_type: &str, total: Option<i32>) -> u64 {
+pub(crate) async fn add_series(pool: &DbPool, name: &str, series_type: &str, total: Option<i32>) -> u64 {
     sqlx::query("INSERT INTO series (name, series_type, total_volume_count) VALUES (?, ?, ?)")
         .bind(name)
         .bind(series_type)
@@ -39,7 +39,7 @@ async fn add_series(pool: &DbPool, name: &str, series_type: &str, total: Option<
         .last_insert_id()
 }
 
-async fn assign(pool: &DbPool, title_id: u64, series_id: u64, position: i32) {
+pub(crate) async fn assign(pool: &DbPool, title_id: u64, series_id: u64, position: i32) {
     sqlx::query("INSERT INTO title_series (title_id, series_id, position_number) VALUES (?, ?, ?)")
         .bind(title_id)
         .bind(series_id)
@@ -49,7 +49,7 @@ async fn assign(pool: &DbPool, title_id: u64, series_id: u64, position: i32) {
         .unwrap();
 }
 
-async fn tome(pool: &DbPool, series: u64, position: i32, title: &str, isbn: Option<&str>) -> u64 {
+pub(crate) async fn tome(pool: &DbPool, series: u64, position: i32, title: &str, isbn: Option<&str>) -> u64 {
     ExpectedTomeService::create(
         pool,
         series,
@@ -73,7 +73,7 @@ async fn version_of(pool: &DbPool, tome: u64) -> i32 {
         .unwrap()
 }
 
-async fn live_tomes(pool: &DbPool, series: u64) -> Vec<(i32, String, Option<String>)> {
+pub(crate) async fn live_tomes(pool: &DbPool, series: u64) -> Vec<(i32, String, Option<String>)> {
     sqlx::query_as(
         "SELECT position, title, isbn FROM series_expected_tomes \
          WHERE series_id = ? AND deleted_at IS NULL ORDER BY position",
@@ -84,7 +84,7 @@ async fn live_tomes(pool: &DbPool, series: u64) -> Vec<(i32, String, Option<Stri
     .unwrap()
 }
 
-async fn wishlist_rows(pool: &DbPool) -> Vec<(String, Option<String>, Option<String>)> {
+pub(crate) async fn wishlist_rows(pool: &DbPool) -> Vec<(String, Option<String>, Option<String>)> {
     sqlx::query_as(
         "SELECT title, isbn, notes FROM wishlist_items WHERE deleted_at IS NULL ORDER BY id",
     )
@@ -93,11 +93,11 @@ async fn wishlist_rows(pool: &DbPool) -> Vec<(String, Option<String>, Option<Str
     .unwrap()
 }
 
-fn enc(s: &str) -> String {
+pub(crate) fn enc(s: &str) -> String {
     percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
 }
 
-async fn librarian(pool: &DbPool) -> (axum::Router, Browser) {
+pub(crate) async fn librarian(pool: &DbPool) -> (axum::Router, Browser) {
     seed_admin(pool, "tome_web_admin").await;
     let app = router(pool);
     let browser = Browser::login(&app, "tome_web_admin").await;
@@ -256,16 +256,18 @@ async fn a_refusal_re_renders_the_form_with_the_localized_message(pool: DbPool) 
     let s = add_series(&pool, "Thorgal", "closed", Some(5)).await;
     let (app, browser) = librarian(&pool).await;
 
-    for (position, title, isbn, expect) in [
-        ("9", "Trop loin", "", "comprise entre 1 et 5"),
-        ("2", "", "", "Le titre est obligatoire"),
+    // Story 20-2 (AC 7, Q3): each refusal sits under its field.
+    for (position, title, isbn, expect, slot) in [
+        ("9", "Trop loin", "", "comprise entre 1 et 5", "position"),
+        ("2", "", "", "Le titre est obligatoire", "title"),
         (
             "2",
             "Mauvais ISBN",
             "12345",
-            "L&#39;ISBN doit être un ISBN-13",
+            "L&#x27;ISBN doit être un ISBN-13",
+            "isbn",
         ),
-        ("abc", "Pas un nombre", "", "comprise entre 1 et 5"),
+        ("abc", "Pas un nombre", "", "comprise entre 1 et 5", "position"),
     ] {
         let body = format!(
             "_csrf_token={}&position={}&title={}&isbn={}",
@@ -286,7 +288,12 @@ async fn a_refusal_re_renders_the_form_with_the_localized_message(pool: DbPool) 
         assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY, "{expect}");
         let html = body_string(res).await;
         assert!(html.contains(expect), "{expect}: {html}");
-        assert!(html.contains("id=\"expected-tome-error\""));
+        let at = html
+            .find(&format!("id=\"expected-tome-{slot}-error\""))
+            .unwrap_or_else(|| panic!("{slot} slot: {html}"));
+        assert!(html[at..].contains(expect), "{expect} under {slot}");
+        assert!(html.contains("aria-invalid=\"true\""));
+        assert!(!html.contains("id=\"expected-tome-error\""), "no form-level box");
         if !title.is_empty() {
             assert!(html.contains(title), "typed title kept");
         }
