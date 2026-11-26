@@ -964,6 +964,33 @@ admin:
       success: "Backup %{file} ripristinato (%{titles} titoli, %{covers} copertine). Il backup di sicurezza dello stato precedente è %{safety}. Tutti sono stati disconnessi."
       rolled_back: "Il ripristino non è riuscito, quindi mybibli ha riportato la biblioteca allo stato di poco prima, dal backup di sicurezza %{safety}. Tutti sono stati disconnessi. I log indicano perché il ripristino non è riuscito."
       login_again: "Accedi di nuovo"
+  # Story 19-9 (#658, D1-D12) — the cover check and its repair.
+  covers:
+    heading: "Controllo delle copertine"
+    intro: "Confronta la cartella delle copertine con la biblioteca: i file di copertina che nessun titolo possiede e i titoli il cui file di copertina manca. Il controllo in sé non modifica nulla."
+    check: "Controlla le copertine"
+    orphans_heading: "File di copertina che nessun titolo possiede (%{count})"
+    missing_heading: "Titoli il cui file di copertina manca (%{count})"
+    more: "… e altri %{count}."
+    left_alone: "Lasciati come sono: %{others} altri elementi nella cartella delle copertine, %{remote} titoli il cui indirizzo di copertina ha un'altra forma."
+    match: "Le copertine e la biblioteca concordano: %{files} file di copertina controllati, nulla da riparare."
+    unreadable: "mybibli non riesce a leggere la cartella delle copertine %{path}, quindi non è stato controllato nulla. Dai all'utente del container l'accesso a quella cartella, poi riprova."
+    note_trash: "nel cestino"
+    note_hand: "scelta a mano: caricala di nuovo"
+    note_no_code: "né ISBN, né ISSN, né UPC: nulla da scaricare"
+    note_pending: "una proposta di copertina è in attesa: accettala per installare una copertina"
+    unmounted: "%{missing} delle %{total} copertine usate dalla biblioteca mancano in %{path}. Sembra una cartella delle copertine non montata, quindi mybibli non riparerà nulla. Verifica il volume delle copertine dell'installazione (vedi il manuale), poi controlla di nuovo."
+    another_database: "%{count} file di copertina portano un numero che questo database non ha mai dato a un titolo. Sembra un database che non è quello di questa cartella, quindi mybibli non eliminerà nulla. Verifica il database dell'installazione (vedi il manuale), poi controlla di nuovo."
+    repair_open: "Ripara…"
+    repair:
+      title: "Riparare le copertine?"
+      body: "%{orphans} file di copertina che nessun titolo possiede saranno eliminati. %{cleared} titoli perdono l'indirizzo della loro copertina mancante; %{queued} di essi sono messi in coda per un nuovo download. Un file eliminato può tornare solo da un backup."
+      cancel: "Annulla"
+      confirm: "Ripara"
+      done: "Copertine riparate: %{deleted} file eliminati, %{cleared} indirizzi di copertina cancellati, %{queued} download messi in coda."
+      skipped: "%{skipped} elementi erano cambiati dopo il controllo e sono stati lasciati come sono."
+      failed: "%{failed} file non hanno potuto essere eliminati: mybibli non può scrivere nella cartella delle copertine %{path}. Dai all'utente del container il permesso di scrivere in quella cartella (vedi il manuale), poi controlla di nuovo."
+      stopped: "La riparazione si è fermata perché è iniziato un ripristino; %{left} elementi non sono stati trattati. Controlla di nuovo quando il ripristino è terminato."
   trash:
     badge_aria: "Cestino, %{count} elementi"
     heading: Cestino (elementi eliminati)

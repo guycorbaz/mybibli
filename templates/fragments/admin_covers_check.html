@@ -1,0 +1,55 @@
+{# Story 19-9 (#658, D2, D12, T5) — the answer of a cover check, the
+   content of `#admin-covers-result`. Values are escaped by Askama. The
+   "Repair…" form carries every listed item (not only the 50 shown); it
+   opens the UX-DR8 modal in #modal-slot (no `hx-confirm=`), and is left
+   out when nothing can be repaired, the folder looks unmounted (D12) or
+   the database looks like another one (its mirror, review pass 1). #}
+{% if !match_line.is_empty() %}
+<p id="admin-covers-match" class="text-sm">{{ match_line }}</p>
+{% else %}
+{% if !unmounted.is_empty() %}
+<p id="admin-covers-unmounted" class="text-sm font-medium text-amber-800 dark:text-amber-300">{{ unmounted }}</p>
+{% endif %}
+{% if !another_database.is_empty() %}
+<p id="admin-covers-another-database" class="text-sm font-medium text-amber-800 dark:text-amber-300">{{ another_database }}</p>
+{% endif %}
+{% if !orphan_rows.is_empty() %}
+<div id="admin-covers-orphans">
+    <h4 class="font-medium">{{ orphans_heading }}</h4>
+    <ul class="text-sm list-disc pl-5">
+        {% for row in orphan_rows %}<li>{{ row }}</li>
+        {% endfor %}
+    </ul>
+    {% if !orphans_more.is_empty() %}<p class="text-sm">{{ orphans_more }}</p>{% endif %}
+</div>
+{% endif %}
+{% if !missing_rows.is_empty() %}
+<div id="admin-covers-missing">
+    <h4 class="font-medium">{{ missing_heading }}</h4>
+    <ul class="text-sm list-disc pl-5">
+        {% for row in missing_rows %}<li><a href="{{ row.href }}" class="text-indigo-700 dark:text-indigo-300 underline">{{ row.title }}</a>{% if !row.note.is_empty() %} — {{ row.note }}{% endif %}</li>
+        {% endfor %}
+    </ul>
+    {% if !missing_more.is_empty() %}<p class="text-sm">{{ missing_more }}</p>{% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% if !left_alone.is_empty() %}
+<p id="admin-covers-left-alone" class="text-sm text-stone-700 dark:text-stone-300">{{ left_alone }}</p>
+{% endif %}
+{% if let Some(r) = repair %}
+<form id="admin-covers-repair-open"
+      hx-post="/admin/covers/repair/confirm"
+      hx-target="#modal-slot"
+      hx-swap="innerHTML"
+      hx-sync="this:drop">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+    {% for o in r.orphans %}<input type="hidden" name="orphan" value="{{ o }}">{% endfor %}
+    {% for m in r.missing %}<input type="hidden" name="missing" value="{{ m }}">{% endfor %}
+    <button type="submit"
+            id="admin-covers-repair"
+            data-modal-trigger
+            data-modal-focus-fallback="#admin-covers-check"
+            class="px-4 py-2 rounded-md bg-stone-200 dark:bg-stone-700 hover:bg-red-600 hover:text-white font-medium min-h-[44px] md:min-h-0">{{ r.label }}</button>
+</form>
+{% endif %}
