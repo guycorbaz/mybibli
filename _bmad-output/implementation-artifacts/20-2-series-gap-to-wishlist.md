@@ -1,6 +1,6 @@
 # Story 20.2: Send a missing series position to the wish list
 
-Status: review
+Status: done
 
 <!-- Closes #715. Source: _bmad-output/planning-artifacts/epics.md, Epic 20, Story 20.2; decisions D4, D5, D6 (approved by the project lead, 2026-11-26). Open questions Q1–Q4 (see Validation) approved by the project lead as recommended, 2026-11-26. -->
 
@@ -230,3 +230,5 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-11-26 — code review pass 1: findings 1–5 fixed, M3 open (copy decision), L3/L5 accepted; E2E re-run pending.
 - 2026-11-26 — E2E green (505 passed, 2 skipped); status review.
 - 2026-11-26 — dev-story: gap → wish list form (tome + entry in one transaction), shared wish list dedup, field-level refusals in the expected-tome form, success entry on the series page. E2E pending.
+
+- 2026-11-26 — story done. M3 (accessible name vs visible label, WCAG 2.5.3) waits for the project lead's copy decision, tracked with the same question for 20-1 in #734.
