@@ -34,9 +34,16 @@ wishlist:
   col_notes: "Notes"
   action_bought: "Bought"
   action_remove: "Remove"
+  # Story 20-1 — accessible names of the two actions (they name the entry).
+  action_bought_named: "Mark “%{title}” as bought"
+  action_remove_named: "Remove “%{title}” from the wish list"
   back_to_list: "Back to wish list"
-  delete_modal_title: "Mark %{title} as bought?"
-  delete_modal_body: "This removes the entry from the wish list. The action is reversible from the admin Trash panel within 30 days."
+  delete_modal_title: "Mark “%{title}” as bought?"
+  delete_modal_body: "The entry leaves the wish list. It cannot be restored afterwards."
+  # Story 20-1 (#714) — "Remove" without buying; a removed entry cannot be restored.
+  remove_modal_title: "Remove “%{title}” from the wish list?"
+  remove_modal_body: "The entry leaves the wish list. It cannot be restored: add it again if you change your mind."
+  already_removed: "This entry is no longer on the wish list. It was probably removed in another tab or by another librarian. Reload the list to see it as it is now."
   print_title: "My wish list"
   print_count_one: "%{count} book"
   print_count_other: "%{count} books"
@@ -594,6 +601,10 @@ location:
   organizational_label: "Organizational location (cannot hold volumes directly)"
   organizational_help: "Check this if the location only groups child locations (e.g. \"Living Room\" contains \"Bookshelf A\" and \"Bookshelf B\" but holds no volumes itself). Volumes cannot be assigned to an organizational location — the scan-to-shelve flow refuses, and the location-edit form rejects flipping a row that still has volumes attached."
   organizational_blocked_has_volumes: "Cannot mark organizational — %{count} volume(s) currently use this location. Re-shelve them first."
+  description_label: Description
+  description_help: "Optional. Where to find it, for example “left bookcase, top shelf, behind the door”."
+  description_too_long: "Description must be at most %{max} characters."
+  back_to_tree: Back to locations
   # CR #237 — bulk-mark all volumes on a shelf "to check".
   bulk_audit_button: "Mark all volumes for audit"
   empty_state: "Create your first location to start organizing!"

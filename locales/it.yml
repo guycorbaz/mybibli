@@ -34,9 +34,16 @@ wishlist:
   col_notes: "Note"
   action_bought: "Acquistato"
   action_remove: "Rimuovi"
+  # Story 20-1 — accessible names of the two actions (they name the entry).
+  action_bought_named: "Segna «%{title}» come acquistato"
+  action_remove_named: "Rimuovi «%{title}» dalla lista dei desideri"
   back_to_list: "Torna alla lista dei desideri"
-  delete_modal_title: "Segnare %{title} come acquistato?"
-  delete_modal_body: "La voce viene rimossa dalla lista dei desideri. L'azione è reversibile entro 30 giorni dal pannello Cestino dell'amministrazione."
+  delete_modal_title: "Segnare «%{title}» come acquistato?"
+  delete_modal_body: "La voce lascia la lista dei desideri. Non potrà essere ripristinata in seguito."
+  # Story 20-1 (#714) — "Remove" without buying; a removed entry cannot be restored.
+  remove_modal_title: "Rimuovere «%{title}» dalla lista dei desideri?"
+  remove_modal_body: "La voce lascia la lista dei desideri. Non può essere ripristinata: aggiungila di nuovo se cambi idea."
+  already_removed: "Questa voce non è più nella lista dei desideri. Probabilmente è stata rimossa in un'altra scheda o da un altro bibliotecario. Ricarica la lista per vederla aggiornata."
   print_title: "La mia lista dei desideri"
   print_count_one: "%{count} libro"
   print_count_other: "%{count} libri"
@@ -579,6 +586,10 @@ location:
   organizational_label: "Ubicazione organizzativa (non può contenere esemplari direttamente)"
   organizational_help: "Seleziona se l'ubicazione raggruppa solo sotto-ubicazioni (es. «Soggiorno» contiene «Libreria A» e «Libreria B» ma non contiene esemplari direttamente). Gli esemplari non possono essere assegnati a un'ubicazione organizzativa — il flusso di scansione-collocazione la rifiuta, e il modulo di modifica rifiuta di convertire una riga che ha ancora esemplari collegati."
   organizational_blocked_has_volumes: "Impossibile contrassegnare come organizzativa — %{count} esemplare(i) usano attualmente questa ubicazione. Ricollocali prima."
+  description_label: Descrizione
+  description_help: "Facoltativa. Dove trovarla, per esempio «libreria di sinistra, ripiano in alto, dietro la porta»."
+  description_too_long: "La descrizione può contenere al massimo %{max} caratteri."
+  back_to_tree: Torna alle ubicazioni
   bulk_audit_button: "Segna tutti gli esemplari per la verifica"
   empty_state: "Crea la tua prima ubicazione per iniziare a organizzare!"
   created: "%{name} creata (%{label})."

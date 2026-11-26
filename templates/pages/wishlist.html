@@ -54,7 +54,7 @@
                 </tr>
             </thead>
             <tbody>
-                {% for item in items %}
+                {% for row in items %}{% let item = row.item %}
                 <tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50 last:border-b-0">
                     <td class="px-3 py-2">
                         <a href="/wishlist/{{ item.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ item.title }}</a>
@@ -71,13 +71,27 @@
                     <td class="px-3 py-2 text-stone-500 dark:text-stone-400 text-xs tabular-nums">{{ item.created_on(time_zone) }}</td>
                     {% if can_edit %}
                     <td class="px-3 py-2 text-right whitespace-nowrap">
+                        {# Story 20-1 (D1, D6) — "Bought" and "Remove", each
+                           opening its own modal copy; the accessible names
+                           carry the entry's title (built in Rust). #}
+                        <span class="inline-flex gap-3">
                         <button type="button"
-                                hx-get="/wishlist/{{ item.id }}/delete-modal"
+                                hx-get="/wishlist/{{ item.id }}/delete-modal?action=bought"
                                 hx-target="#modal-slot"
                                 hx-swap="innerHTML"
-                                class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline">
+                                aria-label="{{ row.bought_label }}"
+                                class="text-xs text-emerald-700 dark:text-emerald-400 hover:underline">
                             ✓ {{ label_action_bought }}
                         </button>
+                        <button type="button"
+                                hx-get="/wishlist/{{ item.id }}/delete-modal?action=remove"
+                                hx-target="#modal-slot"
+                                hx-swap="innerHTML"
+                                aria-label="{{ row.remove_label }}"
+                                class="text-xs text-red-600 dark:text-red-400 hover:underline">
+                            {{ label_action_remove }}
+                        </button>
+                        </span>
                     </td>
                     {% endif %}
                 </tr>
@@ -88,18 +102,29 @@
 
     {# Mobile card stack — visible below `md` breakpoint. #}
     <ul class="md:hidden space-y-2">
-        {% for item in items %}
+        {% for row in items %}{% let item = row.item %}
         <li class="px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg">
             <div class="flex justify-between items-start gap-2">
                 <a href="/wishlist/{{ item.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ item.title }}</a>
                 {% if can_edit %}
+                <span class="inline-flex gap-3 shrink-0">
                 <button type="button"
-                        hx-get="/wishlist/{{ item.id }}/delete-modal"
+                        hx-get="/wishlist/{{ item.id }}/delete-modal?action=bought"
                         hx-target="#modal-slot"
                         hx-swap="innerHTML"
-                        class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline shrink-0">
+                        aria-label="{{ row.bought_label }}"
+                        class="text-xs text-emerald-700 dark:text-emerald-400 hover:underline">
                     ✓ {{ label_action_bought }}
                 </button>
+                <button type="button"
+                        hx-get="/wishlist/{{ item.id }}/delete-modal?action=remove"
+                        hx-target="#modal-slot"
+                        hx-swap="innerHTML"
+                        aria-label="{{ row.remove_label }}"
+                        class="text-xs text-red-600 dark:text-red-400 hover:underline">
+                    {{ label_action_remove }}
+                </button>
+                </span>
                 {% endif %}
             </div>
             <dl class="mt-2 text-xs text-stone-600 dark:text-stone-400 space-y-1">

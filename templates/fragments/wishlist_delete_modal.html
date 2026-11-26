@@ -1,7 +1,10 @@
-{# CR #242 — wishlist item delete modal ("Mark as bought").
-   Mirrors the series + volume delete modal patterns (UX-DR8). On
-   success the `wishlist_delete` handler returns HX-Redirect to
-   /wishlist so the list re-renders without the bought item. CSP-clean.
+{# CR #242 — wishlist item delete modal. Story 20-1: one fragment for
+   both actions, "Mark as bought" and "Remove" — the handler fills the
+   title, body, confirm label and `action_url` (`?action=bought|remove`)
+   per action. Mirrors the series + volume delete modal patterns (UX-DR8).
+   On success the `wishlist_delete` handler returns HX-Redirect to
+   /wishlist so the list re-renders without the entry; a refusal lands in
+   the modal's `[data-modal-error]`. CSP-clean.
    #}
 {% import "components/modal.html" as modal %}
 {% call modal::modal(

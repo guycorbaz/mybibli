@@ -62,6 +62,7 @@ mod labels_crud;
 mod locale_html_safety;
 mod locale_parity;
 mod location_delete_modal;
+mod location_description;
 mod mcp_catalog_read_tools;
 mod mcp_cover_proposals;
 mod mcp_endpoint;
@@ -124,6 +125,7 @@ mod volume_add_races;
 mod volume_detail_loan_status;
 mod volume_label_in_trash;
 mod volume_move;
+mod wishlist_remove;
 
 /// Every `tests/*.rs` file is declared above as a module (#357, #717).
 #[test]

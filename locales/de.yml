@@ -34,9 +34,16 @@ wishlist:
   col_notes: "Notizen"
   action_bought: "Gekauft"
   action_remove: "Entfernen"
+  # Story 20-1 — accessible names of the two actions (they name the entry).
+  action_bought_named: "„%{title}“ als gekauft markieren"
+  action_remove_named: "„%{title}“ von der Wunschliste entfernen"
   back_to_list: "Zurück zur Wunschliste"
-  delete_modal_title: "%{title} als gekauft markieren?"
-  delete_modal_body: "Der Eintrag wird aus der Wunschliste entfernt. Die Aktion ist innerhalb von 30 Tagen über den Admin-Papierkorb umkehrbar."
+  delete_modal_title: "„%{title}“ als gekauft markieren?"
+  delete_modal_body: "Der Eintrag verlässt die Wunschliste. Er kann danach nicht wiederhergestellt werden."
+  # Story 20-1 (#714) — "Remove" without buying; a removed entry cannot be restored.
+  remove_modal_title: "„%{title}“ von der Wunschliste entfernen?"
+  remove_modal_body: "Der Eintrag verlässt die Wunschliste. Er kann nicht wiederhergestellt werden: Fügen Sie ihn erneut hinzu, wenn Sie es sich anders überlegen."
+  already_removed: "Dieser Eintrag steht nicht mehr auf der Wunschliste. Er wurde wahrscheinlich in einem anderen Tab oder von einer anderen Person entfernt. Laden Sie die Liste neu, um den aktuellen Stand zu sehen."
   print_title: "Meine Wunschliste"
   print_count_one: "%{count} Buch"
   print_count_other: "%{count} Bücher"
@@ -587,6 +594,10 @@ location:
   organizational_label: "Organisatorischer Standort (kann keine Exemplare direkt aufnehmen)"
   organizational_help: "Aktivieren, wenn der Standort nur Unterstandorte gruppiert (z. B. \"Wohnzimmer\" enthält \"Regal A\" und \"Regal B\", aber selbst keine Exemplare). Exemplare können einem organisatorischen Standort nicht zugewiesen werden — der Einsortier-Workflow weist ab, und das Bearbeitungsformular lehnt das Umstellen eines Standorts mit angehängten Exemplaren ab."
   organizational_blocked_has_volumes: "Kann nicht als organisatorisch markiert werden — %{count} Exemplar(e) verwenden diesen Standort aktuell. Bitte zuerst umsortieren."
+  description_label: Beschreibung
+  description_help: "Optional. Wo der Standort zu finden ist, zum Beispiel „linkes Bücherregal, oberstes Fach, hinter der Tür“."
+  description_too_long: "Die Beschreibung darf höchstens %{max} Zeichen lang sein."
+  back_to_tree: Zurück zu den Standorten
   # CR #237 — bulk-mark all volumes on a shelf "to check".
   bulk_audit_button: "Alle Exemplare zur Prüfung markieren"
   empty_state: "Erstellen Sie Ihren ersten Standort, um mit der Organisation zu beginnen!"
