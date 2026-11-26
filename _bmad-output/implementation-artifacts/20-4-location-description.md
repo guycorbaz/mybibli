@@ -1,6 +1,6 @@
 # Story 20.4: A description for a storage location (closes #716)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -130,6 +130,18 @@ Pre-existing, left as is (outside the story):
 - **Q2 — where a save lands.** A save redirects to `/locations` (today's behaviour), where the description is not shown (D9), so a librarian does not see what was just saved without opening the location page.
   *Recommendation:* keep the redirect as it is (no behaviour change in this story); revisit with Q1's issue if usage asks for it.
   **Settled (2026-11-26):** the redirect to `/locations` after save is kept.
+
+## Senior Developer Review (AI)
+
+### Review pass 1 (2026-11-26, independent reviewer)
+
+No Medium+ findings: the story is clean (Rule #6). Checked: validation (trim, blank → NULL, 500 chars with CRLF as one), the single writer, the five readers, escaping, the 422 re-render, API v1, the backup round trip, the migration order, E2E isolation and the refusal case.
+
+- Low — sprint-status line and header behind the story. Fixed.
+- Low — DE help text "Wo er zu finden ist" had no antecedent. Fixed: "Wo der Standort zu finden ist".
+- Low — on the 422 page the heading and tab title show the typed name, not the stored one. Deferred to #732 (same form).
+- Low — the tree readers read `description` with `.unwrap_or(None)` (neighbouring style) instead of `?`. Deferred to #732.
+- Accepted as decided: a version conflict after a refusal answers the bare 409 (#732); `whitespace-pre-line` collapses repeated spaces (AC5).
 
 ## Dev Agent Record
 
