@@ -232,6 +232,13 @@ impl SeriesService {
                     rust_i18n::t!("error.not_found").to_string(),
                 ))
             })?;
+        // Review pass 1 (L1): a stale form answers the version conflict
+        // before any check on a state its user never saw (a plain read,
+        // after the lock: it sees the row as locked).
+        let current = SeriesModel::active_find_by_id_in(&mut tx, id).await?;
+        if current.is_some_and(|c| c.version != version) {
+            return Err(SeriesFormError::App(AppError::VersionMismatch { entity: "series" }));
+        }
 
         if series_type == SeriesType::Closed
             && let Some(total) = total
@@ -769,7 +776,9 @@ mod tests {
             ];
             for err in &all {
                 let m = err.localized(loc).unwrap();
-                assert!(!m.starts_with("series."), "raw key: {loc}: {m}");
+                // No raw key of the five (the EN copy itself ends in
+                // "closed series.", so a bare "series." would match it).
+                assert!(!m.contains("series.name_") && !m.contains("series.total_"), "raw key: {loc}: {m}");
                 assert!(!m.contains("%{"), "{loc}: {m}");
             }
             let dup = all[1].localized(loc).unwrap();

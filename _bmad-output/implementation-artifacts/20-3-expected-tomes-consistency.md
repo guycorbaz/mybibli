@@ -169,7 +169,15 @@ Logs under `/home/gcorbaz/devel/.wt-targets/20-3-logs/` (`lib*.log`, `int*.log`,
 - `tests/e2e/specs/journeys/series-total-tomes.spec.ts` (new), `tests/e2e/specs/journeys/series-expected-tomes.spec.ts`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
+### Review pass 1 (2026-11-26)
+
+No Medium+ finding. Two Low findings, fixed:
+- **L1** — `SeriesService::update_series` compares the form's `version` with the row read right after `lock_series_in` (a plain read, after the lock) and answers `App(VersionMismatch)` before the owned / expected-tome checks: a stale form gets today's 409 (Q3), never a refusal about a state its user never saw. Test: `series_total_tomes::a_stale_form_gets_the_conflict_before_the_total_rule`.
+- **L2** — `series_form_refusals_are_worded_in_every_locale` asserts that no raw key is shown. A literal `!m.contains("series.")` would fail on the approved EN copy itself ("… required for closed series."), so the test asserts `!m.contains("series.name_") && !m.contains("series.total_")`, which covers the five keys.
+
 ### Change Log
+
+- 2026-11-26 — code review pass 1: clean (L1, L2 fixed).
 
 - 2026-11-26 — dev-story: T1–T7 done, specs written (T8); `cargo test --lib` 2 020 green, clippy clean, targeted integration 185 green; gates except full `cargo test` / Playwright (T9); Q3 change request #743.
 

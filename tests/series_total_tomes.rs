@@ -271,6 +271,32 @@ async fn a_stale_version_keeps_the_bare_conflict_and_a_gone_series_is_not_found(
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
+/// Review pass 1 (L1) — a stale form whose values would also be refused
+/// (total below a tome recorded since) gets the version conflict, not a
+/// refusal about a state its user never saw.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_stale_form_gets_the_conflict_before_the_total_rule(pool: DbPool) {
+    let s = add_series(&pool, "Thorgal", "closed", Some(8)).await;
+    let (app, browser) = librarian(&pool).await;
+    let seen = series_row(&pool, s).await.2;
+    // Meanwhile: the series edited elsewhere, and a tome recorded at 5.
+    sqlx::query("UPDATE series SET description = 'x', version = version + 1 WHERE id = ?")
+        .bind(s)
+        .execute(&pool)
+        .await
+        .unwrap();
+    tome(&pool, s, 5, "Tome 5", None).await;
+    let before = series_row(&pool, s).await;
+
+    let res = browser
+        .send(&app, "POST", &format!("/series/{s}"), &form(&browser.csrf, "Thorgal", "closed", "4", Some(seen)), false)
+        .await;
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    let html = body_string(res).await;
+    assert!(!html.contains("series-total-error"), "{html}");
+    assert_eq!(series_row(&pool, s).await, before);
+}
+
 // ─── One transaction behind the series lock (AC2) ───────────────
 
 #[sqlx::test(migrations = "./migrations")]
