@@ -37,7 +37,7 @@ Practice A3: every user-visible behaviour and copy below that the lead has not a
 
 ## Decisions for the project lead
 
-Each D has a recommendation; one word ("A", "yes", "as proposed") is enough. EN and FR copy is given in full; DE and IT are translated at dev time from EN/FR (as in 19-6 / 19-7) and reviewed in the code review.
+**Approved by the project lead, 2026-11-26: D1–D13 all as recommended (A; D3 copy as proposed), EN and FR copy as written.** Each D has a recommendation; one word ("A", "yes", "as proposed") is enough. EN and FR copy is given in full; DE and IT are translated at dev time from EN/FR (as in 19-6 / 19-7) and reviewed in the code review.
 
 - **D1 — where restore lives, and the list (UX-DR46).**
   - **A (recommended):** on the Backups tab, under "Back up now", a list "Backups in the folder", newest first, one row per backup: date and time (instance zone, from the name), origin, size, a note column (D3, D4) and a "Restore…" button opening the modal. The list is refreshed out of band after "Back up now" (new file, rotation). Only names of the backup shape with a real stamp, regular files (19-7 listing rules); every other file is ignored. Empty: a sentence.
