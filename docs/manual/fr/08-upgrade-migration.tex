@@ -148,6 +148,114 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.29.0}\label{sec:whats-new-1.29.0}
+
+La version 1.29.0 clôt deux epics : l'epic 19, « moins de bogues, et
+une sauvegarde intégrée »
+(\href{https://github.com/guycorbaz/mybibli/issues/657}{\#657},
+\href{https://github.com/guycorbaz/mybibli/issues/658}{\#658},
+\href{https://github.com/guycorbaz/mybibli/issues/708}{\#708} et des
+remarques de revue), et l'epic 20, « corrections d'usage pour la wish list, les séries et les emplacements »
+(\href{https://github.com/guycorbaz/mybibli/issues/714}{\#714},
+\href{https://github.com/guycorbaz/mybibli/issues/715}{\#715},
+\href{https://github.com/guycorbaz/mybibli/issues/716}{\#716},
+\href{https://github.com/guycorbaz/mybibli/issues/524}{\#524},
+\href{https://github.com/guycorbaz/mybibli/issues/700}{\#700}).
+Quatre migrations \emph{additives} s'exécutent au premier démarrage ;
+une nouvelle variable d'environnement, facultative
+(\texttt{MYBIBLI\_BACKUP\_DIR}), et \textbf{un nouveau montage}, le
+dossier de sauvegarde. Sauvegardez d'abord, récupérez le
+\texttt{docker-compose.yml} de cette version (ou ajoutez la ligne
+\texttt{- ./backups:/app/backups} sous les \texttt{volumes:} du service
+\texttt{mybibli}, section~\ref{sec:install-backups}), tirez l'image,
+recréez le conteneur (\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{Une sauvegarde intégrée.} \textbf{Admin → Sauvegardes}
+        écrit un seul fichier qui contient toute la base et toutes les
+        couvertures (\textbf{Sauvegarder maintenant},
+        section~\ref{sec:backups}). mybibli ne crée jamais le dossier :
+        sans le montage, la sauvegarde est refusée et dit pourquoi. Les
+        sauvegardes s'écrivent aussi d'elles-mêmes --- \textbf{Admin →
+        Système}, section \emph{Sauvegardes}, toutes les heures par
+        défaut, et seulement si quelque chose a changé ; la première
+        vérification a lieu dix minutes après le démarrage --- et
+        tournent : mybibli garde les dernières 24 heures, la plus
+        récente, et une par jour pour les 14 derniers jours où une
+        sauvegarde a été écrite (\textbf{Sauvegardes quotidiennes à
+        garder}, de 1 à 365, section~\ref{sec:backups-schedule}). La
+        sauvegarde d'une autre instance n'est jamais supprimée. L'onglet
+        Santé montre la dernière sauvegarde, la prochaine vérification
+        et tout avertissement sur le dossier.
+  \item \textbf{Restaurer depuis l'onglet Sauvegardes.} Chaque ligne de
+        la liste \emph{Sauvegardes présentes dans le dossier} porte un
+        bouton \textbf{Restaurer…} (section~\ref{sec:backups-restore}).
+        mybibli contrôle d'abord tout le fichier ; la fenêtre dit ce qui
+        sera remplacé, puis une \emph{sauvegarde de sécurité} de l'état
+        actuel est écrite, toutes les autres pages affichent une page
+        \emph{Maintenance} pendant une à deux minutes, et tout le monde
+        est déconnecté. Une restauration qui échoue remet la
+        bibliothèque dans l'état où elle était ; restaurer la sauvegarde
+        de sécurité annule une restauration. Essayez-en d'abord une sur
+        une instance de test, avec sa propre base et son propre dossier
+        de sauvegarde (section~\ref{sec:backups-test-db}).
+  \item \textbf{Contrôle et réparation des couvertures.} Au bas de
+        l'onglet Sauvegardes, \textbf{Contrôler les couvertures} liste
+        les fichiers de couverture qu'aucun titre ne possède et les
+        titres dont le fichier de couverture manque ;
+        \textbf{Réparer…} supprime les premiers et remet les seconds en
+        file pour un nouveau téléchargement
+        (section~\ref{sec:cover-check}). La réparation est refusée quand
+        le dossier des couvertures semble non monté ou que la base
+        semble être celle d'une autre bibliothèque. Sur une bibliothèque
+        existante, le premier contrôle liste les fichiers laissés par
+        les titres purgés de la corbeille : c'est attendu.
+  \item \textbf{Surveillance de la production.} L'onglet Santé compte,
+        sur les dernières 24 heures et depuis le démarrage, les requêtes
+        lentes de la base, les attentes de connexion échouées, les refus
+        de jeton de sécurité (CSRF) et les clés d'API refusées, avec les
+        adresses le plus souvent refusées
+        (section~\ref{sec:health-watch}). Rien n'est écrit dans la base ;
+        un redémarrage remet les compteurs à zéro.
+  \item \textbf{Moins de bogues.} Supprimer un emplacement depuis
+        l'arbre passe par la fenêtre de confirmation de mybibli, dans
+        votre langue. Deux bibliothécaires qui ajoutent le même V-code,
+        ou l'ajout d'un volume pendant que son titre est supprimé, ne
+        laissent plus ni doublon ni volume sur un titre supprimé ; un
+        V-code encore porté par un volume de la corbeille est refusé au
+        lieu d'être réutilisé, pour que ce volume puisse toujours être
+        restauré. Un nom de contributeur saisi au même moment par deux
+        personnes n'est plus créé deux fois. Le fond des fenêtres est de
+        nouveau translucide, un message d'erreur placé au-dessus de la
+        partie visible d'une longue page est ramené à l'écran, et la
+        liste des séries compte les tomes possédés et les lacunes comme
+        le tableau de bord.
+  \item \textbf{Wish list : Retirer.} À côté d'\textbf{Acheté}, chaque
+        entrée porte \textbf{Retirer}, pour un livre que vous ne voulez
+        plus (section~\ref{sec:wishlist}).
+  \item \textbf{Un tome manquant vers la wish list.} Sur la page d'une
+        série, chaque lacune porte \textbf{Ajouter à la wish list} : le
+        tome est enregistré comme tome attendu de la série et mis sur la
+        wish list d'un seul geste (section~\ref{sec:wishlist-gap}).
+  \item \textbf{Le nombre de volumes et les tomes attendus.} Le nombre de
+        volumes d'une série fermée ne peut plus descendre sous un tome
+        attendu encore manquant ; un titre restauré depuis la corbeille
+        reprend ses positions et dit ce qu'est devenu un tome attendu
+        qui s'y trouvait (section~\ref{sec:series-total}).
+  \item \textbf{Une description pour un emplacement.} Un emplacement de
+        rangement peut porter un court texte --- « bibliothèque de
+        gauche, étagère du haut » --- affiché sur sa page et renvoyé par
+        l'API (section~\ref{sec:location-description}).
+  \item \textbf{L'arbre des emplacements en liste.} L'arbre est une
+        liste imbriquée que l'on parcourt avec \texttt{Tab}, ligne par
+        ligne ; un bouton devant un emplacement replie ceux qu'il
+        contient, et votre navigateur s'en souvient
+        (section~\ref{sec:locations}).
+  \item \textbf{La recherche dans la corbeille fonctionne de nouveau.}
+        Chercher un nom dans la corbeille échouait sur une erreur ; elle
+        répond de nouveau.
+\end{itemize}
+
 \section{Nouveautés de la 1.28.1}\label{sec:whats-new-1.28.1}
 
 La version 1.28.1 est une version de correctif sur la 1.28.0, hors de

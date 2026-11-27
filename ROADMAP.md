@@ -32,26 +32,106 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.28.1`](https://github.com/guycorbaz/mybibli/releases/tag/v1.28.1)**
-(2026-11-18) — two production fixes on v1.28.0, the maintenance
-release: the location tree's buttons visible again, and no session row
-for requests that cannot use one, with the client's address in the
-logs. **No migration.** The section below has the detail; every release
-before it has its own section further down, and this is the file that
-carries them — the README quotes only the current release, and the
-website tells the same story for a different audience.
+**Current stable: [`v1.29.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.29.0)**
+(2026-11-27) — epics 19 and 20 together: built-in backup and restore
+of the database and the covers, scheduled and rotated, a cover check,
+production watching on the Health tab, fewer bugs, and daily-use fixes
+for the wish list, series and locations. **Four additive migrations
+and one new mount, the backups folder.** The section below has the
+detail; every release before it has its own section further down, and
+this is the file that carries them — the README quotes only the current
+release, and the website tells the same story for a different audience.
 
-**Next:** epic 19 — built-in backup and restore of the database and
-the covers, scheduled and driven from the admin page
-([#657](https://github.com/guycorbaz/mybibli/issues/657)), with a consistency check between the covers on
-disk and the database ([#658](https://github.com/guycorbaz/mybibli/issues/658)), unless a bug comes first.
-Then the major dependency upgrades (sqlx 0.9 first) and, around
-February 2027, htmx 4. Later candidates, awaiting prioritisation: a
-shelving plan for comics ([#655](https://github.com/guycorbaz/mybibli/issues/655)), more proposable fields
-([#589](https://github.com/guycorbaz/mybibli/issues/589)) and merging duplicates
-([#591](https://github.com/guycorbaz/mybibli/issues/591)). The base-path setting for reverse proxies
-([#492](https://github.com/guycorbaz/mybibli/issues/492)) comes later. Everything else open lives in the issue
-tracker.
+**Next:** the major dependency upgrades (sqlx 0.9 first) and, around
+February 2027, htmx 4, unless a bug comes first. Later candidates,
+awaiting prioritisation: the purge removing the cover files of purged
+titles ([#744](https://github.com/guycorbaz/mybibli/issues/744)), a shelving plan for comics ([#655](https://github.com/guycorbaz/mybibli/issues/655)), more
+proposable fields ([#589](https://github.com/guycorbaz/mybibli/issues/589)) and merging duplicates ([#591](https://github.com/guycorbaz/mybibli/issues/591)). The
+base-path setting for reverse proxies ([#492](https://github.com/guycorbaz/mybibli/issues/492)) comes later.
+Everything else open lives in the issue tracker.
+
+## v1.29.0 — fewer bugs, built-in backup, and daily-use fixes *(shipped)*
+
+Shipped 2026-11-27. The closing release of epic 19, "fewer bugs, and
+built-in backup" ([#657](https://github.com/guycorbaz/mybibli/issues/657), [#658](https://github.com/guycorbaz/mybibli/issues/658), [#708](https://github.com/guycorbaz/mybibli/issues/708) and review findings), and
+epic 20, "daily-use fixes for the wish list, series and locations"
+([#714](https://github.com/guycorbaz/mybibli/issues/714), [#715](https://github.com/guycorbaz/mybibli/issues/715), [#716](https://github.com/guycorbaz/mybibli/issues/716), [#524](https://github.com/guycorbaz/mybibli/issues/524), [#700](https://github.com/guycorbaz/mybibli/issues/700)). **Four additive
+migrations** (contributor names unique among live rows, the two backup
+settings, a location description); one new optional environment
+variable, `MYBIBLI_BACKUP_DIR`; and **one new mount**: the backups
+folder, `- ./backups:/app/backups` in the `volumes:` of the `mybibli`
+service — mybibli never creates it. Back up first, fetch the
+`docker-compose.yml` of this release (or add the line), create the
+folder (`mkdir -p backups && chmod 700 backups`), pull the image and
+recreate the container (`docker compose up -d`).
+
+- **Built-in backups** ([#657](https://github.com/guycorbaz/mybibli/issues/657)). *Admin → Backups → Back up now*
+  writes one `mybibli-<instance id>-<UTC stamp>.tar.gz` holding the
+  whole database (Trash included, no session token) and every cover,
+  with a `.sha256` beside it. Without the mount, a backup is refused
+  and says why. *Admin → System → Backups* schedules them — every hour
+  by default, written only when something changed, the first check ten
+  minutes after the start — and the rotation keeps the last 24 hours,
+  the newest backup and one per day for the last 14 days on which a
+  backup was written (*Daily backups to keep*, 1 to 365). A backup of
+  another instance is never deleted. The Health tab shows the last
+  backup, the next check and any folder warning.
+- **Restore from the Backups tab.** Every backup in the folder has
+  *Restore…*: the file is checked first, the window states what will be
+  replaced, a safety backup of the current state is written, other
+  pages show a maintenance page for a minute or two, and everyone is
+  logged out. A restore that fails puts the library back from the
+  safety backup; restoring the safety backup undoes a restore. A backup
+  written by an older mybibli is migrated after loading; a newer one is
+  refused. Try a restore on a copy of the library first.
+- **Cover check and repair** ([#658](https://github.com/guycorbaz/mybibli/issues/658)). *Check covers* lists the cover
+  files no title owns and the titles whose cover file is missing;
+  *Repair…* deletes the first and queues a new download for the second,
+  each item checked again just before it changes, every repair audited.
+  No repair is offered when more than half the covers in use are
+  missing (a covers folder that looks unmounted), nor when an orphan
+  file carries a number this database never gave (a database that looks
+  like another library's). The first check on an existing library lists
+  the files left by titles purged from the Trash ([#744](https://github.com/guycorbaz/mybibli/issues/744)).
+- **Production watching** ([#708](https://github.com/guycorbaz/mybibli/issues/708)). The Health tab counts slow
+  database statements, failed connection waits, CSRF refusals and
+  API-key refusals over the last 24 hours and since the start, with the
+  addresses refused most often; counts above their threshold are
+  marked. In memory only, reset at restart.
+- **Fewer bugs.** Deleting a location from the tree goes through the
+  confirmation window, in the user's language ([#698](https://github.com/guycorbaz/mybibli/issues/698)). Simultaneous
+  adds: an add and a title delete serialise, two posts of one V-code
+  give one volume, a V-code held by a volume in the Trash is refused
+  instead of reused, a contributor name is created once ([#541](https://github.com/guycorbaz/mybibli/issues/541),
+  [#663](https://github.com/guycorbaz/mybibli/issues/663)). What the user reads: translucent window backdrops
+  ([#712](https://github.com/guycorbaz/mybibli/issues/712)), an error above the viewport scrolled into view, focus
+  kept after rejecting a proposal, the series list counting like the
+  dashboard ([#689](https://github.com/guycorbaz/mybibli/issues/689), [#538](https://github.com/guycorbaz/mybibli/issues/538), [#519](https://github.com/guycorbaz/mybibli/issues/519)). Trash search by name works
+  again ([#750](https://github.com/guycorbaz/mybibli/issues/750)).
+- **Wish list: Remove** ([#714](https://github.com/guycorbaz/mybibli/issues/714)). Next to *Bought*, each entry has
+  *Remove*, on the list, the mobile card and its page; the audit log
+  records which.
+- **A missing tome to the wish list** ([#715](https://github.com/guycorbaz/mybibli/issues/715)). Each gap of a series
+  grid has *Add to wish list*: the tome becomes an expected tome of the
+  series and a wish list entry in one go.
+- **The series total and expected tomes** ([#524](https://github.com/guycorbaz/mybibli/issues/524)). The number of
+  volumes of a closed series cannot go below a missing expected tome; a
+  title restored from the Trash takes its positions back and says what
+  became of an expected tome there.
+- **A description for a location** ([#716](https://github.com/guycorbaz/mybibli/issues/716)). Up to 500 characters of
+  plain text, shown on the location's page and returned by the API.
+- **The location tree as a nested list** ([#700](https://github.com/guycorbaz/mybibli/issues/700)). Gone through with
+  Tab, row by row; a fold button before a location, remembered by the
+  browser.
+- **Under the hood.** A stable E2E suite (V-code blocks per spec, no
+  order dependency, a flaky test fails CI — [#685](https://github.com/guycorbaz/mybibli/issues/685), [#499](https://github.com/guycorbaz/mybibli/issues/499),
+  [#528](https://github.com/guycorbaz/mybibli/issues/528), [#674](https://github.com/guycorbaz/mybibli/issues/674), [#554](https://github.com/guycorbaz/mybibli/issues/554)); one integration-test binary and a
+  Docker build cache ([#717](https://github.com/guycorbaz/mybibli/issues/717)); `cookie` 0.18.3 and `url` 2.5.9
+  (RUSTSEC-2026-0594, RUSTSEC-2026-0592); the audit now reads the
+  markup built in Rust. Two blank-browser epic smoke tests.
+- **Manual** (EN + FR): chapter 7 rewritten around the built-in backup,
+  restore and cover check; step 1d of the installation, *The backups
+  folder*; *What's new in 1.29.0* in chapter 8.
 
 ## v1.28.1 — two production fixes *(shipped)*
 

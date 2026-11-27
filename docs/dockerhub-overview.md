@@ -34,7 +34,8 @@ mybibli is designed for one household on one LAN. Login attempts are not rate-li
 - **Multi-role auth.** Anonymous (read-only) · Librarian (catalog + loans) · Admin (everything). Session inactivity timeout with keep-alive toast. **Four UI languages** — English, French, German, Italian — with per-user preference toggle.
 - **Hardened by construction.** Strict CSP (no `unsafe-inline`/`unsafe-eval`), CSRF synchronizer-token middleware on every state-changing request with server-rendered "session expired" feedback, scanner-guard against burst-keyboard input leaking into modals.
 - **Admin panel.** Health dashboard (entity counts, MariaDB version, disk usage, provider reachability), user management with last-active-admin guard, editable reference data (genres, volume states, contributor roles, location node types), system settings (loans / providers / language / valuation / **logging level**), trash view + restore + permanent delete, configurable auto-purge after 30 days.
-- **Production observability** (v1.7.0+, completed in v1.7.1). Persistent daily-rotating log files with 30-day in-process purge. Admin-controlled log level (`trace` / `debug` / `info` / `warn` / `error` or full `tracing-subscriber` `EnvFilter` directives) flippable from `/admin > System` without a redeploy. To monitor the container from Prometheus/blackbox or any uptime checker, probe `/health` — not `/`, where every cookieless request creates an anonymous session.
+- **Production observability** (v1.7.0+, completed in v1.7.1). Persistent daily-rotating log files with 30-day in-process purge. Admin-controlled log level (`trace` / `debug` / `info` / `warn` / `error` or full `tracing-subscriber` `EnvFilter` directives) flippable from `/admin > System` without a redeploy. Since v1.29.0 the Health tab also counts slow statements, failed connection waits, CSRF and API-key refusals (last 24 h and since start, in memory only). To monitor the container from Prometheus/blackbox or any uptime checker, probe `/health` — not `/`, where every cookieless request creates an anonymous session.
+- **Built-in backup and restore** (v1.29.0+). One `.tar.gz` holding the whole database and every cover, written from **Admin → Backups** or on a schedule (hourly by default, only when something changed), rotated (last 24 h + one per backup day, 14 days by default), and restored from the same tab behind a safety backup of the current state. A cover check finds orphan and missing cover files and repairs them, refusing when the covers folder looks unmounted or the database looks like another library's. Needs the `./backups:/app/backups` mount below.
 - **First-launch setup wizard.** Fresh installs walk through Admin → Providers → Preferences → Done.
 - **Sidebar navigation, light or dark.** A sidebar on screens from 1024 px — every entry with its icon, grouped by role — that collapses to a column of icons (the browser remembers the choice), and a drawer on phones and tablets that ignores a barcode scanner's read while it is open. The theme toggle switches the whole interface between light and dark; without a choice mybibli follows the system, and printing is always light.
 - **Mobile-aware + WCAG 2.2 AA accessible.** Dual-surface mobile UX (desktop tables collapse into cards, admin tabs into `<select>`), full keyboard navigation with shortcuts cheat-sheet (`?`), contextual help-icon tooltips, and an axe-core CI gate over the main surfaces (thirteen of them, listed in [`docs/accessibility-audit.md`](https://github.com/guycorbaz/mybibli/blob/main/docs/accessibility-audit.md) — the newer pages are not in the set yet).
@@ -79,6 +80,12 @@ services:
       # Forensic-only; safe to wipe at any time. Drop this mount if
       # you only need `docker compose logs` (no on-disk retention).
       - mybibli-logs:/var/log/mybibli
+      # v1.29.0+ — built-in backups (Admin → Backups). mybibli never
+      # creates this folder: a bind mount, so the files sit on the host
+      # where you copy them elsewhere. Create it first and keep it
+      # private (`mkdir -p backups && chmod 700 backups`): each backup
+      # holds password hashes and provider keys.
+      - ./backups:/app/backups
     depends_on:
       db:
         condition: service_healthy
@@ -127,7 +134,7 @@ Both `mybibli-covers` and `mybibli-logs` can be swapped from Docker-named volume
 ## Tags
 
 - `:latest` — tracks the highest semver release tag.
-- `:1.28.1` (current), `:1.28.0`, `:1.27.0`, `:1.26.0`, `:1.25.0`, `:1.24.0`, `:1.23.0`, `:1.22.0`, `:1.21.0`, `:1.20.1` and every prior release tag back to `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; tracking `:latest` is reasonable for homelab. The full tag list is on the [Tags tab](https://hub.docker.com/r/gcorbaz/mybibli/tags).
+- `:1.29.0` (current), `:1.28.1`, `:1.28.0`, `:1.27.0`, `:1.26.0`, `:1.25.0`, `:1.24.0`, `:1.23.0`, `:1.22.0`, `:1.21.0`, `:1.20.1` and every prior release tag back to `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; tracking `:latest` is reasonable for homelab. The full tag list is on the [Tags tab](https://hub.docker.com/r/gcorbaz/mybibli/tags).
 - **No `:dev`, no `:main`, no `:beta` published** — tagged releases only.
 
 ## Docs

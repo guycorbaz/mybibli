@@ -9,7 +9,7 @@
 [![Version](https://img.shields.io/github/v/tag/guycorbaz/mybibli?label=version&sort=semver&color=blue)](https://github.com/guycorbaz/mybibli/releases)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-lightgrey)](LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/gcorbaz/mybibli?logo=docker&label=docker%20pulls)](https://hub.docker.com/r/gcorbaz/mybibli)
-[![Docker Image Size](https://img.shields.io/docker/image-size/gcorbaz/mybibli/1.28.1?logo=docker&label=image%20size)](https://hub.docker.com/r/gcorbaz/mybibli/tags)
+[![Docker Image Size](https://img.shields.io/docker/image-size/gcorbaz/mybibli/1.29.0?logo=docker&label=image%20size)](https://hub.docker.com/r/gcorbaz/mybibli/tags)
 [![Open Issues](https://img.shields.io/github/issues/guycorbaz/mybibli?logo=github)](https://github.com/guycorbaz/mybibli/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/guycorbaz/mybibli/main?logo=github)](https://github.com/guycorbaz/mybibli/commits/main)
 [![Stars](https://img.shields.io/github/stars/guycorbaz/mybibli?logo=github&style=flat)](https://github.com/guycorbaz/mybibli/stargazers)
@@ -17,7 +17,7 @@
 
 > Personal library cataloging for home collectors.
 
-**Status:** in production since v1.1.1 (2026-05-14). 18 epics shipped, the latest a maintenance epic: dependencies brought up to date and pinned, every failed action now explains itself, and the series API returns every series. Current release: `v1.28.1`, two production fixes on top of it. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli). See [ROADMAP.md](ROADMAP.md) for what's coming next.
+**Status:** in production since v1.1.1 (2026-05-14). 20 epics shipped, the latest two together: built-in backup and restore (database + covers, scheduled, with rotation), a cover check, production watching on the Health tab, fewer bugs, and daily-use fixes for the wish list, series and locations. Current release: `v1.29.0`. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli). See [ROADMAP.md](ROADMAP.md) for what's coming next.
 
 **Try it, and tell us.** mybibli was shaped by one household's library — books, French comics, CDs, films — and improved by using it every day. If you catalog something it handles badly, that is exactly the feedback it needs: questions and ideas go to [Discussions](https://github.com/guycorbaz/mybibli/discussions), defects to a [bug report](https://github.com/guycorbaz/mybibli/issues/new?template=bug_report.yml), and the [contributing guide](CONTRIBUTING.md) lists other ways to help (translations, [good first issues](https://github.com/guycorbaz/mybibli/labels/good%20first%20issue)). It is a personal project: issues are answered as time allows.
 
@@ -107,6 +107,8 @@ Install **v1.1.0 or later**. Pre-1.1.0 images (`v1.0.0` … `v1.0.5`) shipped se
 - `mybibli_logs` → `/var/log/mybibli` — daily-rotating log files (CR [#301](https://github.com/guycorbaz/mybibli/issues/301), v1.7.0+) — **optional but recommended** for production debuggability; can be wiped at any time
 
 If you deploy `docker-compose.yml` from the repo unchanged (v1.7.0+), you already have all three. Back the data + covers volumes up together — losing one without the other leaves DB references pointing at missing files (or vice versa). The logs volume is forensic-only; it doesn't need backup.
+
+**Since v1.29.0, a backups folder.** mybibli writes its own backups (whole database + every cover, one `.tar.gz` per backup) into `/app/backups`, and **never creates that folder**: the shipped `docker-compose.yml` bind-mounts it with `- ./backups:/app/backups`. On an existing install, add that line under the `volumes:` of the `mybibli` service (or fetch the v1.29.0 compose file), create the host folder with `mkdir -p backups && chmod 700 backups` (each backup holds password hashes and provider keys), and recreate the container. Without the mount, "Back up now" is refused and says why. Copy that folder off the NAS: a backup kept on the same disk does not survive the disk. See chapter 7 of the [user manual](docs/manual/).
 
 **Upgrading from a pre-1.1.4 install?** Pre-1.1.4 `docker-compose.yml` did not declare `mybibli_covers`, so the cover JPGs lived inside the container's writable layer and were lost on every `docker compose up -d` after a `pull`. Adding the volume now preserves covers fetched from this point forward, but does NOT restore the ones that disappeared on prior upgrades. To recover, re-trigger metadata fetch from each affected title's detail page (the "Re-fetch metadata" button). A bulk-fetch admin action is tracked at issue [#214](https://github.com/guycorbaz/mybibli/issues/214).
 
@@ -427,10 +429,12 @@ Versioned under `_bmad-output/`:
 | 16 | What real use showed | ✅ done |
 | 17 | Everyday entry | ✅ done |
 | 18 | Maintenance | ✅ done |
+| 19 | Fewer bugs, and built-in backup | ✅ done |
+| 20 | Daily-use fixes for the wish list, series and locations | ✅ done |
 
 mybibli has been live in production since v1.1.1 (2026-05-14) on the household NAS that drove the project. v1.0.0 shipped after Epic 9 close (2026-05-10) as the first production-ready build; v1.1.0 added the seed-gate + audit trio (mandatory install floor — see "Installation notes" above); the themed minors v1.2 through v1.8 then delivered the original feature roadmap (browse & find, wishlist, HTTP API, valuation & stats, catalog hygiene, de/it locales + runtime logging, cover handling), each followed by production-driven patch trains. Since v1.8 the project runs in GH-issue-driven polish mode.
 
-**Current release: `v1.28.1`** (2026-11-18) — two production fixes on v1.28.0: the add / edit / delete buttons of the location tree are visible again in the Docker image, and on touch screens ([#695](https://github.com/guycorbaz/mybibli/issues/695)); a client calling a wrong address (`/mcp` instead of `/api/mcp`) no longer creates a session row per request, gets a 404 naming the right endpoint, and the logs show the client's address — behind a reverse proxy, name it in the new optional `MYBIBLI_TRUSTED_PROXIES` ([#696](https://github.com/guycorbaz/mybibli/issues/696)). **No migration** — back up, pull the image and recreate the container.
+**Current release: `v1.29.0`** (2026-11-27) — epics 19 and 20 together. Built-in backups from Admin → Backups: one file with the whole database and every cover, written on demand or automatically (hourly by default, only when something changed), rotated (last 24 h + one per backup day, 14 days by default), and restored from the same tab behind a safety backup ([#657](https://github.com/guycorbaz/mybibli/issues/657)); a cover check that finds orphan and missing cover files and repairs them behind two guards ([#658](https://github.com/guycorbaz/mybibli/issues/658)); production watching on the Health tab ([#708](https://github.com/guycorbaz/mybibli/issues/708)); fewer bugs (simultaneous adds, messages users missed, a stable E2E suite); Remove on the wish list, a missing series tome sent to the wish list, the series total respecting expected tomes, a description for a storage location, and a keyboard-friendly location tree (#714, #715, #524, #716, #700). **Four additive migrations; mount the new backups folder `./backups:/app/backups`** (mybibli never creates it) — back up, fetch the new `docker-compose.yml`, pull the image and recreate the container.
 
 **Release-by-release history lives in [ROADMAP.md](ROADMAP.md)** — one section per version, and the canonical copy. It is deliberately not repeated here: the [GitHub releases page](https://github.com/guycorbaz/mybibli/releases) carries the same notes as published artifacts, chapter 8 of the [user manual](docs/manual/) carries them offline, and the [website roadmap](https://guycorbaz.github.io/mybibli/roadmap.html) tells the same story for a different audience. See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the epic breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
 
