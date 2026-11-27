@@ -139,6 +139,100 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.29.0}\label{sec:whats-new-1.29.0}
+
+Version 1.29.0 closes two epics: epic 19, ``fewer bugs, and built-in
+backup'' (\href{https://github.com/guycorbaz/mybibli/issues/657}{\#657},
+\href{https://github.com/guycorbaz/mybibli/issues/658}{\#658},
+\href{https://github.com/guycorbaz/mybibli/issues/708}{\#708} and
+review findings), and epic 20, ``daily-use fixes for the wish list, series and locations''
+(\href{https://github.com/guycorbaz/mybibli/issues/714}{\#714},
+\href{https://github.com/guycorbaz/mybibli/issues/715}{\#715},
+\href{https://github.com/guycorbaz/mybibli/issues/716}{\#716},
+\href{https://github.com/guycorbaz/mybibli/issues/524}{\#524},
+\href{https://github.com/guycorbaz/mybibli/issues/700}{\#700}).
+Four \emph{additive} migrations run at the first start; one new
+optional environment variable (\texttt{MYBIBLI\_BACKUP\_DIR}) and
+\textbf{one new mount}, the backups folder. Back up first, fetch the
+\texttt{docker-compose.yml} of this release (or add the line
+\texttt{- ./backups:/app/backups} to the \texttt{volumes:} of the
+\texttt{mybibli} service, section~\ref{sec:install-backups}), pull the
+image, recreate the container (\texttt{docker compose up -d}).
+
+\begin{itemize}
+  \item \textbf{Built-in backups.} \textbf{Admin → Backups} writes one
+        file holding the whole database and every cover
+        (\textbf{Back up now}, section~\ref{sec:backups}). mybibli never
+        creates the folder: without the mount, a backup is refused and
+        says why. Backups are also written automatically ---
+        \textbf{Admin → System}, section \emph{Backups}, every hour by
+        default, only when something changed; the first check comes ten
+        minutes after the start --- and rotated: the last 24 hours, the
+        newest one, and one per day for the last 14 days on which a
+        backup was written (\textbf{Daily backups to keep}, 1 to 365,
+        section~\ref{sec:backups-schedule}). A backup of another
+        instance is never deleted. The Health tab shows the last
+        backup, the next check and any folder warning.
+  \item \textbf{Restore from the Backups tab.} The list \emph{Backups in
+        the folder} has a \textbf{Restore…} button on each row
+        (section~\ref{sec:backups-restore}). mybibli checks the whole
+        file first; the window states what will be replaced, then a
+        \emph{safety backup} of the current state is written, every
+        other page shows a \emph{Maintenance} page for a minute or two,
+        and everyone is logged out. A failed restore puts the library
+        back as it was; restoring the safety backup undoes a restore.
+        Try one first on a test instance, with its own database and its own
+        backups folder (section~\ref{sec:backups-test-db}).
+  \item \textbf{Cover check and repair.} At the foot of the Backups tab,
+        \textbf{Check covers} lists the cover files no title owns and
+        the titles whose cover file is missing; \textbf{Repair…} deletes
+        the first and queues a new download for the second
+        (section~\ref{sec:cover-check}). It refuses to repair when the
+        covers folder looks unmounted or the database looks like
+        another library's. On an existing library the first check
+        lists the files left behind by titles purged from the Trash:
+        that is expected.
+  \item \textbf{Production watching.} The Health tab counts, for the
+        last 24 hours and since the start, slow database statements,
+        failed connection waits, security-token (CSRF) refusals and
+        refused API keys, with the addresses refused most often
+        (section~\ref{sec:health-watch}). Nothing is written to the
+        database; a restart sets the counts to zero.
+  \item \textbf{Fewer bugs.} Deleting a location from the tree goes
+        through mybibli's own confirmation window, in your language.
+        Two librarians adding the same V-code, or adding a volume while
+        its title is deleted, no longer leave a duplicate or a volume
+        on a deleted title; a V-code still held by a volume in the
+        Trash is refused instead of reused, so that volume can still be
+        restored. A contributor name typed at the same time by two
+        people is no longer created twice. Window backdrops are
+        translucent again, an error message above the visible part of a
+        long page is scrolled into view, and the series list counts
+        owned tomes and gaps as the dashboard does.
+  \item \textbf{Wish list: Remove.} Next to \textbf{Bought}, each entry
+        has \textbf{Remove} for a book you no longer want
+        (section~\ref{sec:wishlist}).
+  \item \textbf{A missing tome to the wish list.} On a series page, each
+        gap has \textbf{Add to wish list}: the tome is recorded as an
+        expected tome of the series and put on the wish list in one go
+        (section~\ref{sec:wishlist-gap}).
+  \item \textbf{The series total and expected tomes.} The number of
+        volumes of a closed series can no longer go below an expected
+        tome still missing; a title restored from the Trash takes its
+        positions back and says what became of an expected tome there
+        (section~\ref{sec:series-total}).
+  \item \textbf{A description for a location.} A storage location can
+        carry a short text --- ``left bookcase, top shelf'' --- shown on
+        its page and returned by the API
+        (section~\ref{sec:location-description}).
+  \item \textbf{The location tree as a list.} The tree is a nested list
+        you go through with \texttt{Tab}, row by row; a button before a
+        location folds the ones inside it, and your browser remembers
+        it (section~\ref{sec:locations}).
+  \item \textbf{Trash search works again.} Searching the Trash by name
+        failed with an error; it answers again.
+\end{itemize}
+
 \section{What's new in 1.28.1}\label{sec:whats-new-1.28.1}
 
 Version 1.28.1 is a patch release on 1.28.0, outside any epic: two bugs
